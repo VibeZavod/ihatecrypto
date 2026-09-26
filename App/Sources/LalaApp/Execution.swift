@@ -229,6 +229,7 @@ extension Workspace {
             case .hlp(let deposit, let amount): _ = try await e.hlp(deposit: deposit, amount: amount)
             case .aave(let deposit, let amount): reply(try await e.aave(deposit: deposit, usdc: amount), note: "Aave · Base")
             case .baseToSolana(let amount): reply(try await e.baseToSolana(usdc: amount), note: "Relay · Base → Solana")
+            case .arbitrumToSolana(let amount): reply(try await e.evmToSolana(.arbitrum, usdc: amount), note: "Relay · Arbitrum → Solana")
             case .sendTo(let name, let amount): prepareTransfer(amount, to: name)
             case .receive: showReceive = true
             case .allocate(let symbol, let share):

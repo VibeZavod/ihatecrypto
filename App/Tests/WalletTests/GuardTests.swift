@@ -138,3 +138,12 @@ private let policy = SolanaPolicy(owner: me, recipients: [deposit])
     #expect(HLGuard.check(transfer(HLGuard.hlpVault), owner: me, recipients: []).ok)
     #expect(!HLGuard.check(transfer("0x" + String(repeating: "5c", count: 20)), owner: me, recipients: []).ok)
 }
+
+@Test func usdSendOnlyToTheApprovedAccount() {
+    let me = "0x14dc79964da2c08b23698b3d3cc7ca32193d9955", friend = "0x742d35cc6634c0532925a3b844bc454e4438f44e"
+    let action = HLSigner.usdSendAction(destination: friend, amount: "1.5", time: 1_790_000_000_000, mainnet: true)
+    #expect(HLGuard.check(action, owner: me, recipients: [friend]).ok)
+    // The same action with no approval, or approved for someone else, is refused.
+    #expect(!HLGuard.check(action, owner: me, recipients: []).ok)
+    #expect(!HLGuard.check(action, owner: me, recipients: ["0x0000000000000000000000000000000000000001"]).ok)
+}

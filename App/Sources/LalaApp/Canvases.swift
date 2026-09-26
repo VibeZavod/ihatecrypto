@@ -384,6 +384,7 @@ struct WithdrawBoard: View {
             case .aave(deposit: true, amount: let amount?): aave(amount)
             case .aave(deposit: false, amount: let amount): back(from: "aave", amount: amount)
             case .baseToSolana(let amount): back(from: "base", amount: amount)
+            case .arbitrumToSolana(let amount): back(from: "arbitrum", amount: amount)
             default: generic(command)
             }
         }
@@ -478,16 +479,18 @@ struct WithdrawBoard: View {
     /// Aave or idle USDC on Base → Relay → Solana.
     private func back(from place: String, amount: Decimal?) -> some View {
         let b = ws.base
-        let available = place == "aave" ? b?.aave : b?.usdc
+        let available = place == "aave" ? b?.aave : place == "arbitrum" ? ws.arbitrumUSDC : b?.usdc
         let moving = amount.map { min($0, available ?? $0) } ?? available
-        return board(title: place == "aave" ? "Aave · withdraw \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana" : "Base · \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana",
+        let chainName = place == "arbitrum" ? "Arbitrum" : "Base"
+        return board(title: place == "aave" ? "Aave · withdraw \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana" : "\(chainName) · \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana",
                      footer: (place == "aave" ? "Three Base transactions: withdraw from Aave, an exact approve and Relay’s deposit" : "Two Base transactions: an exact approve and Relay’s deposit")
                         + " — checked field by field before signing. Say “do it” or press Confirm.") {
             if place == "aave" {
                 step(logo: "aave", label: "FROM · AAVE ON BASE", title: available.map { "\(Fmt.num($0)) USDC" } ?? "—",
                      line: ws.aaveAPY.map { "earning ≈ \(Fmt.num($0.rounded(2, .plain)))% until now" } ?? "with the interest", fill: Color(hex: 0x2B2D3C), dark: true)
             } else {
-                step(logo: "base", label: "FROM · BASE", title: available.map { "\(Fmt.num($0)) USDC" } ?? "—", line: "idle USDC", fill: Color(hex: 0x0052FF), dark: true)
+                step(logo: place == "arbitrum" ? "arb" : "base", label: "FROM · \(chainName.uppercased())", title: available.map { "\(Fmt.num($0)) USDC" } ?? "—",
+                     line: "idle USDC", fill: place == "arbitrum" ? Color(hex: 0x213147) : Color(hex: 0x0052FF), dark: true)
             }
             step(logo: "relay", label: "BRIDGE · RELAY", title: moving.map { "\(Fmt.num($0)) USDC" } ?? "—", line: "≈ $0.02 · a few seconds", fill: Brand.relay, dark: true)
             step(logo: "sol", label: "TO · SOLANA", title: ws.solana.map { s in moving.map { "\(Fmt.num(s.usdc)) → \(Fmt.num(s.usdc + $0))" } ?? Fmt.num(s.usdc) } ?? "—",

@@ -99,6 +99,8 @@ public enum WalletCommand: Equatable, Sendable {
     case aave(deposit: Bool, amount: Decimal?)
     /// USDC idle on Base back to Solana over Relay; nil = everything.
     case baseToSolana(Decimal?)
+    /// The same from Arbitrum.
+    case arbitrumToSolana(Decimal?)
     /// «send 5 USDC to Bybit»: to an entry of the address book, by its name. An address in the text is never a recipient.
     case sendTo(name: String, amount: Decimal)
     /// «задепозить», «пополнить», «my address»: money coming in from outside — show where to send it.
@@ -174,6 +176,9 @@ public enum WalletCommand: Equatable, Sendable {
             if !place, !name.lowercased().contains(/0x[0-9a-f]{6}/), name.count <= 40 {
                 return .sendTo(name: name, amount: value)
             }
+        }
+        if q.contains(/arbitrum|арбитрум/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)[^.]*(?:solana|солан)/) {
+            return .arbitrumToSolana(amount)
         }
         if q.contains(/\bbase\b|бейс/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)[^.]*(?:solana|солан)/) {
             return .baseToSolana(amount)
@@ -260,6 +265,7 @@ extension WalletCommand {
         case .allocate(let s, let share): return "spread \(s) across the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
         case .aave(let d, let x): return d ? "deposit \(n(x)) USDC into Aave on Base" : "withdraw \(n(x)) USDC from Aave to Solana"
         case .baseToSolana(let x): return "move \(n(x)) USDC from Base to Solana"
+        case .arbitrumToSolana(let x): return "move \(n(x)) USDC from Arbitrum to Solana"
         case .sendTo(let name, let x): return "send \(Fmt.num(x)) USDC to \(name)"
         case .receive: return "show where to top up"
         }

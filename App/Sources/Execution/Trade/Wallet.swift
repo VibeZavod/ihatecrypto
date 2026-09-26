@@ -1,6 +1,7 @@
 import DeFiJupiterLend
 import DeFiKamino
 import DeFiYields
+import EVMChain
 import ExecutionCore
 import Foundation
 import HyperliquidSigning
@@ -351,7 +352,12 @@ extension Executor {
            let q = try? await Jupiter.quote(input: SpotAsset.jitoSOL.mint, output: SpotAsset.all[0].mint, amount: held) {
             jito = Decimal(q.outAmount) / 1_000_000_000
         }
-        let total = free + jupiter + kamino + jito
+        // Aave v3 on Base, USDC only: the rate and what is supplied come from the pool itself.
+        var aave: (apy: Decimal, supplied: Decimal, gas: UInt64)?
+        if !isSOL, let apy = try? await AaveV3.verifyBase(), let supplied = try? await EVMRPC.base.tokenBalance(AaveV3.baseAUSDC, owner: wallet.evm) {
+            aave = (apy, Decimal(supplied) / 1_000_000, (try? await EVMRPC.base.balance(wallet.evm)) ?? 0)
+        }
+        let total = free + jupiter + kamino + jito + (aave?.supplied ?? 0)
         let kaminoRentUSD = Decimal(string: "0.0298")! * solPrice
         let places: [Allocation.Place] = options.compactMap { o in
             switch o.place {
@@ -368,7 +374,17 @@ extension Executor {
             default: return nil
             }
         }
-        let plan = Allocation.plan(free: free, places: places, maxShare: maxShare, minSlice: isSOL ? Decimal(string: "0.003")! : Decimal(string: "0.5")!)
+        var all = places
+        if let aave {
+            // Getting there costs the bridge (≈ $0.03) and, without gas on Base yet, the top-up with its delivery (≈ $0.11).
+            let cost = Decimal(string: "0.03")! + (aave.gas < Self.baseGasFloorForPlan ? Decimal(string: "0.11")! : 0)
+            // Worth it only when the trip costs less than half a year of the slice's interest.
+            let slice = max(0, min(free, total * maxShare / 100 - aave.supplied))
+            let yearly = slice * aave.apy / 100
+            all.append(.init(name: "Aave · Base", apy: aave.apy, existing: aave.supplied,
+                             blocked: cost > yearly / 2 ? "on Base: the bridge and gas (≈ \(Fmt.usd(cost))) cost more than half a year of this slice's interest (≈ \(Fmt.usd(yearly)) a year)" : nil))
+        }
+        let plan = Allocation.plan(free: free, places: all, maxShare: maxShare, minSlice: isSOL ? Decimal(string: "0.003")! : Decimal(string: "0.5")!)
         func amount(_ d: Decimal) -> String { Fmt.num(d, maxFraction: isSOL ? 6 : 2) + " " + asset }
         var lines = ["Spread \(amount(free)) free (\(amount(total)) total in \(asset)), at most \(Fmt.pct(maxShare)) per protocol:"]
         lines += plan.slices.map { "· \($0.place): \(amount($0.amount)) at \(Fmt.num($0.apy.rounded(2, .plain)))%" }
@@ -377,7 +393,7 @@ extension Executor {
         if plan.leftover > 0 { lines.append("Left free: \(amount(plan.leftover)).") }
         if plan.yearly > 0 { lines.append("Income from the new deposits ≈ \(amount(plan.yearly)) a year\(isSOL && solPrice > 0 ? " (≈ \(Fmt.usd(plan.yearly * solPrice)))" : "").") }
         let preview = AllocationPreview(asset: asset, free: free, maxShare: maxShare, slices: plan.slices,
-                                        skipped: places.compactMap { p in p.blocked.map { (p.name, p.apy, $0) } },
+                                        skipped: all.compactMap { p in p.blocked.map { (p.name, p.apy, $0) } },
                                         leftover: plan.leftover, yearly: plan.yearly, yearlyUSD: isSOL && solPrice > 0 ? plan.yearly * solPrice : nil)
         // The preview goes back to the caller, which adds how to confirm.
         guard execute, !plan.slices.isEmpty else { return (lines.joined(separator: "\n"), !plan.slices.isEmpty, preview) }
@@ -389,6 +405,7 @@ extension Executor {
             case "Jupiter Lend": done.append(try await lend(asset, amount: piece, deposit: true))
             case "Kamino Lend": done.append(try await self.kamino(asset, amount: piece, deposit: true))
             case "JitoSOL staking": done.append(try await convert(from: SpotAsset.all[0], to: .jitoSOL, amount: piece))
+            case "Aave · Base": done.append(try await self.aave(deposit: true, usdc: piece))
             default: continue
             }
         }

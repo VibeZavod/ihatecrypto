@@ -47,6 +47,8 @@ private func d(_ s: String) -> Decimal { Decimal(string: s)! }
     ("lend 2 USDC on Aave", .aave(deposit: true, amount: 2)),
     ("move USDC from Base to Solana", .baseToSolana(nil)),
     ("send 5 USDC to Bybit", .sendTo(name: "Bybit", amount: 5)),
+    ("move USDC from Arbitrum to Solana", .arbitrumToSolana(nil)),
+    ("верни 2 usdc с арбитрума в солану", .arbitrumToSolana(2)),
     // Topping up from outside: the addresses, not a trade.
     ("задепозить", .receive),
     ("хочу задепозить", .receive),

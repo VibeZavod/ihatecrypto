@@ -243,6 +243,15 @@ public enum HLSigner {
                       .init("nonce", "uint256", .uint(nonce))])
     }
 
+    /// usdSend: USDC from the perp balance to another Hyperliquid address; `time` (ms) is the nonce. For a signer in
+    /// another process, which builds the EIP-712 «UsdSend» from these very fields.
+    public static func usdSendAction(destination: String, amount: String, time: UInt64, mainnet: Bool) -> MsgPack {
+        MsgPack.map([
+            ("type", .string("usdSend")), ("signatureChainId", .string("0x66eee")), ("hyperliquidChain", .string(mainnet ? "Mainnet" : "Testnet")),
+            ("destination", .string(destination)), ("amount", .string(amount)), ("time", .uint(time)),
+        ])
+    }
+
     /// The sendAsset action alone, for a signer in another process.
     public static func sendAssetAction(destination: String, sourceDex: String, destinationDex: String, token: String,
                                        amount: String, nonce: UInt64, mainnet: Bool) -> MsgPack {

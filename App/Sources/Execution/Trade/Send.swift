@@ -1,5 +1,6 @@
 import EVMChain
 import ExecutionCore
+import HyperliquidSigning
 import Foundation
 import LalaCore
 import RelayBridge
@@ -14,6 +15,9 @@ extension Executor {
     public enum Destination: Sendable {
         case solana(String)
         case base(String)
+        case arbitrum(String)
+        /// Another Hyperliquid account: USDC from the perp balance, no bridge.
+        case hyperliquid(String)
     }
 
     public func sendUSDC(_ amount: Decimal, to destination: Destination, label: String) async throws -> String {
@@ -21,12 +25,38 @@ extension Executor {
         guard units > 0 else { throw ExecutionError("Nothing to send.") }
         switch destination {
         case .solana(let owner): return try await sendSolanaUSDC(units, to: owner, label: label)
-        case .base(let recipient):
-            try await ensureBase(usdc: units)
-            let hash = try await sendEVM(.base, to: EVMRPC.baseUSDC, data: try ERC20.transfer(to: recipient, amount: units),
-                                         note: "Send \(Self.usdc(units)) USDC to \(label)", recipients: [recipient])
-            return "Sent \(Self.usdc(units)) USDC to \(label) on Base. https://basescan.org/tx/\(hash)"
+        case .base(let recipient): return try await sendEVMUSDC(units, on: .base, to: recipient, label: label)
+        case .arbitrum(let recipient): return try await sendEVMUSDC(units, on: .arbitrum, to: recipient, label: label)
+        case .hyperliquid(let recipient): return try await sendHyperliquidUSDC(amount, to: recipient, label: label)
         }
+    }
+
+    private func sendEVMUSDC(_ units: UInt64, on net: EVMNetwork, to recipient: String, label: String) async throws -> String {
+        try await ensureEVM(net, usdc: units)
+        let hash = try await sendEVM(net.rpc, to: net.usdc, data: try ERC20.transfer(to: recipient, amount: units),
+                                     note: "Send \(Self.usdc(units)) USDC to \(label)", recipients: [recipient])
+        return "Sent \(Self.usdc(units)) USDC to \(label) on \(net.name). \(net.explorer)/tx/\(hash)"
+    }
+
+    /// usdSend from the perp balance, signed by the main key (the trading key can't move money out); the guard and the
+    /// signer accept only this destination.
+    private func sendHyperliquidUSDC(_ amount: Decimal, to destination: String, label: String) async throws -> String {
+        let usdc = amount.rounded(2, .down)
+        let free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
+        guard usdc > 0, usdc <= free else { throw ExecutionError("\(Fmt.usd(free)) free on Hyperliquid; can't send \(Fmt.num(usdc)).") }
+        let to = destination.lowercased()
+        guard to != wallet.evm.lowercased() else { throw ExecutionError("That is this wallet's own Hyperliquid account.") }
+        let time = UInt64(Date().timeIntervalSince1970 * 1000)
+        let action = HLSigner.usdSendAction(destination: to, amount: "\(usdc)", time: time, mainnet: true)
+        let signature = try await signer.signHyperliquidUser(action, recipients: [to])
+        try journal.append(.init(chain: "hyperliquid", id: "\(time)", kind: .signed, note: "send \(Fmt.num(usdc)) USDC to \(label)"))
+        let reply = HLReply.parse(try await HLExchange.send(action: action, nonce: time, signature: signature, mainnet: true))
+        if case .error(let e) = reply {
+            try journal.append(.init(chain: "hyperliquid", id: "\(time)", kind: .failed, note: e))
+            throw ExecutionError("Hyperliquid refused the transfer: \(e).")
+        }
+        try journal.append(.init(chain: "hyperliquid", id: "\(time)", kind: .confirmed, note: "\(reply)"))
+        return "Sent \(Fmt.num(usdc)) USDC to \(label) on Hyperliquid."
     }
 
     static func usdc(_ units: UInt64) -> String { Fmt.num(Decimal(units) / 1_000_000, maxFraction: 6) }

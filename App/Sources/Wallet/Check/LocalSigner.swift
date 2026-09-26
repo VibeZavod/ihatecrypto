@@ -115,6 +115,7 @@ func moveMoney(_ text: String) async throws {
     case .hlp(let deposit, let amount): _ = try await executor.hlp(deposit: deposit, amount: amount)
     case .aave(let deposit, let amount): print(try await executor.aave(deposit: deposit, usdc: amount))
     case .baseToSolana(let amount): print(try await executor.baseToSolana(usdc: amount))
+    case .arbitrumToSolana(let amount): print(try await executor.evmToSolana(.arbitrum, usdc: amount))
     case .sendTo: throw ExecutionError("Sending to a saved address works in LALA.app, where the address book is.")
     case .receive: print("Solana (USDC, SOL): \(signer.wallet.solana)\nBase / EVM (USDC, ETH): \(signer.wallet.evm)")
     case .allocate(let symbol, let share):

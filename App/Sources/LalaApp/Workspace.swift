@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import DeFiJupiterLend
 import DeFiYields
 import EVMChain
@@ -148,6 +149,8 @@ final class Workspace {
     var lend: [(vault: String, usdc: Decimal)] = []
     /// On Base, at the Hyperliquid (EVM) address: idle USDC, USDC supplied to Aave, ETH for gas.
     var base: (usdc: Decimal, aave: Decimal, eth: Decimal)?
+    /// USDC on Arbitrum at our EVM address (money in transit or left from a transfer).
+    var arbitrumUSDC: Decimal?
     /// Aave v3 USDC supply APY on Base, %, read from the pool itself.
     var aaveAPY: Decimal?
     private var aaveCheckedAt: Date?
@@ -267,7 +270,7 @@ final class Workspace {
     var equity: Decimal? {
         guard solana != nil || hl != nil else { return nil }
         return (solana?.usdc ?? 0) + (hl?.accountValue ?? 0) + lend.reduce(0) { $0 + $1.usdc } + dexBalances.values.reduce(0) { $0 + $1.accountValue }
-            + (base.map { $0.usdc + $0.aave } ?? 0)
+            + (base.map { $0.usdc + $0.aave } ?? 0) + (arbitrumUSDC ?? 0)
     }
     /// The plan with what the user left to the rules filled in.
     var resolved: (intent: TradeIntent, notes: [String]) { Plan.resolve(intent, market: market, equity: equity, policy: policy) }
@@ -322,11 +325,16 @@ final class Workspace {
 
         // «делай» / «do it» right after a plan that waits for it carries it out; anything else drops it.
         let confirms = text.lowercased().contains(/^(?:делай|да|давай|подтверждаю|раскладывай|го|do\s+it|go|yes|confirm|sign)\b/)
+        let declines = text.lowercased().wholeMatch(of: /\s*(?:no|nope|cancel|stop|нет|не\s+надо|отмена|отмени\w*|стоп|nein|abbrechen|non|annuler|cancelar|não|nao|nie|anuluj)[.!\s]*/) != nil
         if let pending = pendingAllocation {
             pendingAllocation = nil
             if confirms { await move(pending, confirmed: true); return }
+            if declines {
+                allocationPreview = nil
+                reply("Cancelled — nothing moved.")
+                return
+            }
         }
-        let declines = text.lowercased().wholeMatch(of: /\s*(?:no|nope|cancel|stop|нет|не\s+надо|отмена|отмени\w*|стоп|nein|abbrechen|non|annuler|cancelar|não|nao|nie|anuluj)[.!\s]*/) != nil
         if let pending = pendingAction {
             pendingAction = nil
             pendingText = nil
@@ -363,6 +371,11 @@ final class Workspace {
                 return
             }
             awaitingAmount = nil
+        }
+        if declines {
+            withAnimation(StudioView.spring) { allocationPreview = nil; yieldOptions = nil; takeChoices = nil }
+            reply("OK — nothing was waiting, nothing moved.")
+            return
         }
         if text.lowercased().wholeMatch(of: /\s*(?:делай|да|давай|подтверждаю|го|do\s+it|go|yes|yep|ok|okay|confirm|sign)[.!\s]*/) != nil {
             reply("Nothing is waiting for a confirmation right now. Tell me what to do — for example “deposit 1 USDC into Jupiter”.")
@@ -592,6 +605,7 @@ final class Workspace {
         if let u = try? await usdc, let a = try? await supplied, let e = try? await eth {
             base = (Decimal(u) / 1_000_000, Decimal(a) / 1_000_000, Decimal(e) / Decimal(sign: .plus, exponent: 18, significand: 1))
         }
+        if let arb = try? await EVMRPC.arbitrum.tokenBalance(EVMRPC.arbitrumUSDC, owner: me) { arbitrumUSDC = Decimal(arb) / 1_000_000 }
         // The rate moves slowly: re-read it every ten minutes, not on every refresh.
         if aaveCheckedAt.map({ Date().timeIntervalSince($0) > 600 }) ?? true, let apy = try? await AaveV3.verifyBase(rpc) {
             aaveAPY = apy

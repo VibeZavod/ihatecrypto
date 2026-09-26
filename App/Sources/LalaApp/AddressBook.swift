@@ -1,6 +1,7 @@
 import AppKit
 import LalaCore
 import SwiftUI
+import TradeExecution
 import WalletCore
 
 /// A saved address: an exchange's deposit address, another wallet, a person. Added by hand here, or from the user's own
@@ -718,8 +719,8 @@ extension Workspace {
                   + (key.contains("solana") || key.contains("солан") ? " To bring money to your own Solana wallet, say “withdraw \(Fmt.num(amount)) USDC to Solana”." : ""), note: note)
             return
         }
-        guard [.solana, .base].contains(entry.network) else {
-            reply("“\(entry.name)” is on \(entry.network.title); LALA sends USDC on Solana and Base for now.", note: note)
+        guard entry.network != .ethereum else {
+            reply("“\(entry.name)” is on Ethereum mainnet, where one transfer costs dollars in gas; LALA sends USDC on Solana, Base, Arbitrum and Hyperliquid.", note: note)
             return
         }
         if !entry.memo.isEmpty, entry.network == .solana {
@@ -741,7 +742,13 @@ extension Workspace {
             a.bubbles = [ActivityBubble(kind: "deposit", label: "Send · \(entry.network.title)", title: entry.name, lines: ["\(Fmt.num(amount)) USDC"], logo: entry.network.logo)]
         }
         do {
-            let text = try await executor(wallet).sendUSDC(amount, to: entry.network == .solana ? .solana(entry.address) : .base(entry.address), label: entry.name)
+            let destination: TradeExecution.Executor.Destination = switch entry.network {
+            case .solana: .solana(entry.address)
+            case .arbitrum: .arbitrum(entry.address)
+            case .hyperliquid: .hyperliquid(entry.address)
+            default: .base(entry.address)
+            }
+            let text = try await executor(wallet).sendUSDC(amount, to: destination, label: entry.name)
             if let i = addressBook.firstIndex(where: { $0.id == entry.id }) { addressBook[i].lastSent = Date() }
             reply(text, note: "transfer")
         } catch {
@@ -757,8 +764,8 @@ struct TransferBoard: View {
 
     var body: some View {
         if case .transfer(let entry, let amount)? = ws.pendingAction {
-            let solana = entry.network == .solana
-            let from = solana ? ws.solana?.usdc : ws.base?.usdc
+            let solana = entry.network == .solana, hyper = entry.network == .hyperliquid
+            let from = solana ? ws.solana?.usdc : hyper ? ws.hl?.withdrawable : entry.network == .arbitrum ? ws.arbitrumUSDC : ws.base?.usdc
             let ends = AddressCheck.ends(entry.address)
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
@@ -767,14 +774,14 @@ struct TransferBoard: View {
                 }
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 6) {
-                        TokenLogo(name: solana ? "sol" : "base", size: 24)
-                        Text(solana ? "FROM · SOLANA" : "FROM · BASE").font(.system(size: 9, weight: .heavy)).tracking(0.4).opacity(0.75)
+                        TokenLogo(name: entry.network.logo, size: 24)
+                        Text("FROM · \(entry.network.title.uppercased())").font(.system(size: 9, weight: .heavy)).tracking(0.4).opacity(0.75)
                         Text(from.map { "\(Fmt.num($0)) → \(Fmt.num(max(0, $0 - amount))) USDC" } ?? "—").font(.system(size: 13, weight: .bold)).monospacedDigit()
-                        Text(!solana && (from ?? 0) < amount ? "the rest comes from Solana first" : "your wallet").font(.caption2).opacity(0.8)
+                        Text(hyper ? "perp balance · no bridge, no gas" : !solana && (from ?? 0) < amount ? "the rest comes from Solana first" : "your wallet").font(.caption2).opacity(0.8)
                     }
                     .padding(11)
                     .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
-                    .background(ArrowCard(radius: 16, tip: 10).fill(solana ? Brand.solanaTint : Color(light: 0xEAF0FF, dark: 0x14213F)))
+                    .background(ArrowCard(radius: 16, tip: 10).fill(solana ? Brand.solanaTint : hyper ? Brand.hlChip.opacity(0.35) : Color(light: 0xEAF0FF, dark: 0x14213F)))
                     VStack(alignment: .leading, spacing: 6) {
                         AddressIconView(entry: entry, size: 30)
                         Text("TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")").font(.system(size: 9, weight: .heavy)).tracking(0.4).opacity(0.75)

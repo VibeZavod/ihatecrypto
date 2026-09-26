@@ -14,7 +14,7 @@ public enum CommandNormalizer {
     stake N SOL | unstake N JitoSOL
     where to keep <USDC|SOL>
     deposit N USDC to HLP | withdraw from HLP
-    lend N USDC on Aave | withdraw USDC from Aave | move N USDC from Base to Solana
+    lend N USDC on Aave | withdraw USDC from Aave | move N USDC from Base to Solana | move N USDC from Arbitrum to Solana
     send N USDC to <NAME from the address book>
     save <ADDRESS> as <NAME> [on solana|base|arbitrum|ethereum|hyperliquid] | add <NAME> to favorites | remove <NAME> from favorites
     spread <USDC|SOL> across the best rates [max N% per protocol]
