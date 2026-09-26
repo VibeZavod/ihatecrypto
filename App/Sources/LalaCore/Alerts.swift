@@ -1,0 +1,45 @@
+import Foundation
+
+/// «Tell me when oil drops below 90»: one notification when the mark price crosses the level, then the alert is done.
+public struct PriceAlert: Codable, Equatable, Sendable, Identifiable {
+    public var id = UUID()
+    public let coin: String
+    /// true: fires at or above `price`; false: at or below.
+    public let above: Bool
+    public let price: Decimal
+    public var created = Date()
+
+    public init(coin: String, above: Bool, price: Decimal) {
+        self.coin = coin
+        self.above = above
+        self.price = price
+    }
+
+    public func fires(at mark: Decimal) -> Bool { above ? mark >= price : mark <= price }
+}
+
+public enum AlertCommand: Equatable, Sendable {
+    /// `above` nil: whichever side of the current price the level is on.
+    case set(coin: String, price: Decimal, above: Bool?)
+    case clear
+
+    public static func parse(_ text: String, markets: Set<String> = []) -> AlertCommand? {
+        let q = text.lowercased()
+        if q.contains(/(?:cancel|clear|remove|delete|stop)\s+(?:all\s+|my\s+|the\s+)*(?:price\s+)?alerts?|(?:отмени|удали|убери|сними)\w*\s+(?:все\s+)?(?:алерт|уведомлен|оповещен)/) {
+            return .clear
+        }
+        guard q.contains(/\balert|notify|tell\s+me\s+when|let\s+me\s+know|ping\s+me|remind\s+me\s+when|watch\s+for|уведом|оповест|скажи\s+(?:мне\s+)?(?:когда|если)|сообщи|напомни\s+когда|алерт|дай\s+знать/),
+              let coin = IntentParser.namedAsset(text, markets: markets), let price = level(q) else { return nil }
+        let above: Bool? = q.contains(/above|over|higher|rises?|goes\s+up|climbs?|reach|выше|поднимет|вырастет|больше|превыс|достигн/) ? true
+            : q.contains(/below|under|lower|drops?|falls?|goes\s+down|dips?|ниже|упад|опуст|меньше|снизит/) ? false : nil
+        return .set(coin: coin, price: price, above: above)
+    }
+
+    /// The price level: «2,800» (thousands) or «93,5» (decimal comma); a number followed by % is not a price.
+    static func level(_ q: String) -> Decimal? {
+        let numbers = q.matches(of: /(\d{1,3}(?:,\d{3})+(?:\.\d+)?|\d+(?:[.,]\d+)?)(?!\s*%|\d)/).map { String($0.1) }
+        guard let raw = numbers.last else { return nil }
+        let normal = raw.contains(/^\d{1,3}(?:,\d{3})+(?:\.\d+)?$/) ? raw.replacingOccurrences(of: ",", with: "") : raw.replacingOccurrences(of: ",", with: ".")
+        return Decimal(string: normal).flatMap { $0 > 0 ? $0 : nil }
+    }
+}

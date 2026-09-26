@@ -1,0 +1,17 @@
+# Build output
+.build/
+.swiftpm/
+DerivedData/
+*.xcodeproj/
+xcuserdata/
+*.xcuserstate
+
+# macOS
+.DS_Store
+
+# Never commit keys or wallets: the app keeps them in the Keychain and ~/.lala
+.env*
+*.pem
+*.p12
+*.key
+*wallet*.txt

@@ -1,0 +1,53 @@
+# LALA.app with its signing process. `xcodegen` here, then build with xcodebuild (see ../build-app.sh).
+# The SwiftPM package one level up stays the source of the modules; this project only packages and signs.
+name: LALA
+options:
+  deploymentTarget:
+    macOS: "26.0"
+packages:
+  Lala:
+    path: ..
+settings:
+  base:
+    DEVELOPMENT_TEAM: N78L833HCS
+    CODE_SIGN_STYLE: Automatic
+    SWIFT_VERSION: "6.0"
+    ENABLE_HARDENED_RUNTIME: YES
+    GENERATE_INFOPLIST_FILE: YES
+    MARKETING_VERSION: "0.1"
+    CURRENT_PROJECT_VERSION: "1"
+targets:
+  LALA:
+    type: application
+    platform: macOS
+    sources: [../Sources/LalaApp]
+    dependencies:
+      - package: Lala
+        product: LalaKit
+      - target: LalaSigner
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lala.mac
+        PRODUCT_NAME: LALA
+        SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        INFOPLIST_KEY_CFBundleDisplayName: LALA
+        INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.finance
+  # Sandboxed, no network entitlement: it can only answer the app over XPC and read its own Keychain group.
+  LalaSigner:
+    type: xpc-service
+    platform: macOS
+    sources: [../Sources/Signer/Service]
+    info:
+      path: LalaSigner-Info.plist
+      properties:
+        XPCService:
+          ServiceType: Application
+    dependencies:
+      - package: Lala
+        product: LalaSignerKit
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: app.lala.mac.signer
+        PRODUCT_NAME: LalaSigner
+        CODE_SIGN_ENTITLEMENTS: LalaSigner.entitlements
+        ENABLE_APP_SANDBOX: YES
