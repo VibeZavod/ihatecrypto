@@ -293,6 +293,8 @@ final class Browser {
             lines.append("\(on ? "Rights to all NFTs" : "Revoke NFT rights") for \(op).")
         case .permit:
             lines.append("Call to permit (permission to spend).")
+        case .swap(let r):
+            lines.append("Uniswap swap paying \(r.lowercased() == from.lowercased() ? "this wallet" : r).")
         case .contract(let selector):
             lines.append("Contract call \(to), function \(selector)\(value > 0 ? ", with \(Fmt.num(Decimal(value) / 1_000_000_000_000_000_000, maxFraction: 8)) \(native)" : "").")
         }

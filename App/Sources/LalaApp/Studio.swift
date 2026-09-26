@@ -279,6 +279,9 @@ struct StudioRail: View {
                 if let b = ws.base, b.aave + b.usdc > 0 {
                     account("aave", logo: "aave", name: "Aave · Base", value: "\(Fmt.num(b.aave + b.usdc)) USDC")
                 }
+                if ws.robinhoodTotal > 0 {
+                    account("robinhood", logo: "robinhood", name: "Robinhood Chain", value: Fmt.usd(ws.robinhoodTotal))
+                }
             }
             if !ws.positions.isEmpty {
                 VStack(alignment: .leading, spacing: 8) {
@@ -958,6 +961,7 @@ struct StudioPortfolio: View {
                 .modifier(Openable(place: "aave"))
             }
 
+            RobinhoodCard()
             AlertsCard()
 
             if !ws.schedules.isEmpty {
@@ -1420,7 +1424,8 @@ struct TemplatesPanel: View {
         ("Protect a position", "move stop to breakeven", [0x072723, 0xF59E0B]),
         ("Stake SOL", "stake 0.01 SOL", [0x9945FF, 0x1F9D6A]),
         ("Aave on Base", "lend 2 USDC on Aave", [0x2775CA, 0x0052FF, 0xB6509E]),
-        ("Price alert", "alert me when ETH is below 2,500", [0x627EEA, 0xF59E0B])
+        ("Price alert", "alert me when ETH is below 2,500", [0x627EEA, 0xF59E0B]),
+        ("Buy a stock token", "buy SpaceX stock for 2 USDC", [0x2775CA, 0x4615C8, 0xCCFF00])
     ]
 
     /// What each template's scheme looks like, for the preview beside the list (S15).
@@ -1437,6 +1442,7 @@ struct TemplatesPanel: View {
         "Stake SOL": [("From", "SOL on Solana"), ("Swap", "SOL → JitoSOL"), ("Earns", "the staking yield"), ("Exit", "swap back any time")],
         "Aave on Base": [("From", "USDC on Solana"), ("Bridge", "Relay to Base + a little gas"), ("Approve", "exactly the amount"), ("Supply", "Aave v3 · ≈ 4% a year")],
         "Price alert": [("Watch", "the mark price every 10–30 s"), ("Fire", "one notification at the level"), ("Then", "the alert is done")],
+        "Buy a stock token": [("From", "USDC on Solana"), ("Bridge", "Relay → USDG on Robinhood Chain"), ("Swap", "Uniswap · Robinhood's registered token"), ("Hold", "SPCX, TSLA… in your wallet")],
     ]
     @State private var hovered: String?
 

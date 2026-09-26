@@ -120,6 +120,13 @@ public enum ABI {
 
     public static func uint(_ n: UInt64) -> Data { Data(count: 24) + withUnsafeBytes(of: n.bigEndian) { Data($0) } }
 
+    /// ERC-20 `string` return value (symbol(), name()).
+    public static func string(_ data: Data) -> String? {
+        let data = Data(data)
+        guard data.count >= 64, let length = uint(in: data, word: 1), data.count >= 64 + Int(length) else { return nil }
+        return String(data: data.subdata(in: 64..<(64 + Int(length))), encoding: .utf8)
+    }
+
     /// Word `i` of a return value as an address.
     public static func address(in data: Data, word i: Int) -> String? {
         let data = Data(data)   // a slice keeps its parent's indices
@@ -153,6 +160,9 @@ public struct EVMRPC: Sendable {
 
     public static let arbitrum = EVMRPC(url: URL(string: "https://arb1.arbitrum.io/rpc")!, chainId: 42161)
     public static let arbitrumUSDC = "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
+    public static let robinhood = EVMRPC(url: URL(string: "https://rpc.mainnet.chain.robinhood.com")!, chainId: 4663)
+    /// USDG (Global Dollar), Robinhood Chain's dollar, 6 decimals — docs.robinhood.com/chain/contracts.
+    public static let robinhoodUSDG = "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
     /// mainnet.base.org rate-limits after a few calls and publicnode refuses receipts without a token;
     /// drpc served calls, estimates and receipts in a burst test (2026-09-26).
     public static let base = EVMRPC(url: URL(string: "https://base.drpc.org")!, chainId: 8453)
@@ -241,6 +251,8 @@ public enum EVMCall: Equatable, Sendable {
     case setApprovalForAll(operator: String, approved: Bool)
     case permit
     /// Any other contract function, by selector.
+    /// A Uniswap swap (SwapRouter02.exactInputSingle): who gets what comes out.
+    case swap(recipient: String)
     case contract(selector: String)
 
     public static func decode(_ data: Data) -> EVMCall {
@@ -256,6 +268,7 @@ public enum EVMCall: Equatable, Sendable {
         case "23b872dd": if let f = address(0), let t = address(1), let a = word(2) { return .transferFrom(from: f, to: t, amount: a) }
         case "a22cb465": if let o = address(0), let b = word(1) { return .setApprovalForAll(operator: o, approved: b.last == 1) }
         case "d505accf", "8fcbaf0c": return .permit
+        case "04e45aaf": if let r = address(3) { return .swap(recipient: r) }
         default: break
         }
         return .contract(selector: "0x" + selector)
@@ -266,7 +279,10 @@ public enum EVMCall: Equatable, Sendable {
 
     /// Why this must not be signed, or nil. `sender` is the user's own address.
     public func refusal(sender: String) -> String? {
-        switch self {
+        if case .swap(let recipient) = self, recipient.lowercased() != sender.lowercased() {
+            return "The swap would pay \(recipient), not this wallet."
+        }
+        return switch self {
         case .approve(_, let a) where Self.unlimited(a), .increaseAllowance(_, let a) where Self.unlimited(a):
             "Unlimited token spending approval — the drainers' main trick. LALA only approves exact amounts."
         case .setApprovalForAll(_, true):

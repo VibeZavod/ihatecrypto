@@ -27,7 +27,14 @@ public struct EVMNetwork: Sendable {
     public static let arbitrum = EVMNetwork(name: "Arbitrum", key: "arbitrum", rpc: .arbitrum, usdc: EVMRPC.arbitrumUSDC, relayChain: Relay.Chain.arbitrum,
                                             explorer: "https://arbiscan.io", gasFloor: 10_000_000_000_000, topupUSD: Decimal(string: "0.05")!)
 
-    static func of(chainId: UInt64) -> EVMNetwork { chainId == arbitrum.rpc.chainId ? arbitrum : base }
+    /// Robinhood Chain: its dollar is USDG (Relay delivers it; Stock Tokens trade against it on Uniswap).
+    public static let robinhood = EVMNetwork(name: "Robinhood Chain", key: "robinhood", rpc: .robinhood, usdc: EVMRPC.robinhoodUSDG,
+                                             relayChain: Relay.Chain.robinhood, explorer: "https://robinhoodchain.blockscout.com",
+                                             gasFloor: 15_000_000_000_000, topupUSD: Decimal(string: "0.08")!)
+
+    static func of(chainId: UInt64) -> EVMNetwork {
+        [arbitrum, robinhood].first { $0.rpc.chainId == chainId } ?? base
+    }
 }
 
 /// Aave v3 on Base: USDC in and out. USDC missing on Base comes from Solana over Relay, with a little ETH for gas.
@@ -90,7 +97,8 @@ extension Executor {
         let arrive = max(short, needGas ? Decimal(string: "0.5")! : 0)
         let (step, changes) = try await prepareBridge(.arrive(arrive), to: net.relayChain, currency: net.usdc, decimals: 6,
                                                       topupGasUSD: needGas ? net.topupUSD : nil)
-        report("Bridge to \(net.name): \(Fmt.num(step.spend)) USDC from Solana → \(Fmt.num(step.arriving)) USDC\(needGas ? " plus ETH for gas" : ""). "
+        let stable = net.key == "robinhood" ? "USDG" : "USDC"
+        report("Bridge to \(net.name): \(Fmt.num(step.spend)) USDC from Solana → \(Fmt.num(step.arriving)) \(stable)\(needGas ? " plus ETH for gas" : ""). "
                + changes.joined(separator: " "))
         try await sendBridge(step)
         let started = Date()
@@ -102,7 +110,7 @@ extension Executor {
             there = try await net.rpc.tokenBalance(net.usdc, owner: me)
             gas = try await net.rpc.balance(me)
         }
-        report("On \(net.name) in \(Int(Date().timeIntervalSince(started))) s: \(show(there)) USDC and gas.")
+        report("On \(net.name) in \(Int(Date().timeIntervalSince(started))) s: \(show(there)) \(stable) and gas.")
     }
 
     /// USDC on Base → our Solana address over Relay. Relay's two transactions (an exact approve and the deposit into its

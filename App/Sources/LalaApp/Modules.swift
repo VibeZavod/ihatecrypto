@@ -243,13 +243,14 @@ struct PlaceDetailBoard: View {
         .transition(.scale(scale: 0.94, anchor: .topLeading).combined(with: .opacity))
     }
 
-    private var logo: String { ["solana": "sol", "hyperliquid": "hype", "jupiter": "jup", "aave": "aave"][place] ?? "usdc" }
-    private var title: String { ["solana": "Solana wallet", "hyperliquid": "Hyperliquid account", "jupiter": "Jupiter Lend", "aave": "Aave v3 · Base"][place] ?? place }
+    private var logo: String { ["solana": "sol", "hyperliquid": "hype", "jupiter": "jup", "aave": "aave", "robinhood": "robinhood"][place] ?? "usdc" }
+    private var title: String { ["solana": "Solana wallet", "hyperliquid": "Hyperliquid account", "jupiter": "Jupiter Lend", "aave": "Aave v3 · Base", "robinhood": "Robinhood Chain"][place] ?? place }
     private var subtitle: String {
         switch place {
         case "solana": "USDC and SOL you hold; every move starts here"
         case "hyperliquid": "margin for perps, stocks and commodities"
         case "jupiter": "lending vaults on Solana · withdraw any time"
+        case "robinhood": "Robinhood Stock Tokens · economic exposure, not shares"
         default: "lending on Base · bridged from Solana"
         }
     }
@@ -258,6 +259,7 @@ struct PlaceDetailBoard: View {
         case "solana": isSolanaAddress(ws.solanaAddress) ? URL(string: "https://solscan.io/account/\(ws.solanaAddress)") : nil
         case "hyperliquid": isEVMAddress(ws.hlAddress) ? URL(string: "https://app.hyperliquid.xyz/explorer/address/\(ws.hlAddress)") : nil
         case "jupiter": URL(string: "https://jup.ag/lend/earn")
+        case "robinhood": isEVMAddress(ws.hlAddress) ? URL(string: "https://robinhoodchain.blockscout.com/address/\(ws.hlAddress)") : nil
         default: isEVMAddress(ws.hlAddress) ? URL(string: "https://basescan.org/address/\(ws.hlAddress)") : nil
         }
     }
@@ -283,6 +285,23 @@ struct PlaceDetailBoard: View {
             if ws.positions.isEmpty { Text("No open positions.").font(.caption).foregroundStyle(.secondary) }
             Label(ws.agentActive ? "Trading key on: orders skip Touch ID, withdrawals still need it" : "Trading key paused: every order asks for Touch ID",
                   systemImage: ws.agentActive ? "key.horizontal.fill" : "lock").font(.caption).foregroundStyle(.secondary)
+        case "robinhood":
+            if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }
+            ForEach(ws.robinhood?.stocks ?? []) { s in
+                HStack(spacing: 10) {
+                    StockLogo(symbol: s.symbol, url: s.logo, size: 24)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("\(s.symbol) · \(s.name)").font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                        Text("\(Fmt.num(s.amount, maxFraction: 6)) tokens · Robinhood bid \(s.price.map { Fmt.usd($0) } ?? "—")").font(.caption2).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    Text(Fmt.usd(s.usd)).font(.system(size: 13, weight: .bold)).monospacedDigit()
+                }
+                .padding(9).background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
+            }
+            row("usdc", "USDG", "\(ws.robinhood.map { Fmt.num($0.usdg) } ?? "—")", "gas: \(ws.robinhood.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH")
+            Text("Stock Tokens aren’t offered to US persons, or in Canada, the UK and Switzerland; they give economic exposure, not the shares.")
+                .font(.caption2).foregroundStyle(.secondary)
         case "jupiter":
             ForEach(ws.lend, id: \.vault) { v in row("jup", v.vault, "\(Fmt.num(v.usdc)) USDC", "earning · withdraw any time") }
             if ws.lend.isEmpty { Text("Nothing in Jupiter Lend yet.").font(.caption).foregroundStyle(.secondary) }
@@ -301,6 +320,7 @@ struct PlaceDetailBoard: View {
         case "solana": [("Top up", "top up"), ("Stake SOL", "stake 0.01 SOL"), ("Send to a saved address", "send 1 USDC to ")]
         case "hyperliquid": [("Withdraw to Solana", "withdraw 1 USDC to Solana"), ("Trade by the book", "long ETH by the book"), ("What’s moving", "what's moving?")]
         case "jupiter": [("Deposit", "deposit 1 USDC into Jupiter"), ("Withdraw", "withdraw 1 USDC from Jupiter"), ("Best rates", "where to keep USDC")]
+        case "robinhood": [("Buy SpaceX", "buy SpaceX stock for 2 USDC"), ("Sell", "sell my SpaceX shares"), ("USDG to Solana", "move USDG from Robinhood to Solana")]
         default: [("Lend more", "lend 1 USDC on Aave"), ("Withdraw to Solana", "withdraw USDC from Aave"), ("Best rates", "where to keep USDC")]
         }
         HStack(spacing: 6) {

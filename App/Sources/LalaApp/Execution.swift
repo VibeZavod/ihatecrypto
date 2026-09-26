@@ -230,6 +230,11 @@ extension Workspace {
             case .aave(let deposit, let amount): reply(try await e.aave(deposit: deposit, usdc: amount), note: "Aave · Base")
             case .baseToSolana(let amount): reply(try await e.baseToSolana(usdc: amount), note: "Relay · Base → Solana")
             case .arbitrumToSolana(let amount): reply(try await e.evmToSolana(.arbitrum, usdc: amount), note: "Relay · Arbitrum → Solana")
+            case .buyStock(let symbol, let usdc):
+                reply(try await e.buyStock(symbol, usdc: usdc ?? 0), note: "Robinhood Chain · Uniswap")
+                rememberStock(symbol)
+            case .sellStock(let symbol, let amount): reply(try await e.sellStock(symbol, amount: amount), note: "Robinhood Chain · Uniswap")
+            case .robinhoodToSolana(let amount): reply(try await e.evmToSolana(.robinhood, usdc: amount), note: "Relay · Robinhood → Solana")
             case .sendTo(let name, let amount): prepareTransfer(amount, to: name)
             case .receive: showReceive = true
             case .allocate(let symbol, let share):

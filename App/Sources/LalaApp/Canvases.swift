@@ -385,6 +385,8 @@ struct WithdrawBoard: View {
             case .aave(deposit: false, amount: let amount): back(from: "aave", amount: amount)
             case .baseToSolana(let amount): back(from: "base", amount: amount)
             case .arbitrumToSolana(let amount): back(from: "arbitrum", amount: amount)
+            case .robinhoodToSolana(let amount): back(from: "robinhood", amount: amount)
+            case .buyStock(let symbol, let usdc?): stock(symbol, usdc)
             default: generic(command)
             }
         }
@@ -468,6 +470,9 @@ struct WithdrawBoard: View {
         case .buy(let a, let u):
             return (("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC, Brand.solanaTint, false),
                     (TokenLogo.name(forAsset: a.symbol) ?? "usdc", "BUY · JUPITER", a.symbol, "best route, simulated first", jup, true))
+        case .sellStock(let s, let x):
+            return (("robinhood", "SELL · UNISWAP", "\(n(x)) \(s)", "Robinhood Chain", Color(hex: 0x3A4A00), true),
+                    ("usdc", "TO · USDG", "on Robinhood Chain", "then “move USDG from Robinhood to Solana”", Brand.solanaTint, false))
         case .sell(let a, let x):
             return ((TokenLogo.name(forAsset: a.symbol) ?? "usdc", "SELL · JUPITER", "\(n(x)) \(a.symbol)", "", jup, true),
                     ("usdc", "TO · SOLANA", "USDC", "your wallet", Brand.solanaTint, false))
@@ -476,12 +481,28 @@ struct WithdrawBoard: View {
         }
     }
 
+    /// A Robinhood Stock Token bought with USDC from Solana: bridge, then Uniswap on Robinhood Chain.
+    private func stock(_ symbol: String, _ usdc: Decimal) -> some View {
+        let price = ws.markets["xyz:\(symbol)"]?.markPx
+        return VStack(alignment: .leading, spacing: 8) {
+            board(title: "Buy \(symbol) · \(Fmt.num(usdc)) USDC on Robinhood Chain",
+                  footer: "One Solana signature for the bridge, then two on Robinhood Chain: an exact USDG approve and the Uniswap swap, which may only pay this wallet. The token is Robinhood's registered contract, checked on-chain, and the price must sit within Robinhood's own quote. Say “do it” or press Confirm.") {
+                step(logo: "sol", label: "FROM · SOLANA", title: "\(Fmt.num(usdc)) USDC", line: ws.solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", fill: Brand.solanaTint, dark: false)
+                step(logo: "relay", label: "BRIDGE · RELAY", title: "USDG → Robinhood", line: "+ ETH for gas when there's none", fill: Brand.relay, dark: true)
+                step(logo: "robinhood", label: "BUY · UNISWAP", title: symbol,
+                     line: price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 5)) at ≈ \(Fmt.usd($0))" } ?? "at the pool price", fill: Color(hex: 0x3A4A00), dark: true)
+            }
+            Label("Robinhood Stock Tokens give economic exposure, not the shares, and aren’t offered to US persons or in Canada, the UK and Switzerland.",
+                  systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Brand.jevInk).frame(width: 470, alignment: .leading)
+        }
+    }
+
     /// Aave or idle USDC on Base → Relay → Solana.
     private func back(from place: String, amount: Decimal?) -> some View {
         let b = ws.base
-        let available = place == "aave" ? b?.aave : place == "arbitrum" ? ws.arbitrumUSDC : b?.usdc
+        let available = place == "aave" ? b?.aave : place == "arbitrum" ? ws.arbitrumUSDC : place == "robinhood" ? ws.robinhood?.usdg : b?.usdc
         let moving = amount.map { min($0, available ?? $0) } ?? available
-        let chainName = place == "arbitrum" ? "Arbitrum" : "Base"
+        let chainName = place == "arbitrum" ? "Arbitrum" : place == "robinhood" ? "Robinhood Chain" : "Base"
         return board(title: place == "aave" ? "Aave · withdraw \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana" : "\(chainName) · \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana",
                      footer: (place == "aave" ? "Three Base transactions: withdraw from Aave, an exact approve and Relay’s deposit" : "Two Base transactions: an exact approve and Relay’s deposit")
                         + " — checked field by field before signing. Say “do it” or press Confirm.") {
@@ -489,8 +510,9 @@ struct WithdrawBoard: View {
                 step(logo: "aave", label: "FROM · AAVE ON BASE", title: available.map { "\(Fmt.num($0)) USDC" } ?? "—",
                      line: ws.aaveAPY.map { "earning ≈ \(Fmt.num($0.rounded(2, .plain)))% until now" } ?? "with the interest", fill: Color(hex: 0x2B2D3C), dark: true)
             } else {
-                step(logo: place == "arbitrum" ? "arb" : "base", label: "FROM · \(chainName.uppercased())", title: available.map { "\(Fmt.num($0)) USDC" } ?? "—",
-                     line: "idle USDC", fill: place == "arbitrum" ? Color(hex: 0x213147) : Color(hex: 0x0052FF), dark: true)
+                step(logo: place == "arbitrum" ? "arb" : place == "robinhood" ? "robinhood" : "base", label: "FROM · \(chainName.uppercased())",
+                     title: available.map { "\(Fmt.num($0)) \(place == "robinhood" ? "USDG" : "USDC")" } ?? "—",
+                     line: "idle \(place == "robinhood" ? "USDG" : "USDC")", fill: place == "arbitrum" ? Color(hex: 0x213147) : place == "robinhood" ? Color(hex: 0x3A4A00) : Color(hex: 0x0052FF), dark: true)
             }
             step(logo: "relay", label: "BRIDGE · RELAY", title: moving.map { "\(Fmt.num($0)) USDC" } ?? "—", line: "≈ $0.02 · a few seconds", fill: Brand.relay, dark: true)
             step(logo: "sol", label: "TO · SOLANA", title: ws.solana.map { s in moving.map { "\(Fmt.num(s.usdc)) → \(Fmt.num(s.usdc + $0))" } ?? Fmt.num(s.usdc) } ?? "—",

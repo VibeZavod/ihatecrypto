@@ -138,7 +138,7 @@ enum Signer {
             var v = Verdict()
             let call = EVMCall.decode(data)
             let approved = Set(recipients.map { $0.lowercased() } + [owner.lowercased()])
-            if ![1, 42161, 8453].contains(chainId) { v.problems.append("LALA doesn't sign for network \(chainId).") }
+            if ![1, 42161, 8453, 4663].contains(chainId) { v.problems.append("LALA doesn't sign for network \(chainId).") }
             if let refusal = call.refusal(sender: owner) { v.problems.append(refusal) }
             switch call {
             case .transfer(let recipient, _) where !approved.contains(recipient.lowercased()):

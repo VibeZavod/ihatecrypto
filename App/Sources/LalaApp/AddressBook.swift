@@ -161,6 +161,7 @@ extension AddressCheck.Network {
         case .ethereum: "eth"
         case .arbitrum: "arb"
         case .base: "base"
+        case .robinhood: "robinhood"
         }
     }
 }
@@ -746,6 +747,7 @@ extension Workspace {
             case .solana: .solana(entry.address)
             case .arbitrum: .arbitrum(entry.address)
             case .hyperliquid: .hyperliquid(entry.address)
+            case .robinhood: .robinhood(entry.address)
             default: .base(entry.address)
             }
             let text = try await executor(wallet).sendUSDC(amount, to: destination, label: entry.name)

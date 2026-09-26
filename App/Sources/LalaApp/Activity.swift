@@ -181,6 +181,10 @@ extension Workspace {
         if !addressBook.isEmpty {
             facts.append("Address book (names only; the addresses are in the Addresses tab): " + addressBook.map { "\($0.name) — \([$0.label?.lowercased(), $0.network.title].compactMap { $0 }.joined(separator: ", "))\($0.favorite ? ", favorite" : "")" }.joined(separator: "; ") + ".")
         }
+        if let r = robinhood {
+            let stocks = r.stocks.map { "\(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol) (\($0.name)) ≈ \(Fmt.usd($0.usd))" }.joined(separator: ", ")
+            facts.append("Robinhood Chain: \(stocks.isEmpty ? "no Stock Tokens" : "Stock Tokens " + stocks); \(Fmt.num(r.usdg)) USDG.")
+        }
         for a in alerts { facts.append("Price alert: \(IntentParser.pretty(a.coin)) \(a.above ? "above" : "below") \(Fmt.price(a.price))\(markets[a.coin].map { ", now \(Fmt.price($0.markPx))" } ?? "").") }
         for s in schedules { facts.append("Recurring buy: \(s.symbol) for \(Fmt.usd(s.usdc)) every \(s.days) days, next \(Fmt.date(s.next)).") }
         return facts

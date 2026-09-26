@@ -108,3 +108,19 @@ import WalletCore
     // Relay's v2 depository on EVM chains: the selector LALA checks before signing a Base → Solana deposit.
     #expect(Keccak.hash256(Data("depositErc20(address,address,uint256,bytes32)".utf8)).prefix(4).hex == "e8017952")
 }
+
+@Test func uniswapCalldataAndSwapGuard() throws {
+    func selector(_ signature: String) -> String { Keccak.hash256(Data(signature.utf8)).prefix(4).hex }
+    let me = "0x14dc79964da2c08b23698b3d3cc7ca32193d9955", spcx = "0x4a0e65a3eccec6dbe60ae065f2e7bb85fae35eea"
+    #expect(try UniswapV3.getPool(EVMRPC.robinhoodUSDG, spcx, fee: 500).prefix(4).hex == selector("getPool(address,address,uint24)"))
+    #expect(try UniswapV3.quoteExactInputSingle(tokenIn: EVMRPC.robinhoodUSDG, tokenOut: spcx, amountIn: 1_000_000, fee: 500).prefix(4).hex
+            == selector("quoteExactInputSingle((address,address,uint256,uint24,uint160))"))
+    let swap = try UniswapV3.exactInputSingle(tokenIn: EVMRPC.robinhoodUSDG, tokenOut: spcx, fee: 500, recipient: me, amountIn: 1_000_000, amountOutMinimum: 6_600_000_000_000_000)
+    #expect(swap.prefix(4).hex == selector("exactInputSingle((address,address,uint24,address,uint256,uint256,uint160))"))
+    #expect(swap.count == 4 + 7 * 32)
+    // The signer's calldata check: a swap that pays this wallet passes, one that pays anyone else is refused.
+    #expect(EVMCall.decode(swap).refusal(sender: me) == nil)
+    let other = try UniswapV3.exactInputSingle(tokenIn: EVMRPC.robinhoodUSDG, tokenOut: spcx, fee: 500, recipient: "0x0000000000000000000000000000000000000bad", amountIn: 1, amountOutMinimum: 0)
+    #expect(EVMCall.decode(other).refusal(sender: me) != nil)
+    #expect(AddressCheck.problem(spcx, network: .robinhood) == nil)
+}

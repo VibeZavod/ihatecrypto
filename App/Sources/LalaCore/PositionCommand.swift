@@ -105,10 +105,17 @@ public enum WalletCommand: Equatable, Sendable {
     case sendTo(name: String, amount: Decimal)
     /// «задепозить», «пополнить», «my address»: money coming in from outside — show where to send it.
     case receive
+    /// A Robinhood Stock Token (SPCX, TSLA…) bought on Robinhood Chain for USDC from Solana; `symbol` as the user named
+    /// it, resolved against Robinhood's registry by the app. nil amount = ask.
+    case buyStock(symbol: String, usdc: Decimal?)
+    /// Sell a Stock Token for USDG on Robinhood Chain; nil = all of it.
+    case sellStock(symbol: String, amount: Decimal?)
+    /// USDG on Robinhood Chain back to Solana as USDC; nil = everything.
+    case robinhoodToSolana(Decimal?)
 
     public static func parse(_ text: String) -> WalletCommand? {
         let q = text.lowercased()
-        let amount = (q.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|\$|долл|dollars?|bucks)/)?.1)
+        let amount = (q.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|usdg|\$|долл|dollars?|bucks)/)?.1)
             .flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
         // «положи 1 в джупитер»: a bare number is the amount of a deposit or a withdrawal when nothing else is
         // (not for buys: «buy 0.1 SOL» is coins, not dollars).
@@ -129,6 +136,17 @@ public enum WalletCommand: Equatable, Sendable {
         if q.contains(/доходност|где\s+(?:лучше\s+)?держать|куда\s+(?:лучше\s+)?(?:положить|вложить|деть)|\bapy\b|ставк[иа]\s+(?:по\s+)?депозит|where\s+(?:to|should\s+i|can\s+i)\s+(?:keep|put|park|hold)|best\s+(?:rates?|yields?)|\byields?\b/) {
             let sol = q.contains(/\bsol\b|солан|\bсол\b|solana/), usd = q.contains(/usdc|стейбл|доллар|stable/)
             return .yields(sol && usd ? nil : sol ? "SOL" : usd ? "USDC" : q.contains(/usdt/) ? "USDT" : nil)
+        }
+        // Robinhood Stock Tokens: a stock word or a company LALA knows, with buy or sell.
+        if let symbol = StockNames.symbol(in: text), q.contains(/\bstocks?\b|\bshares?\b|акци\w*|токен\w*|robinhood|робинхуд|спейс|spacex|\btesla\b|тесл|нвид|nvidia/) {
+            if q.contains(/\bsell\b|прода\w*|\bdump\b/) {
+                let shares = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:shares?|акци\w*|tokens?|токен\w*|[a-z]{2,5}\b)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
+                return .sellStock(symbol: symbol, amount: amount == nil ? shares : nil)
+            }
+            if q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bget\s+me\b|вложи\w*\s+в/) { return .buyStock(symbol: symbol, usdc: amount) }
+        }
+        if q.contains(/robinhood|робинхуд/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
+            return .robinhoodToSolana(amount)
         }
         // Topping LALA up from outside: a deposit with no place to put it, or asking for our address.
         let place = q.contains(/хранилищ|vault|jupiter|jupyter|джупитер|юпитер|kamino|камино|aave|ааве|hlp|хлп|\blend|лендинг|стейк|stake/)
@@ -177,13 +195,13 @@ public enum WalletCommand: Equatable, Sendable {
                 return .sendTo(name: name, amount: value)
             }
         }
-        if q.contains(/arbitrum|арбитрум/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)[^.]*(?:solana|солан)/) {
+        if q.contains(/arbitrum|арбитрум/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .arbitrumToSolana(amount)
         }
-        if q.contains(/\bbase\b|бейс/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)[^.]*(?:solana|солан)/) {
+        if q.contains(/\bbase\b|бейс/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .baseToSolana(amount)
         }
-        if !vault, q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|withdraw\w*|move|send|bring)[^.]*(?:solana|солан)/) { return .withdrawToSolana(amount) }
+        if !vault, q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|withdraw\w*|move|send|bring)(?:[^.]|\.(?=\d))*(?:solana|солан)/) { return .withdrawToSolana(amount) }
         return nil
     }
 
@@ -222,6 +240,7 @@ extension WalletCommand {
         case .hlp(true, nil): "How much USDC into HLP? (at least $5)"
         case .aave(true, nil): "How much USDC into Aave on Base?"
         case .buy(let a, nil): "For how many USDC should I buy \(a.symbol)?"
+        case .buyStock(let s, nil): "For how many USDC should I buy \(s)?"
         case .stake(nil): "How much SOL to stake?"
         default: nil
         }
@@ -234,6 +253,7 @@ extension WalletCommand {
         case .hlp(let d, _): .hlp(deposit: d, amount: amount)
         case .aave(let d, _): .aave(deposit: d, amount: amount)
         case .buy(let a, _): .buy(a, usdc: amount)
+        case .buyStock(let s, _): .buyStock(symbol: s, usdc: amount)
         case .stake: .stake(amount)
         default: self
         }
@@ -268,6 +288,9 @@ extension WalletCommand {
         case .arbitrumToSolana(let x): return "move \(n(x)) USDC from Arbitrum to Solana"
         case .sendTo(let name, let x): return "send \(Fmt.num(x)) USDC to \(name)"
         case .receive: return "show where to top up"
+        case .buyStock(let s, let u): return "buy \(s) stock tokens for \(n(u)) USDC on Robinhood Chain"
+        case .sellStock(let s, let x): return "sell \(n(x)) \(s) stock tokens on Robinhood Chain"
+        case .robinhoodToSolana(let x): return "move \(n(x)) USDG from Robinhood Chain to Solana"
         }
     }
 }

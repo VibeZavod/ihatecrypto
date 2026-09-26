@@ -99,3 +99,31 @@ func notWalletCommands(_ phrase: String) {
     #expect(IntentParser.startsPlan("ETH risk $5"))
     #expect(IntentParser.startsPlan("short oil", markets: ["xyz:CL"]))
 }
+
+@Test(arguments: [
+    ("buy SpaceX stock for 2 USDC", WalletCommand.buyStock(symbol: "SPCX", usdc: 2)),
+    ("купи акции спейсикс на 2 доллара", .buyStock(symbol: "SPCX", usdc: 2)),
+    ("купи SpaceX через robinhood на 1 usdc", .buyStock(symbol: "SPCX", usdc: 1)),
+    ("buy SPCX stock tokens", .buyStock(symbol: "SPCX", usdc: nil)),
+    ("купи акции теслы на $3", .buyStock(symbol: "TSLA", usdc: 3)),
+    ("sell my SpaceX shares", .sellStock(symbol: "SPCX", amount: nil)),
+    ("продай 0.005 SPCX акций", .sellStock(symbol: "SPCX", amount: Decimal(string: "0.005")!)),
+    ("move USDG from Robinhood to Solana", .robinhoodToSolana(nil)),
+] as [(String, WalletCommand)])
+func stockPhrases(_ phrase: String, _ expected: WalletCommand) {
+    #expect(WalletCommand.parse(phrase) == expected, "«\(phrase)»")
+}
+
+@Test func stocksDontStealOtherCommands() {
+    #expect(WalletCommand.parse("buy SOL for 2 USDC") == .buy(SpotAsset.all[0], usdc: 2))
+    #expect(WalletCommand.parse("long SPCX risk $1") == nil)
+    #expect(WalletCommand.parse("chart TSLA") == nil)
+}
+
+@Test func decimalAmountsInWithdrawals() {
+    #expect(WalletCommand.parse("withdraw 2.7 USDC to Solana") == .withdrawToSolana(Decimal(string: "2.7")!))
+    #expect(WalletCommand.parse("выведи 1.5 usdc в солану") == .withdrawToSolana(Decimal(string: "1.5")!))
+    #expect(WalletCommand.parse("move 0.5 USDC from Base to Solana") == .baseToSolana(Decimal(string: "0.5")!))
+    #expect(WalletCommand.parse("move 1.25 USDC from Arbitrum to Solana") == .arbitrumToSolana(Decimal(string: "1.25")!))
+    #expect(WalletCommand.parse("move 2.5 USDG from Robinhood to Solana") == .robinhoodToSolana(Decimal(string: "2.5")!))
+}

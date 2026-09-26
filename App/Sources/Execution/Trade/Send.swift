@@ -16,6 +16,8 @@ extension Executor {
         case solana(String)
         case base(String)
         case arbitrum(String)
+        /// USDG on Robinhood Chain.
+        case robinhood(String)
         /// Another Hyperliquid account: USDC from the perp balance, no bridge.
         case hyperliquid(String)
     }
@@ -27,6 +29,7 @@ extension Executor {
         case .solana(let owner): return try await sendSolanaUSDC(units, to: owner, label: label)
         case .base(let recipient): return try await sendEVMUSDC(units, on: .base, to: recipient, label: label)
         case .arbitrum(let recipient): return try await sendEVMUSDC(units, on: .arbitrum, to: recipient, label: label)
+        case .robinhood(let recipient): return try await sendEVMUSDC(units, on: .robinhood, to: recipient, label: label)
         case .hyperliquid(let recipient): return try await sendHyperliquidUSDC(amount, to: recipient, label: label)
         }
     }
