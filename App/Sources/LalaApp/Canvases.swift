@@ -592,6 +592,7 @@ struct FixChoices: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .modifier(HoverLift(radius: 20, lift: 1.02))
     }
 }
 
@@ -864,6 +865,7 @@ struct RouteStepView: View {
         .padding(11)
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
         .background(ArrowCard(radius: 16, tip: 10).fill(fill.color))
+        .openable(logo: step.logo)
     }
 }
 

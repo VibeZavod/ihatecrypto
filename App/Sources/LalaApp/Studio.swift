@@ -730,6 +730,7 @@ struct StudioCanvas: View {
                         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Brand.cardBorder))
                     }
                     .buttonStyle(.plain)
+                    .modifier(HoverLift(radius: 10, lift: 1.02))
                     .help("Puts “\(t.phrase)” into the chat")
                 }
             }
@@ -1089,6 +1090,7 @@ struct StudioPortfolio: View {
                     .padding(9)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Brand.hlChip))
                     .contentShape(Rectangle())
+                    .modifier(HoverLift(radius: 12, lift: 1.02))
                     .onTapGesture { Task { await ws.chartCommand(.chart(coin: p.coin, range: .day)) } }
                     .help("Open the \(IntentParser.pretty(p.coin)) chart")
                 }
@@ -1963,6 +1965,7 @@ struct TakeChoices: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .modifier(HoverLift(radius: 20, lift: 1.02))
             }
             Text("The stop is the same in all three; only how the profit is taken changes.").font(.caption2).foregroundStyle(.secondary)
         }
@@ -2145,6 +2148,7 @@ struct YieldBubbles: View {
                         .frame(width: size, height: size)
                         .background(Circle().fill(fill(o.place)))
                         .overlay(Circle().strokeBorder(o.how == nil ? Brand.dots : .clear, style: StrokeStyle(lineWidth: 2, dash: [5, 4])))
+                        .modifier(HoverLift(radius: size / 2, lift: 1.05, enabled: o.how != nil))
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.plain)

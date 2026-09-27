@@ -257,6 +257,7 @@ struct MoversBoard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
+                .modifier(HoverLift(radius: 10, lift: 1.02))
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -344,7 +345,7 @@ struct PlaceDetailBoard: View {
             }
             ForEach(ws.positions, id: \.coin) { p in
                 Button { Task { await ws.chartCommand(.chart(coin: p.coin, range: .day)) } } label: { PositionChip(position: p) }
-                    .buttonStyle(.plain).help("Open the \(IntentParser.pretty(p.coin)) chart")
+                    .buttonStyle(.plain).modifier(HoverLift(radius: 12, lift: 1.02)).help("Open the \(IntentParser.pretty(p.coin)) chart")
             }
             if ws.positions.isEmpty { Text("No open positions.").font(.caption).foregroundStyle(.secondary) }
             Label(ws.agentActive ? "Trading key on: orders skip Touch ID, withdrawals still need it" : "Trading key paused: every order asks for Touch ID",
@@ -366,7 +367,7 @@ struct PlaceDetailBoard: View {
                     .padding(9).background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).pointerStyle(.link).help("\(s.symbol): chart and details")
+                .buttonStyle(.plain).modifier(HoverLift(radius: 12, lift: 1.02)).help("\(s.symbol): chart and details")
             }
             row("usdc", "USDG", "\(ws.robinhood.map { Fmt.num($0.usdg) } ?? "—")", "gas: \(ws.robinhood.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH")
             Text("Stock Tokens aren’t offered to US persons, or in Canada, the UK and Switzerland; they give economic exposure, not the shares.")
@@ -472,15 +473,27 @@ struct PlaceDetailBoard: View {
     }
 }
 
+extension View {
+    /// A route step whose logo names a place (Solana, Jupiter, Hyperliquid…) opens that place's details on click.
+    @ViewBuilder func openable(logo: String?) -> some View {
+        if let place = logo.flatMap(Openable.place(logo:)) { modifier(Openable(place: place)) } else { self }
+    }
+}
+
 /// A portfolio card that opens its place's details: a pointer and a lift on hover, an outline while open.
 struct Openable: ViewModifier {
+    static func place(logo: String) -> String? {
+        ["sol": "solana", "hype": "hyperliquid", "jup": "jupiter", "kamino": "kamino", "near": "near", "robinhood": "robinhood", "morpho": "morpho"][logo]
+    }
+
     @Environment(Workspace.self) private var ws
     let place: String
     @State private var hover = false
 
     func body(content: Content) -> some View {
         content
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent, lineWidth: ws.detail == place ? 2 : 0))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent.opacity(ws.detail == place ? 1 : hover ? 0.6 : 0),
+                                                                     lineWidth: ws.detail == place ? 2 : 1.5))
             .scaleEffect(hover ? 1.015 : 1)
             .animation(.snappy(duration: 0.18), value: hover)
             .contentShape(Rectangle())
@@ -565,17 +578,24 @@ extension ButtonStyle where Self == HoverIconStyle {
 }
 
 /// Logos and rows that open something: a soft wash and a lift under the pointer.
+/// Something clickable under the pointer: the hand cursor, a small lift and an accent edge (a filled card hides
+/// the background tint, so the edge is what shows it can be clicked).
 struct HoverLift: ViewModifier {
     var radius: CGFloat = 12
+    /// How much it grows: less for big cards.
+    var lift: CGFloat = 1.04
+    var enabled = true
     @State private var hover = false
 
     func body(content: Content) -> some View {
+        let on = hover && enabled
         content
-            .background(RoundedRectangle(cornerRadius: radius).fill(Color.primary.opacity(hover ? 0.07 : 0)))
-            .scaleEffect(hover ? 1.04 : 1)
-            .animation(.snappy(duration: 0.16), value: hover)
+            .background(RoundedRectangle(cornerRadius: radius).fill(Color.primary.opacity(on ? 0.07 : 0)))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Brand.accent.opacity(on ? 0.7 : 0), lineWidth: 1.5))
+            .scaleEffect(on ? lift : 1)
+            .animation(.snappy(duration: 0.16), value: on)
             .onHover { hover = $0 }
-            .pointerStyle(.link)
+            .pointerStyle(enabled ? .link : .default)
     }
 }
 
