@@ -121,6 +121,8 @@ struct StudioView: View {
     @State private var railFoldedForRoom = false
     static let spring = Animation.spring(response: 0.42, dampingFraction: 0.82)
     static let minChat: CGFloat = 320
+    /// Room the canvas keeps for the chat when it fits its boards: the default chat width and its margins.
+    static let chatColumn: CGFloat = 350 + 32
     /// Below this window width the wide rail (280) and the chat (350) would leave the canvas too little room.
     static let crampedWidth: CGFloat = 1140
 
@@ -149,7 +151,9 @@ struct StudioView: View {
                     } else if mode == "book" {
                         AddressBookView(inset: docked ? width + 32 : 0) { withAnimation(.snappy) { mode = "plan" } }
                     } else {
-                        StudioCanvas(inset: docked ? width + 32 : 0)
+                        // The canvas's scale follows the window alone: moving or resizing the chat, which floats
+                        // above everything, never shifts or rescales the boards.
+                        StudioCanvas(inset: Self.chatColumn)
                     }
                     FloatingChat(
                         compact: !chatOpen,
