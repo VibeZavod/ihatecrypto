@@ -71,9 +71,9 @@ final class Workspace {
     var pendingAllocation: WalletCommand?
     /// A command the model read from another language: it waits for «do it», so a wrong reading moves nothing.
     var pendingAction: PendingAction?
-    /// The last money move carried out on this canvas and whether it went through: the canvas shows it instead of the
-    /// «waiting for the signature» it replaced.
-    var finishedAction: (title: String, ok: Bool)?
+    /// The last money move carried out on this canvas: whether and when it went through, and its route as confirmed.
+    /// The canvas keeps them in place of the «waiting for the signature» they replace.
+    var finishedAction: (title: String, outcome: CanvasOutcome, route: [ActivityBubble])?
     enum PendingAction { case wallet(WalletCommand), position(PositionCommand, coin: String), address(SavedAddress), transfer(SavedAddress, Decimal) }
     /// The English command the pending action was understood as, for the confirm button.
     var pendingText: String?
@@ -124,6 +124,9 @@ final class Workspace {
     var canvasID: UUID?
     /// A reopened canvas whose board isn't a live plan: drawn as it was.
     var savedBoard: CanvasSession?
+    /// The open canvas once its money move is carried out: its route stays on screen, marked Done or Failed with the
+    /// time, until a new board replaces it.
+    var finishedCanvas: CanvasSession? { canvases.first { $0.id == canvasID && $0.outcome != nil } }
     /// The activity replies are added to.
     var currentActivity: UUID?
     /// What the user is typing in the studio chat; templates on the canvas fill it.

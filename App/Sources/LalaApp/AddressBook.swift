@@ -771,9 +771,11 @@ extension Workspace {
         guard let wallet = signerWallet else { reply("Transfers work in LALA.app once the key is in secure storage."); return }
         executing = true
         defer { executing = false }
+        let title = "Send \(Fmt.num(amount)) USDC to \(entry.name)"
+        let bubble = ActivityBubble(kind: "deposit", label: "Send · \(entry.network.title)", title: entry.name, lines: ["\(Fmt.num(amount)) USDC"], logo: entry.network.logo)
         updateActivity { a in
-            a.title = "Send \(Fmt.num(amount)) USDC to \(entry.name)"
-            a.bubbles = [ActivityBubble(kind: "deposit", label: "Send · \(entry.network.title)", title: entry.name, lines: ["\(Fmt.num(amount)) USDC"], logo: entry.network.logo)]
+            a.title = title
+            a.bubbles = [bubble]
         }
         do {
             let destination: TradeExecution.Executor.Destination = switch entry.network {
@@ -785,8 +787,10 @@ extension Workspace {
             }
             let text = try await executor(wallet).sendUSDC(amount, to: destination, label: entry.name)
             if let i = addressBook.firstIndex(where: { $0.id == entry.id }) { addressBook[i].lastSent = Date() }
+            finishedAction = (title, CanvasOutcome(at: Date(), ok: true), [bubble])
             reply(text, note: "transfer")
         } catch {
+            finishedAction = (title, CanvasOutcome(at: Date(), ok: false), [bubble])
             reply("Failed: \(error.localizedDescription)")
         }
         await refresh()

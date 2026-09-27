@@ -210,6 +210,12 @@ extension Workspace {
             reply(await Self.yieldsText(asset), note: "DeFi")
             return
         }
+        // The route as confirmed, before any balance moves: the canvas keeps it with the outcome and the time.
+        let confirmedRoute = route(command)
+        func finish(_ ok: Bool) {
+            guard movesMoney(command, confirmed: confirmed) else { return }
+            finishedAction = (confirmedRoute?.title ?? Self.canvasTitle(command), CanvasOutcome(at: Date(), ok: ok), confirmedRoute?.steps ?? [])
+        }
         switch command {
         case .schedule, .stopSchedules: break
         default:
@@ -273,10 +279,10 @@ extension Workspace {
             case .buy(let asset, let usdc): _ = try await e.swap(asset, buy: true, amount: usdc, equity: equity)
             case .sell(let asset, let amount): _ = try await e.swap(asset, buy: false, amount: amount)
             }
-            if movesMoney(command, confirmed: confirmed) { finishedAction = (Self.canvasTitle(command), true) }
+            finish(true)
         } catch {
             reply("Failed: \(error.localizedDescription)")
-            if movesMoney(command, confirmed: confirmed) { finishedAction = (Self.canvasTitle(command), false) }
+            finish(false)
         }
         await refresh()
     }

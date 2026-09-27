@@ -50,8 +50,18 @@ struct CanvasSession: Codable, Identifiable {
     var name: String?
     /// The folder it sits in, by name; nil = no folder. A folder exists while a canvas is in it.
     var folder: String?
+    /// The money move on its board was carried out: when, and whether it went through.
+    var outcome: CanvasOutcome?
+    /// When the board was last live; `updated` also moves at quit, to reopen the canvas that was open.
+    var boardAt: Date?
 
     var displayTitle: String { name ?? (title.isEmpty ? "Canvas" : title) }
+}
+
+/// A money move carried out from a canvas.
+struct CanvasOutcome: Codable, Equatable {
+    var at: Date
+    var ok: Bool
 }
 
 extension Workspace {
@@ -69,6 +79,8 @@ extension Workspace {
         if let board = canvasBubbles() {
             c.title = board.title
             c.bubbles = board.bubbles
+            c.outcome = finishedAction?.outcome
+            c.boardAt = Date()
             savedBoard = nil
         } else if c.title.isEmpty, let first = messages.first(where: \.fromUser)?.text {
             c.title = first.count > 48 ? String(first.prefix(48)) + "…" : first
@@ -340,10 +352,19 @@ struct SavedBoard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label("As it was · \(Fmt.date(canvas.updated)). Ask again for fresh numbers.", systemImage: "clock.arrow.circlepath")
-                .font(.caption).foregroundStyle(.secondary)
-            LazyVGrid(columns: [GridItem(.fixed(220), alignment: .top), GridItem(.fixed(220), alignment: .top)], alignment: .leading, spacing: 14) {
-                ForEach(canvas.bubbles, id: \.self) { HistoryBubble(bubble: $0) }
+            if let o = canvas.outcome {
+                Label("\(o.ok ? "Executed" : "Failed") · \(Fmt.date(o.at))", systemImage: o.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(o.ok ? Brand.profit : Brand.loss)
+            } else {
+                Label("As it was · \(Fmt.date(canvas.boardAt ?? canvas.updated)). Ask again for fresh numbers.", systemImage: "clock.arrow.circlepath")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            if !canvas.bubbles.isEmpty, canvas.bubbles.allSatisfy({ $0.kind == "step" }) {
+                RouteSteps(steps: canvas.bubbles).frame(width: 470, alignment: .leading)
+            } else {
+                LazyVGrid(columns: [GridItem(.fixed(220), alignment: .top), GridItem(.fixed(220), alignment: .top)], alignment: .leading, spacing: 14) {
+                    ForEach(canvas.bubbles, id: \.self) { HistoryBubble(bubble: $0) }
+                }
             }
         }
         .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
@@ -530,187 +551,230 @@ struct PendingButtons: View {
     }
 }
 
-/// A move of money waiting for «do it», drawn as a route (S10): a withdrawal to Solana, or USDC into Aave on Base.
-struct WithdrawBoard: View {
-    @Environment(Workspace.self) private var ws
+/// A money move's route as the canvas draws it (S10). The steps are data, so the canvas keeps the route after the move
+/// and shows it as it was, with Done or Failed and the time.
+struct MoveRoute {
+    let title: String
+    let footer: String
+    let steps: [ActivityBubble]
+    var warning: String?
+}
 
-    var body: some View {
-        if case .wallet(let command)? = ws.pendingAction {
-            switch command {
-            case .withdrawToSolana(let asked): withdraw(asked)
-            case .aave(deposit: true, amount: let amount?): aave(amount)
-            case .aave(deposit: false, amount: let amount): back(from: "aave", amount: amount)
-            case .baseToSolana(let amount): back(from: "base", amount: amount)
-            case .arbitrumToSolana(let amount): back(from: "arbitrum", amount: amount)
-            case .robinhoodToSolana(let amount): back(from: "robinhood", amount: amount)
-            case .buyStock(let symbol, let usdc?): stock(symbol, usdc)
-            default: generic(command)
-            }
+/// A route step's color, by place; kept by name, so a saved route draws the same.
+enum RouteFill: String, Codable, Hashable, Sendable {
+    case solana, relay, hyperliquid, hlp, jupiter, kamino, jito, aave, base, arbitrum, robinhood
+
+    var color: Color {
+        switch self {
+        case .solana: Brand.solanaTint
+        case .relay: Brand.relay
+        case .hyperliquid: Brand.hl
+        case .hlp: Brand.hlChip
+        case .jupiter: Color(hex: 0x131D27)
+        case .kamino: Color(hex: 0x082A56)
+        case .jito: Color(hex: 0x1F9D6A)
+        case .aave: Color(hex: 0x2B2D3C)
+        case .base: Color(hex: 0x0052FF)
+        case .arbitrum: Color(hex: 0x213147)
+        case .robinhood: Color(hex: 0x3A4A00)
+        }
+    }
+    var dark: Bool { self != .solana }
+}
+
+extension Workspace {
+    /// The route of a money move waiting for «do it»: a withdrawal to Solana, USDC into Aave on Base, a stock token,
+    /// a way back to Solana, or any move between the user's own places. nil for commands that aren't drawn as one.
+    func route(_ command: WalletCommand) -> MoveRoute? {
+        switch command {
+        case .withdrawToSolana(let asked): withdrawRoute(asked)
+        case .aave(deposit: true, amount: let amount?): aaveRoute(amount)
+        case .aave(deposit: false, amount: let amount): backRoute(from: "aave", amount: amount)
+        case .baseToSolana(let amount): backRoute(from: "base", amount: amount)
+        case .arbitrumToSolana(let amount): backRoute(from: "arbitrum", amount: amount)
+        case .robinhoodToSolana(let amount): backRoute(from: "robinhood", amount: amount)
+        case .buyStock(let symbol, let usdc?): stockRoute(symbol, usdc)
+        default: ends(command).map { from, to in
+            MoveRoute(title: command.summary.prefix(1).uppercased() + command.summary.dropFirst(),
+                      footer: "One Solana signature, checked and simulated before it’s signed. Say “do it” or press Confirm; anything else cancels.",
+                      steps: [from, to])
+        }
         }
     }
 
-    private func withdraw(_ asked: Decimal?) -> some View {
-        let free = ws.hl?.withdrawable
+    private func step(_ logo: String, _ label: String, _ title: String, _ line: String, _ fill: RouteFill) -> ActivityBubble {
+        ActivityBubble(kind: "step", label: label, title: title, lines: [line], logo: logo, fill: fill)
+    }
+
+    private func withdrawRoute(_ asked: Decimal?) -> MoveRoute {
+        let free = hl?.withdrawable
         let amount = asked ?? free
-        return board(title: "Withdraw · \(amount.map { Fmt.num($0) } ?? "all") USDC to Solana",
-                     footer: "Signed with the main key — the trading key can’t withdraw. Say “do it” or press Confirm; anything else cancels.") {
-            step(logo: "hype", label: "FROM · HYPERLIQUID", title: free.map { f in amount.map { "\(Fmt.usd(f)) → \(Fmt.usd(max(0, f - $0)))" } ?? Fmt.usd(f) } ?? "—",
-                 line: "position margin isn’t touched", fill: Brand.hl, dark: true)
-            step(logo: "relay", label: "BRIDGE · RELAY", title: amount.map { "\(Fmt.num($0)) USDC" } ?? "—", line: "≈ 4 s · small Relay fee", fill: Brand.relay, dark: true)
-            step(logo: "sol", label: "TO · SOLANA", title: ws.solana.map { s in amount.map { "\(Fmt.num(s.usdc)) → \(Fmt.num(s.usdc + $0))" } ?? Fmt.num(s.usdc) } ?? "—",
-                 line: "your own address ✓", fill: Brand.solanaTint, dark: false)
-        }
+        return MoveRoute(title: "Withdraw · \(amount.map { Fmt.num($0) } ?? "all") USDC to Solana",
+                         footer: "Signed with the main key — the trading key can’t withdraw. Say “do it” or press Confirm; anything else cancels.", steps: [
+            step("hype", "FROM · HYPERLIQUID", free.map { f in amount.map { "\(Fmt.usd(f)) → \(Fmt.usd(max(0, f - $0)))" } ?? Fmt.usd(f) } ?? "—",
+                 "position margin isn’t touched", .hyperliquid),
+            step("relay", "BRIDGE · RELAY", amount.map { "\(Fmt.num($0)) USDC" } ?? "—", "≈ 4 s · small Relay fee", .relay),
+            step("sol", "TO · SOLANA", solana.map { s in amount.map { "\(Fmt.num(s.usdc)) → \(Fmt.num(s.usdc + $0))" } ?? Fmt.num(s.usdc) } ?? "—",
+                 "your own address ✓", .solana),
+        ])
     }
 
-    private func aave(_ amount: Decimal) -> some View {
-        let onBase = ws.base?.usdc ?? 0
+    private func aaveRoute(_ amount: Decimal) -> MoveRoute {
+        let onBase = base?.usdc ?? 0
         let short = max(0, amount - onBase)
-        let needGas = (ws.base?.eth ?? 0) < Decimal(string: "0.000005")!
+        let needGas = (base?.eth ?? 0) < Decimal(string: "0.000005")!
         let bridging = short > 0 || needGas
-        let apy = ws.aaveAPY.map { "≈ \(Fmt.num($0.rounded(2, .plain)))% a year" } ?? "rate from the pool"
-        return board(title: "Aave · lend \(Fmt.num(amount)) USDC on Base",
-                     footer: (bridging ? "One Solana signature for the bridge, then " : "")
-                        + "two on Base: approve exactly \(Fmt.num(amount)) USDC, then supply. Pool and rate are re-read from Base first. Say “do it” or press Confirm.") {
-            if bridging {
-                step(logo: "sol", label: "FROM · SOLANA", title: ws.solana.map { "\(Fmt.num($0.usdc)) USDC" } ?? "—",
-                     line: "sends ≈ \(Fmt.num(max(short, needGas ? Decimal(string: "0.5")! : 0) + (needGas ? Decimal(string: "0.14")! : Decimal(string: "0.03")!))) USDC", fill: Brand.solanaTint, dark: false)
-                step(logo: "relay", label: "BRIDGE · RELAY", title: "\(Fmt.num(max(short, needGas ? Decimal(string: "0.5")! : 0))) USDC → Base",
-                     line: needGas ? "+ $0.03 of ETH for gas · ≈ 2 s" : "≈ 2 s", fill: Brand.relay, dark: true)
-            } else {
-                step(logo: "base", label: "ON BASE", title: "\(Fmt.num(onBase)) USDC", line: "already there, gas too", fill: Color(hex: 0x0052FF), dark: true)
-            }
-            step(logo: "aave", label: "AAVE V3 · BASE", title: "\(Fmt.num(amount)) USDC", line: apy, fill: Color(hex: 0x2B2D3C), dark: true)
+        let apy = aaveAPY.map { "≈ \(Fmt.num($0.rounded(2, .plain)))% a year" } ?? "rate from the pool"
+        var steps: [ActivityBubble] = []
+        if bridging {
+            steps.append(step("sol", "FROM · SOLANA", solana.map { "\(Fmt.num($0.usdc)) USDC" } ?? "—",
+                              "sends ≈ \(Fmt.num(max(short, needGas ? Decimal(string: "0.5")! : 0) + (needGas ? Decimal(string: "0.14")! : Decimal(string: "0.03")!))) USDC", .solana))
+            steps.append(step("relay", "BRIDGE · RELAY", "\(Fmt.num(max(short, needGas ? Decimal(string: "0.5")! : 0))) USDC → Base",
+                              needGas ? "+ $0.03 of ETH for gas · ≈ 2 s" : "≈ 2 s", .relay))
+        } else {
+            steps.append(step("base", "ON BASE", "\(Fmt.num(onBase)) USDC", "already there, gas too", .base))
         }
+        steps.append(step("aave", "AAVE V3 · BASE", "\(Fmt.num(amount)) USDC", apy, .aave))
+        return MoveRoute(title: "Aave · lend \(Fmt.num(amount)) USDC on Base",
+                         footer: (bridging ? "One Solana signature for the bridge, then " : "")
+                            + "two on Base: approve exactly \(Fmt.num(amount)) USDC, then supply. Pool and rate are re-read from Base first. Say “do it” or press Confirm.",
+                         steps: steps)
     }
 
     /// Any other move between the user's own places: where from, where to, in the places' colors.
-    @ViewBuilder private func generic(_ c: WalletCommand) -> some View {
-        if let (from, to) = ends(c) {
-            board(title: c.summary.prefix(1).uppercased() + c.summary.dropFirst(),
-                  footer: "One Solana signature, checked and simulated before it’s signed. Say “do it” or press Confirm; anything else cancels.") {
-                step(logo: from.0, label: from.1, title: from.2, line: from.3, fill: from.4, dark: from.5)
-                step(logo: to.0, label: to.1, title: to.2, line: to.3, fill: to.4, dark: to.5)
-            }
-        }
-    }
-
-    private typealias End = (String, String, String, String, Color, Bool)
-
-    private func ends(_ c: WalletCommand) -> (End, End)? {
+    private func ends(_ c: WalletCommand) -> (ActivityBubble, ActivityBubble)? {
         func n(_ d: Decimal?) -> String { d.map { Fmt.num($0, maxFraction: 6) } ?? "all" }
-        let solUSDC = ws.solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? ""
-        let solSOL = ws.solana.map { "free: \(Fmt.num($0.sol, maxFraction: 4)) SOL" } ?? ""
-        let jup = Color(hex: 0x131D27), kamino = Color(hex: 0x082A56), jito = Color(hex: 0x1F9D6A)
+        let solUSDC = solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? ""
+        let solSOL = solana.map { "free: \(Fmt.num($0.sol, maxFraction: 4)) SOL" } ?? ""
         switch c {
         case .lendDeposit(let s, let x):
-            return ((s == "SOL" ? "sol" : "usdc", "FROM · SOLANA", "\(n(x)) \(s)", s == "SOL" ? solSOL : solUSDC, Brand.solanaTint, false),
-                    ("jup", "INTO · JUPITER LEND", "\(n(x)) \(s)", "earns the vault rate · withdraw any time", jup, true))
+            return (step(s == "SOL" ? "sol" : "usdc", "FROM · SOLANA", "\(n(x)) \(s)", s == "SOL" ? solSOL : solUSDC, .solana),
+                    step("jup", "INTO · JUPITER LEND", "\(n(x)) \(s)", "earns the vault rate · withdraw any time", .jupiter))
         case .lendWithdraw(let s, let x):
-            return (("jup", "FROM · JUPITER LEND", "\(n(x)) \(s)", ws.lendTotal > 0 ? "in the vault: \(Fmt.num(ws.lendTotal)) USDC" : "", jup, true),
-                    (s == "SOL" ? "sol" : "usdc", "TO · SOLANA", "\(n(x)) \(s)", "your wallet", Brand.solanaTint, false))
+            return (step("jup", "FROM · JUPITER LEND", "\(n(x)) \(s)", lendTotal > 0 ? "in the vault: \(Fmt.num(lendTotal)) USDC" : "", .jupiter),
+                    step(s == "SOL" ? "sol" : "usdc", "TO · SOLANA", "\(n(x)) \(s)", "your wallet", .solana))
         case .kamino(true, let s, let x):
-            return ((s == "SOL" ? "sol" : "usdc", "FROM · SOLANA", "\(n(x)) \(s)", s == "SOL" ? solSOL : solUSDC, Brand.solanaTint, false),
-                    ("kamino", "INTO · KAMINO LEND", "\(n(x)) \(s)", "first deposit pays ≈ 0.03 SOL rent", kamino, true))
+            return (step(s == "SOL" ? "sol" : "usdc", "FROM · SOLANA", "\(n(x)) \(s)", s == "SOL" ? solSOL : solUSDC, .solana),
+                    step("kamino", "INTO · KAMINO LEND", "\(n(x)) \(s)", "first deposit pays ≈ 0.03 SOL rent", .kamino))
         case .kamino(false, let s, let x):
-            return (("kamino", "FROM · KAMINO LEND", "\(n(x)) \(s)", "", kamino, true),
-                    (s == "SOL" ? "sol" : "usdc", "TO · SOLANA", "\(n(x)) \(s)", "your wallet", Brand.solanaTint, false))
+            return (step("kamino", "FROM · KAMINO LEND", "\(n(x)) \(s)", "", .kamino),
+                    step(s == "SOL" ? "sol" : "usdc", "TO · SOLANA", "\(n(x)) \(s)", "your wallet", .solana))
         case .stake(let x):
-            return (("sol", "FROM · SOLANA", "\(n(x)) SOL", solSOL, Brand.solanaTint, false),
-                    ("jitosol", "INTO · JITOSOL", "liquid staking", "earns the staking yield · swap back any time", jito, true))
+            return (step("sol", "FROM · SOLANA", "\(n(x)) SOL", solSOL, .solana),
+                    step("jitosol", "INTO · JITOSOL", "liquid staking", "earns the staking yield · swap back any time", .jito))
         case .unstake(let x):
-            return (("jitosol", "FROM · JITOSOL", "\(n(x)) JitoSOL", "", jito, true), ("sol", "TO · SOLANA", "SOL", "your wallet", Brand.solanaTint, false))
+            return (step("jitosol", "FROM · JITOSOL", "\(n(x)) JitoSOL", "", .jito), step("sol", "TO · SOLANA", "SOL", "your wallet", .solana))
         case .hlp(true, let x):
-            return (("hype", "FROM · HYPERLIQUID", "\(n(x)) USDC", ws.hl.map { "free: \(Fmt.usd($0.withdrawable))" } ?? "", Brand.hl, true),
-                    ("hype", "INTO · HLP VAULT", "\(n(x)) USDC", "min $5 · 4-day lockup", Brand.hlChip, true))
+            return (step("hype", "FROM · HYPERLIQUID", "\(n(x)) USDC", hl.map { "free: \(Fmt.usd($0.withdrawable))" } ?? "", .hyperliquid),
+                    step("hype", "INTO · HLP VAULT", "\(n(x)) USDC", "min $5 · 4-day lockup", .hlp))
         case .hlp(false, let x):
-            return (("hype", "FROM · HLP VAULT", "\(n(x)) USDC", "", Brand.hlChip, true), ("hype", "TO · HYPERLIQUID", "USDC", "trading balance", Brand.hl, true))
+            return (step("hype", "FROM · HLP VAULT", "\(n(x)) USDC", "", .hlp), step("hype", "TO · HYPERLIQUID", "USDC", "trading balance", .hyperliquid))
         case .buy(let a, let u):
-            return (("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC, Brand.solanaTint, false),
-                    (TokenLogo.name(forAsset: a.symbol) ?? "usdc", "BUY · JUPITER", a.symbol, "best route, simulated first", jup, true))
+            return (step("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC, .solana),
+                    step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "BUY · JUPITER", a.symbol, "best route, simulated first", .jupiter))
         case .sellStock(let s, let x):
-            return (("robinhood", "SELL · UNISWAP", "\(n(x)) \(s)", "Robinhood Chain", Color(hex: 0x3A4A00), true),
-                    ("usdc", "TO · USDG", "on Robinhood Chain", "then “move USDG from Robinhood to Solana”", Brand.solanaTint, false))
+            return (step("robinhood", "SELL · UNISWAP", "\(n(x)) \(s)", "Robinhood Chain", .robinhood),
+                    step("usdc", "TO · USDG", "on Robinhood Chain", "then “move USDG from Robinhood to Solana”", .solana))
         case .sell(let a, let x):
-            return ((TokenLogo.name(forAsset: a.symbol) ?? "usdc", "SELL · JUPITER", "\(n(x)) \(a.symbol)", "", jup, true),
-                    ("usdc", "TO · SOLANA", "USDC", "your wallet", Brand.solanaTint, false))
+            return (step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "SELL · JUPITER", "\(n(x)) \(a.symbol)", "", .jupiter),
+                    step("usdc", "TO · SOLANA", "USDC", "your wallet", .solana))
         default:
             return nil
         }
     }
 
     /// A Robinhood Stock Token bought with USDC from Solana: bridge, then Uniswap on Robinhood Chain.
-    private func stock(_ symbolOrContract: String, _ usdc: Decimal) -> some View {
+    private func stockRoute(_ symbolOrContract: String, _ usdc: Decimal) -> MoveRoute {
         // A contract («купи 0x…»): its name and price from the favorites when it's there.
         let contract = symbolOrContract.hasPrefix("0x")
-        let favorite = ws.favoriteTokens.first { $0.address.lowercased() == symbolOrContract.lowercased() }
+        let favorite = favoriteTokens.first { $0.address.lowercased() == symbolOrContract.lowercased() }
         let symbol = favorite?.symbol ?? (contract ? "\(symbolOrContract.prefix(6))…\(symbolOrContract.suffix(4))" : symbolOrContract)
-        let price = contract ? favorite.flatMap { ws.tokenInfo[$0.id]?.priceUSD } : ws.markets["xyz:\(symbolOrContract)"]?.markPx
-        return VStack(alignment: .leading, spacing: 8) {
-            board(title: "Buy \(symbol) · \(Fmt.num(usdc)) USDC on Robinhood Chain",
-                  footer: "One Solana signature for the bridge, then two on Robinhood Chain: an exact USDG approve and the Uniswap swap, which may only pay this wallet. "
-                    + (contract ? "The token is taken by its contract: it must trade on Robinhood Chain with $50k+ of liquidity, and the price must sit within 5% of DexScreener's."
-                                : "The token is Robinhood's registered contract, checked on-chain, and the price must sit within Robinhood's own quote.")
-                    + " Say “do it” or press Confirm.") {
-                step(logo: "sol", label: "FROM · SOLANA", title: "\(Fmt.num(usdc)) USDC", line: ws.solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", fill: Brand.solanaTint, dark: false)
-                step(logo: "relay", label: "BRIDGE · RELAY", title: "USDG → Robinhood", line: "+ ETH for gas when there's none", fill: Brand.relay, dark: true)
-                step(logo: "robinhood", label: "BUY · UNISWAP", title: symbol,
-                     line: price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 2)) \(symbol) worth ≈ \(Fmt.usd(usdc)) · 1 \(symbol) = \(tokenPrice($0))" } ?? "at the pool price",
-                     fill: Color(hex: 0x3A4A00), dark: true)
-            }
-            Label(contract ? "A token by its contract is anyone's coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose."
-                           : "Robinhood Stock Tokens give economic exposure, not the shares, and aren’t offered to US persons or in Canada, the UK and Switzerland.",
-                  systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Brand.jevInk).frame(width: 470, alignment: .leading)
-        }
+        let price = contract ? favorite.flatMap { tokenInfo[$0.id]?.priceUSD } : markets["xyz:\(symbolOrContract)"]?.markPx
+        return MoveRoute(title: "Buy \(symbol) · \(Fmt.num(usdc)) USDC on Robinhood Chain",
+                         footer: "One Solana signature for the bridge, then two on Robinhood Chain: an exact USDG approve and the Uniswap swap, which may only pay this wallet. "
+                            + (contract ? "The token is taken by its contract: it must trade on Robinhood Chain with $50k+ of liquidity, and the price must sit within 5% of DexScreener's."
+                                        : "The token is Robinhood's registered contract, checked on-chain, and the price must sit within Robinhood's own quote.")
+                            + " Say “do it” or press Confirm.", steps: [
+            step("sol", "FROM · SOLANA", "\(Fmt.num(usdc)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana),
+            step("relay", "BRIDGE · RELAY", "USDG → Robinhood", "+ ETH for gas when there's none", .relay),
+            step("robinhood", "BUY · UNISWAP", symbol,
+                 price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 2)) \(symbol) worth ≈ \(Fmt.usd(usdc)) · 1 \(symbol) = \(tokenPrice($0))" } ?? "at the pool price", .robinhood),
+        ], warning: contract ? "A token by its contract is anyone's coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose."
+                             : "Robinhood Stock Tokens give economic exposure, not the shares, and aren’t offered to US persons or in Canada, the UK and Switzerland.")
     }
 
-    /// Aave or idle USDC on Base → Relay → Solana.
-    private func back(from place: String, amount: Decimal?) -> some View {
-        let b = ws.base
-        let available = place == "aave" ? b?.aave : place == "arbitrum" ? ws.arbitrumUSDC : place == "robinhood" ? ws.robinhood?.usdg : b?.usdc
+    /// Aave or idle USDC on Base, Arbitrum or Robinhood Chain → Relay → Solana.
+    private func backRoute(from place: String, amount: Decimal?) -> MoveRoute {
+        let available = place == "aave" ? base?.aave : place == "arbitrum" ? arbitrumUSDC : place == "robinhood" ? robinhood?.usdg : base?.usdc
         let moving = amount.map { min($0, available ?? $0) } ?? available
         let chainName = place == "arbitrum" ? "Arbitrum" : place == "robinhood" ? "Robinhood Chain" : "Base"
-        return board(title: place == "aave" ? "Aave · withdraw \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana" : "\(chainName) · \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana",
-                     footer: (place == "aave" ? "Three Base transactions: withdraw from Aave, an exact approve and Relay’s deposit" : "Two Base transactions: an exact approve and Relay’s deposit")
-                        + " — checked field by field before signing. Say “do it” or press Confirm.") {
-            if place == "aave" {
-                step(logo: "aave", label: "FROM · AAVE ON BASE", title: available.map { "\(Fmt.num($0)) USDC" } ?? "—",
-                     line: ws.aaveAPY.map { "earning ≈ \(Fmt.num($0.rounded(2, .plain)))% until now" } ?? "with the interest", fill: Color(hex: 0x2B2D3C), dark: true)
-            } else {
-                step(logo: place == "arbitrum" ? "arb" : place == "robinhood" ? "robinhood" : "base", label: "FROM · \(chainName.uppercased())",
-                     title: available.map { "\(Fmt.num($0)) \(place == "robinhood" ? "USDG" : "USDC")" } ?? "—",
-                     line: "idle \(place == "robinhood" ? "USDG" : "USDC")", fill: place == "arbitrum" ? Color(hex: 0x213147) : place == "robinhood" ? Color(hex: 0x3A4A00) : Color(hex: 0x0052FF), dark: true)
+        let from = place == "aave"
+            ? step("aave", "FROM · AAVE ON BASE", available.map { "\(Fmt.num($0)) USDC" } ?? "—",
+                   aaveAPY.map { "earning ≈ \(Fmt.num($0.rounded(2, .plain)))% until now" } ?? "with the interest", .aave)
+            : step(place == "arbitrum" ? "arb" : place == "robinhood" ? "robinhood" : "base", "FROM · \(chainName.uppercased())",
+                   available.map { "\(Fmt.num($0)) \(place == "robinhood" ? "USDG" : "USDC")" } ?? "—",
+                   "idle \(place == "robinhood" ? "USDG" : "USDC")", place == "arbitrum" ? .arbitrum : place == "robinhood" ? .robinhood : .base)
+        return MoveRoute(title: place == "aave" ? "Aave · withdraw \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana" : "\(chainName) · \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana",
+                         footer: (place == "aave" ? "Three Base transactions: withdraw from Aave, an exact approve and Relay’s deposit" : "Two Base transactions: an exact approve and Relay’s deposit")
+                            + " — checked field by field before signing. Say “do it” or press Confirm.", steps: [
+            from,
+            step("relay", "BRIDGE · RELAY", moving.map { "\(Fmt.num($0)) USDC" } ?? "—", "≈ $0.02 · a few seconds", .relay),
+            step("sol", "TO · SOLANA", solana.map { s in moving.map { "\(Fmt.num(s.usdc)) → \(Fmt.num(s.usdc + $0))" } ?? Fmt.num(s.usdc) } ?? "—",
+                 "your own address ✓", .solana),
+        ])
+    }
+}
+
+/// A move of money waiting for «do it», drawn as its route.
+struct WithdrawBoard: View {
+    @Environment(Workspace.self) private var ws
+
+    var body: some View {
+        if case .wallet(let command)? = ws.pendingAction, let route = ws.route(command) {
+            VStack(alignment: .leading, spacing: 8) {
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(spacing: 8) {
+                        Text(route.title).font(.system(size: 14, weight: .semibold))
+                        StatusChip(text: "waiting for the signature", tint: Brand.profit)
+                    }
+                    RouteSteps(steps: route.steps)
+                    Label(route.footer, systemImage: "signature").font(.caption).foregroundStyle(.secondary)
+                    PendingButtons()
+                }
+                if let warning = route.warning {
+                    Label(warning, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Brand.jevInk)
+                }
             }
-            step(logo: "relay", label: "BRIDGE · RELAY", title: moving.map { "\(Fmt.num($0)) USDC" } ?? "—", line: "≈ $0.02 · a few seconds", fill: Brand.relay, dark: true)
-            step(logo: "sol", label: "TO · SOLANA", title: ws.solana.map { s in moving.map { "\(Fmt.num(s.usdc)) → \(Fmt.num(s.usdc + $0))" } ?? Fmt.num(s.usdc) } ?? "—",
-                 line: "your own address ✓", fill: Brand.solanaTint, dark: false)
+            .frame(width: 470, alignment: .leading)
+            .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
         }
     }
+}
 
-    private func board<Steps: View>(title: String, footer: String, @ViewBuilder steps: () -> Steps) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Text(title).font(.system(size: 14, weight: .semibold))
-                StatusChip(text: "waiting for the signature", tint: Brand.profit)
-            }
-            HStack(alignment: .top, spacing: 12) { steps() }
-            Label(footer, systemImage: "signature").font(.caption).foregroundStyle(.secondary)
-            PendingButtons()
-        }
-        .frame(width: 470, alignment: .leading)
-        .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+/// A route's steps side by side, each an arrow in its place's color.
+struct RouteSteps: View {
+    let steps: [ActivityBubble]
+
+    var body: some View {
+        HStack(alignment: .top, spacing: 12) { ForEach(steps, id: \.self) { RouteStepView(step: $0) } }
     }
+}
 
-    private func step(logo: String, label: String, title: String, line: String, fill: Color, dark: Bool) -> some View {
+struct RouteStepView: View {
+    let step: ActivityBubble
+
+    var body: some View {
+        let fill = step.fill ?? .solana
         VStack(alignment: .leading, spacing: 6) {
-            TokenLogo(name: logo, size: 24)
-            Text(label).font(.system(size: 9, weight: .heavy)).tracking(0.4).opacity(0.75)
-            Text(title).font(.system(size: 13, weight: .bold)).monospacedDigit().fixedSize(horizontal: false, vertical: true)
-            Text(line).font(.caption2).opacity(0.8).fixedSize(horizontal: false, vertical: true)
+            if let logo = step.logo { TokenLogo(name: logo, size: 24) }
+            Text(step.label).font(.system(size: 9, weight: .heavy)).tracking(0.4).opacity(0.75)
+            Text(step.title).font(.system(size: 13, weight: .bold)).monospacedDigit().fixedSize(horizontal: false, vertical: true)
+            ForEach(step.lines, id: \.self) { Text($0).font(.caption2).opacity(0.8).fixedSize(horizontal: false, vertical: true) }
         }
-        .foregroundStyle(dark ? Color.white : Color.primary)
+        .foregroundStyle(fill.dark ? Color.white : Color.primary)
         .padding(11)
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
-        .background(ArrowCard(radius: 16, tip: 10).fill(fill))
+        .background(ArrowCard(radius: 16, tip: 10).fill(fill.color))
     }
 }
 

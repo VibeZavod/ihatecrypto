@@ -32,6 +32,8 @@ struct ActivityBubble: Codable, Hashable, Sendable {
     var signature: Int?
     /// For position bubbles: long or short.
     var long: Bool?
+    /// For a money move's route steps: the place's color.
+    var fill: RouteFill?
 }
 
 extension Workspace {
@@ -51,6 +53,7 @@ extension Workspace {
         // A move waiting for «do it»: the canvas and the history name it the way the route does.
         switch pendingAction {
         case .wallet(let c)?:
+            if let r = route(c) { return (r.title, nil, r.steps) }
             let title = c.summary.prefix(1).uppercased() + c.summary.dropFirst()
             return (title, nil, [ActivityBubble(kind: "deposit", label: "Waiting for the signature", title: title, logo: Self.logo(for: title))])
         case .transfer(let entry, let amount)?:
@@ -61,7 +64,9 @@ extension Workspace {
         default: break
         }
         if let f = finishedAction {
-            return (f.title, nil, [ActivityBubble(kind: f.ok ? "free" : "skipped", label: f.ok ? "Done" : "Failed", title: f.title, logo: Self.logo(for: f.title))])
+            return (f.title, nil, f.route.isEmpty
+                    ? [ActivityBubble(kind: f.outcome.ok ? "free" : "skipped", label: f.outcome.ok ? "Done" : "Failed", title: f.title, logo: Self.logo(for: f.title))]
+                    : f.route)
         }
         if let c = chart, intent == TradeIntent(), allocationPreview == nil, yieldOptions == nil {
             let name = IntentParser.pretty(c.coin)

@@ -754,6 +754,8 @@ struct StudioCanvas: View {
     // MARK: Plan
 
     private var hasRoute: Bool { ws.intent != TradeIntent() || ws.managesPosition }
+    /// A reopened canvas, or this one after its money move: its board as it was.
+    private var board: CanvasSession? { ws.savedBoard ?? ws.finishedCanvas }
     /// Changes only when the plan itself changes, not on every price refresh: the assembly replays per plan.
     private var planKey: String { hasRoute ? String(describing: ws.intent) : "" }
     /// Once the plan is on the exchange, the canvas shows the position itself instead of the old route.
@@ -764,7 +766,7 @@ struct StudioCanvas: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Text(ws.allocationPreview.map { "Plan · spread \($0.asset) across the best rates" }
-                     ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : ws.savedBoard?.title ?? "Plan"))
+                     ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : board?.title ?? "Plan"))
                     .font(.system(size: 14, weight: .semibold))
                 StatusChip(text: statusText(nodes), tint: statusTint(nodes))
                 if hasRoute { MarketPicker() }
@@ -786,7 +788,7 @@ struct StudioCanvas: View {
                 ForEach(ws.positions, id: \.coin) { PositionBoard(position: $0) }
                 if ws.yieldOptions == nil, ws.allocationPreview == nil {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
-                    if let saved = ws.savedBoard { SavedBoard(canvas: saved) } else if ws.positions.isEmpty, ws.schedules.isEmpty { placeholder }
+                    if let board { SavedBoard(canvas: board) } else if ws.positions.isEmpty, ws.schedules.isEmpty { placeholder }
                 }
             } else {
                 let left = nodes.filter { $0.column == 0 }, right = nodes.filter { $0.column == 1 }
@@ -849,7 +851,7 @@ struct StudioCanvas: View {
 
     private func statusText(_ nodes: [StudioNode]) -> String {
         if ws.allocationPreview != nil { return ws.pendingAllocation != nil ? "ready to sign" : "nothing to place" }
-        guard hasRoute else { return ws.savedBoard != nil ? "saved canvas" : "waiting for a task" }
+        guard hasRoute else { return board.map { $0.outcome.map { $0.ok ? "executed" : "failed" } ?? "saved canvas" } ?? "waiting for a task" }
         if assembling { return "building · \(shown) of \(nodes.count)" }
         if ws.managesPosition { return ws.positions.contains { $0.coin == ws.intent.asset } ? "position open" : "done · position closed" }
         if nodes.contains(where: { $0.status == .blocked }) { return "stopped by the rules" }
@@ -858,6 +860,7 @@ struct StudioCanvas: View {
 
     private func statusTint(_ nodes: [StudioNode]) -> Color {
         if ws.allocationPreview != nil { return ws.pendingAllocation != nil ? Brand.profit : .secondary }
+        if !hasRoute, let o = board?.outcome { return o.ok ? Brand.profit : Brand.loss }
         guard hasRoute, !assembling else { return .secondary }
         if nodes.contains(where: { $0.status == .blocked }) { return Brand.blockedInk }
         return ws.planIsReady || ws.managesPosition ? Brand.profit : Brand.jevInk
