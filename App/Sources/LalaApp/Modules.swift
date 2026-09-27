@@ -220,6 +220,10 @@ struct PlaceDetailBoard: View {
     let place: String
 
     var body: some View {
+        if let token = TokenBoard.parse(place) { TokenBoard(chain: token.chain, address: token.address) } else { board }
+    }
+
+    private var board: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
                 TokenLogo(name: logo, size: 34)
@@ -270,10 +274,6 @@ struct PlaceDetailBoard: View {
 
     @ViewBuilder private var content: some View {
         switch place {
-        if let token = TokenBoard.parse(place) { TokenBoard(chain: token.chain, address: token.address) } else { board }
-    }
-
-    private var board: some View {
         case "solana":
             if isSolanaAddress(ws.solanaAddress) { addressRow(ws.solanaAddress) }
             row("usdc", "USDC", ws.solana.map { Fmt.num($0.usdc) } ?? "—", "≈ \(ws.solana.map { Fmt.usd($0.usdc) } ?? "—")")
