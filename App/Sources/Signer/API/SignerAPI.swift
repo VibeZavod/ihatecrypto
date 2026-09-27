@@ -56,6 +56,11 @@ public enum SignerRequest: Codable, Sendable {
     case setSessionLength(seconds: Int)
     /// Ends the Touch ID session only (the Mac's screen locked or it went to sleep); the trading key stays as it is.
     case endSession
+    /// Sells native NEAR through 1Click. The signer builds the ONE wrap.near transaction itself from these plain fields
+    /// (`NearTransaction.intentDeposit`): wrap exactly `amount` yoctoNEAR from our implicit account (m/44'/397'/0')
+    /// and send that wNEAR to `depositAddress`, a 64-hex NEAR account, confirmed in person as a new recipient.
+    /// Reply: `signedRaw` = the borsh SignedTransaction.
+    case signNearIntentDeposit(amount: String, depositAddress: String, nonce: UInt64, blockHash: Data)
 }
 
 public enum SignerSession {

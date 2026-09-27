@@ -62,6 +62,12 @@ import Testing
                     "spread USDC across the best rates max 50% per protocol",
                     "move 3 USDC from Solana to Robinhood", "move 2 USDC from Solana to Base", "move 1 USDC from Solana to Arbitrum"]
     for command in commands { #expect(WalletCommand.parse(command) != nil, "\(command)") }
+    #expect(WalletCommand.parse("sell NEAR") == .sellNear(amount: nil))
+    #expect(WalletCommand.parse("sell 0.5 NEAR") == .sellNear(amount: Decimal(string: "0.5")!))
+    #expect(WalletCommand.parse("продай неар") == .sellNear(amount: nil))
+    #expect(WalletCommand.parse("продай 0,3 неар") == .sellNear(amount: Decimal(string: "0.3")!))
+    #expect(WalletCommand.parse("sell ETH near 2500") != .sellNear(amount: nil))
+    #expect(ChatRouter.forms.contains("sell [N] NEAR"))
     #expect(TokenCommand.parse("watch token \(ai) on robinhood") == .favorite(address: ai, chain: "robinhood"))
     #expect(TokenCommand.parse("remove token AI from favorites") == .unfavorite(symbol: "AI"))
     #expect(ChartCommand.parse("chart ETH week", markets: markets) == .chart(coin: "ETH", range: .week))

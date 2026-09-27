@@ -1,4 +1,5 @@
 import Foundation
+import WalletCore
 import LLMCore
 import OneClickKit
 import RelayBridge
@@ -175,6 +176,38 @@ public enum Near {
         let text = String(decoding: (call?["result"] as? [Int] ?? []).map { UInt8($0) }, as: UTF8.self)
         let wrapped = Decimal(string: text.trimmingCharacters(in: CharacterSet(charactersIn: "\""))) ?? 0
         return (native / yocto, wrapped / yocto)
+    }
+
+    /// What a new transaction from `account` needs: the next nonce of its key, a recent final block hash, and the
+    /// account's native balance and storage (yoctoNEAR, bytes). The key is the implicit account's own.
+    public static func txContext(account: String) async throws -> (nonce: UInt64, blockHash: Data, balance: String, storageBytes: UInt64) {
+        func call(_ method: String, _ params: [String: Any]) async throws -> [String: Any] {
+            let data = try await HTTP.post(rpc, json: ["jsonrpc": "2.0", "id": 1, "method": method, "params": params])
+            let j = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            guard let result = j?["result"] as? [String: Any] else { throw NetError(message: "NEAR RPC \(method): \(j?["error"] ?? "no result")") }
+            return result
+        }
+        guard let raw = Data(hex: account), raw.count == 32 else { throw NetError(message: "Not a NEAR implicit account: \(account).") }
+        let publicKey = "ed25519:" + Base58.encode(raw)
+        let key = try await call("query", ["request_type": "view_access_key", "finality": "final", "account_id": account, "public_key": publicKey])
+        let view = try await call("query", ["request_type": "view_account", "finality": "final", "account_id": account])
+        let block = try await call("block", ["finality": "final"])
+        guard let nonce = (key["nonce"] as? NSNumber)?.uint64Value, let hash = (block["header"] as? [String: Any])?["hash"] as? String,
+              let balance = view["amount"] as? String, let storage = (view["storage_usage"] as? NSNumber)?.uint64Value else {
+            throw NetError(message: "NEAR RPC: no nonce, block hash or balance.")
+        }
+        return (nonce + 1, try Base58.decode(hash), balance, storage)
+    }
+
+    /// Broadcasts a borsh SignedTransaction and waits until it has executed; throws with NEAR's reason on failure.
+    /// Returns the transaction hash (base58).
+    public static func send(_ signed: Data) async throws -> String {
+        let data = try await HTTP.post(rpc, json: ["jsonrpc": "2.0", "id": 1, "method": "send_tx",
+                                                   "params": ["signed_tx_base64": signed.base64EncodedString(), "wait_until": "EXECUTED_OPTIMISTIC"]])
+        let j = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        guard let result = j?["result"] as? [String: Any] else { throw NetError(message: "NEAR RPC send_tx: \(j?["error"] ?? "no result")") }
+        if let failure = (result["status"] as? [String: Any])?["Failure"] { throw NetError(message: "The NEAR transaction failed: \(failure)") }
+        return (result["transaction"] as? [String: Any])?["hash"] as? String ?? "?"
     }
 }
 

@@ -64,6 +64,15 @@ struct LocalSigner: TradeSigner {
         return try EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee,
                                   gasLimit: gasLimit, to: to, value: 0, data: data).signed(privateKey: keys.evm).raw
     }
+
+    /// The same fixed wrap.near transaction the signing process builds.
+    func signNearIntentDeposit(amount: UInt128, depositAddress: String, nonce: UInt64, blockHash: Data) async throws -> Data {
+        guard amount > 0, depositAddress.wholeMatch(of: /[0-9a-f]{64}/) != nil, blockHash.count == 32 else { throw ExecutionError("Not a 1Click NEAR deposit.") }
+        let key = try TestWallet.nearKey()
+        return try NearTransaction.sign(receiver: NearTransaction.wrapContract, nonce: nonce, blockHash: blockHash,
+                                        actions: NearTransaction.intentDeposit(account: try NearAccount.implicit(privateKey: key), depositAddress: depositAddress, amount: amount),
+                                        privateKey: key).signed
+    }
 }
 
 /// `execute "<phrase>"`: builds the plan from the phrase, prepares and prints what would be signed; `--yes` runs it.
@@ -115,6 +124,9 @@ func moveMoney(_ text: String) async throws {
     case .hlp(let deposit, let amount): _ = try await executor.hlp(deposit: deposit, amount: amount)
     case .buyNear(let usdc):
         _ = try await executor.buyNear(usdc: usdc ?? 0, account: try TestWallet.nearAccount())
+        if let b = try? await Near.balance(account: try TestWallet.nearAccount()) { print("NEAR account: \(Fmt.num(b.near, maxFraction: 6)) NEAR, \(Fmt.num(b.wrapped, maxFraction: 6)) wNEAR") }
+    case .sellNear(let amount):
+        print(try await executor.sellNear(amount: amount, account: try TestWallet.nearAccount()))
         if let b = try? await Near.balance(account: try TestWallet.nearAccount()) { print("NEAR account: \(Fmt.num(b.near, maxFraction: 6)) NEAR, \(Fmt.num(b.wrapped, maxFraction: 6)) wNEAR") }
     case .aave(let deposit, let amount): print(try await executor.aave(deposit: deposit, usdc: amount))
     case .morpho(let deposit, let amount): print(try await executor.morpho(deposit: deposit, usdc: amount))

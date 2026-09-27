@@ -22,6 +22,9 @@ public protocol TradeSigner: Sendable {
     /// `recipients`: addresses the user approved for a token transfer (from the address book), besides their own.
     func signEVM(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                  to: String, data: Data, recipients: [String]) async throws -> Data
+    /// Native NEAR into a 1Click deposit: the signer builds the one wrap.near transaction itself
+    /// (`NearTransaction.intentDeposit`) and returns it signed, in borsh.
+    func signNearIntentDeposit(amount: UInt128, depositAddress: String, nonce: UInt64, blockHash: Data) async throws -> Data
 }
 
 public struct TradeWallet: Sendable {

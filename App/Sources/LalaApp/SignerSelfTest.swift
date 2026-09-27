@@ -109,6 +109,18 @@ enum SignerSelfTest {
             check(try await signer.send(.signEVMTransaction(chainId: 42161, nonce: 0, maxPriorityFee: 1, maxFee: 20_000_000, gasLimit: 60_000,
                                                             to: arbitrumUSDC, value: 0, data: unlimited, recipients: [])).ok == false, "unlimited approve not signed")
 
+            // NEAR → 1Click: the signer builds the wrap.near transaction itself; it must equal the reference and verify.
+            let nearPublic = try Curve25519.Signing.PrivateKey(rawRepresentation: Derivation.ed25519(seed: seed, path: WalletPath.near(0))).publicKey
+            let nearAccount = nearPublic.rawRepresentation.hex, deposit = String(repeating: "ab", count: 32), hash32 = Data(repeating: 9, count: 32)
+            let nearBody = NearTransaction.serialize(signer: nearAccount, publicKey: nearPublic.rawRepresentation, nonce: 5, receiver: NearTransaction.wrapContract,
+                                                     blockHash: hash32, actions: NearTransaction.intentDeposit(account: nearAccount, depositAddress: deposit,
+                                                                                                             amount: 100_000_000_000_000_000_000_000))
+            let nearTx = try await signer.send(.signNearIntentDeposit(amount: "100000000000000000000000", depositAddress: deposit, nonce: 5, blockHash: hash32))
+            check(nearTx.signedRaw.map { $0.dropLast(65) == nearBody && nearPublic.isValidSignature($0.suffix(64), for: Data(SHA256.hash(data: nearBody))) } == true,
+                  "NEAR → 1Click deposit: the wrap.near transaction matches the reference and its signature verifies")
+            check(try await signer.send(.signNearIntentDeposit(amount: "1", depositAddress: "evil.near", nonce: 5, blockHash: hash32)).ok == false,
+                  "NEAR to a named account instead of a 1Click deposit not signed")
+
             _ = try await signer.send(.forget)
             check(try await signer.send(.status).hasWallet == false, "key removed from the Keychain")
         } catch {

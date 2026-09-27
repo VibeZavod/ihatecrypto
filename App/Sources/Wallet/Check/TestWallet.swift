@@ -22,11 +22,12 @@ enum TestWallet {
                 try Derivation.secp256k1(seed: seed, path: WalletPath.evm(0)))
     }
 
-    /// The NEAR implicit account of the same phrase (m/44'/397'/0').
-    static func nearAccount() throws -> String {
-        let seed = try Mnemonic.seed(try String(contentsOf: file, encoding: .utf8))
-        return try NearAccount.implicit(privateKey: try Derivation.ed25519(seed: seed, path: WalletPath.near(0)))
+    /// The NEAR key of the same phrase (m/44'/397'/0'); its implicit account is the hex of the public key.
+    static func nearKey() throws -> Data {
+        try Derivation.ed25519(seed: try Mnemonic.seed(try String(contentsOf: file, encoding: .utf8)), path: WalletPath.near(0))
     }
+
+    static func nearAccount() throws -> String { try NearAccount.implicit(privateKey: try nearKey()) }
 
     static func addresses() throws -> (solana: String, evm: String) {
         let k = try keys()

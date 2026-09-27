@@ -112,6 +112,22 @@ enum Signer {
             SeedStore.endSession()
             return SignerReply(ok: true)
 
+        case .signNearIntentDeposit(let amount, let depositAddress, let nonce, let blockHash):
+            guard let yocto = UInt128(amount), yocto > 0 else { throw WalletError("Not a NEAR amount: \(amount).") }
+            guard depositAddress.wholeMatch(of: /[0-9a-f]{64}/) != nil else { throw WalletError("Not a 1Click deposit account: \(depositAddress).") }
+            guard blockHash.count == 32 else { throw WalletError("A NEAR block hash is 32 bytes.") }
+            try approve([depositAddress])
+            let seed = try SeedStore.load(reason: "sell \(NearTransaction.near(yocto)) NEAR: wrapped and sent to the 1Click deposit \(depositAddress.prefix(8))…\(depositAddress.suffix(6))")
+            let key = try Derivation.ed25519(seed: seed, path: WalletPath.near(0))
+            let account = try NearAccount.implicit(privateKey: key)
+            if let known = defaults.string(forKey: "near"), known != account { throw WalletError("The NEAR key doesn't match this wallet's NEAR account.") }
+            var r = SignerReply(ok: true)
+            r.signedRaw = try NearTransaction.sign(receiver: NearTransaction.wrapContract, nonce: nonce, blockHash: blockHash,
+                                                   actions: NearTransaction.intentDeposit(account: account, depositAddress: depositAddress, amount: yocto),
+                                                   privateKey: key).signed
+            r.checks = ["\(NearTransaction.near(yocto)) NEAR → wNEAR → \(depositAddress) (1Click)"]
+            return r
+
         case .forget:
             try confirmReplacing("remove the wallet from LALA")
             RecipientStore.delete()

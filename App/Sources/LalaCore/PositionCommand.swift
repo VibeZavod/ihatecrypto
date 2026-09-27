@@ -75,6 +75,8 @@ public enum WalletCommand: Equatable, Sendable {
     /// Native NEAR on the NEAR chain for Solana USDC through NEAR Intents 1Click, to the wallet's own NEAR account;
     /// nil = ask how much.
     case buyNear(usdc: Decimal?)
+    /// Native NEAR from the NEAR account for USDC on the Solana address, through 1Click; nil = all it can give.
+    case sellNear(amount: Decimal?)
     /// Sell this much of the coin for USDC; nil = all of it (SOL keeps a fee reserve).
     case sell(SpotAsset, amount: Decimal?)
     /// Regular purchases (DCA): `usdc` of the coin every `days` days.
@@ -208,6 +210,12 @@ public enum WalletCommand: Equatable, Sendable {
             let forDollars = q.firstMatch(of: /(?:\bна|\bfor)\s+(\d+(?:[.,]\d+)?)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
             return .buyNear(usdc: amount ?? forDollars)
         }
+        // «продай неар», «sell 0.5 NEAR»: native NEAR to USDC on Solana; no number = all of it.
+        if q.contains(/продай\w*|продать|\bsell\b/), q.contains(/\bnear\b|\bнеар\w*|\bниар\w*|\bнир\b/), SpotAsset.find(q) == nil,
+           !q.contains(/\b(?:long|short|лонг\w*|шорт\w*|perp\w*)\b/) {
+            let coins = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:near|неар\w*|ниар\w*)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
+            return .sellNear(amount: coins)
+        }
         if q.contains(/\bкуп\w*|\bbuy\b/), let asset = SpotAsset.find(q) { return .buy(asset, usdc: amount) }
         if q.contains(/продай\w*|продать|\bsell\b/), let asset = SpotAsset.find(q) {
             let coins = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:sol|btc|eth|jup|сол|битк|эфир)/).flatMap { Decimal(string: $0.1.replacingOccurrences(of: ",", with: ".")) }
@@ -315,6 +323,7 @@ extension WalletCommand {
         switch self {
         case .buy(let a, let u): return "buy \(a.symbol) for \(n(u)) USDC"
         case .buyNear(let u): return "buy native NEAR for \(n(u)) USDC (to your NEAR account)"
+        case .sellNear(let x): return "sell \(n(x)) NEAR from your NEAR account for USDC on Solana"
         case .sell(let a, let x): return "sell \(n(x)) \(a.symbol)"
         case .schedule(let a, let u, let d): return "buy \(a.symbol) for \(Fmt.num(u)) USDC every \(d == 1 ? "day" : d == 7 ? "week" : "\(d) days")"
         case .stopSchedules: return "stop recurring buys"

@@ -45,6 +45,12 @@ nonisolated struct XPCTradeSigner: TradeSigner {
         return raw
     }
 
+    func signNearIntentDeposit(amount: UInt128, depositAddress: String, nonce: UInt64, blockHash: Data) async throws -> Data {
+        let reply = try await SignerClient().send(.signNearIntentDeposit(amount: "\(amount)", depositAddress: depositAddress, nonce: nonce, blockHash: blockHash))
+        guard reply.ok, let raw = reply.signedRaw else { throw ExecutionError(Self.reason(reply)) }
+        return raw
+    }
+
     static func reason(_ reply: SignerReply) -> String {
         ([reply.error ?? "The signer refused."] + reply.problems).joined(separator: " ")
     }
@@ -233,6 +239,9 @@ extension Workspace {
                 guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
                 nearAddress = account
                 reply(try await e.buyNear(usdc: usdc ?? 0, account: account), note: "NEAR Intents · 1Click")
+            case .sellNear(let amount):
+                guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
+                reply(try await e.sellNear(amount: amount, account: account), note: "NEAR Intents · 1Click")
             case .aave(let deposit, let amount): reply(try await e.aave(deposit: deposit, usdc: amount), note: "Aave · Base")
             case .morpho(let deposit, let amount): reply(try await e.morpho(deposit: deposit, usdc: amount), note: "Morpho · Base")
             case .baseToSolana(let amount): reply(try await e.baseToSolana(usdc: amount), note: "Relay · Base → Solana")

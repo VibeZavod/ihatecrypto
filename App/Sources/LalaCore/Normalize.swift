@@ -36,7 +36,7 @@ public enum ChatRouter {
       move stop to breakeven | stop at <PRICE> | take at <PRICE> | trail N% | close | close half | close N% | cancel orders
     SPOT ON SOLANA (Jupiter): buy <SOL|BTC|ETH|JUP|JitoSOL> for N USDC | sell [N] <SOL|BTC|ETH|JUP>
       buy <SOL|BTC|ETH|JUP> for N USDC every <day|week|N days> | stop recurring buys
-      buy NEAR for N USDC
+      buy NEAR for N USDC | sell [N] NEAR   (native NEAR on the NEAR account → USDC on Solana; no N = all of it)
     STOCK TOKENS ON ROBINHOOD CHAIN: buy <COMPANY or TICKER> stock for N USDC | sell <TICKER> stock | move USDG from Robinhood to Solana
     ANY TOKEN BY ITS CONTRACT (Robinhood Chain): buy token <0xCONTRACT> for N USDC | sell [N] tokens <0xCONTRACT>
     EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault") | withdraw [N] <USDC|SOL> from the vault
@@ -61,7 +61,7 @@ public enum ChatRouter {
     and the HLP vault); Jupiter Lend and Kamino on Solana; Base (Aave, Morpho, idle USDC); Arbitrum (idle USDC); Robinhood \
     Chain (USDG, stock tokens, tokens by contract); NEAR.
     How money moves: through Solana. Solana ⇄ Base, Arbitrum and Robinhood Chain over Relay; Hyperliquid → Solana; a trade \
-    plan brings USDC from Solana to Hyperliquid by itself; vaults are entered and left from Solana (Aave and Morpho from Base). \
+    plan brings USDC from Solana to Hyperliquid by itself; NEAR ⇄ Solana USDC through NEAR Intents (buy NEAR / sell NEAR); vaults are entered and left from Solana (Aave and Morpho from Base). \
     Between two places that aren't Solana there is no direct move: it's two steps through Solana.
 
     Return only a JSON object: {"route": "command" | "question" | "plan" | "chat" | "clarify", "command": "...", "reply": "..."}
