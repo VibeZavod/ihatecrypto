@@ -1539,21 +1539,28 @@ struct FloatingChat: View {
 }
 
 /// «[logo] GPT 6 SOL ▾»: the model for the chat, right under LALA AI. The choice is kept per canvas.
-/// The menu lists companies; one with several ways in (subscription, API key) opens in place to show them.
+/// The menu lists companies; one with several ways in (subscription, API key) always stands open, so the menu keeps
+/// its height: a popover that resizes moves itself, and the row under the pointer with it.
 struct ChatModelMenu: View {
     @Environment(Workspace.self) private var ws
     @Environment(\.openSettings) private var openSettings
     @State private var open = false
-    /// The company opened in the menu; the current one's when the menu opens.
+    /// The two-way company standing open: the current one's when the menu opens, else the first.
+    // ponytail: equal height holds while every multi-way company has exactly two ways.
     @State private var expanded: String?
+    /// When the popover last closed: a click on the chip closes it first, and the same click must not reopen it.
+    @State private var closedAt = Date.distantPast
     /// Providers with a saved login, read once per opening: each Keychain read is a round trip to securityd.
     @State private var linked: Set<String> = []
 
     var body: some View {
         Button {
+            if open { open = false; return }
+            guard Date.now.timeIntervalSince(closedAt) > 0.3 else { return }
             linked = Set(LLMCatalog.all.map(\.info.id).filter { Keychain.load($0) != nil })
-            expanded = ModelCompany.of(ws.providerID)?.name
-            open.toggle()
+            let twoWay = ModelCompany.all.filter { $0.ids.count > 1 }
+            expanded = (twoWay.first { $0.ids.contains(ws.providerID) } ?? twoWay.first)?.name
+            open = true
         } label: {
             HStack(spacing: 4) {
                 if let c = ModelCompany.of(ws.providerID) { ModelCompanyLogo(company: c, size: 15) }
@@ -1568,6 +1575,7 @@ struct ChatModelMenu: View {
         .fixedSize()
         .help("\(ws.provider.info.name) · \(ws.model). The model for this canvas; it never sees your wallet key.")
         .popover(isPresented: $open, arrowEdge: .bottom) { menu }
+        .onChange(of: open) { if !open { closedAt = .now } }
     }
 
     private var menu: some View {
@@ -1593,14 +1601,14 @@ struct ChatModelMenu: View {
             .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 4)
     }
 
-    /// A company's row; several ways in open under it, a single one is picked right away.
+    /// A company's row; a tap opens its ways in (closing the open one), or picks its only way.
     @ViewBuilder private func company(_ c: ModelCompany) -> some View {
         let ways = c.ids.compactMap { LLMCatalog.provider(id: $0)?.info }
         let current = ways.first { $0.id == ws.providerID }
         let isOpen = ways.count > 1 && expanded == c.name
         CompanyRow(company: c, detail: summary(ways, current: isOpen ? nil : current), current: current != nil,
                    disclosure: ways.count > 1 ? isOpen : nil) {
-            if ways.count > 1 { expanded = isOpen ? nil : c.name } else if let only = ways.first { pick(only) }
+            if ways.count > 1 { expanded = c.name } else if let only = ways.first { pick(only) }
         }
         if isOpen {
             ForEach(ways) { info in
