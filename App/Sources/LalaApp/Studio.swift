@@ -317,14 +317,7 @@ struct StudioRail: View {
             LalaLogo(size: 38)
             Button { withAnimation(StudioView.spring) { collapsed = false } } label: { Image(systemName: "sidebar.left") }
                 .buttonStyle(.hoverIcon).help("Expand wallet")
-            RailActions(compact: true)
-            Button { withAnimation(StudioView.spring) { ws.newCanvas() } } label: { Image(systemName: "square.and.pencil") }
-                .buttonStyle(.hoverIcon).help("New canvas").disabled(ws.busy)
-            Button { canvasesOpen.toggle() } label: { Image(systemName: "rectangle.stack") }
-                .buttonStyle(.hoverIcon).help("Canvases")
-                .popover(isPresented: $canvasesOpen, arrowEdge: .trailing) {
-                    CanvasList { canvasesOpen = false }.frame(width: 280, height: 380).padding(14)
-                }
+            // The balance first, above the blue Top up button.
             VStack(spacing: 1) {
                 if ws.updatedAt == nil {
                     Skeleton(width: 48, height: 12)
@@ -336,6 +329,14 @@ struct StudioRail: View {
                         .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
                 }
             }
+            RailActions(compact: true)
+            Button { withAnimation(StudioView.spring) { ws.newCanvas() } } label: { Image(systemName: "square.and.pencil") }
+                .buttonStyle(.hoverIcon).help("New canvas").disabled(ws.busy)
+            Button { canvasesOpen.toggle() } label: { Image(systemName: "rectangle.stack") }
+                .buttonStyle(.hoverIcon).help("Canvases")
+                .popover(isPresented: $canvasesOpen, arrowEdge: .trailing) {
+                    CanvasList { canvasesOpen = false }.frame(width: 280, height: 380).padding(14)
+                }
             Spacer(minLength: 0)
             ProfileMenu(compact: true)
         }
