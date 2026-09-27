@@ -661,6 +661,10 @@ struct StudioCanvas: View {
                 // An open position is on its market for good: nothing to pick until it closes.
                 if hasRoute, !ws.managesPosition { MarketPicker() }
             }
+            // Only this canvas's own position, or one the user tapped (a tap opens its chart), not every open one:
+            // its board with the controls first, the chart under it.
+            let positions = nodes.isEmpty ? ws.positions.filter { $0.coin == ws.chart?.coin || (ws.managesPosition && $0.coin == ws.intent.asset) } : []
+            ForEach(positions, id: \.coin) { PositionBoard(position: $0) }
             if let chart = ws.chart { ChartBoard(state: chart) }
             if ws.showMovers { MoversBoard() }
             if let yields = ws.yieldOptions, !yields.isEmpty {
@@ -673,9 +677,6 @@ struct StudioCanvas: View {
             PendingAddressBoard()
             TransferBoard()
             if nodes.isEmpty {
-                // Only this canvas's own position, or one the user tapped (a tap opens its chart), not every open one.
-                let positions = ws.positions.filter { $0.coin == ws.chart?.coin || (ws.managesPosition && $0.coin == ws.intent.asset) }
-                ForEach(positions, id: \.coin) { PositionBoard(position: $0) }
                 if ws.yieldOptions == nil, ws.allocationPreview == nil {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
                     if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty { placeholder }
