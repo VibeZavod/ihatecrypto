@@ -41,16 +41,20 @@ extension Workspace {
             }
         }
         // Tokens bought by their contract (favorites on Robinhood Chain), priced by DexScreener.
+        // Collected first, assigned together: every assignment after an await is one more redraw of the window.
+        var held: [String: Decimal] = [:], found: [String: TokenLookup.Info] = [:]
         for t in favoriteTokens where t.chain == "robinhood" {
             guard let raw = try? await rpc.read(t.address, try ERC20.balanceOf(me)), let units = ABI.decimal(in: raw, word: 0), units > 0,
                   let d = ABI.uint(in: (try? await rpc.read(t.address, Data([0x31, 0x3c, 0xe5, 0x67]))) ?? Data(), word: 0) else { continue }
             let amount = units / Decimal(sign: .plus, exponent: Int(d), significand: 1)
-            tokenBalances[t.id] = amount
+            held[t.id] = amount
             if tokenInfo[t.id]?.priceUSD == nil, let info = try? await TokenLookup.lookup(t.address).first(where: { $0.chain == "robinhood" }) {
-                tokenInfo[t.id] = info
+                found[t.id] = info
             }
-            holdings.append(StockHolding(symbol: t.symbol, name: t.name, amount: amount, price: tokenInfo[t.id]?.priceUSD, logo: t.image))
+            holdings.append(StockHolding(symbol: t.symbol, name: t.name, amount: amount, price: (found[t.id] ?? tokenInfo[t.id])?.priceUSD, logo: t.image))
         }
+        tokenBalances.merge(held) { $1 }
+        tokenInfo.merge(found) { $1 }
         robinhood = (Decimal(usdg) / 1_000_000, Decimal(eth) / Decimal(sign: .plus, exponent: 18, significand: 1), holdings)
     }
 

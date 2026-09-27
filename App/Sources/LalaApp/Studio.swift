@@ -667,7 +667,7 @@ struct ProfileMenu: View {
         }
     }
 
-    private var signedIn: String { ws.credential == nil ? "no model connected" : "signed in with \(ws.provider.info.name)" }
+    private var signedIn: String { ws.signedIn ? "signed in with \(ws.provider.info.name)" : "no model connected" }
 
     private var menu: some View {
         VStack(alignment: .leading, spacing: 2) {
@@ -701,8 +701,8 @@ struct ProfileMenu: View {
             MenuRow(title: "Sign out of \(ws.provider.info.name)", detail: "the wallet key stays in secure storage", icon: "rectangle.portrait.and.arrow.right", tint: Brand.loss) {
                 go { confirmSignOut = true }
             }
-            .disabled(ws.credential == nil)
-            .opacity(ws.credential == nil ? 0.5 : 1)
+            .disabled(!ws.signedIn)
+            .opacity(ws.signedIn ? 1 : 0.5)
         }
         .padding(8)
         .frame(width: 290)
@@ -726,17 +726,6 @@ struct StudioCanvas: View {
     @Environment(Workspace.self) private var ws
     /// Width covered by the floating chat on the right; the content is scaled to fit left of it.
     var inset: CGFloat = 0
-    @State private var zoom: CGFloat = 1
-    @State private var pan: CGSize = .zero
-    @GestureState private var drag: CGSize = .zero
-    /// A trackpad pinch in progress, and the point between the fingers that stays put.
-    @GestureState private var pinch: CGFloat = 1
-    @State private var pinchAt: CGPoint = .zero
-    /// Two-finger scrolling pans the canvas while the pointer is over it (not over the chat).
-    @State private var hovering = false
-    @State private var pointer: CGPoint = .zero
-    @State private var scrollMonitor: Any?
-    static let zoomRange: ClosedRange<CGFloat> = 0.4...2.5
     @State private var frames: [String: CGRect] = [:]
     /// How many plan blocks are on the canvas; grows one by one when a new plan arrives.
     @State private var shown = 0
@@ -746,57 +735,8 @@ struct StudioCanvas: View {
     private static let contentWidth: CGFloat = 28 + 270 + 36 + 470 + 24
 
     var body: some View {
-        GeometryReader { geo in
-            let fit = min(1, max(0.55, (geo.size.width - inset) / Self.contentWidth))
-            canvas(scale: fit * zoom)
-        }
-    }
-
-    private func canvas(scale base: CGFloat) -> some View {
-        // Zooming about a point P keeps it still: the offset becomes P − (P − pan)·k.
-        let k = Self.zoomRange.clamped(zoom * pinch) / zoom
-        let scale = base * k
-        let live = CGSize(width: pan.width + drag.width, height: pan.height + drag.height)
-        let moved = CanvasZoom.pan(keeping: (pinchAt.x, pinchAt.y), from: (live.width, live.height), by: k)
-        let shown = CGSize(width: moved.x, height: moved.y)
-        return ZStack(alignment: .topLeading) {
-            Brand.canvas
-            Canvas { context, size in
-                for x in stride(from: CGFloat(11), through: size.width, by: 22) {
-                    for y in stride(from: CGFloat(11), through: size.height, by: 22) {
-                        context.fill(Path(ellipseIn: CGRect(x: x, y: y, width: 2, height: 2)), with: .color(Brand.dots))
-                    }
-                }
-            }
-            .accessibilityHidden(true)
-
-            content
-                .scaleEffect(scale, anchor: .topLeading)
-                .offset(shown)
-        }
-        .clipped()
-        .contentShape(Rectangle())
-        .gesture(DragGesture(minimumDistance: 6)
-            .updating($drag) { value, state, _ in state = value.translation }
-            .onEnded { value in pan.width += value.translation.width; pan.height += value.translation.height })
-        // Pinch with two fingers: in and out around the point between them.
-        .simultaneousGesture(MagnifyGesture()
-            .updating($pinch) { value, state, _ in state = value.magnification }
-            .onChanged { value in pinchAt = value.startLocation }
-            .onEnded { value in zoomAbout(value.startLocation, by: value.magnification) })
-        .onContinuousHover { phase in
-            switch phase {
-            case .active(let p): hovering = true; pointer = p
-            case .ended: hovering = false
-            }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasZoom)) { note in
-            if let f = note.userInfo?["factor"] as? CGFloat { zoomAbout(pointer, by: f) }
-        }
-        .onAppear(perform: watchScrolling)
-        .onDisappear { if let m = scrollMonitor { NSEvent.removeMonitor(m); scrollMonitor = nil } }
-        .overlay(alignment: .bottomLeading) { zoomBar(scale).padding(18) }
-        .task(id: planKey) { await assemble() }
+        CanvasViewport(inset: inset, contentWidth: Self.contentWidth) { content }
+            .task(id: planKey) { await assemble() }
     }
 
     private var content: some View {
@@ -989,6 +929,72 @@ struct StudioCanvas: View {
     private func record(_ id: String, _ frame: CGRect) {
         if frames[id] != frame { frames[id] = frame }
     }
+}
+
+/// The canvas's pan and zoom. The state lives here, apart from what the canvas shows: a scroll, a drag or a pinch
+/// moves the content already built instead of rebuilding the portfolio and the plan on every frame of the gesture.
+struct CanvasViewport<Content: View>: View {
+    @Environment(Workspace.self) private var ws
+    /// Width covered by the floating chat on the right; the content is scaled to fit left of it.
+    let inset: CGFloat
+    /// The content's own width: at 100 % it fits left of the chat.
+    let contentWidth: CGFloat
+    @ViewBuilder let content: Content
+    @State private var zoom: CGFloat = 1
+    @State private var pan: CGSize = .zero
+    @GestureState private var drag: CGSize = .zero
+    /// A trackpad pinch in progress, and the point between the fingers that stays put.
+    @GestureState private var pinch: CGFloat = 1
+    @State private var pinchAt: CGPoint = .zero
+    /// Two-finger scrolling pans the canvas while the pointer is over it (not over the chat).
+    @State private var hovering = false
+    @State private var pointer: CGPoint = .zero
+    @State private var scrollMonitor: Any?
+    static var zoomRange: ClosedRange<CGFloat> { 0.4...2.5 }
+
+    var body: some View {
+        GeometryReader { geo in
+            let fit = min(1, max(0.55, (geo.size.width - inset) / contentWidth))
+            canvas(scale: fit * zoom)
+        }
+    }
+
+    private func canvas(scale base: CGFloat) -> some View {
+        // Zooming about a point P keeps it still: the offset becomes P − (P − pan)·k.
+        let k = Self.zoomRange.clamped(zoom * pinch) / zoom
+        let scale = base * k
+        let live = CGSize(width: pan.width + drag.width, height: pan.height + drag.height)
+        let moved = CanvasZoom.pan(keeping: (pinchAt.x, pinchAt.y), from: (live.width, live.height), by: k)
+        return ZStack(alignment: .topLeading) {
+            Brand.canvas
+            DotGrid()
+            content
+                .scaleEffect(scale, anchor: .topLeading)
+                .offset(CGSize(width: moved.x, height: moved.y))
+        }
+        .clipped()
+        .contentShape(Rectangle())
+        .gesture(DragGesture(minimumDistance: 6)
+            .updating($drag) { value, state, _ in state = value.translation }
+            .onEnded { value in pan.width += value.translation.width; pan.height += value.translation.height })
+        // Pinch with two fingers: in and out around the point between them.
+        .simultaneousGesture(MagnifyGesture()
+            .updating($pinch) { value, state, _ in state = value.magnification }
+            .onChanged { value in pinchAt = value.startLocation }
+            .onEnded { value in zoomAbout(value.startLocation, by: value.magnification) })
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let p): hovering = true; pointer = p
+            case .ended: hovering = false
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasZoom)) { note in
+            if let f = note.userInfo?["factor"] as? CGFloat { zoomAbout(pointer, by: f) }
+        }
+        .onAppear(perform: watchScrolling)
+        .onDisappear { if let m = scrollMonitor { NSEvent.removeMonitor(m); scrollMonitor = nil } }
+        .overlay(alignment: .bottomLeading) { zoomBar(scale).padding(18) }
+    }
 
     /// Changes the zoom by `factor`, keeping `point` (in the canvas) where it is.
     private func zoomAbout(_ point: CGPoint, by factor: CGFloat) {
@@ -1032,6 +1038,20 @@ struct StudioCanvas: View {
         .padding(.horizontal, 10).padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 12).fill(Brand.card))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Brand.cardBorder))
+    }
+}
+
+/// The dotted paper under the canvas: its own view, so it is drawn again only when the window's size changes.
+private struct DotGrid: View {
+    var body: some View {
+        Canvas { context, size in
+            for x in stride(from: CGFloat(11), through: size.width, by: 22) {
+                for y in stride(from: CGFloat(11), through: size.height, by: 22) {
+                    context.fill(Path(ellipseIn: CGRect(x: x, y: y, width: 2, height: 2)), with: .color(Brand.dots))
+                }
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 
@@ -1470,7 +1490,6 @@ struct StudioNodeView: View {
 
 struct FloatingChat: View {
     @Environment(Workspace.self) private var ws
-    @State private var templatesOpen = false
     var compact = false
     var wide = false
     let toggleCompact: () -> Void
@@ -1536,47 +1555,26 @@ struct FloatingChat: View {
                 .padding(.horizontal, 14).padding(.bottom, 4)
                 .transition(.opacity)
             }
-            actions.padding(.horizontal, 14)
+            ChatActions().padding(.horizontal, 14)
 
-            HStack(alignment: .bottom, spacing: 8) {
-                Button { templatesOpen.toggle() } label: {
-                    Image(systemName: "square.grid.2x2").font(.system(size: 15, weight: .semibold))
-                        .frame(width: 34, height: 34)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(Brand.card))
-                }
-                .buttonStyle(.plain)
-                .pointerStyle(.link)
-                .foregroundStyle(Brand.accent)
-                .help("Plan templates")
-                .popover(isPresented: $templatesOpen, arrowEdge: .top) {
-                    TemplatesPanel { phrase in ws.draft = phrase; templatesOpen = false }
-                }
-                TextField("What should we do?", text: Bindable(ws).draft, axis: .vertical)
-                    .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(1...5)
-                    .padding(.vertical, 8)
-                    .onSubmit(send)
-                Button(action: send) {
-                    Image(systemName: "arrow.up").font(.system(size: 13, weight: .bold))
-                        .foregroundStyle(Color(nsColor: .windowBackgroundColor))
-                        .frame(width: 34, height: 34)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(ws.draft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary)))
-                }
-                .buttonStyle(.plain)
-                .pointerStyle(ws.draft.isEmpty || ws.busy ? nil : .link)
-                .disabled(ws.draft.isEmpty || ws.busy)
-                .keyboardShortcut(.return, modifiers: .command)
-            }
-            .padding(6)
-            .background(RoundedRectangle(cornerRadius: 14).fill(.fill.tertiary))
-            .padding(12)
+            ChatComposer()
         }
         .frame(maxHeight: .infinity)
         .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.14), radius: 24, y: 14))
         .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.cardBorder))
     }
 
-    /// The one thing to do next: sign the allocation, execute the plan, or manage the open position.
-    @ViewBuilder private var actions: some View {
+    private func headerIcon(_ name: String) -> some View {
+        Image(systemName: name).font(.system(size: 13, weight: .semibold))
+    }
+}
+
+/// The one thing to do next under the chat: sign the allocation, execute the plan, or manage the open position.
+/// Its own view: it reads the plan and prices, so a balance refresh redraws these buttons, not the whole chat.
+private struct ChatActions: View {
+    @Environment(Workspace.self) private var ws
+
+    var body: some View {
         if let text = ws.pendingText {
             Button { Task { await ws.send("do it") } } label: { primary("Confirm: \(text)") }
                 .buttonStyle(.plain).disabled(ws.executing).padding(.bottom, 4)
@@ -1617,14 +1615,50 @@ struct FloatingChat: View {
         }
     }
 
-    private func headerIcon(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 13, weight: .semibold))
-    }
-
     private func primary(_ title: String, enabled: Bool = true) -> some View {
         Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
             .frame(maxWidth: .infinity, minHeight: 40)
             .background(RoundedRectangle(cornerRadius: 12).fill(enabled ? Brand.accent : Color.gray.opacity(0.5)))
+    }
+}
+
+/// The chat's input. Its own view: a keystroke redraws the field and its buttons, not the conversation above it.
+private struct ChatComposer: View {
+    @Environment(Workspace.self) private var ws
+    @State private var templatesOpen = false
+
+    var body: some View {
+        HStack(alignment: .bottom, spacing: 8) {
+            Button { templatesOpen.toggle() } label: {
+                Image(systemName: "square.grid.2x2").font(.system(size: 15, weight: .semibold))
+                    .frame(width: 34, height: 34)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(Brand.card))
+            }
+            .buttonStyle(.plain)
+            .pointerStyle(.link)
+            .foregroundStyle(Brand.accent)
+            .help("Plan templates")
+            .popover(isPresented: $templatesOpen, arrowEdge: .top) {
+                TemplatesPanel { phrase in ws.draft = phrase; templatesOpen = false }
+            }
+            TextField("What should we do?", text: Bindable(ws).draft, axis: .vertical)
+                .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(1...5)
+                .padding(.vertical, 8)
+                .onSubmit(send)
+            Button(action: send) {
+                Image(systemName: "arrow.up").font(.system(size: 13, weight: .bold))
+                    .foregroundStyle(Color(nsColor: .windowBackgroundColor))
+                    .frame(width: 34, height: 34)
+                    .background(RoundedRectangle(cornerRadius: 10).fill(ws.draft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary)))
+            }
+            .buttonStyle(.plain)
+            .pointerStyle(ws.draft.isEmpty || ws.busy ? nil : .link)
+            .disabled(ws.draft.isEmpty || ws.busy)
+            .keyboardShortcut(.return, modifiers: .command)
+        }
+        .padding(6)
+        .background(RoundedRectangle(cornerRadius: 14).fill(.fill.tertiary))
+        .padding(12)
     }
 
     private func send() {

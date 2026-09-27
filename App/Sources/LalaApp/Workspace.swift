@@ -16,7 +16,7 @@ import SignerAPI
 import TradeExecution
 import TxGuard
 
-struct Message: Identifiable, Codable {
+struct Message: Identifiable, Codable, Equatable {
     var id = UUID()
     let fromUser: Bool
     let text: String
@@ -242,9 +242,20 @@ final class Workspace {
         _ = credentialVersion
         return Keychain.load(providerID)
     }
+    /// Whether the chosen provider has a login, for views: a Keychain read is a round trip to securityd (≈ 4 ms) and
+    /// the rail redraws with every balance refresh. Read once per provider; a token refresh never removes a login.
+    var signedIn: Bool {
+        _ = credentialVersion
+        if let known = signedInCache[providerID] { return known }
+        let known = Keychain.load(providerID) != nil
+        signedInCache[providerID] = known
+        return known
+    }
+    @ObservationIgnored private var signedInCache: [String: Bool] = [:]
 
     func setCredential(_ credential: Credential?) {
         Keychain.save(credential, for: providerID)
+        signedInCache[providerID] = nil
         credentialVersion += 1
     }
 
@@ -713,10 +724,13 @@ final class Workspace {
         async let usdc = rpc.tokenBalance(EVMRPC.baseUSDC, owner: me)
         async let supplied = rpc.tokenBalance(AaveV3.baseAUSDC, owner: me)
         async let eth = rpc.balance(me)
-        if let u = try? await usdc, let a = try? await supplied, let e = try? await eth {
+        async let arb = EVMRPC.arbitrum.tokenBalance(EVMRPC.arbitrumUSDC, owner: me)
+        // Awaited first, assigned together: every assignment after an await is one more redraw of the window.
+        let u = try? await usdc, a = try? await supplied, e = try? await eth, arbitrum = try? await arb
+        if let u, let a, let e {
             base = (Decimal(u) / 1_000_000, Decimal(a) / 1_000_000, Decimal(e) / Decimal(sign: .plus, exponent: 18, significand: 1))
         }
-        if let arb = try? await EVMRPC.arbitrum.tokenBalance(EVMRPC.arbitrumUSDC, owner: me) { arbitrumUSDC = Decimal(arb) / 1_000_000 }
+        if let arbitrum { arbitrumUSDC = Decimal(arbitrum) / 1_000_000 }
         // The rate moves slowly: re-read it every ten minutes, not on every refresh.
         if aaveCheckedAt.map({ Date().timeIntervalSince($0) > 600 }) ?? true, let apy = try? await AaveV3.verifyBase(rpc) {
             aaveAPY = apy
@@ -739,13 +753,25 @@ final class Workspace {
             solanaError = solanaAddress.isEmpty ? nil : "Check the Solana address format."
             return
         }
+        // All at once, assigned together: every assignment after an await is one more redraw of the window.
+        let owner = solanaAddress, nearAccount = nearAddress
+        async let balance = Solana.balance(owner: owner)
+        async let lendPositions = try? JupiterLend.positions(user: owner)
+        async let kaminoPositions = try? Kamino.positions(wallet: owner)
+        async let nearBalance = { () async -> (near: Decimal, wrapped: Decimal)? in
+            guard let nearAccount else { return nil }
+            return try? await Near.balance(account: nearAccount)
+        }()
         do {
-            solana = try await Solana.balance(owner: solanaAddress)
-            solanaError = nil
-            lend = ((try? await JupiterLend.positions(user: solanaAddress)) ?? []).filter { $0.assets > 0 }
+            let s = try await balance
+            let l: [(vault: String, usdc: Decimal)] = ((await lendPositions) ?? []).filter { $0.assets > 0 }
                 .map { ($0.vault, Decimal($0.assets) / 1_000_000) }
-            if let k = try? await Kamino.positions(wallet: solanaAddress) { kamino = k.reduce(0) { $0 + $1.valueUSD } }
-            if let a = nearAddress, let b = try? await Near.balance(account: a) { near = b.near + b.wrapped }
+            let k = await kaminoPositions, n = await nearBalance
+            solana = s
+            solanaError = nil
+            lend = l
+            if let k { kamino = k.reduce(0) { $0 + $1.valueUSD } }
+            if let n { near = n.near + n.wrapped }
         } catch {
             solana = nil
             solanaError = error.localizedDescription
@@ -758,18 +784,32 @@ final class Workspace {
             hlError = hlAddress.isEmpty ? nil : "Check the address format: 0x and 40 hex characters."
             return
         }
+        // All at once, assigned together: every assignment after an await is one more redraw of the window.
+        let user = hlAddress
+        async let balance = Hyperliquid.balance(user: user)
+        async let openPositions = try? HyperliquidAccount.positions(user)
+        async let openOrders = try? HyperliquidAccount.openOrders(user)
+        async let vault = try? HyperliquidAccount.vaultEquity(user: user, vault: HLGuard.hlpVault)
+        async let dexes = { () async -> [String: (accountValue: Decimal, withdrawable: Decimal)] in
+            var out: [String: (accountValue: Decimal, withdrawable: Decimal)] = [:]
+            for dex in Hyperliquid.hip3Dexes { out[dex] = try? await Hyperliquid.dexBalance(user: user, dex: dex) }
+            return out
+        }()
         do {
-            hl = try await Hyperliquid.balance(user: hlAddress)
-            hlError = nil
+            let b = try await balance
+            let p = ((await openPositions) ?? []).filter { $0.size != 0 }
+            let o = (await openOrders) ?? [], v = await vault, d = await dexes
             let before = Set(positions.map(\.coin))
-            positions = ((try? await HyperliquidAccount.positions(hlAddress)) ?? []).filter { $0.size != 0 }
-            for dex in Hyperliquid.hip3Dexes { dexBalances[dex] = try? await Hyperliquid.dexBalance(user: hlAddress, dex: dex) }
+            hl = b
+            hlError = nil
+            positions = p
+            dexBalances = d
+            orders = o
+            if let v { hlp = (v.equity, v.lockedUntil) }
             // A position that vanished while we were not closing it was closed by its stop or take.
             if !executing {
                 for coin in before.subtracting(positions.map(\.coin)) { await closedByExchange(coin) }
             }
-            orders = (try? await HyperliquidAccount.openOrders(hlAddress)) ?? []
-            if let v = try? await HyperliquidAccount.vaultEquity(user: hlAddress, vault: HLGuard.hlpVault) { hlp = (v.equity, v.lockedUntil) }
             if recentlyClosed == nil || before != Set(positions.map(\.coin)), let fills = try? await TradeHistory.fills(user: hlAddress) {
                 let week = Date().addingTimeInterval(-7 * 86400)
                 recentlyClosed = TradeHistory.stories(fills).filter { ($0.closed ?? .distantPast) > week }

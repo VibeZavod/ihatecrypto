@@ -63,20 +63,25 @@ extension Workspace {
     func refreshTokens() async {
         guard !favoriteTokens.isEmpty, Date().timeIntervalSince(tokensCheckedAt) > 60 else { return }
         tokensCheckedAt = Date()
+        // Collected first, assigned once: every assignment after an await is one more redraw of the window.
+        var found: [String: TokenLookup.Info] = [:]
         for t in favoriteTokens {
-            if let info = try? await TokenLookup.lookup(t.address).first(where: { $0.chain == t.chain }) { tokenInfo[t.id] = info }
+            if let info = try? await TokenLookup.lookup(t.address).first(where: { $0.chain == t.chain }) { found[t.id] = info }
         }
+        tokenInfo.merge(found) { $1 }
         await loadTokenBalances()
     }
 
     /// What the wallet holds of each favorite on the EVM chains LALA reads.
     func loadTokenBalances() async {
         guard isEVMAddress(hlAddress) else { return }
+        var held: [String: Decimal] = [:]
         for t in favoriteTokens {
             guard let rpc = t.rpc, let raw = try? await rpc.read(t.address, try ERC20.balanceOf(hlAddress)), let units = ABI.decimal(in: raw, word: 0),
                   let d = ABI.uint(in: (try? await rpc.read(t.address, Data([0x31, 0x3c, 0xe5, 0x67]))) ?? Data(), word: 0) else { continue }
-            tokenBalances[t.id] = units / Decimal(sign: .plus, exponent: Int(d), significand: 1)
+            held[t.id] = units / Decimal(sign: .plus, exponent: Int(d), significand: 1)
         }
+        tokenBalances.merge(held) { $1 }
     }
 }
 

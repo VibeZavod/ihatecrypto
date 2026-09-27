@@ -3,7 +3,7 @@ import LLMCatalog
 import SwiftUI
 
 /// The chat as the eye reads it: execution steps gathered into one card, every other message on its own.
-struct ChatHistory: View {
+struct ChatHistory: View, Equatable {
     let messages: [Message]
     /// The last steps card shows a spinner on its last step while a plan is executing.
     var running = false
