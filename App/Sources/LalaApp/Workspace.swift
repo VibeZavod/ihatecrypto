@@ -71,6 +71,9 @@ final class Workspace {
     var pendingAllocation: WalletCommand?
     /// A command the model read from another language: it waits for «do it», so a wrong reading moves nothing.
     var pendingAction: PendingAction?
+    /// The last money move carried out on this canvas and whether it went through: the canvas shows it instead of the
+    /// «waiting for the signature» it replaced.
+    var finishedAction: (title: String, ok: Bool)?
     enum PendingAction { case wallet(WalletCommand), position(PositionCommand, coin: String), address(SavedAddress), transfer(SavedAddress, Decimal) }
     /// The English command the pending action was understood as, for the confirm button.
     var pendingText: String?
@@ -334,6 +337,7 @@ final class Workspace {
             return
         }
         messages.append(Message(fromUser: true, text: text))
+        finishedAction = nil
         // Every message starts an activity; whatever is on the canvas when it's handled is frozen into it.
         beginActivity(.request, request: text)
         defer { snapshotCanvas(); saveCanvas() }

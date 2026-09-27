@@ -60,6 +60,9 @@ extension Workspace {
             return ("Save “\(entry.name)” to Addresses", nil, [ActivityBubble(kind: "free", label: "Save · \(entry.network.title)", title: entry.name, logo: entry.network.logo)])
         default: break
         }
+        if let f = finishedAction {
+            return (f.title, nil, [ActivityBubble(kind: f.ok ? "free" : "skipped", label: f.ok ? "Done" : "Failed", title: f.title, logo: Self.logo(for: f.title))])
+        }
         if let c = chart, intent == TradeIntent(), allocationPreview == nil, yieldOptions == nil {
             let name = IntentParser.pretty(c.coin)
             return ("Chart · \(name)", c.coin, [ActivityBubble(kind: "position", label: "Chart · \(c.range.title)", title: name,

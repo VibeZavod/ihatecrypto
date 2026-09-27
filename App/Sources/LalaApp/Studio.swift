@@ -227,6 +227,8 @@ struct StudioRail: View {
     @State private var edgeHover = false
     @State private var canvasesOpen = false
     @State private var balanceHover = false
+    @State private var allAccounts = false
+    @State private var allPositions = false
     static let narrowWidth: CGFloat = 76, wideWidth: CGFloat = 280
 
     private var width: CGFloat { dragWidth ?? (collapsed ? Self.narrowWidth : Self.wideWidth) }
@@ -299,7 +301,11 @@ struct StudioRail: View {
                             }
                             .buttonStyle(.borderless).help("Your addresses: where to send money into LALA")
                         }
-                        Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 34, weight: .bold)).monospacedDigit().tracking(-1)
+                        if ws.updatedAt == nil {
+                            Skeleton(width: 150, height: 34, radius: 9).padding(.vertical, 3)
+                        } else {
+                            Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 34, weight: .bold)).monospacedDigit().tracking(-1)
+                        }
                         if !ws.positions.isEmpty {
                             Text("\(signed(ws.positionsPnl)) in positions").font(.caption.weight(.semibold))
                                 .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
@@ -307,31 +313,22 @@ struct StudioRail: View {
                     }
                     .onHover { balanceHover = $0 }
                     VStack(spacing: 2) {
-                        account("solana", logo: "sol", name: "Solana", value: ws.solana.map { "\(Fmt.num($0.usdc)) USDC" } ?? "—")
-                        account("hyperliquid", logo: "hype", name: "Hyperliquid", value: ws.hlTotal.map(Fmt.usd) ?? "—")
-                        if ws.lendTotal > 0 {
-                            account("jupiter", logo: "jup", name: "Jupiter Lend", value: "\(Fmt.num(ws.lendTotal)) USDC")
-                        }
-                        if ws.kamino > 0 {
-                            account("kamino", logo: "kamino", name: "Kamino", value: Fmt.usd(ws.kamino))
-                        }
-                        if ws.near > 0 {
-                            account("near", logo: "near", name: "NEAR", value: "\(Fmt.num(ws.near, maxFraction: 4)) NEAR")
-                        }
-                        if let b = ws.base, b.aave + b.usdc > 0 {
-                            account("aave", logo: "aave", name: "Aave · Base", value: "\(Fmt.num(b.aave + b.usdc)) USDC")
-                        }
-                        if ws.robinhoodTotal > 0 {
-                            account("robinhood", logo: "robinhood", name: "Robinhood Chain", value: Fmt.usd(ws.robinhoodTotal))
+                        if ws.updatedAt == nil {
+                            ForEach(0..<4, id: \.self) { _ in SkeletonRow() }
+                        } else {
+                            let rows = accounts
+                            ForEach(allAccounts ? rows : Array(rows.prefix(Self.railLimit)), id: \.place) { account($0.place, logo: $0.logo, name: $0.name, value: $0.value) }
+                            RailMore(total: rows.count, expanded: $allAccounts)
                         }
                     }
                     if !ws.positions.isEmpty {
                         VStack(alignment: .leading, spacing: 8) {
                             Text("Positions · Hyperliquid").font(.caption).foregroundStyle(.secondary)
-                            ForEach(ws.positions, id: \.coin) { p in
+                            ForEach(allPositions ? ws.positions : Array(ws.positions.prefix(Self.railLimit)), id: \.coin) { p in
                                 Button { Task { await ws.chartCommand(.chart(coin: p.coin, range: .day)) } } label: { PositionChip(position: p) }
                                     .buttonStyle(.plain).pointerStyle(.link).help("Open the \(IntentParser.pretty(p.coin)) chart")
                             }
+                            RailMore(total: ws.positions.count, expanded: $allPositions)
                         }
                     }
                     if let closed = ws.recentlyClosed, !closed.isEmpty {
@@ -340,6 +337,8 @@ struct StudioRail: View {
                     FavoriteChips()
                     CanvasList(scrolls: false)
                 }
+                // Loaded numbers and sections that arrive later fade in instead of popping up.
+                .animation(.easeOut(duration: 0.35), value: railKey)
             }
             .scrollIndicators(.never)
             ProfileMenu(compact: false)
@@ -369,7 +368,11 @@ struct StudioRail: View {
             ScrollView {
                 VStack(spacing: 14) {
                     VStack(spacing: 1) {
-                        Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 12, weight: .heavy)).monospacedDigit()
+                        if ws.updatedAt == nil {
+                            Skeleton(width: 48, height: 12)
+                        } else {
+                            Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 12, weight: .heavy)).monospacedDigit()
+                        }
                         if !ws.positions.isEmpty {
                             Text(signed(ws.positionsPnl)).font(.system(size: 10, weight: .semibold))
                                 .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
@@ -401,6 +404,25 @@ struct StudioRail: View {
         .padding(.vertical, 16)
     }
 
+    /// Every section of the rail but the canvases shows this many rows, then «Show N more».
+    static let railLimit = 4
+
+    /// The places that hold money, in the rail's order: Solana and Hyperliquid always, the rest when they hold some.
+    private var accounts: [(place: String, logo: String, name: String, value: String)] {
+        var rows = [("solana", "sol", "Solana", ws.solana.map { "\(Fmt.num($0.usdc)) USDC" } ?? "—"),
+                    ("hyperliquid", "hype", "Hyperliquid", ws.hlTotal.map(Fmt.usd) ?? "—")]
+        if ws.lendTotal > 0 { rows.append(("jupiter", "jup", "Jupiter Lend", "\(Fmt.num(ws.lendTotal)) USDC")) }
+        if ws.kamino > 0 { rows.append(("kamino", "kamino", "Kamino", Fmt.usd(ws.kamino))) }
+        if ws.near > 0 { rows.append(("near", "near", "NEAR", "\(Fmt.num(ws.near, maxFraction: 4)) NEAR")) }
+        if let b = ws.base, b.aave + b.usdc > 0 { rows.append(("aave", "aave", "Aave · Base", "\(Fmt.num(b.aave + b.usdc)) USDC")) }
+        if ws.robinhoodTotal > 0 { rows.append(("robinhood", "robinhood", "Robinhood Chain", Fmt.usd(ws.robinhoodTotal))) }
+        return rows.map { (place: $0.0, logo: $0.1, name: $0.2, value: $0.3) }
+    }
+
+    private var railKey: String {
+        "\(ws.updatedAt == nil)·\(ws.positions.count)·\(ws.recentlyClosed?.count ?? -1)·\(ws.favoriteTokens.count)·\(allAccounts)·\(allPositions)"
+    }
+
     /// A place in the rail: a click opens its details on the canvas, the open one is highlighted.
     private func account(_ place: String, logo: String, name: String, value: String) -> some View {
         Button { ws.toggleDetail(place) } label: {
@@ -430,6 +452,61 @@ struct StudioRail: View {
         .modifier(HoverLift())
         .contentShape(Rectangle())
         .help(help)
+    }
+}
+
+/// «Show 3 more» under a rail list cut to its first few rows; «Show less» folds it back.
+struct RailMore: View {
+    let total: Int
+    @Binding var expanded: Bool
+
+    var body: some View {
+        if total > StudioRail.railLimit {
+            Button { withAnimation(.snappy) { expanded.toggle() } } label: {
+                Label(expanded ? "Show less" : "Show \(total - StudioRail.railLimit) more", systemImage: expanded ? "chevron.up" : "chevron.down")
+                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8).padding(.vertical, 4)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).pointerStyle(.link)
+        }
+    }
+}
+
+/// A grey block with a slow light sweep: where a number is about to appear, so nothing pops up from nowhere.
+struct Skeleton: View {
+    var width: CGFloat? = nil
+    var height: CGFloat = 12
+    var radius: CGFloat = 6
+    @State private var sweep = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: radius)
+            .fill(Color.primary.opacity(0.07))
+            .overlay {
+                GeometryReader { g in
+                    LinearGradient(colors: [.clear, Color.primary.opacity(0.09), .clear], startPoint: .leading, endPoint: .trailing)
+                        .frame(width: g.size.width * 0.6)
+                        .offset(x: sweep ? g.size.width : -g.size.width * 0.6)
+                }
+            }
+            .clipShape(RoundedRectangle(cornerRadius: radius))
+            .frame(width: width, height: height)
+            .onAppear { withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) { sweep = true } }
+            .accessibilityLabel("Loading")
+    }
+}
+
+/// A rail row still loading: a logo circle, a name and a value.
+struct SkeletonRow: View {
+    var body: some View {
+        HStack(spacing: 10) {
+            Skeleton(width: 28, height: 28, radius: 14)
+            Skeleton(width: 90, height: 11)
+            Spacer()
+            Skeleton(width: 60, height: 11)
+        }
+        .padding(8)
     }
 }
 
@@ -517,6 +594,7 @@ struct PositionChip: View {
 /// Positions closed in the last week with their result after fees; a click opens them in the history.
 struct ClosedTrades: View {
     let stories: [TradeHistory.Story]
+    @State private var all = false
 
     var body: some View {
         let total = stories.reduce(Decimal(0)) { $0 + $1.realized }
@@ -526,7 +604,7 @@ struct ClosedTrades: View {
                 Spacer()
                 Text(signed(total)).font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(total < 0 ? Brand.loss : Brand.profit)
             }
-            ForEach(stories.prefix(3)) { s in
+            ForEach(all ? stories : Array(stories.prefix(StudioRail.railLimit))) { s in
                 Button {
                     UserDefaults.standard.set("positions", forKey: "historyTab")
                     withAnimation(.snappy) { UserDefaults.standard.set("history", forKey: "canvasMode") }
@@ -545,9 +623,7 @@ struct ClosedTrades: View {
                 }
                 .buttonStyle(.plain).pointerStyle(.link).help("Open in History → Positions")
             }
-            if stories.count > 3 {
-                Text("+\(stories.count - 3) more in History").font(.caption2).foregroundStyle(.tertiary)
-            }
+            RailMore(total: stories.count, expanded: $all)
         }
     }
 }
@@ -1001,6 +1077,31 @@ struct StudioPortfolio: View {
     let onFrame: (String, CGRect) -> Void
 
     var body: some View {
+        Group {
+            if ws.updatedAt == nil { loading } else { loaded.transition(.opacity) }
+        }
+        .padding(14)
+        .frame(width: 270)
+        .background(RoundedRectangle(cornerRadius: 26).fill(Brand.card).shadow(color: .black.opacity(0.08), radius: 18, y: 10))
+        .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Brand.cardBorder))
+        .animation(.easeOut(duration: 0.35), value: ws.updatedAt == nil)
+    }
+
+    /// Before the first balances arrive: the card's shape, shimmering.
+    private var loading: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("PORTFOLIO").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            Skeleton(width: 110, height: 22, radius: 7)
+            Skeleton(height: 30, radius: 8)
+            HStack(spacing: 12) {
+                Skeleton(width: 70, height: 70, radius: 35)
+                VStack(alignment: .leading, spacing: 7) { ForEach(0..<4, id: \.self) { _ in Skeleton(height: 8) } }
+            }
+            ForEach(0..<3, id: \.self) { _ in Skeleton(height: 56, radius: 16) }
+        }
+    }
+
+    private var loaded: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 1) {
@@ -1142,10 +1243,6 @@ struct StudioPortfolio: View {
                 .background(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.cardBorder))
             }
         }
-        .padding(14)
-        .frame(width: 270)
-        .background(RoundedRectangle(cornerRadius: 26).fill(Brand.card).shadow(color: .black.opacity(0.08), radius: 18, y: 10))
-        .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Brand.cardBorder))
     }
 }
 

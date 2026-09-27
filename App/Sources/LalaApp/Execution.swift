@@ -273,11 +273,24 @@ extension Workspace {
             case .buy(let asset, let usdc): _ = try await e.swap(asset, buy: true, amount: usdc, equity: equity)
             case .sell(let asset, let amount): _ = try await e.swap(asset, buy: false, amount: amount)
             }
+            if movesMoney(command, confirmed: confirmed) { finishedAction = (Self.canvasTitle(command), true) }
         } catch {
             reply("Failed: \(error.localizedDescription)")
+            if movesMoney(command, confirmed: confirmed) { finishedAction = (Self.canvasTitle(command), false) }
         }
         await refresh()
     }
+
+    private func movesMoney(_ command: WalletCommand, confirmed: Bool) -> Bool {
+        switch command {
+        case .yields, .sendTo, .receive, .schedule, .stopSchedules: false
+        case .allocate: confirmed
+        default: true
+        }
+    }
+
+    /// «Buy the token 0x… for 2 USDC on Robinhood Chain»: the summary as a canvas title.
+    static func canvasTitle(_ command: WalletCommand) -> String { command.summary.prefix(1).uppercased() + command.summary.dropFirst() }
 
     func manage(_ command: PositionCommand, coin: String) async {
         updateActivity { a in

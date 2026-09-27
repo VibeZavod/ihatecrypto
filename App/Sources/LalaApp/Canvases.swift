@@ -141,6 +141,7 @@ extension Workspace {
         pendingAllocation = nil
         pendingAction = nil
         pendingText = nil
+        finishedAction = nil
         planReview = nil
         savedBoard = nil
         currentActivity = nil

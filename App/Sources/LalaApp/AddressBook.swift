@@ -612,6 +612,7 @@ struct FavoriteChips: View {
     @Environment(Workspace.self) private var ws
     @AppStorage("canvasMode") private var mode = "plan"
     @State private var copied: UUID?
+    @State private var all = false
 
     var body: some View {
         let favorites = ws.addressBook.filter(\.favorite).sorted { $0.name.lowercased() < $1.name.lowercased() }
@@ -622,14 +623,20 @@ struct FavoriteChips: View {
                     Spacer()
                     Button("All") { withAnimation(.snappy) { mode = "book" } }.buttonStyle(.borderless).font(.caption)
                 }
-                ForEach(ws.favoriteTokens.prefix(4)) { t in
+                // Tokens first, then addresses: four rows together, the rest behind «Show N more».
+                let tokens = all ? ws.favoriteTokens : Array(ws.favoriteTokens.prefix(StudioRail.railLimit))
+                ForEach(tokens) { t in
                     let info = ws.tokenInfo[t.id]
                     Button { withAnimation(.snappy) { mode = "book" } } label: {
                         HStack(spacing: 8) {
                             TokenIcon(token: t, size: 22)
                             Text(t.symbol).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
                             Spacer(minLength: 4)
-                            Text(info?.priceUSD.map(tokenPrice) ?? "—").font(.system(size: 11.5, weight: .semibold)).monospacedDigit()
+                            if let price = info?.priceUSD {
+                                Text(tokenPrice(price)).font(.system(size: 11.5, weight: .semibold)).monospacedDigit()
+                            } else {
+                                Skeleton(width: 46, height: 9)
+                            }
                             if let c = info?.change24h {
                                 Text(signedPct(c)).font(.system(size: 10.5, weight: .bold)).foregroundStyle(c < 0 ? Brand.loss : Brand.profit)
                             }
@@ -642,7 +649,7 @@ struct FavoriteChips: View {
                     .modifier(HoverLift(radius: 9))
                     .help("\(t.name) on \(t.chainTitle)")
                 }
-                ForEach(favorites.prefix(4)) { f in
+                ForEach(all ? favorites : Array(favorites.prefix(max(0, StudioRail.railLimit - tokens.count)))) { f in
                     Button {
                         NSPasteboard.general.clearContents()
                         NSPasteboard.general.setString(f.address, forType: .string)
@@ -663,6 +670,7 @@ struct FavoriteChips: View {
                     .buttonStyle(.plain)
                     .help("Copy \(f.name): \(AddressCheck.ends(f.address).start) … \(AddressCheck.ends(f.address).end)")
                 }
+                RailMore(total: ws.favoriteTokens.count + favorites.count, expanded: $all)
             }
         }
     }
