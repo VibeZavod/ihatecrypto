@@ -28,6 +28,8 @@ final class Workspace {
     var intent = TradeIntent()
     var messages = [Message(fromUser: false, text: "Tell me what to do, e.g. “long ETH risk $10 stop 3% take 6% leverage 2x”. Blocks with live numbers appear on the right. Nothing is executed without your signature.")]
     var busy = false
+    /// From a sent message until its first reply: the chat shows LALA reading it.
+    var thinking = false
 
     var markets: [String: Market] = [:]
     var marketsError: String?
@@ -353,6 +355,8 @@ final class Workspace {
             return
         }
         messages.append(Message(fromUser: true, text: text))
+        thinking = true
+        defer { thinking = false }
         finishedAction = nil
         // Every message starts an activity; whatever is on the canvas when it's handled is frozen into it.
         beginActivity(.request, request: text)

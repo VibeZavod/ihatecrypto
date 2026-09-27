@@ -7,6 +7,8 @@ struct ChatHistory: View, Equatable {
     let messages: [Message]
     /// The last steps card shows a spinner on its last step while a plan is executing.
     var running = false
+    /// LALA is working on the last message: dots under it until the first reply.
+    var thinking = false
 
     var body: some View {
         let items = ChatItem.group(messages)
@@ -18,11 +20,30 @@ struct ChatHistory: View, Equatable {
             case .steps(let steps): StepsCard(steps: steps, running: running && steps.last?.id == messages.last?.id)
             }
         }
+        if thinking, messages.last?.fromUser == true { ThinkingDots().transition(.opacity) }
         // Scroll here for the newest line: a step inside a card has no view of its own.
         Color.clear.frame(height: 0).id(Self.end)
     }
 
     static let end = "chat-end"
+}
+
+/// Three dots breathing in turn where LALA's reply will appear.
+struct ThinkingDots: View {
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
+            let t = context.date.timeIntervalSinceReferenceDate
+            HStack(spacing: 5) {
+                ForEach(0..<3, id: \.self) { i in
+                    Circle().fill(Color.secondary).frame(width: 7, height: 7)
+                        .opacity(0.3 + 0.7 * (0.5 + 0.5 * sin(t * 5 - Double(i) * 0.9)))
+                }
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 11)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.quaternary.opacity(0.6)))
+        .accessibilityElement().accessibilityLabel("LALA is thinking")
+    }
 }
 
 enum ChatItem: Identifiable {

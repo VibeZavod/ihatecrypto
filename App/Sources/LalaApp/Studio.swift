@@ -1538,7 +1538,7 @@ struct FloatingChat: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
-                        ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing)
+                        ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing, thinking: ws.thinking)
                         if ws.messages.count <= 1 {
                             Text("Your portfolio is on the canvas. Tell me what to do with your money — in any language — and I’ll build the plan next to it. Nothing moves without your signature.")
                                 .font(.system(size: 14)).foregroundStyle(.secondary)

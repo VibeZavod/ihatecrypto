@@ -352,7 +352,7 @@ struct ChatView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 22) {
                             // The first message is the old greeting; the empty screen replaces it.
-                            ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing)
+                            ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing, thinking: ws.thinking)
                         }
                         .frame(maxWidth: 720)
                         .padding(24)
