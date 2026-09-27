@@ -1622,6 +1622,19 @@ private struct ChatActions: View {
                     .buttonStyle(.plain)
                     .disabled(!ws.planIsReady || ws.previewWallet == nil || ws.executing || ws.preparing)
                 }
+                // A grey Execute says why, and the missing details are one tap away.
+                if !ws.planIsReady, !ws.preparing, !ws.executing {
+                    HStack(spacing: 8) {
+                        Label(ws.missingDetails.map { "Execute needs \($0)." } ?? "A rule on the canvas stops this plan.", systemImage: "lock.fill")
+                            .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+                        Spacer(minLength: 4)
+                        if ws.missingDetails != nil {
+                            Button("By the book") { Task { await ws.send("by the book") } }
+                                .buttonStyle(.borderedProminent).controlSize(.small)
+                                .help("Stop from 4h volatility, take at 2R, 1% of capital at risk")
+                        }
+                    }
+                }
                 Text("Edit it in words: “take like the pros”, “risk $0.20”, “entry on a 1% pullback”.")
                     .font(.caption).foregroundStyle(.secondary)
             }

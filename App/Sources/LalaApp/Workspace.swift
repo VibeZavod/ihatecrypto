@@ -688,6 +688,8 @@ final class Workspace {
 
     /// «На стопе −$0,99 (−6,8% капитала), на тейке +$1,90 (+13%), 1:1,9» after every plan change.
     var outcomeLine: String {
+        // A plan without a risk or a stop can't run: ask for them, with the by-the-book numbers.
+        if let question = detailsQuestion { return question }
         // In the studio the Result block on the canvas says this; the chat doesn't repeat it.
         if isStudio { return "" }
         guard let s = evaluation.sizing else { return "" }

@@ -128,7 +128,9 @@ extension Workspace {
         var facts = answerFacts(stories)
         // The market the question names (and those of open positions): price, the day's move, funding.
         let named = IntentParser.namedAsset(question, markets: Set(markets.keys))
-        for coin in Set([named].compactMap { $0 } + positions.map(\.coin)) {
+        // The trade the question is about: the market it names, else the plan's.
+        let asked = named ?? (intent != TradeIntent() ? intent.asset : nil)
+        for coin in Set([asked].compactMap { $0 } + positions.map(\.coin)) {
             guard let m = markets[coin] else { continue }
             var line = "Market \(IntentParser.pretty(coin)): mark \(Fmt.price(m.markPx))"
             if let prev = m.prevDayPx, prev > 0 { line += ", 24h \(signedPct((m.markPx - prev) / prev * 100))" }
@@ -136,13 +138,27 @@ extension Workspace {
             if let atr = atr[coin] { line += ", 4h ATR \(Fmt.num(atr.rounded(2, .plain)))%" }
             facts.append(line + ".")
         }
+        // «Should I short oil now?»: that trade by the book and what LALA's rules say about entering it now.
+        let q = question.lowercased()
+        let side: Side? = q.contains(/short|шорт|прода|sell/) ? .short : q.contains(/\blong|лонг|купи|buy/) ? .long
+            : intent != TradeIntent() ? intent.side : nil
+        if let coin = asked, let side, let book = bookPlan(asset: coin, side: side) {
+            facts.append("By the book, a \(side == .long ? "long" : "short") \(IntentParser.pretty(coin)) now: \(book.line).")
+            facts += book.advice.map { "Rule check (\($0.level == .ok ? "ok" : $0.level == .warn ? "warning" : "blocked")): \($0.text)" }
+        }
+        if let coin = asked, let c = chart, c.coin == coin, let first = c.candles.first, let last = c.candles.last, first.close > 0 {
+            facts.append("\(IntentParser.pretty(coin)) over \(c.range.title): \(Fmt.price(first.close)) → \(Fmt.price(last.close)) (\(signedPct((last.close - first.close) / first.close * 100))).")
+        }
         updateActivity { $0.title = "Question" }
         if let client = llmClient() {
             let system = """
             You are LALA, the user's crypto trading assistant. Answer the question using ONLY the facts below — balances, open positions, \
-            closed positions with results, and recent activity. The user may write in any language; answer in English, in 1–3 short \
-            sentences with the numbers. If the facts don't contain the answer, say so and point to History (clock button in the rail). \
-            Never invent trades, prices or addresses, and don't propose a new trade unless asked.
+            closed positions with results, markets, LALA's rule checks and recent activity. The user may write in any language; answer in \
+            English, in 1–4 short sentences with the numbers. If the facts don't contain the answer, say so and point to History (clock \
+            button in the rail). Never invent trades, prices or addresses.
+            If the user asks whether to open, close or keep a trade, give a clear view from these facts — the day's move, the chart, \
+            volatility, funding and the rule checks — say what would make a better entry (for example a pullback) and what is lost at \
+            the stop by the book. The decision is the user's; never promise an outcome.
             """
             do {
                 let text = try await client.complete(LLMRequest(model: model, messages: [
