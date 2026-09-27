@@ -52,8 +52,10 @@ struct CanvasSession: Codable, Identifiable {
     var folder: String?
     /// The money move on its board was carried out: when, and whether it went through.
     var outcome: CanvasOutcome?
-    /// When the board was last live; `updated` also moves at quit, to reopen the canvas that was open.
+    /// When the board was last live.
     var boardAt: Date?
+    /// The chart on it, candles included: reopened, it shows this snapshot until Refresh.
+    var chart: ChartState?
 
     var displayTitle: String { name ?? (title.isEmpty ? "Canvas" : title) }
 }
@@ -76,6 +78,7 @@ extension Workspace {
         c.messages = messages
         c.intent = intent
         c.executed = executed != nil && executed == intent
+        c.chart = chart
         if let board = canvasBubbles() {
             c.title = board.title
             c.bubbles = board.bubbles
@@ -148,7 +151,12 @@ extension Workspace {
             providerID = c.providerID
             modelChoices[c.providerID] = c.model
         }
-        savedBoard = c.bubbles.isEmpty ? nil : c
+        // A chart comes back as the chart itself, from its snapshot; one saved before snapshots is loaded fresh.
+        chart = c.chart ?? c.bubbles.first { $0.label.hasPrefix("Chart ·") && !$0.asset.isEmpty }.map { b in
+            ChartState(coin: b.asset, range: ChartCommand.Range.allCases.first { b.label.hasSuffix($0.title) } ?? .day)
+        }
+        savedBoard = c.bubbles.isEmpty || chart != nil ? nil : c
+        if let ch = chart, ch.candles.isEmpty { Task { await openChart(ch.coin, range: ch.range) } }
     }
 
     /// What belongs to one canvas only: boards, waiting confirmations, the draft.
@@ -162,6 +170,7 @@ extension Workspace {
         finishedAction = nil
         planReview = nil
         savedBoard = nil
+        chart = nil
         currentActivity = nil
         draft = ""
     }

@@ -2,7 +2,7 @@ import Foundation
 import LLMCore
 
 extension Hyperliquid {
-    public struct Candle: Sendable, Equatable {
+    public struct Candle: Sendable, Equatable, Codable {
         public let time: Date
         public let open: Decimal
         public let high: Decimal
@@ -32,7 +32,7 @@ extension Hyperliquid {
 
 /// «chart ETH», «график нефти за неделю», «покажи эфир»: a price chart of one market on the canvas.
 public enum ChartCommand: Equatable, Sendable {
-    public enum Range: String, CaseIterable, Sendable {
+    public enum Range: String, CaseIterable, Sendable, Codable {
         case day, week, month
 
         /// Hyperliquid candle interval and how far back, ms: about 100–170 bars each.

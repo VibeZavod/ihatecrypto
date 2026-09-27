@@ -70,7 +70,7 @@ extension Workspace {
         }
         if let c = chart, intent == TradeIntent(), allocationPreview == nil, yieldOptions == nil {
             let name = IntentParser.pretty(c.coin)
-            return ("Chart · \(name)", c.coin, [ActivityBubble(kind: "position", label: "Chart · \(c.range.title)", title: name,
+            return ("Chart · \(name)", c.coin, [ActivityBubble(kind: "chart", label: "Chart · \(c.range.title)", title: name,
                                                                lines: c.candles.last.map { ["\(Fmt.price($0.close))"] } ?? [], asset: c.coin)])
         }
         if showReceive, intent == TradeIntent(), allocationPreview == nil, yieldOptions == nil {

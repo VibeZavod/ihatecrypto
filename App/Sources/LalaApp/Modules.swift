@@ -6,21 +6,26 @@ import LalaCore
 import SwiftUI
 import WalletCore
 
-/// A market's candles on the canvas, with the levels that matter for it.
-struct ChartState: Equatable {
+/// A market's candles on the canvas, with the levels that matter for it. Kept with the canvas: reopened, it shows
+/// the snapshot and when it was taken, until Refresh.
+struct ChartState: Equatable, Codable {
     var coin: String
     var range: ChartCommand.Range
     var candles: [Hyperliquid.Candle] = []
     var error: String?
+    /// When the candles were loaded.
+    var at: Date?
 }
 
 extension Workspace {
+    /// Opens a chart, or refreshes the one on the canvas: its old candles stay on screen until the new ones land.
     func openChart(_ coin: String, range: ChartCommand.Range = .day) async {
-        withAnimation(StudioView.spring) { chart = ChartState(coin: coin, range: range) }
+        if chart?.coin != coin || chart?.range != range { withAnimation(StudioView.spring) { chart = ChartState(coin: coin, range: range) } }
+        chart?.error = nil
         UserDefaults.standard.set("plan", forKey: "canvasMode")
         do {
             let candles = try await Hyperliquid.candles(coin: coin, range: range)
-            if chart?.coin == coin { chart?.candles = candles; chart?.range = range }
+            if chart?.coin == coin { chart?.candles = candles; chart?.range = range; chart?.at = Date() }
         } catch {
             chart?.error = error.localizedDescription
         }
@@ -68,6 +73,7 @@ extension Workspace {
 struct ChartBoard: View {
     @Environment(Workspace.self) private var ws
     let state: ChartState
+    @State private var refreshing = false
 
     private struct Level: Identifiable {
         let id: String
@@ -104,6 +110,19 @@ struct ChartBoard: View {
                 .pickerStyle(.segmented).labelsHidden().fixedSize()
                 Button { withAnimation(StudioView.spring) { ws.chart = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
             }
+            HStack(spacing: 8) {
+                if let at = state.at {
+                    Label("As of \(Fmt.date(at))", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+                }
+                Spacer()
+                Button {
+                    refreshing = true
+                    Task { await ws.openChart(state.coin, range: state.range); refreshing = false }
+                } label: {
+                    Label(refreshing ? "Updating…" : "Refresh", systemImage: "arrow.clockwise").font(.caption.weight(.semibold))
+                }
+                .buttonStyle(.borderless).disabled(refreshing).help("Load fresh candles from Hyperliquid")
+            }
             if closes.count > 1 {
                 Chart {
                     ForEach(Array(state.candles.enumerated()), id: \.offset) { _, c in
@@ -124,6 +143,7 @@ struct ChartBoard: View {
                 }
                 .chartYScale(domain: (bottom - pad)...(top + pad))
                 .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) }
+                .chartOverlay { proxy in ChartHover(proxy: proxy, points: state.candles.map { ($0.time, NSDecimalNumber(decimal: $0.close).doubleValue) }) }
                 .frame(height: 210)
             } else if let error = state.error {
                 Text("The chart didn’t load: \(error)").font(.caption).foregroundStyle(Brand.loss)
@@ -155,6 +175,36 @@ struct ChartBoard: View {
             out.append(Level(id: a.id.uuidString, price: d(a.price), label: "Alert", color: .orange, dashed: true))
         }
         return out
+    }
+}
+
+/// The price under the pointer: a line down the chart, a dot on the price and its value and time. Its own view, so
+/// moving the pointer redraws the marker, not the chart.
+struct ChartHover: View {
+    let proxy: ChartProxy
+    let points: [(time: Date, price: Double)]
+    @State private var index: Int?
+
+    var body: some View {
+        GeometryReader { geo in
+            let plot = proxy.plotFrame.map { geo[$0] } ?? .zero
+            ZStack(alignment: .topLeading) {
+                Color.clear.contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        guard case .active(let p) = phase, let at: Date = proxy.value(atX: p.x - plot.minX) else { index = nil; return }
+                        index = points.indices.min { abs(points[$0].time.timeIntervalSince(at)) < abs(points[$1].time.timeIntervalSince(at)) }
+                    }
+                if let i = index, let x = proxy.position(forX: points[i].time), let y = proxy.position(forY: points[i].price) {
+                    Rectangle().fill(Color.secondary.opacity(0.6)).frame(width: 1, height: plot.height).position(x: plot.minX + x, y: plot.midY)
+                    Circle().fill(Color.primary).frame(width: 7, height: 7).position(x: plot.minX + x, y: plot.minY + y)
+                    Text("\(Fmt.price(Decimal(points[i].price))) · \(Fmt.date(points[i].time))")
+                        .font(.system(size: 11, weight: .semibold)).monospacedDigit().fixedSize()
+                        .padding(.horizontal, 7).padding(.vertical, 3)
+                        .background(Capsule().fill(Brand.card).shadow(color: .black.opacity(0.15), radius: 3, y: 1))
+                        .position(x: min(max(plot.minX + x, plot.minX + 80), plot.maxX - 80), y: max(plot.minY + 10, plot.minY + y - 18))
+                }
+            }
+        }
     }
 }
 
