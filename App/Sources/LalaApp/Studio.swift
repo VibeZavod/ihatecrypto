@@ -112,10 +112,18 @@ struct StudioView: View {
     /// The width while the edge is being dragged; nil when resting.
     @State private var resizing: CGFloat?
     @State private var edgeHover = false
-    /// How far the chat's header is pulled down (+) or up (−) while resizing its height.
-    @State private var chatDrag: CGFloat = 0
+    /// Where the chat sits, as an offset from its docked corner (bottom right); both ≤ 0.
+    @AppStorage("chatX") private var chatX = 0.0
+    @AppStorage("chatY") private var chatY = 0.0
+    /// The header's pull while the chat is being moved.
+    @State private var moving: CGSize = .zero
     static let spring = Animation.spring(response: 0.42, dampingFraction: 0.82)
     static let minChat: CGFloat = 320
+
+    /// Keeps the chat inside the canvas: offsets from the docked corner, never past the left or top edge.
+    static func clamp(_ s: CGSize, room: CGSize) -> CGSize {
+        CGSize(width: min(0, max(-room.width, s.width)), height: min(0, max(-room.height, s.height)))
+    }
 
     var body: some View {
         HStack(spacing: 0) {
@@ -123,39 +131,49 @@ struct StudioView: View {
             GeometryReader { geo in
                 let maxWidth = max(Self.minChat, geo.size.width / 2)
                 let width = min(resizing ?? CGFloat(chatWidth), maxWidth)
+                // Full height, or compact (half the window); the header moves the chat anywhere inside the canvas.
+                let full = max(200, geo.size.height - 32)
+                let small = min(full, max(260, geo.size.height * 0.5))
+                let height = chatOpen ? full : small
+                let room = CGSize(width: max(0, geo.size.width - width - 32), height: max(0, geo.size.height - height - 32))
+                let place = Self.clamp(CGSize(width: chatX + moving.width, height: chatY + moving.height), room: room)
+                // Docked, the canvas keeps clear of the chat; moved away, the chat floats over it.
+                let docked = place.width > -40 && place.height > -40
                 ZStack(alignment: .topTrailing) {
                     if mode == "history" {
-                        HistoryView(inset: width + 32) { withAnimation(.snappy) { mode = "plan" } }
+                        HistoryView(inset: docked ? width + 32 : 0) { withAnimation(.snappy) { mode = "plan" } }
                     } else if mode == "book" {
-                        AddressBookView(inset: width + 32) { withAnimation(.snappy) { mode = "plan" } }
+                        AddressBookView(inset: docked ? width + 32 : 0) { withAnimation(.snappy) { mode = "plan" } }
                     } else {
-                        StudioCanvas(inset: width + 32)
+                        StudioCanvas(inset: docked ? width + 32 : 0)
                     }
-                    // Full height, or compact (half the window) with the latest replies and the field;
-                    // the header drags between the two, a spring settles it on the nearer one.
-                    let full = max(200, geo.size.height - 32)
-                    let small = min(full, max(260, geo.size.height * 0.5))
-                    let base = chatOpen ? full : small
                     FloatingChat(
                         compact: !chatOpen,
                         wide: width >= maxWidth - 1,
                         toggleCompact: { withAnimation(Self.spring) { chatOpen.toggle() } },
                         toggleWide: { withAnimation(Self.spring) { chatWidth = width >= maxWidth - 1 ? 350 : Double(maxWidth) } },
-                        drag: $chatDrag,
-                        endDrag: { predicted in
-                            withAnimation(Self.spring) {
-                                chatOpen = base - predicted > (full + small) / 2
-                                chatDrag = 0
-                            }
-                        }
+                        drag: $moving,
+                        endDrag: { pull in
+                            let end = Self.clamp(CGSize(width: chatX + pull.width, height: chatY + pull.height), room: room)
+                            // Close to its corner it snaps home.
+                            let home = end.width > -40 && end.height > -40
+                            chatX = home ? 0 : end.width
+                            chatY = home ? 0 : end.height
+                            moving = .zero
+                        },
+                        dock: { chatX = 0; chatY = 0 }
                     )
-                    .frame(width: width, height: min(full, max(small, base - chatDrag)))
+                    .frame(width: width, height: height)
                     .overlay(alignment: .leading) { edge(width: width, maxWidth: maxWidth) }
+                    .shadow(color: .black.opacity(docked ? 0 : 0.22), radius: 26, y: 16)
+                    .offset(place)
                     .padding(16)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 }
-                // @AppStorage changes skip withAnimation, so the spring is tied to the value itself.
+                // @AppStorage changes skip withAnimation, so the spring is tied to the values themselves.
                 .animation(Self.spring, value: chatOpen)
+                .animation(Self.spring, value: chatX)
+                .animation(Self.spring, value: chatY)
             }
         }
         .sheet(isPresented: Binding(get: { ws.preparing || ws.prepared != nil || (ws.executionError != nil && !ws.executing) },
@@ -252,7 +270,7 @@ struct StudioRail: View {
                 HistoryButton()
                 BookButton()
                 Button { withAnimation(StudioView.spring) { collapsed = true } } label: { Image(systemName: "sidebar.left") }
-                    .buttonStyle(.borderless).help("Collapse wallet")
+                    .buttonStyle(.hoverIcon).help("Collapse wallet")
             }
             VStack(alignment: .leading, spacing: 3) {
                 HStack {
@@ -303,17 +321,17 @@ struct StudioRail: View {
         VStack(spacing: 14) {
             LalaLogo(size: 38)
             Button { withAnimation(StudioView.spring) { collapsed = false } } label: { Image(systemName: "sidebar.left") }
-                .buttonStyle(.borderless).help("Expand wallet")
+                .buttonStyle(.hoverIcon).help("Expand wallet")
             HistoryButton()
             BookButton()
             Button { withAnimation(StudioView.spring) { ws.showReceive.toggle(); if ws.showReceive { UserDefaults.standard.set("plan", forKey: "canvasMode") } } } label: {
                 Image(systemName: "arrow.down.circle")
             }
-            .buttonStyle(.borderless).help("Top up: your addresses")
+            .buttonStyle(.hoverIcon).help("Top up: your addresses")
             Button { withAnimation(StudioView.spring) { ws.newCanvas() } } label: { Image(systemName: "square.and.pencil") }
-                .buttonStyle(.borderless).help("New canvas").disabled(ws.busy)
+                .buttonStyle(.hoverIcon).help("New canvas").disabled(ws.busy)
             Button { canvasesOpen.toggle() } label: { Image(systemName: "rectangle.stack") }
-                .buttonStyle(.borderless).help("Canvases")
+                .buttonStyle(.hoverIcon).help("Canvases")
                 .popover(isPresented: $canvasesOpen, arrowEdge: .trailing) {
                     CanvasList { canvasesOpen = false }.frame(width: 280, height: 380).padding(14)
                 }
@@ -369,7 +387,10 @@ struct StudioRail: View {
             TokenLogo(name: logo, size: 34)
             Text(value).font(.system(size: 10, weight: .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
         }
+        .padding(.vertical, 4)
         .frame(width: 66)
+        .modifier(HoverLift())
+        .contentShape(Rectangle())
         .help(help)
     }
 }
@@ -1194,9 +1215,10 @@ struct FloatingChat: View {
     var wide = false
     let toggleCompact: () -> Void
     var toggleWide: () -> Void = {}
-    /// Pulling the header down makes the chat compact, up makes it full; the header buttons still click.
-    @Binding var drag: CGFloat
-    var endDrag: (CGFloat) -> Void = { _ in }
+    /// The header moves the chat anywhere; a double-click brings it home. The header buttons still click.
+    @Binding var drag: CGSize
+    var endDrag: (CGSize) -> Void = { _ in }
+    var dock: () -> Void = {}
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1208,16 +1230,17 @@ struct FloatingChat: View {
                 }
                 Spacer()
                 Button { withAnimation(StudioView.spring) { ws.newCanvas() } } label: { headerIcon("square.and.pencil") }
-                    .buttonStyle(.plain).help("New canvas").disabled(ws.busy)
+                    .buttonStyle(.hoverIcon).help("New canvas").disabled(ws.busy)
                 Button(action: toggleWide) { headerIcon(wide ? "arrow.down.right.and.arrow.up.left" : "arrow.up.left.and.arrow.down.right") }
-                    .buttonStyle(.plain).help(wide ? "Narrow chat" : "Chat on half the window")
+                    .buttonStyle(.hoverIcon).help(wide ? "Narrow chat" : "Chat on half the window")
                 Button(action: toggleCompact) { headerIcon(compact ? "chevron.up" : "minus") }
-                    .buttonStyle(.plain).help(compact ? "Full-height chat" : "Compact chat — or pull the header down")
+                    .buttonStyle(.hoverIcon).help(compact ? "Full-height chat" : "Compact chat")
             }
             .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
             .background(Color.clear.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 4, coordinateSpace: .global)
-                .onChanged { drag = $0.translation.height }
-                .onEnded { endDrag($0.predictedEndTranslation.height) }))
+                .onChanged { drag = $0.translation }
+                .onEnded { endDrag($0.translation) })
+                .simultaneousGesture(TapGesture(count: 2).onEnded { dock() }))
             .onHover { inside in if inside { NSCursor.openHand.push() } else { NSCursor.pop() } }
 
             ScrollViewReader { proxy in
@@ -1334,8 +1357,7 @@ struct FloatingChat: View {
     }
 
     private func headerIcon(_ name: String) -> some View {
-        Image(systemName: name).font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
-            .frame(width: 28, height: 28).contentShape(Rectangle())
+        Image(systemName: name).font(.system(size: 13, weight: .semibold))
     }
 
     private func primary(_ title: String, enabled: Bool = true) -> some View {
@@ -1854,7 +1876,7 @@ struct HistoryButton: View {
             Image(systemName: "clock.arrow.circlepath")
                 .foregroundStyle(mode == "history" ? Brand.accent : .secondary)
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.hoverIcon)
         .help(mode == "history" ? "Back to the canvas" : "History: what LALA did, positions, everything")
     }
 }

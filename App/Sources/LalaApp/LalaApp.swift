@@ -453,7 +453,7 @@ struct PlanCard: View {
                 Spacer()
                 if let t = ws.updatedAt { Text(t, style: .time).font(.caption).foregroundStyle(.tertiary) }
                 Button { Task { await ws.refresh() } } label: { Image(systemName: "arrow.clockwise") }
-                    .buttonStyle(.borderless)
+                    .buttonStyle(.hoverIcon)
                     .help("Refresh prices and quote")
             }
             .padding(.bottom, 10)

@@ -32,7 +32,7 @@ struct HistoryView: View {
                 .pickerStyle(.segmented).labelsHidden().fixedSize()
                 if loading { ProgressView().controlSize(.small) }
                 Spacer()
-                Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless).help("Refresh")
+                Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.hoverIcon).help("Refresh")
                 Button("Back to canvas", action: close)
             }
             .padding(.horizontal, 28).padding(.top, 22).padding(.bottom, 14)

@@ -15,7 +15,7 @@ struct ReceiveBoard: View {
                 Text("Top up LALA").font(.system(size: 16, weight: .bold))
                 Spacer()
                 Button { withAnimation(StudioView.spring) { ws.showReceive = false } } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.borderless).help("Close")
+                    .buttonStyle(.hoverIcon).help("Close")
             }
             if isSolanaAddress(ws.solanaAddress) {
                 ReceiveCard(logo: "sol", network: "Solana", badge: "recommended", address: ws.solanaAddress,

@@ -453,8 +453,8 @@ struct BrowserView: View {
         let browser = ws.browser
         VStack(spacing: 0) {
             HStack(spacing: 8) {
-                Button { browser.webView.goBack() } label: { Image(systemName: "chevron.left") }.buttonStyle(.borderless)
-                Button { browser.webView.reload() } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.borderless)
+                Button { browser.webView.goBack() } label: { Image(systemName: "chevron.left") }.buttonStyle(.hoverIcon)
+                Button { browser.webView.reload() } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.hoverIcon)
                 siteBadge(SiteCheck.check(host: browser.host))
                 TextField("Site address", text: $typed)
                     .textFieldStyle(.plain)

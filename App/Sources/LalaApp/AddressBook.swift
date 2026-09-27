@@ -591,7 +591,7 @@ struct BookButton: View {
             Image(systemName: mode == "book" ? "book.closed.fill" : "book.closed")
                 .foregroundStyle(mode == "book" ? Brand.accent : .secondary)
         }
-        .buttonStyle(.borderless)
+        .buttonStyle(.hoverIcon)
         .help(mode == "book" ? "Back to the canvas" : "Addresses: favorites, exchanges, other wallets")
     }
 }

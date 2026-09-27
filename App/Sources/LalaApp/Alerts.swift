@@ -53,7 +53,7 @@ struct AlertsCard: View {
                             Text("\(Fmt.num(((a.price - mark) / mark * 100).rounded(1, .plain)))%").font(.caption2).monospacedDigit().foregroundStyle(.secondary)
                         }
                         Button { withAnimation(.snappy) { ws.alerts.removeAll { $0.id == a.id } } } label: { Image(systemName: "xmark") }
-                            .buttonStyle(.borderless).font(.caption2).help("Remove the alert")
+                            .buttonStyle(.hoverIcon).font(.caption2).help("Remove the alert")
                     }
                 }
             }

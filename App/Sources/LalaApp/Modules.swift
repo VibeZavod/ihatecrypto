@@ -102,7 +102,7 @@ struct ChartBoard: View {
                     ForEach(ChartCommand.Range.allCases, id: \.self) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented).labelsHidden().fixedSize()
-                Button { withAnimation(StudioView.spring) { ws.chart = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.borderless)
+                Button { withAnimation(StudioView.spring) { ws.chart = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
             }
             if closes.count > 1 {
                 Chart {
@@ -170,7 +170,7 @@ struct MoversBoard: View {
                 Image(systemName: "flame.fill").foregroundStyle(.orange)
                 Text("Movers · 24 h").font(.system(size: 15, weight: .bold))
                 Spacer()
-                Button { withAnimation(StudioView.spring) { ws.showMovers = false } } label: { Image(systemName: "xmark") }.buttonStyle(.borderless)
+                Button { withAnimation(StudioView.spring) { ws.showMovers = false } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
             }
             HStack(alignment: .top, spacing: 12) {
                 column("UP", Array(list.prefix(6)), up: true)
@@ -228,7 +228,7 @@ struct PlaceDetailBoard: View {
                     Text(subtitle).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Button { withAnimation(StudioView.spring) { ws.detail = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.borderless)
+                Button { withAnimation(StudioView.spring) { ws.detail = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
             }
             content
             if let link {
@@ -421,5 +421,53 @@ struct PortfolioRing: View {
             }
             .help("Where the money is now")
         }
+    }
+}
+
+/// Icon buttons light up under the pointer: an accent wash behind, the accent color, a small lift; a press dips.
+struct HoverIconStyle: ButtonStyle {
+    var size: CGFloat = 28
+
+    func makeBody(configuration: Configuration) -> some View { Lit(configuration: configuration, size: size) }
+
+    private struct Lit: View {
+        let configuration: Configuration
+        let size: CGFloat
+        @State private var hover = false
+        @Environment(\.isEnabled) private var enabled
+
+        var body: some View {
+            let lit = hover && enabled
+            configuration.label
+                .foregroundStyle(lit ? AnyShapeStyle(Brand.accent) : AnyShapeStyle(.secondary))
+                .frame(minWidth: size, minHeight: size)
+                .background(RoundedRectangle(cornerRadius: 8).fill(Brand.accent.opacity(configuration.isPressed ? 0.24 : lit ? 0.13 : 0)))
+                .scaleEffect(configuration.isPressed ? 0.92 : lit ? 1.08 : 1)
+                .animation(.snappy(duration: 0.16), value: lit)
+                .animation(.snappy(duration: 0.1), value: configuration.isPressed)
+                .contentShape(Rectangle())
+                .onHover { hover = $0 }
+        }
+    }
+}
+
+extension ButtonStyle where Self == HoverIconStyle {
+    static var hoverIcon: HoverIconStyle { HoverIconStyle() }
+}
+
+/// Logos and rows that open something: a soft wash and a lift under the pointer.
+struct HoverLift: ViewModifier {
+    var radius: CGFloat = 12
+    @State private var hover = false
+
+    func body(content: Content) -> some View {
+        content
+            .background(RoundedRectangle(cornerRadius: radius).fill(Color.primary.opacity(hover ? 0.07 : 0)))
+            .scaleEffect(hover ? 1.04 : 1)
+            .animation(.snappy(duration: 0.16), value: hover)
+            .onHover { inside in
+                hover = inside
+                if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
+            }
     }
 }

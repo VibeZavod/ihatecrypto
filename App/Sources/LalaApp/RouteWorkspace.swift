@@ -159,7 +159,7 @@ struct ScheduleView: View {
                                 .font(.caption).foregroundStyle(.secondary).monospacedDigit()
                         }
                         Button { ws.schedules.removeAll { $0.symbol == s.symbol } } label: { Image(systemName: "xmark.circle.fill") }
-                            .buttonStyle(.borderless).foregroundStyle(.tertiary)
+                            .buttonStyle(.hoverIcon).foregroundStyle(.tertiary)
                             .help("Stop buying \(s.symbol)")
                             .accessibilityLabel("Stop buying \(s.symbol)")
                     }
