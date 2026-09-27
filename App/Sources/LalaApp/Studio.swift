@@ -306,6 +306,9 @@ struct StudioRail: View {
                 if ws.lendTotal > 0 {
                     account("jupiter", logo: "jup", name: "Jupiter Lend", value: "\(Fmt.num(ws.lendTotal)) USDC")
                 }
+                if ws.kamino > 0 {
+                    account("kamino", logo: "kamino", name: "Kamino", value: Fmt.usd(ws.kamino))
+                }
                 if let b = ws.base, b.aave + b.usdc > 0 {
                     account("aave", logo: "aave", name: "Aave · Base", value: "\(Fmt.num(b.aave + b.usdc)) USDC")
                 }
@@ -361,6 +364,7 @@ struct StudioRail: View {
             icon("sol", ws.solana.map { Fmt.num($0.usdc) } ?? "—", help: "Solana, USDC").onTapGesture { ws.toggleDetail("solana") }
             icon("hype", ws.hlTotal.map(Fmt.usd) ?? "—", help: "Hyperliquid").onTapGesture { ws.toggleDetail("hyperliquid") }
             if ws.lendTotal > 0 { icon("jup", Fmt.num(ws.lendTotal), help: "Jupiter Lend, USDC").onTapGesture { ws.toggleDetail("jupiter") } }
+            if ws.kamino > 0 { icon("kamino", Fmt.usd(ws.kamino), help: "Kamino Lend").onTapGesture { ws.toggleDetail("kamino") } }
             if let b = ws.base, b.aave + b.usdc > 0 { icon("aave", Fmt.num(b.aave + b.usdc), help: "Aave on Base, USDC").onTapGesture { ws.toggleDetail("aave") } }
             if !ws.positions.isEmpty {
                 Divider().frame(width: 36)
@@ -1023,7 +1027,7 @@ struct StudioPortfolio: View {
                     TokenLogo(name: "hype", size: 34)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Hyperliquid").font(.system(size: 14, weight: .semibold))
-                        Text(ws.hlTotal.map { "\(Fmt.usd($0)) · margin" } ?? "no address").font(.caption).foregroundStyle(Brand.hlMint)
+                        Text(ws.hlMargin.map { "\(Fmt.usd($0)) · margin" + (ws.hlp.equity > 0 ? " · HLP \(Fmt.usd(ws.hlp.equity))" : "") } ?? "no address").font(.caption).foregroundStyle(Brand.hlMint)
                     }
                 }
                 ForEach(ws.positions, id: \.coin) { p in
@@ -1649,7 +1653,10 @@ extension Workspace {
     /// Unrealized PnL of all open positions.
     var positionsPnl: Decimal { positions.reduce(0) { $0 + $1.unrealizedPnl } }
     /// Hyperliquid main account plus HIP-3 margin.
-    var hlTotal: Decimal? { hl.map { $0.accountValue + dexBalances.values.reduce(0) { $0 + $1.accountValue } } }
+    /// Trading margin: the main perp balance and the HIP-3 exchanges.
+    var hlMargin: Decimal? { hl.map { $0.accountValue + dexBalances.values.reduce(0) { $0 + $1.accountValue } } }
+    /// Everything on Hyperliquid: margin and the HLP vault.
+    var hlTotal: Decimal? { hlMargin.map { $0 + hlp.equity } }
     var lendTotal: Decimal { lend.reduce(0) { $0 + $1.usdc } }
 }
 

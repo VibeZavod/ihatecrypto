@@ -243,13 +243,14 @@ struct PlaceDetailBoard: View {
         .transition(.scale(scale: 0.94, anchor: .topLeading).combined(with: .opacity))
     }
 
-    private var logo: String { ["solana": "sol", "hyperliquid": "hype", "jupiter": "jup", "aave": "aave", "robinhood": "robinhood"][place] ?? "usdc" }
-    private var title: String { ["solana": "Solana wallet", "hyperliquid": "Hyperliquid account", "jupiter": "Jupiter Lend", "aave": "Aave v3 · Base", "robinhood": "Robinhood Chain"][place] ?? place }
+    private var logo: String { ["solana": "sol", "hyperliquid": "hype", "jupiter": "jup", "kamino": "kamino", "aave": "aave", "robinhood": "robinhood"][place] ?? "usdc" }
+    private var title: String { ["solana": "Solana wallet", "hyperliquid": "Hyperliquid account", "jupiter": "Jupiter Lend", "kamino": "Kamino Lend", "aave": "Aave v3 · Base", "robinhood": "Robinhood Chain"][place] ?? place }
     private var subtitle: String {
         switch place {
         case "solana": "USDC and SOL you hold; every move starts here"
         case "hyperliquid": "margin for perps, stocks and commodities"
         case "jupiter": "lending vaults on Solana · withdraw any time"
+        case "kamino": "lending on Solana · withdraw any time"
         case "robinhood": "Robinhood Stock Tokens · economic exposure, not shares"
         default: "lending on Base · bridged from Solana"
         }
@@ -259,6 +260,7 @@ struct PlaceDetailBoard: View {
         case "solana": isSolanaAddress(ws.solanaAddress) ? URL(string: "https://solscan.io/account/\(ws.solanaAddress)") : nil
         case "hyperliquid": isEVMAddress(ws.hlAddress) ? URL(string: "https://app.hyperliquid.xyz/explorer/address/\(ws.hlAddress)") : nil
         case "jupiter": URL(string: "https://jup.ag/lend/earn")
+        case "kamino": URL(string: "https://app.kamino.finance")
         case "robinhood": isEVMAddress(ws.hlAddress) ? URL(string: "https://robinhoodchain.blockscout.com/address/\(ws.hlAddress)") : nil
         default: isEVMAddress(ws.hlAddress) ? URL(string: "https://basescan.org/address/\(ws.hlAddress)") : nil
         }
@@ -278,6 +280,9 @@ struct PlaceDetailBoard: View {
                 row("hype", "\(dex) exchange (stocks, commodities)", Fmt.usd(ws.dexBalances[dex]?.accountValue ?? 0), "free \(Fmt.usd(ws.dexBalances[dex]?.withdrawable ?? 0))")
             }
             if let spot = ws.hl?.spotUSDC, spot > 0 { row("usdc", "Spot USDC", Fmt.num(spot), "separate from the perp margin") }
+            if ws.hlp.equity > 0 {
+                row("hype", "HLP vault", Fmt.usd(ws.hlp.equity), ws.hlp.lockedUntil.map { "locked until \(Fmt.date($0)) · 4 days after a deposit" } ?? "earning · withdraw any time")
+            }
             ForEach(ws.positions, id: \.coin) { p in
                 Button { Task { await ws.chartCommand(.chart(coin: p.coin, range: .day)) } } label: { PositionChip(position: p) }
                     .buttonStyle(.plain).help("Open the \(IntentParser.pretty(p.coin)) chart")
@@ -302,6 +307,11 @@ struct PlaceDetailBoard: View {
             row("usdc", "USDG", "\(ws.robinhood.map { Fmt.num($0.usdg) } ?? "—")", "gas: \(ws.robinhood.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH")
             Text("Stock Tokens aren’t offered to US persons, or in Canada, the UK and Switzerland; they give economic exposure, not the shares.")
                 .font(.caption2).foregroundStyle(.secondary)
+        case "kamino":
+            row("kamino", "USDC", Fmt.usd(ws.kamino), "earning · withdraw any time")
+            if let rate = ws.yieldOptions?.first(where: { $0.place.contains("Kamino") && $0.asset == "USDC" })?.apy {
+                Text("USDC rate now ≈ \(Fmt.num(rate.rounded(2, .plain)))% a year.").font(.caption).foregroundStyle(.secondary)
+            }
         case "jupiter":
             ForEach(ws.lend, id: \.vault) { v in row("jup", v.vault, "\(Fmt.num(v.usdc)) USDC", "earning · withdraw any time") }
             if ws.lend.isEmpty { Text("Nothing in Jupiter Lend yet.").font(.caption).foregroundStyle(.secondary) }
@@ -320,6 +330,7 @@ struct PlaceDetailBoard: View {
         case "solana": [("Top up", "top up"), ("Stake SOL", "stake 0.01 SOL"), ("Send to a saved address", "send 1 USDC to ")]
         case "hyperliquid": [("Withdraw to Solana", "withdraw 1 USDC to Solana"), ("Trade by the book", "long ETH by the book"), ("What’s moving", "what's moving?")]
         case "jupiter": [("Deposit", "deposit 1 USDC into Jupiter"), ("Withdraw", "withdraw 1 USDC from Jupiter"), ("Best rates", "where to keep USDC")]
+        case "kamino": [("Withdraw all", "withdraw USDC from Kamino"), ("Best rates", "where to keep USDC")]
         case "robinhood": [("Buy SpaceX", "buy SpaceX stock for 2 USDC"), ("Sell", "sell my SpaceX shares"), ("USDG to Solana", "move USDG from Robinhood to Solana")]
         default: [("Lend more", "lend 1 USDC on Aave"), ("Withdraw to Solana", "withdraw USDC from Aave"), ("Best rates", "where to keep USDC")]
         }
@@ -389,13 +400,15 @@ struct Openable: ViewModifier {
 struct PortfolioRing: View {
     @Environment(Workspace.self) private var ws
 
-    static let colors: [String: Color] = ["Solana": Color(hex: 0x9945FF), "Hyperliquid": Color(hex: 0x2FB39A), "Jupiter Lend": Color(hex: 0xC7F284), "Aave · Base": Color(hex: 0xB6509E)]
+    static let colors: [String: Color] = ["Solana": Color(hex: 0x9945FF), "Hyperliquid": Color(hex: 0x2FB39A), "Jupiter Lend": Color(hex: 0xC7F284), "Aave · Base": Color(hex: 0xB6509E),
+                                          "Kamino": Color(hex: 0x3B82F6)]
 
     var body: some View {
         let slices = PortfolioSplit.slices([
             ("Solana", (ws.solana?.usdc ?? 0) + (ws.solana.flatMap { s in ws.markets["SOL"].map { s.sol * $0.markPx } } ?? 0)),
             ("Hyperliquid", ws.hlTotal ?? 0),
             ("Jupiter Lend", ws.lendTotal),
+            ("Kamino", ws.kamino),
             ("Aave · Base", ws.base.map { $0.aave + $0.usdc } ?? 0),
         ])
         if slices.count > 1 {

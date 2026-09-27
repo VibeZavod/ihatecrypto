@@ -1,6 +1,7 @@
 import AppKit
 import SwiftUI
 import DeFiJupiterLend
+import DeFiKamino
 import DeFiYields
 import EVMChain
 import ExecutionCore
@@ -159,6 +160,10 @@ final class Workspace {
     /// A limit entry waiting on the book (its stop and take are the trigger orders next to it).
     var pendingEntry: HyperliquidAccount.Order? { orders.first { !$0.isTrigger } }
     var lend: [(vault: String, usdc: Decimal)] = []
+    /// Kamino Lend deposits, in dollars.
+    var kamino: Decimal = 0
+    /// Hyperliquid's HLP vault: what is in it and, while a deposit is locked, until when.
+    var hlp: (equity: Decimal, lockedUntil: Date?) = (0, nil)
     /// On Base, at the Hyperliquid (EVM) address: idle USDC, USDC supplied to Aave, ETH for gas.
     var base: (usdc: Decimal, aave: Decimal, eth: Decimal)?
     /// USDC on Arbitrum at our EVM address (money in transit or left from a transfer).
@@ -284,7 +289,7 @@ final class Workspace {
     var equity: Decimal? {
         guard solana != nil || hl != nil else { return nil }
         return (solana?.usdc ?? 0) + (hl?.accountValue ?? 0) + lend.reduce(0) { $0 + $1.usdc } + dexBalances.values.reduce(0) { $0 + $1.accountValue }
-            + (base.map { $0.usdc + $0.aave } ?? 0) + (arbitrumUSDC ?? 0) + robinhoodTotal
+            + (base.map { $0.usdc + $0.aave } ?? 0) + (arbitrumUSDC ?? 0) + robinhoodTotal + kamino + hlp.equity
     }
     /// The plan with what the user left to the rules filled in.
     var resolved: (intent: TradeIntent, notes: [String]) { Plan.resolve(intent, market: market, equity: equity, policy: policy) }
@@ -653,6 +658,7 @@ final class Workspace {
             solanaError = nil
             lend = ((try? await JupiterLend.positions(user: solanaAddress)) ?? []).filter { $0.assets > 0 }
                 .map { ($0.vault, Decimal($0.assets) / 1_000_000) }
+            if let k = try? await Kamino.positions(wallet: solanaAddress) { kamino = k.reduce(0) { $0 + $1.valueUSD } }
         } catch {
             solana = nil
             solanaError = error.localizedDescription
@@ -676,6 +682,7 @@ final class Workspace {
                 for coin in before.subtracting(positions.map(\.coin)) { await closedByExchange(coin) }
             }
             orders = (try? await HyperliquidAccount.openOrders(hlAddress)) ?? []
+            if let v = try? await HyperliquidAccount.vaultEquity(user: hlAddress, vault: HLGuard.hlpVault) { hlp = (v.equity, v.lockedUntil) }
             if recentlyClosed == nil || before != Set(positions.map(\.coin)), let fills = try? await TradeHistory.fills(user: hlAddress) {
                 let week = Date().addingTimeInterval(-7 * 86400)
                 recentlyClosed = TradeHistory.stories(fills).filter { ($0.closed ?? .distantPast) > week }
