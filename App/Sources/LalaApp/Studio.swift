@@ -229,8 +229,6 @@ struct StudioRail: View {
     @State private var edgeHover = false
     @State private var canvasesOpen = false
     @State private var balanceHover = false
-    @State private var allAccounts = false
-    @State private var allPositions = false
     static let narrowWidth: CGFloat = 76, wideWidth: CGFloat = 280
 
     private var width: CGFloat { dragWidth ?? (collapsed ? Self.narrowWidth : Self.wideWidth) }
@@ -287,8 +285,8 @@ struct StudioRail: View {
                 Button { withAnimation(StudioView.spring) { collapsed = true } } label: { Image(systemName: "sidebar.left") }
                     .buttonStyle(.hoverIcon).help("Collapse wallet")
             }
-            // Everything between the header and the profile scrolls as one: balances, positions, closed trades,
-            // favorites and canvases, however many there are.
+            // Everything between the header and the profile scrolls as one: the balance, its buttons, closed trades and
+            // canvases, however many there are. Places, positions and favorites are on the canvas.
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -308,29 +306,9 @@ struct StudioRail: View {
                     }
                     .onHover { balanceHover = $0 }
                     RailActions()
-                    VStack(spacing: 2) {
-                        if ws.updatedAt == nil {
-                            ForEach(0..<4, id: \.self) { _ in SkeletonRow() }
-                        } else {
-                            let rows = accounts
-                            ForEach(allAccounts ? rows : Array(rows.prefix(Self.railLimit)), id: \.place) { account($0.place, logo: $0.logo, name: $0.name, value: $0.value) }
-                            RailMore(total: rows.count, expanded: $allAccounts)
-                        }
-                    }
-                    if !ws.positions.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("Positions · Hyperliquid").font(.caption).foregroundStyle(.secondary)
-                            ForEach(allPositions ? ws.positions : Array(ws.positions.prefix(Self.railLimit)), id: \.coin) { p in
-                                Button { Task { await ws.chartCommand(.chart(coin: p.coin, range: .day)) } } label: { PositionChip(position: p) }
-                                    .buttonStyle(.plain).pointerStyle(.link).help("Open the \(IntentParser.pretty(p.coin)) chart")
-                            }
-                            RailMore(total: ws.positions.count, expanded: $allPositions)
-                        }
-                    }
                     if let closed = ws.recentlyClosed, !closed.isEmpty {
                         ClosedTrades(stories: closed)
                     }
-                    FavoriteChips()
                     CanvasList(scrolls: false)
                 }
                 // Loaded numbers and sections that arrive later fade in instead of popping up.
@@ -355,42 +333,18 @@ struct StudioRail: View {
                 .popover(isPresented: $canvasesOpen, arrowEdge: .trailing) {
                     CanvasList { canvasesOpen = false }.frame(width: 280, height: 380).padding(14)
                 }
-            // The balances and positions scroll when the window is too low for all of them.
-            ScrollView {
-                VStack(spacing: 14) {
-                    VStack(spacing: 1) {
-                        if ws.updatedAt == nil {
-                            Skeleton(width: 48, height: 12)
-                        } else {
-                            Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 12, weight: .heavy)).monospacedDigit()
-                        }
-                        if !ws.positions.isEmpty {
-                            Text(signed(ws.positionsPnl)).font(.system(size: 10, weight: .semibold))
-                                .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
-                        }
-                    }
-                    Divider().frame(width: 36)
-                    icon("sol", ws.solana.map { Fmt.num($0.usdc) } ?? "—", help: "Solana, USDC").onTapGesture { ws.toggleDetail("solana") }
-                    icon("hype", ws.hlTotal.map(Fmt.usd) ?? "—", help: "Hyperliquid").onTapGesture { ws.toggleDetail("hyperliquid") }
-                    if ws.lendTotal > 0 { icon("jup", Fmt.num(ws.lendTotal), help: "Jupiter Lend, USDC").onTapGesture { ws.toggleDetail("jupiter") } }
-                    if ws.kamino > 0 { icon("kamino", Fmt.usd(ws.kamino), help: "Kamino Lend").onTapGesture { ws.toggleDetail("kamino") } }
-                    if ws.near > 0 { icon("near", Fmt.num(ws.near, maxFraction: 3), help: "NEAR on the NEAR chain").onTapGesture { ws.toggleDetail("near") } }
-                    if let b = ws.base, b.aave + b.usdc > 0 { icon("aave", Fmt.num(b.aave + b.usdc), help: "Aave on Base, USDC").onTapGesture { ws.toggleDetail("aave") } }
-                    if let b = ws.base, b.morpho > 0 { icon("morpho", Fmt.num(b.morpho), help: "Morpho on Base, USDC").onTapGesture { ws.toggleDetail("morpho") } }
-                    if !ws.positions.isEmpty {
-                        Divider().frame(width: 36)
-                        ForEach(ws.positions, id: \.coin) { p in
-                            VStack(spacing: 3) {
-                                AssetBadge(coin: p.coin, size: 34, dark: true)
-                                Text(signed(p.unrealizedPnl)).font(.system(size: 10, weight: .bold))
-                                    .foregroundStyle(p.unrealizedPnl < 0 ? Brand.loss : Brand.profit)
-                            }
-                            .help("\(p.size > 0 ? "Long" : "Short") \(IntentParser.pretty(p.coin))")
-                        }
-                    }
+            VStack(spacing: 1) {
+                if ws.updatedAt == nil {
+                    Skeleton(width: 48, height: 12)
+                } else {
+                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 12, weight: .heavy)).monospacedDigit()
+                }
+                if !ws.positions.isEmpty {
+                    Text(signed(ws.positionsPnl)).font(.system(size: 10, weight: .semibold))
+                        .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
                 }
             }
-            .scrollIndicators(.never)
+            Spacer(minLength: 0)
             ProfileMenu(compact: true)
         }
         .padding(.vertical, 16)
@@ -399,52 +353,8 @@ struct StudioRail: View {
     /// Every section of the rail but the canvases shows this many rows, then «Show N more».
     static let railLimit = 4
 
-    /// The places that hold money, in the rail's order: Solana and Hyperliquid always, the rest when they hold some.
-    private var accounts: [(place: String, logo: String, name: String, value: String)] {
-        var rows = [("solana", "sol", "Solana", ws.solana.map { "\(Fmt.num($0.usdc)) USDC" } ?? "—"),
-                    ("hyperliquid", "hype", "Hyperliquid", ws.hlTotal.map(Fmt.usd) ?? "—")]
-        if ws.lendTotal > 0 { rows.append(("jupiter", "jup", "Jupiter Lend", "\(Fmt.num(ws.lendTotal)) USDC")) }
-        if ws.kamino > 0 { rows.append(("kamino", "kamino", "Kamino", Fmt.usd(ws.kamino))) }
-        if ws.near > 0 { rows.append(("near", "near", "NEAR", "\(Fmt.num(ws.near, maxFraction: 4)) NEAR")) }
-        if let b = ws.base, b.aave + b.usdc > 0 { rows.append(("aave", "aave", "Aave · Base", "\(Fmt.num(b.aave + b.usdc)) USDC")) }
-        if let b = ws.base, b.morpho > 0 { rows.append(("morpho", "morpho", "Morpho · Base", "\(Fmt.num(b.morpho)) USDC")) }
-        if ws.robinhoodTotal > 0 { rows.append(("robinhood", "robinhood", "Robinhood Chain", Fmt.usd(ws.robinhoodTotal))) }
-        return rows.map { (place: $0.0, logo: $0.1, name: $0.2, value: $0.3) }
-    }
-
     private var railKey: String {
-        "\(ws.updatedAt == nil)·\(ws.positions.count)·\(ws.recentlyClosed?.count ?? -1)·\(ws.favoriteTokens.count)·\(allAccounts)·\(allPositions)"
-    }
-
-    /// A place in the rail: a click opens its details on the canvas, the open one is highlighted.
-    private func account(_ place: String, logo: String, name: String, value: String) -> some View {
-        Button { ws.toggleDetail(place) } label: {
-            HStack(spacing: 10) {
-                TokenLogo(name: logo, size: 28)
-                Text(name).font(.system(size: 13))
-                Spacer()
-                Text(value).font(.system(size: 13, weight: .semibold)).monospacedDigit()
-                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(.tertiary)
-            }
-            .padding(8)
-            .background(RoundedRectangle(cornerRadius: 12).fill(ws.detail == place ? Brand.accent.opacity(0.14) : place == "solana" ? Brand.solanaTint : .clear))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
-        .help("Details: \(name)")
-    }
-
-    private func icon(_ logo: String, _ value: String, help: String) -> some View {
-        VStack(spacing: 3) {
-            TokenLogo(name: logo, size: 34)
-            Text(value).font(.system(size: 10, weight: .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
-        }
-        .padding(.vertical, 4)
-        .frame(width: 66)
-        .modifier(HoverLift())
-        .contentShape(Rectangle())
-        .help(help)
+        "\(ws.updatedAt == nil)·\(ws.recentlyClosed?.count ?? -1)"
     }
 }
 
@@ -487,19 +397,6 @@ struct Skeleton: View {
             .frame(width: width, height: height)
             .onAppear { withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) { sweep = true } }
             .accessibilityLabel("Loading")
-    }
-}
-
-/// A rail row still loading: a logo circle, a name and a value.
-struct SkeletonRow: View {
-    var body: some View {
-        HStack(spacing: 10) {
-            Skeleton(width: 28, height: 28, radius: 14)
-            Skeleton(width: 90, height: 11)
-            Spacer()
-            Skeleton(width: 60, height: 11)
-        }
-        .padding(8)
     }
 }
 
