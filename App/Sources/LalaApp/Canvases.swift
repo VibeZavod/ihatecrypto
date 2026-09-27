@@ -400,6 +400,7 @@ struct CanvasRow: View {
 
 /// A canvas opened again whose board isn't a live plan: its bubbles as they were.
 struct SavedBoard: View {
+    @Environment(Workspace.self) private var ws
     let canvas: CanvasSession
 
     var body: some View {
@@ -408,8 +409,18 @@ struct SavedBoard: View {
                 Label("\(o.ok ? "Executed" : "Failed") · \(Fmt.date(o.at))", systemImage: o.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
                     .font(.system(size: 13, weight: .semibold)).foregroundStyle(o.ok ? Brand.profit : Brand.loss)
             } else {
-                Label("As it was · \(Fmt.date(canvas.boardAt ?? canvas.updated)). Ask again for fresh numbers.", systemImage: "clock.arrow.circlepath")
-                    .font(.caption).foregroundStyle(.secondary)
+                HStack(spacing: 10) {
+                    Label("As it was · \(Fmt.date(canvas.boardAt ?? canvas.updated))", systemImage: "clock.arrow.circlepath")
+                        .font(.caption).foregroundStyle(.secondary)
+                    // The same request again, through the chat: live numbers, and a money move still waits for Confirm.
+                    if let request = canvas.messages.last(where: \.fromUser)?.text {
+                        Button { Task { await ws.send(request) } } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise").font(.caption.weight(.semibold))
+                        }
+                        .buttonStyle(.bordered).controlSize(.small).disabled(ws.busy)
+                        .help("Asks “\(request)” again for fresh numbers")
+                    }
+                }
             }
             if !canvas.bubbles.isEmpty, canvas.bubbles.allSatisfy({ $0.kind == "step" }) {
                 RouteSteps(steps: canvas.bubbles).frame(width: 470, alignment: .leading)
