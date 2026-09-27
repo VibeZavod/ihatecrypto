@@ -653,7 +653,8 @@ struct WithdrawBoard: View {
                 step(logo: "sol", label: "FROM · SOLANA", title: "\(Fmt.num(usdc)) USDC", line: ws.solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", fill: Brand.solanaTint, dark: false)
                 step(logo: "relay", label: "BRIDGE · RELAY", title: "USDG → Robinhood", line: "+ ETH for gas when there's none", fill: Brand.relay, dark: true)
                 step(logo: "robinhood", label: "BUY · UNISWAP", title: symbol,
-                     line: price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 5)) at ≈ \(Fmt.usd($0))" } ?? "at the pool price", fill: Color(hex: 0x3A4A00), dark: true)
+                     line: price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 2)) \(symbol) worth ≈ \(Fmt.usd(usdc)) · 1 \(symbol) = \(tokenPrice($0))" } ?? "at the pool price",
+                     fill: Color(hex: 0x3A4A00), dark: true)
             }
             Label(contract ? "A token by its contract is anyone's coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose."
                            : "Robinhood Stock Tokens give economic exposure, not the shares, and aren’t offered to US persons or in Canada, the UK and Switzerland.",
