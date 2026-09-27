@@ -121,3 +121,12 @@ private func jwt(_ claims: [String: Any]) -> String {
     #expect(LLMCatalog.provider(id: "grok-subscription")?.info.unavailable != nil)
     #expect(LLMCatalog.all.filter { $0.info.kind == .subscription }.count == 4)
 }
+
+@Test func modelIdsReadAsNames() {
+    let names = [
+        "gpt-6-sol": "GPT 6 SOL", "claude-haiku-4-5": "Claude Haiku 4.5", "deepseek-flash": "DeepSeek Flash",
+        "deepseek/deepseek-v4.1-flash": "DeepSeek V4.1 Flash", "gemini-3.8-flash": "Gemini 3.8 Flash",
+        "grok-4.3": "Grok 4.3", "qwen3.5:9b": "Qwen3.5 9B", "gpt-6-pro": "GPT 6 Pro",
+    ]
+    for (id, name) in names { #expect(LLMCatalog.displayName(model: id) == name) }
+}

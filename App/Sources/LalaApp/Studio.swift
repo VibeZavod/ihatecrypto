@@ -1538,7 +1538,7 @@ struct FloatingChat: View {
     }
 }
 
-/// «gpt-6-sol · ChatGPT ▾»: the model and provider for the chat, right under LALA AI. The choice is kept per canvas.
+/// «[logo] GPT 6 SOL ▾»: the model for the chat, right under LALA AI. The choice is kept per canvas.
 /// The menu lists companies; one with several ways in (subscription, API key) opens in place to show them.
 struct ChatModelMenu: View {
     @Environment(Workspace.self) private var ws
@@ -1557,7 +1557,7 @@ struct ChatModelMenu: View {
         } label: {
             HStack(spacing: 4) {
                 if let c = ModelCompany.of(ws.providerID) { ModelCompanyLogo(company: c, size: 15) }
-                Text([ws.model, ws.provider.info.name].filter { !$0.isEmpty }.joined(separator: " · ")).lineLimit(1)
+                Text(ws.model.isEmpty ? ws.provider.info.name : LLMCatalog.displayName(model: ws.model)).lineLimit(1)
                 Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
             }
             .font(.caption).foregroundStyle(Brand.accent)
@@ -1566,7 +1566,7 @@ struct ChatModelMenu: View {
         }
         .buttonStyle(.plain)
         .fixedSize()
-        .help("The model for this canvas. It never sees your wallet key.")
+        .help("\(ws.provider.info.name) · \(ws.model). The model for this canvas; it never sees your wallet key.")
         .popover(isPresented: $open, arrowEdge: .bottom) { menu }
     }
 
@@ -1634,7 +1634,7 @@ struct ChatModelMenu: View {
     private func detail(_ info: ProviderInfo) -> String {
         let model = ws.modelChoices[info.id] ?? info.defaultModel
         let state = info.kind == .local ? "on this Mac" : connected(info) ? "connected" : "sign-in needed"
-        let shown = info.takesKey && !connected(info) ? "any model by key" : model
+        let shown = info.takesKey && !connected(info) ? "any model by key" : model.isEmpty ? "" : LLMCatalog.displayName(model: model)
         return [shown, state].filter { !$0.isEmpty }.joined(separator: " · ")
     }
 }

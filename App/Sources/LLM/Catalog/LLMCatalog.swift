@@ -23,6 +23,28 @@ public enum LLMCatalog {
     public static func provider(id: String) -> (any LLMProvider)? {
         all.first { $0.info.id == id }
     }
+
+    /// A model id as people write it: «gpt-6-sol» → «GPT 6 SOL», «claude-haiku-4-5» → «Claude Haiku 4.5»,
+    /// «deepseek/deepseek-v4.1-flash» → «DeepSeek V4.1 Flash», «qwen3.5:9b» → «Qwen3.5 9B».
+    public static func displayName(model: String) -> String {
+        let id = model.split(separator: "/").last.map(String.init) ?? model
+        var words: [String] = []
+        for part in id.split(whereSeparator: { "-_: ".contains($0) }).map(String.init) {
+            // Version parts: «4-5» reads 4.5.
+            if part.allSatisfy(\.isNumber), let last = words.last, last.allSatisfy({ $0.isNumber || $0 == "." }) {
+                words[words.count - 1] += "." + part
+            } else if part == "deepseek" {
+                words.append("DeepSeek")
+            } else if part.count <= 3, part.allSatisfy(\.isLetter), !["pro", "max"].contains(part) {
+                words.append(part.uppercased())
+            } else if part.last == "b", part.dropLast().allSatisfy({ $0.isNumber || $0 == "." }) {
+                words.append(part.uppercased())
+            } else {
+                words.append(part.prefix(1).uppercased() + part.dropFirst())
+            }
+        }
+        return words.joined(separator: " ")
+    }
 }
 
 /// Listed so the user sees why an option is missing.
