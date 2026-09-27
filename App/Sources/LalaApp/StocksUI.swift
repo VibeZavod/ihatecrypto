@@ -46,19 +46,25 @@ extension Workspace {
     var robinhoodTotal: Decimal { robinhood.map { $0.usdg + $0.stocks.reduce(0) { $0 + $1.usd } } ?? 0 }
 }
 
-/// The Stock Token's own logo from Robinhood's CDN, or a drawn badge while it loads.
+/// The company's logo bundled by ticker, else the registry's (Robinhood's own) logo, or a drawn badge while it loads.
 struct StockLogo: View {
     let symbol: String
     let url: URL?
     var size: CGFloat = 26
 
     var body: some View {
-        AsyncImage(url: url) { image in
-            image.resizable().scaledToFit().frame(width: size, height: size).clipShape(Circle())
-        } placeholder: {
-            AssetBadge(coin: symbol, size: size, dark: true)
+        // Robinhood's registry gives every Stock Token the same Robinhood logo, so the company's own logo, when
+        // bundled by ticker (Logos/spcx.svg, tsla.png…), comes first.
+        if let bundled = TokenLogo.name(forAsset: symbol) {
+            TokenLogo(name: bundled, size: size)
+        } else {
+            AsyncImage(url: url) { image in
+                image.resizable().scaledToFit().frame(width: size, height: size).clipShape(Circle())
+            } placeholder: {
+                AssetBadge(coin: symbol, size: size, dark: true)
+            }
+            .frame(width: size, height: size)
         }
-        .frame(width: size, height: size)
     }
 }
 
