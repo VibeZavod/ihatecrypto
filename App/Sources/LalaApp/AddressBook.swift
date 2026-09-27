@@ -607,6 +607,34 @@ extension Workspace {
     }
 }
 
+/// Favorite tokens and starred addresses as cards on the canvas; the address book is one click away.
+struct FavoritesBoard: View {
+    @Environment(Workspace.self) private var ws
+    @AppStorage("canvasMode") private var mode = "plan"
+
+    var body: some View {
+        let favorites = ws.addressBook.filter(\.favorite).sorted { $0.name.lowercased() < $1.name.lowercased() }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "star.fill").foregroundStyle(Color(hex: 0xF5B301)).font(.system(size: 16, weight: .semibold))
+                Text("Favorites").font(.system(size: 16, weight: .bold))
+                Spacer()
+                Button { withAnimation(StudioView.spring) { ws.showFavorites = false } } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.hoverIcon).help("Close")
+            }
+            if ws.favoriteTokens.isEmpty, favorites.isEmpty {
+                Text("Nothing starred yet. Star a token or an address in the address book and it shows up here.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            ForEach(ws.favoriteTokens) { FavoriteTokenCard(token: $0) }
+            ForEach(favorites) { AddressCard(entry: $0, edit: { _ in mode = "book" }) }
+            Button { withAnimation(.snappy) { mode = "book" } } label: { Label("Address book", systemImage: "book.closed") }
+                .buttonStyle(.borderless).font(.caption.weight(.semibold))
+        }
+        .frame(width: 470, alignment: .leading)
+    }
+}
+
 /// Starred addresses in the wide rail: a click copies one, the tab has the rest.
 struct FavoriteChips: View {
     @Environment(Workspace.self) private var ws

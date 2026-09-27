@@ -87,6 +87,9 @@ final class Workspace {
     var chart: ChartState?
     /// The day's biggest movers on the canvas.
     var showMovers = false
+    /// The latest of the history and the favorites on the canvas, opened by the rail's buttons.
+    var showHistory = false
+    var showFavorites = false
     /// Where the chat is in the window, so scrolling over it isn't taken by the canvas.
     @ObservationIgnored var chatFrame: CGRect = .zero
     /// The plan being assembled on the canvas, block by block (S02: the chat shows the count).

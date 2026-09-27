@@ -228,9 +228,14 @@ struct ContentView: View {
             }
             #endif
             await ws.refresh()
-            // `-openPlace kamino`: opens that place's card from the rail, to check the canvas layout in a screenshot.
-            // Only shows a card, so it stays in Release builds.
-            if let place = UserDefaults.standard.string(forKey: "openPlace") { ws.detail = place }
+            // `-openPlace kamino`: opens that place's card from the rail, to check the canvas layout in a screenshot;
+            // `history` and `favorites` open the boards of the rail's buttons. Only shows cards, so it stays in Release builds.
+            switch UserDefaults.standard.string(forKey: "openPlace") {
+            case "history": ws.showHistory = true
+            case "favorites": ws.showFavorites = true
+            case let place?: ws.detail = place
+            case nil: break
+            }
             #if DEBUG
             // `--say "…"` replays messages on launch; used to check the app end to end.
             for text in sayArguments() { await ws.send(text) }

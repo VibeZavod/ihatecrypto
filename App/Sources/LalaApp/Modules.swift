@@ -586,4 +586,6 @@ extension ClosedRange where Bound == CGFloat {
 extension Notification.Name {
     /// ⌘ + scroll wheel over the canvas: userInfo["factor"].
     static let lalaCanvasZoom = Notification.Name("lalaCanvasZoom")
+    /// The rail's «Portfolio»: the canvas back to 100 % with the portfolio in view.
+    static let lalaCanvasFit = Notification.Name("lalaCanvasFit")
 }

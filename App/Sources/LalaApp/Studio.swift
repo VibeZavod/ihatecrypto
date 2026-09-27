@@ -286,7 +286,6 @@ struct StudioRail: View {
                 LalaLogo(size: 34)
                 Text("lala").font(.system(size: 20, weight: .heavy)).tracking(-0.5)
                 Spacer()
-                HistoryButton()
                 BookButton()
                 Button { withAnimation(StudioView.spring) { collapsed = true } } label: { Image(systemName: "sidebar.left") }
                     .buttonStyle(.hoverIcon).help("Collapse wallet")
@@ -299,11 +298,6 @@ struct StudioRail: View {
                         HStack(spacing: 6) {
                             Text("Balance").font(.caption).foregroundStyle(.secondary)
                             BalanceFreshness(hovering: balanceHover)
-                            Spacer()
-                            Button { withAnimation(StudioView.spring) { ws.showReceive.toggle(); if ws.showReceive { UserDefaults.standard.set("plan", forKey: "canvasMode") } } } label: {
-                                Label("Top up", systemImage: "arrow.down.circle.fill").font(.caption.weight(.semibold))
-                            }
-                            .buttonStyle(.borderless).help("Your addresses: where to send money into LALA")
                         }
                         if ws.updatedAt == nil {
                             Skeleton(width: 150, height: 34, radius: 9).padding(.vertical, 3)
@@ -316,6 +310,7 @@ struct StudioRail: View {
                         }
                     }
                     .onHover { balanceHover = $0 }
+                    RailActions()
                     VStack(spacing: 2) {
                         if ws.updatedAt == nil {
                             ForEach(0..<4, id: \.self) { _ in SkeletonRow() }
@@ -775,6 +770,10 @@ struct StudioCanvas: View {
                     .padding(.bottom, 10)
                     .transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity))
             }
+            // The rail's buttons put their boards here too.
+            if ws.showReceive { ReceiveBoard() }
+            if ws.showFavorites { FavoritesBoard().transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity)) }
+            if ws.showHistory { HistoryBoard().transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity)) }
             HStack(spacing: 8) {
                 Text(ws.allocationPreview.map { "Plan · spread \($0.asset) across the best rates" }
                      ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : board?.title ?? "Plan"))
@@ -783,7 +782,6 @@ struct StudioCanvas: View {
                 // An open position is on its market for good: nothing to pick until it closes.
                 if hasRoute, !ws.managesPosition { MarketPicker() }
             }
-            if ws.showReceive { ReceiveBoard() }
             if let chart = ws.chart { ChartBoard(state: chart) }
             if ws.showMovers { MoversBoard() }
             if let yields = ws.yieldOptions, !yields.isEmpty {
@@ -1007,6 +1005,7 @@ struct CanvasViewport<Content: View>: View {
         .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasZoom)) { note in
             if let f = note.userInfo?["factor"] as? CGFloat { zoomAbout(pointer, by: f) }
         }
+        .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasFit)) { _ in zoom = 1; pan = .zero }
         .onAppear(perform: watchScrolling)
         .onDisappear { if let m = scrollMonitor { NSEvent.removeMonitor(m); scrollMonitor = nil } }
         .overlay(alignment: .bottomLeading) { zoomBar(scale).padding(18) }
@@ -2365,6 +2364,46 @@ struct AllocationBoard: View {
 }
 
 /// Opens the history on the canvas, and back.
+/// Under the balance: four ways onto the canvas, each with its own icon. Top up is in the accent colour; the others
+/// light up while their board is on the canvas.
+struct RailActions: View {
+    @Environment(Workspace.self) private var ws
+    @AppStorage("canvasMode") private var mode = "plan"
+
+    var body: some View {
+        HStack(spacing: 6) {
+            tile("Portfolio", "chart.pie.fill", on: false, help: "The portfolio on the canvas") {
+                NotificationCenter.default.post(name: .lalaCanvasFit, object: nil)
+            }
+            tile("Top up", "arrow.down.circle.fill", on: ws.showReceive, accent: true, help: "Your addresses: where to send money into LALA") {
+                ws.showReceive.toggle()
+            }
+            tile("History", "clock.arrow.circlepath", on: ws.showHistory, help: "What LALA did lately") { ws.showHistory.toggle() }
+            tile("Favorites", "star.fill", on: ws.showFavorites, help: "Favorite tokens and addresses") { ws.showFavorites.toggle() }
+        }
+    }
+
+    private func tile(_ title: String, _ icon: String, on: Bool, accent: Bool = false, help: String, action: @escaping () -> Void) -> some View {
+        Button {
+            withAnimation(StudioView.spring) { action() }
+            mode = "plan"
+        } label: {
+            VStack(spacing: 5) {
+                Image(systemName: icon).font(.system(size: 15, weight: .semibold))
+                Text(title).font(.system(size: 10.5, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            }
+            .frame(maxWidth: .infinity).padding(.vertical, 9)
+            .foregroundStyle(accent ? Color.white : on ? Brand.accent : Color.primary)
+            .background(RoundedRectangle(cornerRadius: 12).fill(accent ? Brand.accent : Color.primary.opacity(on ? 0.1 : 0.05)))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(accent ? Color.white.opacity(on ? 0.7 : 0) : on ? Brand.accent : .clear, lineWidth: 1.5))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .modifier(HoverLift(radius: 12))
+        .help(help)
+    }
+}
+
 struct HistoryButton: View {
     @AppStorage("canvasMode") private var mode = "plan"
 

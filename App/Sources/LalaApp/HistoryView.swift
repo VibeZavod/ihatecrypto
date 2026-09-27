@@ -214,6 +214,35 @@ struct HistoryView: View {
     }
 }
 
+/// The latest of what LALA did, on the canvas with its bubbles; the whole history is one click away.
+struct HistoryBoard: View {
+    @Environment(Workspace.self) private var ws
+    @AppStorage("canvasMode") private var mode = "plan"
+
+    var body: some View {
+        let items = ws.activities.reversed().filter { !$0.lines.isEmpty || !$0.bubbles.isEmpty || $0.request != nil }.prefix(5)
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "clock.arrow.circlepath").foregroundStyle(Brand.accent).font(.system(size: 16, weight: .semibold))
+                Text("History · latest").font(.system(size: 16, weight: .bold))
+                Spacer()
+                Button { withAnimation(StudioView.spring) { ws.showHistory = false } } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.hoverIcon).help("Close")
+            }
+            if items.isEmpty {
+                Text("Nothing yet. Every request from now on is kept here with the bubbles it had on the canvas.")
+                    .font(.callout).foregroundStyle(.secondary)
+            }
+            ForEach(Array(items)) { ActivityCard(activity: $0) }
+            Button { withAnimation(.snappy) { mode = "history" } } label: {
+                Label("All history: positions, transfers, signatures", systemImage: "list.bullet.rectangle")
+            }
+            .buttonStyle(.borderless).font(.caption.weight(.semibold))
+        }
+        .frame(width: 470, alignment: .leading)
+    }
+}
+
 /// One activity: the request, how it was understood, the bubbles it had, what LALA said.
 struct ActivityCard: View {
     let activity: Activity
