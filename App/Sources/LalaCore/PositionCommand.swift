@@ -140,6 +140,14 @@ public enum WalletCommand: Equatable, Sendable {
             let sol = q.contains(/\bsol\b|солан|\bсол\b|solana/), usd = q.contains(/usdc|стейбл|доллар|stable/)
             return .yields(sol && usd ? nil : sol ? "SOL" : usd ? "USDC" : q.contains(/usdt/) ? "USDT" : nil)
         }
+        // Any token by its contract («купи 0x… токен на $2»): bought on Robinhood Chain, where LALA trades by contract.
+        if let contract = text.firstMatch(of: /0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/).map({ String($0.0) }) {
+            if q.contains(/\bsell\b|прода\w*|\bdump\b/) {
+                let tokens = q.firstMatch(of: /(?:^|\s)(\d+(?:[.,]\d+)?)\s*(?:tokens?|токен\w*|шт)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
+                return .sellStock(symbol: contract, amount: amount == nil ? tokens : nil)
+            }
+            if q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bget\s+me\b|вложи\w*\s+в/) { return .buyStock(symbol: contract, usdc: amount) }
+        }
         // Robinhood Stock Tokens: a stock word or a company LALA knows, with buy or sell.
         if let symbol = StockNames.symbol(in: text), q.contains(/\bstocks?\b|\bshares?\b|акци\w*|токен\w*|robinhood|робинхуд|спейс|spacex|\btesla\b|тесл|нвид|nvidia/) {
             if q.contains(/\bsell\b|прода\w*|\bdump\b/) {
@@ -301,8 +309,8 @@ extension WalletCommand {
         case .arbitrumToSolana(let x): return "move \(n(x)) USDC from Arbitrum to Solana"
         case .sendTo(let name, let x): return "send \(Fmt.num(x)) USDC to \(name)"
         case .receive: return "show where to top up"
-        case .buyStock(let s, let u): return "buy \(s) stock tokens for \(n(u)) USDC on Robinhood Chain"
-        case .sellStock(let s, let x): return "sell \(n(x)) \(s) stock tokens on Robinhood Chain"
+        case .buyStock(let s, let u): return "buy \(s.hasPrefix("0x") ? "the token \(s)" : "\(s) stock tokens") for \(n(u)) USDC on Robinhood Chain"
+        case .sellStock(let s, let x): return "sell \(n(x)) \(s.hasPrefix("0x") ? "of the token \(s)" : "\(s) stock tokens") on Robinhood Chain"
         case .robinhoodToSolana(let x): return "move \(n(x)) USDG from Robinhood Chain to Solana"
         }
     }

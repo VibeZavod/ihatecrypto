@@ -52,6 +52,25 @@ public enum RobinhoodStocks {
         }
         return token
     }
+
+    /// A registry symbol, or any token by its contract («купи 0x… на $2»): it must trade on Robinhood Chain with at
+    /// least $50k of liquidity (DexScreener), and its symbol and decimals are read from the contract itself.
+    public static func resolve(_ symbolOrContract: String, rpc: EVMRPC = .robinhood) async throws -> (token: Token, listing: TokenLookup.Info?) {
+        guard symbolOrContract.hasPrefix("0x") else { return (try await verified(symbolOrContract, rpc: rpc), nil) }
+        let address = symbolOrContract
+        guard let info = try await TokenLookup.lookup(address).first(where: { $0.chain == "robinhood" }) else {
+            throw ExecutionError("This contract doesn't trade on Robinhood Chain, and by contract LALA buys only there for now.")
+        }
+        guard let liquidity = info.liquidityUSD, liquidity >= 50_000 else {
+            throw ExecutionError("\(info.symbol) has only \(Fmt.usd(info.liquidityUSD ?? 0)) of liquidity: too thin to trade safely.")
+        }
+        guard let decimals = ABI.uint(in: try await rpc.read(address, Data([0x31, 0x3c, 0xe5, 0x67])), word: 0), decimals <= 36 else {
+            throw ExecutionError("The contract doesn't answer decimals(): not a token LALA can trade.")
+        }
+        let symbol = ABI.string(try await rpc.read(address, Data([0x95, 0xd8, 0x9b, 0x41]))) ?? info.symbol
+        let name = ABI.string(try await rpc.read(address, Data([0x06, 0xfd, 0xde, 0x03]))) ?? info.name
+        return (Token(symbol: symbol, name: name, address: address, decimals: Int(decimals), logo: info.imageURL), info)
+    }
 }
 
 extension Executor {
@@ -73,23 +92,27 @@ extension Executor {
         return best.map { (fee: $0.0, out: $0.1) }
     }
 
-    /// Buys a Stock Token with USDC from Solana: Relay brings USDG (and gas) to Robinhood Chain, Uniswap swaps it.
-    /// The price must sit within Robinhood's own bid–ask (±5%); the swap pays only this wallet (the signer checks).
-    public func buyStock(_ symbol: String, usdc: Decimal) async throws -> String {
+    /// Buys a Stock Token (or any token by its contract) with USDC from Solana: Relay brings USDG (and gas) to
+    /// Robinhood Chain, Uniswap swaps it. The price must sit within Robinhood's own bid–ask, or DexScreener's price for a
+    /// contract (±5%); the swap pays only this wallet (the signer checks).
+    public func buyStock(_ symbolOrContract: String, usdc: Decimal) async throws -> String {
         let rpc = EVMRPC.robinhood, usdg = EVMRPC.robinhoodUSDG, me = wallet.evm
-        let token = try await RobinhoodStocks.verified(symbol)
+        let (token, listing) = try await RobinhoodStocks.resolve(symbolOrContract)
+        let symbol = token.symbol
         let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
         guard units >= 500_000 else { throw ExecutionError("At least 0.5 USDC: less isn't worth the bridge.") }
-        guard let pool = try await bestPool(usdg, token.address, amountIn: units) else { throw ExecutionError("No Uniswap pool trades \(symbol) for USDG.") }
+        guard let pool = try await bestPool(usdg, token.address, amountIn: units) else { throw ExecutionError(noPool(symbol, listing)) }
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
         let price = (Decimal(units) / 1_000_000) / (Decimal(pool.out) / scale)
-        if let q = try await RobinhoodStocks.quote(symbol), price > q.ask * Decimal(string: "1.05")! || price < q.bid * Decimal(string: "0.95")! {
-            throw ExecutionError("Uniswap's price \(Fmt.usd(price)) is outside Robinhood's own \(Fmt.usd(q.bid))–\(Fmt.usd(q.ask)). Nothing was signed.")
+        var band = listing?.priceUSD.map { (bid: $0, ask: $0) }
+        if listing == nil { band = try await RobinhoodStocks.quote(symbol) }
+        if let q = band, price > q.ask * Decimal(string: "1.05")! || price < q.bid * Decimal(string: "0.95")! {
+            throw ExecutionError("Uniswap's price \(Fmt.usd(price)) is outside \(listing == nil ? "Robinhood's own" : "DexScreener's") \(Fmt.usd(q.bid))–\(Fmt.usd(q.ask)). Nothing was signed.")
         }
         report("\(token.name) (\(symbol)): ≈ \(Fmt.usd(price)) a token on Uniswap (pool fee \(Fmt.num(Decimal(pool.fee) / 10_000))%).")
         try await ensureEVM(.robinhood, usdc: units)
         // Quote again with the money there: the price may have moved while the bridge ran.
-        guard let fresh = try await bestPool(usdg, token.address, amountIn: units) else { throw ExecutionError("The \(symbol) pool disappeared.") }
+        guard let fresh = try await bestPool(usdg, token.address, amountIn: units) else { throw ExecutionError(noPool(symbol, listing)) }
         let minimum = fresh.out / 100 * 99
         try await approve(rpc, token: usdg, spender: UniswapV3.robinhoodRouter, amount: units, note: "Approve exactly \(Fmt.num(Decimal(units) / 1_000_000)) USDG to Uniswap")
         let before = try await balance(token.address, on: rpc)
@@ -106,16 +129,23 @@ extension Executor {
         return "Bought \(Fmt.num(got, maxFraction: 6)) \(symbol) (\(token.name)) for \(Fmt.num(Decimal(units) / 1_000_000)) USDG — ≈ \(Fmt.usd(got > 0 ? (Decimal(units) / 1_000_000) / got : price)) a token. You hold \(Fmt.num(after / scale, maxFraction: 6)) \(symbol) on Robinhood Chain. \(EVMNetwork.robinhood.explorer)/tx/\(hash)"
     }
 
+    private func noPool(_ symbol: String, _ listing: TokenLookup.Info?) -> String {
+        listing == nil ? "No Uniswap pool trades \(symbol) for USDG."
+            // ponytail: amounts are 64-bit (≈ 18 whole tokens of 18 decimals); 256-bit words lift it.
+            : "No Uniswap v3 pool on Robinhood Chain trades \(symbol) for USDG at this size (LALA handles up to ≈ 18 whole tokens a trade for now)."
+    }
+
     /// Sells a Stock Token for USDG on Robinhood Chain; nil = all of it.
-    public func sellStock(_ symbol: String, amount: Decimal?) async throws -> String {
+    public func sellStock(_ symbolOrContract: String, amount: Decimal?) async throws -> String {
         let rpc = EVMRPC.robinhood, usdg = EVMRPC.robinhoodUSDG, me = wallet.evm
-        let token = try await RobinhoodStocks.verified(symbol)
+        let (token, listing) = try await RobinhoodStocks.resolve(symbolOrContract)
+        let symbol = token.symbol
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
         let held = try await balance(token.address, on: rpc)
         let wanted = amount.map { min($0 * scale, held) } ?? held
         guard wanted > 0, wanted < Decimal(UInt64.max) else { throw ExecutionError(held == 0 ? "No \(symbol) on Robinhood Chain." : "Too many tokens for one sale here.") }
         let units = NSDecimalNumber(decimal: wanted.rounded(0, .down)).uint64Value
-        guard let pool = try await bestPool(token.address, usdg, amountIn: units) else { throw ExecutionError("No Uniswap pool buys \(symbol) for USDG.") }
+        guard let pool = try await bestPool(token.address, usdg, amountIn: units) else { throw ExecutionError(noPool(symbol, listing)) }
         try await ensureEVM(.robinhood, usdc: 0)
         try await approve(rpc, token: token.address, spender: UniswapV3.robinhoodRouter, amount: units, note: "Approve exactly \(Fmt.num(wanted / scale, maxFraction: 6)) \(symbol) to Uniswap")
         let before = try await rpc.tokenBalance(usdg, owner: me)

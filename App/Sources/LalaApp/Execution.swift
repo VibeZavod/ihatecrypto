@@ -237,7 +237,10 @@ extension Workspace {
             case .arbitrumToSolana(let amount): reply(try await e.evmToSolana(.arbitrum, usdc: amount), note: "Relay · Arbitrum → Solana")
             case .buyStock(let symbol, let usdc):
                 reply(try await e.buyStock(symbol, usdc: usdc ?? 0), note: "Robinhood Chain · Uniswap")
-                rememberStock(symbol)
+                // A token bought by its contract shows among the favorites, with what the wallet holds of it.
+                if !symbol.hasPrefix("0x") { rememberStock(symbol) }
+                else if favoriteTokens.contains(where: { $0.address.lowercased() == symbol.lowercased() }) { await loadTokenBalances() }
+                else { await tokenCommand(.favorite(address: symbol, chain: "robinhood")) }
             case .sellStock(let symbol, let amount): reply(try await e.sellStock(symbol, amount: amount), note: "Robinhood Chain · Uniswap")
             case .robinhoodToSolana(let amount): reply(try await e.evmToSolana(.robinhood, usdc: amount), note: "Relay · Robinhood → Solana")
             case .sendTo(let name, let amount): prepareTransfer(amount, to: name)

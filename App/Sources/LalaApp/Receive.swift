@@ -97,32 +97,46 @@ struct ReceiveCard: View {
     }
 }
 
-/// «Updated 12 s ago · every 30 s · Refresh»: how fresh the numbers are and how they get updated.
+/// A refresh icon; on hover it turns once and «Updated 12 s ago» slides out. A click refreshes now.
 struct BalanceFreshness: View {
     @Environment(Workspace.self) private var ws
+    /// The hover of the block around it (the balance), so the line shows without aiming at the small icon.
+    var hovering = false
+    @State private var selfHover = false
     @State private var refreshing = false
 
+    private var shown: Bool { hovering || selfHover || refreshing }
+
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "arrow.triangle.2.circlepath").foregroundStyle(.secondary)
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                Text(freshness(now: context.date)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
-            }
-            Spacer(minLength: 4)
-            Button(refreshing ? "Refreshing…" : "Refresh now") {
+        HStack(spacing: 5) {
+            Button {
                 refreshing = true
                 Task { await ws.refresh(); refreshing = false }
+            } label: {
+                Image(systemName: "arrow.triangle.2.circlepath")
+                    .symbolEffect(.rotate, value: shown)
+                    .symbolEffect(.rotate, isActive: refreshing)
             }
-            .buttonStyle(.borderless).font(.caption.weight(.semibold)).disabled(refreshing)
+            .buttonStyle(.borderless).foregroundStyle(.secondary).disabled(refreshing)
+            .accessibilityLabel("Refresh balances")
+            if shown {
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    Text(refreshing ? "Updating…" : freshness(now: context.date))
+                        .font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+                }
+                .transition(.move(edge: .leading).combined(with: .opacity))
+            }
         }
-        .help("LALA reads balances straight from Solana, Hyperliquid and Base: every 30 s, every 10 s while it guards a position or watches an alert, and right after each action. Money that arrives is announced in the chat.")
+        .font(.caption)
+        .animation(.spring(duration: 0.35), value: shown)
+        .onHover { selfHover = $0 }
+        .help("LALA reads balances straight from Solana, Hyperliquid and Base: every 30 s, every 10 s while it guards a position or watches an alert, and right after each action. Click to refresh now.")
     }
 
     private func freshness(now: Date) -> String {
-        guard let at = ws.updatedAt else { return "Balances load from the networks…" }
+        guard let at = ws.updatedAt else { return "Loading…" }
         let seconds = max(0, Int(now.timeIntervalSince(at)))
-        let every = ws.exitRules.isEmpty && ws.alerts.isEmpty ? 30 : 10
-        return "Updated \(seconds < 60 ? "\(seconds) s" : "\(seconds / 60) min") ago · every \(every) s"
+        return "Updated \(seconds < 60 ? "\(seconds) s" : "\(seconds / 60) min") ago"
     }
 }
 

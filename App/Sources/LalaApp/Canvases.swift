@@ -619,17 +619,25 @@ struct WithdrawBoard: View {
     }
 
     /// A Robinhood Stock Token bought with USDC from Solana: bridge, then Uniswap on Robinhood Chain.
-    private func stock(_ symbol: String, _ usdc: Decimal) -> some View {
-        let price = ws.markets["xyz:\(symbol)"]?.markPx
+    private func stock(_ symbolOrContract: String, _ usdc: Decimal) -> some View {
+        // A contract («купи 0x…»): its name and price from the favorites when it's there.
+        let contract = symbolOrContract.hasPrefix("0x")
+        let favorite = ws.favoriteTokens.first { $0.address.lowercased() == symbolOrContract.lowercased() }
+        let symbol = favorite?.symbol ?? (contract ? "\(symbolOrContract.prefix(6))…\(symbolOrContract.suffix(4))" : symbolOrContract)
+        let price = contract ? favorite.flatMap { ws.tokenInfo[$0.id]?.priceUSD } : ws.markets["xyz:\(symbolOrContract)"]?.markPx
         return VStack(alignment: .leading, spacing: 8) {
             board(title: "Buy \(symbol) · \(Fmt.num(usdc)) USDC on Robinhood Chain",
-                  footer: "One Solana signature for the bridge, then two on Robinhood Chain: an exact USDG approve and the Uniswap swap, which may only pay this wallet. The token is Robinhood's registered contract, checked on-chain, and the price must sit within Robinhood's own quote. Say “do it” or press Confirm.") {
+                  footer: "One Solana signature for the bridge, then two on Robinhood Chain: an exact USDG approve and the Uniswap swap, which may only pay this wallet. "
+                    + (contract ? "The token is taken by its contract: it must trade on Robinhood Chain with $50k+ of liquidity, and the price must sit within 5% of DexScreener's."
+                                : "The token is Robinhood's registered contract, checked on-chain, and the price must sit within Robinhood's own quote.")
+                    + " Say “do it” or press Confirm.") {
                 step(logo: "sol", label: "FROM · SOLANA", title: "\(Fmt.num(usdc)) USDC", line: ws.solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", fill: Brand.solanaTint, dark: false)
                 step(logo: "relay", label: "BRIDGE · RELAY", title: "USDG → Robinhood", line: "+ ETH for gas when there's none", fill: Brand.relay, dark: true)
                 step(logo: "robinhood", label: "BUY · UNISWAP", title: symbol,
                      line: price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 5)) at ≈ \(Fmt.usd($0))" } ?? "at the pool price", fill: Color(hex: 0x3A4A00), dark: true)
             }
-            Label("Robinhood Stock Tokens give economic exposure, not the shares, and aren’t offered to US persons or in Canada, the UK and Switzerland.",
+            Label(contract ? "A token by its contract is anyone's coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose."
+                           : "Robinhood Stock Tokens give economic exposure, not the shares, and aren’t offered to US persons or in Canada, the UK and Switzerland.",
                   systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Brand.jevInk).frame(width: 470, alignment: .leading)
         }
     }

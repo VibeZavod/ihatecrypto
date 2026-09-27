@@ -53,6 +53,11 @@ func notCharts(_ phrase: String) {
     #expect(TokenCommand.parse("remove token AI from favorites") == .unfavorite(symbol: "AI"))
     // An address for the book, or a transfer, is not a token.
     #expect(TokenCommand.parse("save \(ai) as Bybit on Base") == nil)
+    // «купи 0x… токен на $2» is a trade, not a favorite.
+    #expect(TokenCommand.parse("купи \(ai) токен на $2") == nil)
+    #expect(WalletCommand.parse("купи \(ai) токен на $2") == .buyStock(symbol: ai, usdc: 2))
+    #expect(WalletCommand.parse("sell 3 tokens \(ai)") == .sellStock(symbol: ai, amount: 3))
+    #expect(WalletCommand.parse("send 2 USDC to \(ai)") != .buyStock(symbol: ai, usdc: 2))
     #expect(TokenCommand.parse("send 1 USDC to \(ai)") == nil)
 }
 

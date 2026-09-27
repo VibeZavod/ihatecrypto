@@ -53,7 +53,8 @@ public enum TokenCommand: Equatable, Sendable {
         }
         guard let address = AddressBookCommand.address(in: text),
               q.contains(/\btoken|токен|\bcoin\b|монет|watch|следи|favou?rite|избранн|watchlist/),
-              // «save 0x… as Bybit» is an address for the book, not a token.
+              // «save 0x… as Bybit» is an address for the book, not a token; «купи 0x… токен» is a trade.
+              !q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bsell\b|прода\w*/),
               !q.contains(/\bas\s|\bcalled\b|\bnamed\b|\bкак\s|под\s+именем/) else { return nil }
         let chain: String? = q.contains(/robinhood|робинхуд|робингуд/) ? "robinhood" : q.contains(/\bbase\b|бейс/) ? "base"
             : q.contains(/arbitrum|арбитрум/) ? "arbitrum" : q.contains(/ethereum|эфириум|\beth\s+mainnet/) ? "ethereum"

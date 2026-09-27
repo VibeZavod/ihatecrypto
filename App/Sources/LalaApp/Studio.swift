@@ -226,6 +226,7 @@ struct StudioRail: View {
     @State private var dragWidth: CGFloat?
     @State private var edgeHover = false
     @State private var canvasesOpen = false
+    @State private var balanceHover = false
     static let narrowWidth: CGFloat = 76, wideWidth: CGFloat = 280
 
     private var width: CGFloat { dragWidth ?? (collapsed ? Self.narrowWidth : Self.wideWidth) }
@@ -289,8 +290,9 @@ struct StudioRail: View {
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 3) {
-                        HStack {
+                        HStack(spacing: 6) {
                             Text("Balance").font(.caption).foregroundStyle(.secondary)
+                            BalanceFreshness(hovering: balanceHover)
                             Spacer()
                             Button { withAnimation(StudioView.spring) { ws.showReceive.toggle(); if ws.showReceive { UserDefaults.standard.set("plan", forKey: "canvasMode") } } } label: {
                                 Label("Top up", systemImage: "arrow.down.circle.fill").font(.caption.weight(.semibold))
@@ -303,7 +305,7 @@ struct StudioRail: View {
                                 .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
                         }
                     }
-                    BalanceFreshness()
+                    .onHover { balanceHover = $0 }
                     VStack(spacing: 2) {
                         account("solana", logo: "sol", name: "Solana", value: ws.solana.map { "\(Fmt.num($0.usdc)) USDC" } ?? "—")
                         account("hyperliquid", logo: "hype", name: "Hyperliquid", value: ws.hlTotal.map(Fmt.usd) ?? "—")
@@ -434,19 +436,21 @@ struct StudioRail: View {
 /// «+$0,48» / «−$0,25».
 func signed(_ d: Decimal) -> String { d < 0 ? Fmt.usd(d) : "+" + Fmt.usd(d) }
 
+/// «l·l·»: two tall strokes and two dots on the baseline, read as "la la" and as a tiny bar chart.
 struct LalaLogo: View {
     var size: CGFloat = 34
 
     var body: some View {
         Canvas { context, s in
             let k = s.width / 36
-            context.fill(Path(roundedRect: CGRect(origin: .zero, size: s), cornerRadius: 11 * k), with: .color(Brand.accent))
-            var first = Path(); first.move(to: CGPoint(x: 10 * k, y: 9 * k)); first.addLine(to: CGPoint(x: 10 * k, y: 25 * k)); first.addLine(to: CGPoint(x: 16 * k, y: 25 * k))
-            var second = Path(); second.move(to: CGPoint(x: 19 * k, y: 12 * k)); second.addLine(to: CGPoint(x: 19 * k, y: 25 * k)); second.addLine(to: CGPoint(x: 26 * k, y: 25 * k))
-            let stroke = StrokeStyle(lineWidth: 4 * k, lineCap: .round, lineJoin: .round)
-            context.stroke(first, with: .color(.white), style: stroke)
-            context.stroke(second, with: .color(.white.opacity(0.55)), style: stroke)
-            context.fill(Path(ellipseIn: CGRect(x: 24 * k, y: 6 * k, width: 6 * k, height: 6 * k)), with: .color(Color(hex: 0xFFB547)))
+            context.fill(Path(roundedRect: CGRect(origin: .zero, size: s), cornerRadius: 11 * k, style: .continuous), with: .color(Color(hex: 0x16161A)))
+            let w = 4.6 * k, gap = 2.4 * k, baseline = 27 * k
+            let colors = [Color.white, Color(hex: 0x97FCE4), Color.white, Color(hex: 0xC7A6FF)]
+            for (i, color) in colors.enumerated() {
+                let h = i.isMultiple(of: 2) ? 19 * k : w
+                let rect = CGRect(x: 5.2 * k + CGFloat(i) * (w + gap), y: baseline - h, width: w, height: h)
+                context.fill(Path(roundedRect: rect, cornerRadius: w / 2), with: .color(color))
+            }
         }
         .frame(width: size, height: size)
         .accessibilityLabel("LALA")
@@ -1701,7 +1705,7 @@ extension Workspace {
 }
 
 /// A card whose right side is an arrow: this step moves money on to the next one.
-struct ArrowCard: Shape {
+nonisolated struct ArrowCard: Shape {
     var radius: CGFloat = 18
     var tip: CGFloat = 16
 
