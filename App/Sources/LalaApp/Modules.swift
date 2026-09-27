@@ -243,14 +243,15 @@ struct PlaceDetailBoard: View {
         .transition(.scale(scale: 0.94, anchor: .topLeading).combined(with: .opacity))
     }
 
-    private var logo: String { ["solana": "sol", "hyperliquid": "hype", "jupiter": "jup", "kamino": "kamino", "aave": "aave", "robinhood": "robinhood"][place] ?? "usdc" }
-    private var title: String { ["solana": "Solana wallet", "hyperliquid": "Hyperliquid account", "jupiter": "Jupiter Lend", "kamino": "Kamino Lend", "aave": "Aave v3 · Base", "robinhood": "Robinhood Chain"][place] ?? place }
+    private var logo: String { ["solana": "sol", "hyperliquid": "hype", "jupiter": "jup", "kamino": "kamino", "near": "near", "aave": "aave", "robinhood": "robinhood"][place] ?? "usdc" }
+    private var title: String { ["solana": "Solana wallet", "hyperliquid": "Hyperliquid account", "jupiter": "Jupiter Lend", "kamino": "Kamino Lend", "near": "NEAR account", "aave": "Aave v3 · Base", "robinhood": "Robinhood Chain"][place] ?? place }
     private var subtitle: String {
         switch place {
         case "solana": "USDC and SOL you hold; every move starts here"
         case "hyperliquid": "margin for perps, stocks and commodities"
         case "jupiter": "lending vaults on Solana · withdraw any time"
         case "kamino": "lending on Solana · withdraw any time"
+        case "near": "native NEAR on the NEAR chain · bought through NEAR Intents"
         case "robinhood": "Robinhood Stock Tokens · economic exposure, not shares"
         default: "lending on Base · bridged from Solana"
         }
@@ -261,6 +262,7 @@ struct PlaceDetailBoard: View {
         case "hyperliquid": isEVMAddress(ws.hlAddress) ? URL(string: "https://app.hyperliquid.xyz/explorer/address/\(ws.hlAddress)") : nil
         case "jupiter": URL(string: "https://jup.ag/lend/earn")
         case "kamino": URL(string: "https://app.kamino.finance")
+        case "near": ws.nearAddress.flatMap { URL(string: "https://nearblocks.io/address/\($0)") }
         case "robinhood": isEVMAddress(ws.hlAddress) ? URL(string: "https://robinhoodchain.blockscout.com/address/\(ws.hlAddress)") : nil
         default: isEVMAddress(ws.hlAddress) ? URL(string: "https://basescan.org/address/\(ws.hlAddress)") : nil
         }
@@ -307,6 +309,11 @@ struct PlaceDetailBoard: View {
             row("usdc", "USDG", "\(ws.robinhood.map { Fmt.num($0.usdg) } ?? "—")", "gas: \(ws.robinhood.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH")
             Text("Stock Tokens aren’t offered to US persons, or in Canada, the UK and Switzerland; they give economic exposure, not the shares.")
                 .font(.caption2).foregroundStyle(.secondary)
+        case "near":
+            if let a = ws.nearAddress { addressRow(a) }
+            row("near", "NEAR", Fmt.num(ws.near, maxFraction: 6), ws.markets["NEAR"].map { "≈ \(Fmt.usd(ws.nearUSD)) at \(Fmt.price($0.markPx))" } ?? "")
+            Text("The account is yours from the same phrase (m/44'/397'/0'). Selling NEAR back to USDC isn’t in LALA yet.")
+                .font(.caption2).foregroundStyle(.secondary)
         case "kamino":
             row("kamino", "USDC", Fmt.usd(ws.kamino), "earning · withdraw any time")
             if let rate = ws.yieldOptions?.first(where: { $0.place.contains("Kamino") && $0.asset == "USDC" })?.apy {
@@ -331,6 +338,7 @@ struct PlaceDetailBoard: View {
         case "hyperliquid": [("Withdraw to Solana", "withdraw 1 USDC to Solana"), ("Trade by the book", "long ETH by the book"), ("What’s moving", "what's moving?")]
         case "jupiter": [("Deposit", "deposit 1 USDC into Jupiter"), ("Withdraw", "withdraw 1 USDC from Jupiter"), ("Best rates", "where to keep USDC")]
         case "kamino": [("Withdraw all", "withdraw USDC from Kamino"), ("Best rates", "where to keep USDC")]
+        case "near": [("Buy more", "buy NEAR for 3 USDC")]
         case "robinhood": [("Buy SpaceX", "buy SpaceX stock for 2 USDC"), ("Sell", "sell my SpaceX shares"), ("USDG to Solana", "move USDG from Robinhood to Solana")]
         default: [("Lend more", "lend 1 USDC on Aave"), ("Withdraw to Solana", "withdraw USDC from Aave"), ("Best rates", "where to keep USDC")]
         }
@@ -401,7 +409,7 @@ struct PortfolioRing: View {
     @Environment(Workspace.self) private var ws
 
     static let colors: [String: Color] = ["Solana": Color(hex: 0x9945FF), "Hyperliquid": Color(hex: 0x2FB39A), "Jupiter Lend": Color(hex: 0xC7F284), "Aave · Base": Color(hex: 0xB6509E),
-                                          "Kamino": Color(hex: 0x3B82F6)]
+                                          "Kamino": Color(hex: 0x3B82F6), "NEAR": Color(hex: 0x00EC97)]
 
     var body: some View {
         let slices = PortfolioSplit.slices([
@@ -409,6 +417,7 @@ struct PortfolioRing: View {
             ("Hyperliquid", ws.hlTotal ?? 0),
             ("Jupiter Lend", ws.lendTotal),
             ("Kamino", ws.kamino),
+            ("NEAR", ws.nearUSD),
             ("Aave · Base", ws.base.map { $0.aave + $0.usdc } ?? 0),
         ])
         if slices.count > 1 {

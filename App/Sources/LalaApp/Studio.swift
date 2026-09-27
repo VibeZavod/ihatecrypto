@@ -309,6 +309,9 @@ struct StudioRail: View {
                 if ws.kamino > 0 {
                     account("kamino", logo: "kamino", name: "Kamino", value: Fmt.usd(ws.kamino))
                 }
+                if ws.near > 0 {
+                    account("near", logo: "near", name: "NEAR", value: "\(Fmt.num(ws.near, maxFraction: 4)) NEAR")
+                }
                 if let b = ws.base, b.aave + b.usdc > 0 {
                     account("aave", logo: "aave", name: "Aave · Base", value: "\(Fmt.num(b.aave + b.usdc)) USDC")
                 }
@@ -365,6 +368,7 @@ struct StudioRail: View {
             icon("hype", ws.hlTotal.map(Fmt.usd) ?? "—", help: "Hyperliquid").onTapGesture { ws.toggleDetail("hyperliquid") }
             if ws.lendTotal > 0 { icon("jup", Fmt.num(ws.lendTotal), help: "Jupiter Lend, USDC").onTapGesture { ws.toggleDetail("jupiter") } }
             if ws.kamino > 0 { icon("kamino", Fmt.usd(ws.kamino), help: "Kamino Lend").onTapGesture { ws.toggleDetail("kamino") } }
+            if ws.near > 0 { icon("near", Fmt.num(ws.near, maxFraction: 3), help: "NEAR on the NEAR chain").onTapGesture { ws.toggleDetail("near") } }
             if let b = ws.base, b.aave + b.usdc > 0 { icon("aave", Fmt.num(b.aave + b.usdc), help: "Aave on Base, USDC").onTapGesture { ws.toggleDetail("aave") } }
             if !ws.positions.isEmpty {
                 Divider().frame(width: 36)

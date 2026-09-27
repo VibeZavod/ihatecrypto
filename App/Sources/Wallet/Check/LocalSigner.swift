@@ -113,6 +113,9 @@ func moveMoney(_ text: String) async throws {
     case .stake(let sol): _ = try await executor.convert(from: SpotAsset.all[0], to: .jitoSOL, amount: sol)
     case .unstake(let jito): _ = try await executor.convert(from: .jitoSOL, to: SpotAsset.all[0], amount: jito)
     case .hlp(let deposit, let amount): _ = try await executor.hlp(deposit: deposit, amount: amount)
+    case .buyNear(let usdc):
+        _ = try await executor.buyNear(usdc: usdc ?? 0, account: try TestWallet.nearAccount())
+        if let b = try? await Near.balance(account: try TestWallet.nearAccount()) { print("NEAR account: \(Fmt.num(b.near, maxFraction: 6)) NEAR, \(Fmt.num(b.wrapped, maxFraction: 6)) wNEAR") }
     case .aave(let deposit, let amount): print(try await executor.aave(deposit: deposit, usdc: amount))
     case .baseToSolana(let amount): print(try await executor.baseToSolana(usdc: amount))
     case .arbitrumToSolana(let amount): print(try await executor.evmToSolana(.arbitrum, usdc: amount))

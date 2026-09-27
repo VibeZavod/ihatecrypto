@@ -41,6 +41,9 @@ public enum SignerRequest: Codable, Sendable {
     /// The app reports whether Hyperliquid accepted the approval; only then do orders use the agent key.
     /// Turning it back on asks for Touch ID when the key is paused.
     case setAgentActive(Bool)
+    /// The NEAR implicit account of the same phrase (m/44'/397'/0'). Wallets imported before NEAR have it derived
+    /// here once, which unlocks the seed; afterwards `status` returns it without touching the seed.
+    case nearAddress
     /// Ends the minute-long Touch ID session and pauses the trading key: the next signature asks for Touch ID.
     case lock
 }
@@ -51,6 +54,7 @@ public struct SignerReply: Codable, Sendable {
     public var hasWallet: Bool?
     public var solanaAddress: String?
     public var evmAddress: String?
+    public var nearAddress: String?
     public var signedWire: Data?
     /// A signed raw EVM transaction.
     public var signedRaw: Data?

@@ -7,6 +7,7 @@ import Foundation
 import HyperliquidSigning
 import JupiterSwap
 import LalaCore
+import OneClickKit
 import RelayBridge
 import SolanaChain
 import TxGuard
@@ -295,6 +296,45 @@ extension Executor {
             throw ExecutionError("The transaction didn't make it into a block; you can retry.")
         }
         return changes
+    }
+
+    /// Native NEAR for Solana USDC through NEAR Intents 1Click, delivered to `account` — the wallet's own NEAR implicit
+    /// account, which only the signer derives. The first quote is what the user approved; the live one must stay within
+    /// 1% of it, and 1Click itself must have the deposit address bound to our recipient, refund address and amount.
+    public func buyNear(usdc: Decimal, account: String) async throws -> String {
+        let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
+        guard usdc >= 1 else { throw ExecutionError("Buy NEAR from 1 USDC: below that 1Click's fee eats too much.") }
+        guard account.wholeMatch(of: /[0-9a-f]{64}/) != nil else { throw ExecutionError("That is not a NEAR implicit account.") }
+        let shown = try await OneClick.quote(dry: true, origin: OneClick.Asset.solanaUSDC, destination: OneClick.Asset.near,
+                                             amount: "\(units)", refundTo: wallet.solana, recipient: account)
+        var envelope = Envelope.approve(input: usdc, quotedOutput: Decimal(string: shown.amountOutFormatted) ?? 0)
+        let quote = try await OneClick.quote(dry: false, origin: OneClick.Asset.solanaUSDC, destination: OneClick.Asset.near,
+                                             amount: "\(units)", refundTo: wallet.solana, recipient: account)
+        guard let deposit = quote.depositAddress else { throw ExecutionError("1Click gave no deposit address.") }
+        envelope.destination = deposit
+        let problems = envelope.violations(input: Decimal(string: quote.amountInFormatted) ?? .greatestFiniteMagnitude,
+                                           output: Decimal(string: quote.amountOutFormatted) ?? 0, destination: deposit)
+        guard problems.isEmpty else { throw ExecutionError("The price moved past what was approved: " + problems.joined(separator: " ")) }
+        let binding = DepositGuard.check(bound: try await OneClick.boundRequest(depositAddress: deposit), recipient: account, refundTo: wallet.solana,
+                                         origin: OneClick.Asset.solanaUSDC, destination: OneClick.Asset.near, amount: "\(units)")
+        guard binding.ok else { throw ExecutionError("The guard stopped the deposit: " + binding.problems.joined(separator: " ")) }
+        report("NEAR Intents: \(Fmt.num(usdc)) USDC → ≈ \(Fmt.num(Decimal(string: quote.amountOutFormatted) ?? 0, maxFraction: 4)) NEAR to your NEAR account.")
+        let sent = try await sendSolanaUSDC(units, to: deposit, label: "the 1Click deposit")
+        try journal.append(.init(chain: "1click", id: deposit, kind: .signed, note: "USDC→NEAR \(Fmt.num(usdc)) to \(account)"))
+        if let tx = sent.split(separator: "/").last { try? await OneClick.submitDeposit(txHash: String(tx), depositAddress: deposit) }
+        let started = Date()
+        while Date().timeIntervalSince(started) < 600 {
+            let s = try await OneClick.status(depositAddress: deposit)
+            if s.isFinal {
+                try journal.append(.init(chain: "1click", id: deposit, kind: s.status == "SUCCESS" ? .settled : .failed, note: s.status))
+                guard s.status == "SUCCESS" else { throw ExecutionError("1Click \(s.status.lowercased()): \(s.refundedFormatted.map { "\($0) USDC went back to Solana" } ?? "see the journal").") }
+                let line = "Bought \(Fmt.num(Decimal(string: s.amountOutFormatted ?? "") ?? 0, maxFraction: 4)) NEAR for \(Fmt.num(usdc)) USDC in \(Int(Date().timeIntervalSince(started))) s — native NEAR on your NEAR account."
+                report(line)
+                return line
+            }
+            try await Task.sleep(for: .seconds(3))
+        }
+        throw ExecutionError("1Click hasn't finished within 10 minutes. The deposit \(deposit) is in the journal; it settles or refunds on its own.")
     }
 
     /// Hyperliquid's HLP vault from the main perp balance. Deposits are locked for 4 days; withdraw with nil takes

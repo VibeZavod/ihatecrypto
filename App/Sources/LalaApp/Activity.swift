@@ -163,6 +163,7 @@ extension Workspace {
         if let h = hlTotal { facts.append("Hyperliquid account: \(Fmt.usd(h)).") }
         if lendTotal > 0 { facts.append("Jupiter Lend vault: \(Fmt.num(lendTotal)) USDC.") }
         if kamino > 0 { facts.append("Kamino Lend: \(Fmt.usd(kamino)).") }
+        if near > 0 { facts.append("NEAR on the user's own NEAR account: \(Fmt.num(near, maxFraction: 6)) NEAR (≈ \(Fmt.usd(nearUSD))).") }
         if hlp.equity > 0 { facts.append("HLP vault on Hyperliquid: \(Fmt.usd(hlp.equity))\(hlp.lockedUntil.map { ", locked until \(Fmt.date($0)) (4 days after a deposit)" } ?? ", can be withdrawn").") }
         if let b = base {
             facts.append("Aave v3 on Base: \(Fmt.num(b.aave)) USDC supplied\(aaveAPY.map { " at ≈ \(Fmt.num($0.rounded(2, .plain)))% a year" } ?? ""); \(Fmt.num(b.usdc)) USDC idle on Base; \(Fmt.num(b.eth, maxFraction: 7)) ETH for gas there.")

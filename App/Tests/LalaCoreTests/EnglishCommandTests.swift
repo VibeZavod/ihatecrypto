@@ -42,6 +42,12 @@ import Testing
     #expect(WalletCommand.parse("buy BTC for 5 USDC every day") == .schedule(btc, usdc: 5, days: 1))
     #expect(WalletCommand.parse("stop recurring buys") == .stopSchedules)
     #expect(WalletCommand.parse("sell 0.1 SOL") == .sell(sol, amount: Decimal(string: "0.1")!))
+    #expect(WalletCommand.parse("купи неар на 3 бакса") == .buyNear(usdc: 3))
+    #expect(WalletCommand.parse("buy NEAR for 5 USDC") == .buyNear(usdc: 5))
+    #expect(WalletCommand.parse("купи NEAR") == .buyNear(usdc: nil))
+    #expect(WalletCommand.parse("buy 2 NEAR") == .buyNear(usdc: nil))   // coins, not dollars: asks
+    #expect(WalletCommand.parse("buy SOL near 150") != .buyNear(usdc: nil))
+    #expect(WalletCommand.parse("buy ETH near 2500 for 3 USDC") == nil || WalletCommand.parse("buy ETH near 2500 for 3 USDC") != .buyNear(usdc: 3))
     // Russian keeps working.
     #expect(WalletCommand.parse("выведи 1 USDC в Solana") == .withdrawToSolana(1))
 }

@@ -227,6 +227,11 @@ extension Workspace {
             case .unstake(let jito): _ = try await e.convert(from: .jitoSOL, to: SpotAsset.all[0], amount: jito)
             case .yields(let asset): reply(await Self.yieldsText(asset), note: "DeFi")
             case .hlp(let deposit, let amount): _ = try await e.hlp(deposit: deposit, amount: amount)
+            case .buyNear(let usdc):
+                // The NEAR address comes from the signer alone; the first time it unlocks the seed to derive it.
+                guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
+                nearAddress = account
+                reply(try await e.buyNear(usdc: usdc ?? 0, account: account), note: "NEAR Intents · 1Click")
             case .aave(let deposit, let amount): reply(try await e.aave(deposit: deposit, usdc: amount), note: "Aave · Base")
             case .baseToSolana(let amount): reply(try await e.baseToSolana(usdc: amount), note: "Relay · Base → Solana")
             case .arbitrumToSolana(let amount): reply(try await e.evmToSolana(.arbitrum, usdc: amount), note: "Relay · Arbitrum → Solana")

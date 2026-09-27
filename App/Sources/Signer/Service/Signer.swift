@@ -22,6 +22,7 @@ enum Signer {
             r.hasWallet = SeedStore.exists
             r.solanaAddress = defaults.string(forKey: "solana")
             r.evmAddress = defaults.string(forKey: "evm")
+            r.nearAddress = defaults.string(forKey: "near")
             r.agentAddress = AgentStore.load().flatMap { try? EVMAccount.address(privateKey: $0) }
             r.agentActive = defaults.bool(forKey: "agentActive") && r.agentAddress != nil
             return r
@@ -70,10 +71,23 @@ enum Signer {
             try SeedStore.save(seed, requirePresence: requirePresence)
             defaults.set(solana, forKey: "solana")
             defaults.set(evm, forKey: "evm")
+            defaults.set(try NearAccount.implicit(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.near(0))), forKey: "near")
             var r = SignerReply(ok: true)
             r.hasWallet = true
             r.solanaAddress = solana
             r.evmAddress = evm
+            return r
+
+        case .nearAddress:
+            var r = SignerReply(ok: true)
+            if let known = defaults.string(forKey: "near") {
+                r.nearAddress = known
+            } else {
+                let seed = try SeedStore.load(reason: "show your NEAR address, derived from your phrase")
+                let near = try NearAccount.implicit(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.near(0)))
+                defaults.set(near, forKey: "near")
+                r.nearAddress = near
+            }
             return r
 
         case .lock:

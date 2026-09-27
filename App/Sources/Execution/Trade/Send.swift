@@ -64,7 +64,7 @@ extension Executor {
 
     static func usdc(_ units: UInt64) -> String { Fmt.num(Decimal(units) / 1_000_000, maxFraction: 6) }
 
-    private func sendSolanaUSDC(_ units: UInt64, to owner: String, label: String) async throws -> String {
+    func sendSolanaUSDC(_ units: UInt64, to owner: String, label: String) async throws -> String {
         let mint = Relay.Currency.solanaUSDC
         let have = try await rpc.tokenBalance(owner: wallet.solana, mint: mint)
         guard have >= units else { throw ExecutionError("\(Self.usdc(have)) USDC on Solana; the transfer needs \(Self.usdc(units)).") }

@@ -8,6 +8,8 @@ public enum WalletPath {
     public static func evm(_ account: Int = 0) -> String { "m/44'/60'/0'/0/\(account)" }
     /// Phantom, Solflare: m/44'/501'/i'/0'
     public static func solana(_ account: Int = 0) -> String { "m/44'/501'/\(account)'/0'" }
+    /// MyNearWallet, Ledger, near-seed-phrase: m/44'/397'/i'
+    public static func near(_ account: Int = 0) -> String { "m/44'/397'/\(account)'" }
 }
 
 public enum EVMAccount {
@@ -29,6 +31,13 @@ public enum SolanaAccount {
     /// Base58 of the ed25519 public key.
     public static func address(privateKey: Data) throws -> String {
         Base58.encode(try Curve25519.Signing.PrivateKey(rawRepresentation: privateKey).publicKey.rawRepresentation)
+    }
+}
+
+public enum NearAccount {
+    /// The implicit account: lowercase hex of the ed25519 public key. It exists on chain once NEAR arrives.
+    public static func implicit(privateKey: Data) throws -> String {
+        try Curve25519.Signing.PrivateKey(rawRepresentation: privateKey).publicKey.rawRepresentation.hex
     }
 }
 

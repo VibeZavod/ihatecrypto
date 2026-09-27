@@ -72,6 +72,9 @@ public struct SpotAsset: Equatable, Sendable {
 public enum WalletCommand: Equatable, Sendable {
     /// Spend `usdc` on the coin, on Solana through Jupiter; nil = ask how much.
     case buy(SpotAsset, usdc: Decimal?)
+    /// Native NEAR on the NEAR chain for Solana USDC through NEAR Intents 1Click, to the wallet's own NEAR account;
+    /// nil = ask how much.
+    case buyNear(usdc: Decimal?)
     /// Sell this much of the coin for USDC; nil = all of it (SOL keeps a fee reserve).
     case sell(SpotAsset, amount: Decimal?)
     /// Regular purchases (DCA): `usdc` of the coin every `days` days.
@@ -115,7 +118,7 @@ public enum WalletCommand: Equatable, Sendable {
 
     public static func parse(_ text: String) -> WalletCommand? {
         let q = text.lowercased()
-        let amount = (q.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|usdg|\$|долл|dollars?|bucks)/)?.1)
+        let amount = (q.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|usdg|\$|долл|dollars?|bucks|бакс)/)?.1)
             .flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
         // «положи 1 в джупитер»: a bare number is the amount of a deposit or a withdrawal when nothing else is
         // (not for buys: «buy 0.1 SOL» is coins, not dollars).
@@ -176,6 +179,13 @@ public enum WalletCommand: Equatable, Sendable {
             else if q.contains(/месяц|monthly/) { days = 30 }
             else { days = 7 }
             return .schedule(asset, usdc: amount, days: days)
+        }
+        // «near» is also a word: «buy ETH near 2500» is a limit on ETH, not the NEAR token.
+        if q.contains(/\bкуп\w*|\bbuy\b/), q.contains(/\bnear\b(?!\s*\$?\d)|\bнеар\w*|\bниар\w*|\bнир\b/), SpotAsset.find(q) == nil,
+           !q.contains(/\b(?:long|short|лонг\w*|шорт\w*|perp\w*)\b/) {
+            // «на 3» / «for 3» is dollars; «buy 2 NEAR» is coins and is not guessed.
+            let forDollars = q.firstMatch(of: /(?:\bна|\bfor)\s+(\d+(?:[.,]\d+)?)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
+            return .buyNear(usdc: amount ?? forDollars)
         }
         if q.contains(/\bкуп\w*|\bbuy\b/), let asset = SpotAsset.find(q) { return .buy(asset, usdc: amount) }
         if q.contains(/продай\w*|продать|\bsell\b/), let asset = SpotAsset.find(q) {
@@ -240,6 +250,7 @@ extension WalletCommand {
         case .hlp(true, nil): "How much USDC into HLP? (at least $5)"
         case .aave(true, nil): "How much USDC into Aave on Base?"
         case .buy(let a, nil): "For how many USDC should I buy \(a.symbol)?"
+        case .buyNear(nil): "For how many USDC should I buy NEAR?"
         case .buyStock(let s, nil): "For how many USDC should I buy \(s)?"
         case .stake(nil): "How much SOL to stake?"
         default: nil
@@ -253,6 +264,7 @@ extension WalletCommand {
         case .hlp(let d, _): .hlp(deposit: d, amount: amount)
         case .aave(let d, _): .aave(deposit: d, amount: amount)
         case .buy(let a, _): .buy(a, usdc: amount)
+        case .buyNear: .buyNear(usdc: amount)
         case .buyStock(let s, _): .buyStock(symbol: s, usdc: amount)
         case .stake: .stake(amount)
         default: self
@@ -271,6 +283,7 @@ extension WalletCommand {
         func n(_ d: Decimal?) -> String { d.map { Fmt.num($0, maxFraction: 6) } ?? "all" }
         switch self {
         case .buy(let a, let u): return "buy \(a.symbol) for \(n(u)) USDC"
+        case .buyNear(let u): return "buy native NEAR for \(n(u)) USDC (to your NEAR account)"
         case .sell(let a, let x): return "sell \(n(x)) \(a.symbol)"
         case .schedule(let a, let u, let d): return "buy \(a.symbol) for \(Fmt.num(u)) USDC every \(d == 1 ? "day" : d == 7 ? "week" : "\(d) days")"
         case .stopSchedules: return "stop recurring buys"

@@ -10,6 +10,8 @@ public enum OneClick {
         public static let solanaUSDC = "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near"
         /// Lands on the HyperCore spot balance (hip1 token), not directly in perp margin.
         public static let hyperCoreUSDC = "1cs_v1:hypercore:hip1:0x6d1e7cde53ba9467b783cb7c530ce054"
+        /// NEAR on the NEAR chain (listed as wNEAR, 24 decimals).
+        public static let near = "nep141:wrap.near"
     }
 
     public struct Quote: Sendable {

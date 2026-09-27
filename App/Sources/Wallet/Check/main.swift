@@ -56,6 +56,7 @@ do {
     case "swap": try await swap(sol: try require(amount, max: Decimal(string: "0.05")!))
     case "bridge": try await bridge(sol: try require(amount, max: Decimal(string: "0.15")!))
     case "bridge-usdc": try await bridge(usdc: try require(amount, max: 20))
+    case "near-buy": try await bridge(usdc: try require(amount, max: 5), to: OneClick.Asset.near, recipient: try TestWallet.nearAccount(), output: "NEAR")
     case "hl-perp": try await moveToPerp(usdc: try require(amount, max: 50))
     case "hl-trade": try await roundTrip(usd: try require(amount, max: 20))
     case "hl-agent": try await agentRoundTrip(usd: try require(amount, max: 20))
@@ -106,6 +107,7 @@ func printAddresses() throws {
     let a = try TestWallet.addresses()
     print("Solana (SOL, USDC):  \(a.solana)")
     print("EVM / Hyperliquid:   \(a.evm)")
+    print("NEAR (implicit):     \(try TestWallet.nearAccount())")
     print("Phrase: \(TestWallet.file.path) (not printed)")
 }
 
@@ -264,11 +266,13 @@ func bridge(sol amount: Decimal) async throws {
     }
 }
 
-func bridge(usdc amount: Decimal) async throws {
+/// Solana USDC through 1Click: to HyperCore USDC by default, or to another asset and recipient (NEAR to our NEAR account).
+func bridge(usdc amount: Decimal, to destination: String = OneClick.Asset.hyperCoreUSDC, recipient: String? = nil, output: String = "USDC on HyperCore") async throws {
     let keys = try TestWallet.keys()
     let a = try TestWallet.addresses()
     let units = NSDecimalNumber(decimal: amount * 1_000_000).uint64Value
-    try await bridgeToHyperCore(origin: OneClick.Asset.solanaUSDC, label: "USDC", amount: amount, units: units) { deposit in
+    try await bridgeToHyperCore(origin: OneClick.Asset.solanaUSDC, label: "USDC", amount: amount, units: units,
+                                destination: destination, recipient: recipient ?? a.evm, output: output) { deposit in
         try await ensureSOL(spending: 3_000_000) // the deposit's token account may need creating: ~0.002 SOL rent
         let have = try await rpc.tokenBalance(owner: a.solana, mint: Jupiter.usdcMint)
         guard have >= units else { throw WalletError("Wallet has \(Decimal(have) / 1_000_000) USDC, needs \(amount).") }
@@ -286,31 +290,33 @@ func bridge(usdc amount: Decimal) async throws {
 /// Quote the user sees → envelope → live quote checked against it → deposit (written to the journal first)
 /// → 1Click status until final. Timed end to end.
 func bridgeToHyperCore(origin: String, label: String, amount: Decimal, units: UInt64,
+                       destination: String = OneClick.Asset.hyperCoreUSDC, recipient: String? = nil, output: String = "USDC on HyperCore",
                        deposit makeTransaction: (String) async throws -> GuardedTransaction) async throws {
     let a = try TestWallet.addresses()
-    let shown = try await OneClick.quote(dry: true, origin: origin, destination: OneClick.Asset.hyperCoreUSDC,
-                                         amount: "\(units)", refundTo: a.solana, recipient: a.evm)
-    print("1Click: \(shown.amountInFormatted) \(label) → \(shown.amountOutFormatted) USDC on HyperCore, ≈ \(shown.timeEstimate ?? 0) s after deposit")
+    let recipient = recipient ?? a.evm
+    let shown = try await OneClick.quote(dry: true, origin: origin, destination: destination,
+                                         amount: "\(units)", refundTo: a.solana, recipient: recipient)
+    print("1Click: \(shown.amountInFormatted) \(label) → \(shown.amountOutFormatted) \(output) (to \(recipient)), ≈ \(shown.timeEstimate ?? 0) s after deposit")
     guard send else { print("Add --yes to get a deposit address and send."); return }
     // The user approved what they saw, with 1% room: the live quote must fit, or nothing is sent.
     var envelope = Envelope.approve(input: amount, quotedOutput: Decimal(string: shown.amountOutFormatted) ?? 0)
-    let quote = try await OneClick.quote(dry: false, origin: origin, destination: OneClick.Asset.hyperCoreUSDC,
-                                         amount: "\(units)", refundTo: a.solana, recipient: a.evm)
+    let quote = try await OneClick.quote(dry: false, origin: origin, destination: destination,
+                                         amount: "\(units)", refundTo: a.solana, recipient: recipient)
     guard let deposit = quote.depositAddress else { throw WalletError("Quote has no deposit address.") }
     envelope.destination = deposit
     let problems = envelope.violations(input: Decimal(string: quote.amountInFormatted) ?? .greatestFiniteMagnitude,
                                        output: Decimal(string: quote.amountOutFormatted) ?? 0, destination: deposit)
     guard problems.isEmpty else { throw WalletError("Outside the approved envelope: " + problems.joined(separator: " ")) }
-    print("Live quote within the envelope: \(quote.amountOutFormatted) USDC arrives (at least \(envelope.minOutput)), deposit \(deposit)")
+    print("Live quote within the envelope: \(quote.amountOutFormatted) \(output) arrives (at least \(envelope.minOutput)), deposit \(deposit)")
     // The deposit address must be bound, by 1Click itself, to a quote with our recipient and refund address.
-    let binding = DepositGuard.check(bound: try await OneClick.boundRequest(depositAddress: deposit), recipient: a.evm, refundTo: a.solana,
-                                     origin: origin, destination: OneClick.Asset.hyperCoreUSDC, amount: "\(units)")
+    let binding = DepositGuard.check(bound: try await OneClick.boundRequest(depositAddress: deposit), recipient: recipient, refundTo: a.solana,
+                                     origin: origin, destination: destination, amount: "\(units)")
     printVerdict(binding)
     guard binding.ok else { throw WalletError("The guard stopped the deposit: the address is not bound to our quote.") }
 
     let tx = try await makeTransaction(deposit)
     let started = Date()
-    try journal.append(.init(chain: "1click", id: deposit, kind: .signed, note: "\(label)→HyperCore USDC, deposit tx \(tx.signature)"))
+    try journal.append(.init(chain: "1click", id: deposit, kind: .signed, note: "\(label)→\(output), deposit tx \(tx.signature)"))
     _ = try await submit(tx, note: "1Click deposit \(deposit)")
     try? await OneClick.submitDeposit(txHash: tx.signature, depositAddress: deposit)
 
@@ -323,7 +329,7 @@ func bridgeToHyperCore(origin: String, label: String, amount: Decimal, units: UI
         }
         if s.isFinal {
             try journal.append(.init(chain: "1click", id: deposit, kind: .settled, note: s.status))
-            if s.status == "SUCCESS" { print("Credited \(s.amountOutFormatted ?? "?") USDC · \(s.destinationTxs.joined(separator: ", "))") }
+            if s.status == "SUCCESS" { print("Credited \(s.amountOutFormatted ?? "?") \(output) · \(s.destinationTxs.joined(separator: ", "))") }
             if s.status == "REFUNDED" { print("Refunded \(s.refundedFormatted ?? "?") to \(a.solana)") }
             break
         }
@@ -331,6 +337,9 @@ func bridgeToHyperCore(origin: String, label: String, amount: Decimal, units: UI
         try await Task.sleep(for: .seconds(3))
     }
     print("Total from send to final status: \(Int(Date().timeIntervalSince(started))) s")
+    if destination == OneClick.Asset.near, let b = try? await Near.balance(account: recipient) {
+        print("NEAR account: \(Fmt.num(b.near, maxFraction: 6)) NEAR native, \(Fmt.num(b.wrapped, maxFraction: 6)) wNEAR")
+    }
     try await printBalances()
 }
 

@@ -37,6 +37,12 @@ private let hardhat = "test test test test test test test test test test test ju
 
 // MARK: Addresses the user already knows
 
+@Test func nearImplicitAccountMatchesSLIP10() throws {
+    // Computed independently (Python: PBKDF2 seed, SLIP-10 ed25519 at m/44'/397'/0', raw public key as hex).
+    let key = try Derivation.ed25519(seed: try Mnemonic.seed(abandon), path: WalletPath.near(0))
+    #expect(try NearAccount.implicit(privateKey: key) == "5510e2b44cae6eb807e3e0e45d579dda058c274abcba15e5cb84636f5d1ee412")
+}
+
 @Test func evmAddressesMatchMetaMaskAndHardhat() throws {
     let seed = try Mnemonic.seed(hardhat)
     // Hardhat's default accounts #0 and #1.

@@ -162,6 +162,12 @@ final class Workspace {
     var lend: [(vault: String, usdc: Decimal)] = []
     /// Kamino Lend deposits, in dollars.
     var kamino: Decimal = 0
+    /// The NEAR implicit account the signer derived from the same phrase; nil until it has been asked once.
+    var nearAddress: String?
+    /// NEAR on that account: native and wNEAR, in NEAR.
+    var near: Decimal = 0
+    /// Its value in dollars, at Hyperliquid's NEAR price.
+    var nearUSD: Decimal { near * (markets["NEAR"]?.markPx ?? 0) }
     /// Hyperliquid's HLP vault: what is in it and, while a deposit is locked, until when.
     var hlp: (equity: Decimal, lockedUntil: Date?) = (0, nil)
     /// On Base, at the Hyperliquid (EVM) address: idle USDC, USDC supplied to Aave, ETH for gas.
@@ -289,7 +295,7 @@ final class Workspace {
     var equity: Decimal? {
         guard solana != nil || hl != nil else { return nil }
         return (solana?.usdc ?? 0) + (hl?.accountValue ?? 0) + lend.reduce(0) { $0 + $1.usdc } + dexBalances.values.reduce(0) { $0 + $1.accountValue }
-            + (base.map { $0.usdc + $0.aave } ?? 0) + (arbitrumUSDC ?? 0) + robinhoodTotal + kamino + hlp.equity
+            + (base.map { $0.usdc + $0.aave } ?? 0) + (arbitrumUSDC ?? 0) + robinhoodTotal + kamino + hlp.equity + nearUSD
     }
     /// The plan with what the user left to the rules filled in.
     var resolved: (intent: TradeIntent, notes: [String]) { Plan.resolve(intent, market: market, equity: equity, policy: policy) }
@@ -659,6 +665,7 @@ final class Workspace {
             lend = ((try? await JupiterLend.positions(user: solanaAddress)) ?? []).filter { $0.assets > 0 }
                 .map { ($0.vault, Decimal($0.assets) / 1_000_000) }
             if let k = try? await Kamino.positions(wallet: solanaAddress) { kamino = k.reduce(0) { $0 + $1.valueUSD } }
+            if let a = nearAddress, let b = try? await Near.balance(account: a) { near = b.near + b.wrapped }
         } catch {
             solana = nil
             solanaError = error.localizedDescription
@@ -716,6 +723,9 @@ final class Workspace {
     func loadSigner() async {
         guard SignerClient.isAvailable, let status = try? await SignerClient().send(.status) else { return }
         signerHasWallet = status.hasWallet
+        // A wallet imported before NEAR: the signer derives the address once (one unlock), then keeps it.
+        let near = status.hasWallet == true && status.nearAddress == nil ? try? await SignerClient().send(.nearAddress).nearAddress : status.nearAddress
+        if let near, nearAddress != near { nearAddress = near; await loadSolana() }
         agentAddress = status.agentAddress
         agentActive = status.agentActive ?? false
         if status.hasWallet == true, let solana = status.solanaAddress, let evm = status.evmAddress {

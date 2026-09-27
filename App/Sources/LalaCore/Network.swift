@@ -150,6 +150,34 @@ public enum Solana {
     }
 }
 
+/// The NEAR chain: native NEAR and wNEAR on an account. 1Click delivers «wrap.near», so both are counted.
+public enum Near {
+    static let rpc = "https://rpc.mainnet.fastnear.com"
+
+    public static func balance(account: String) async throws -> (near: Decimal, wrapped: Decimal) {
+        func query(_ params: [String: Any]) async throws -> [String: Any]? {
+            let data = try await HTTP.post(rpc, json: ["jsonrpc": "2.0", "id": 1, "method": "query", "params": params])
+            let j = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+            if let e = j?["error"] as? [String: Any] {
+                // An implicit account exists only after NEAR first arrives; before that it simply holds nothing.
+                if "\(e)".contains("UNKNOWN_ACCOUNT") || "\(e)".contains("does not exist") { return nil }
+                throw NetError(message: "NEAR RPC: \(e["message"] ?? e)")
+            }
+            return j?["result"] as? [String: Any]
+        }
+        let yocto = pow(Decimal(10), 24)
+        let view = try await query(["request_type": "view_account", "finality": "final", "account_id": account])
+        let native = (view?["amount"] as? String).flatMap { Decimal(string: $0) } ?? 0
+        let args = try JSONSerialization.data(withJSONObject: ["account_id": account]).base64EncodedString()
+        let call = try await query(["request_type": "call_function", "finality": "final", "account_id": "wrap.near",
+                                    "method_name": "ft_balance_of", "args_base64": args])
+        // The view returns the JSON string «"123"» as bytes.
+        let text = String(decoding: (call?["result"] as? [Int] ?? []).map { UInt8($0) }, as: UTF8.self)
+        let wrapped = Decimal(string: text.trimmingCharacters(in: CharacterSet(charactersIn: "\""))) ?? 0
+        return (native / yocto, wrapped / yocto)
+    }
+}
+
 // MARK: - NEAR Intents 1Click (dry quotes for the plan; execution lives in OneClickKit)
 
 public enum Bridge {

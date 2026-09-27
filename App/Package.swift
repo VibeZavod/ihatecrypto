@@ -48,7 +48,7 @@ let package = Package(
         .target(name: "DeFiYields", dependencies: ["DeFiJupiterLend", "DeFiKamino"], path: "Sources/DeFi/Yields"),
         // Runs an approved plan: bridge, leverage, entry, stop and take, through whichever signer holds the keys.
         .target(name: "TradeExecution", dependencies: ["LalaCore", "ExecutionCore", "HyperliquidSigning", "SolanaChain", "EVMChain", "RelayBridge", "TxGuard", "WalletCore",
-                                                       "DeFiJupiterLend", "JupiterSwap", "DeFiKamino", "DeFiYields"],
+                                                       "DeFiJupiterLend", "JupiterSwap", "DeFiKamino", "DeFiYields", "OneClickKit"],
                 path: "Sources/Execution/Trade"),
         // Last check before signing: allowed programs, recipients bound to an approved quote, simulated balances.
         .target(name: "TxGuard", dependencies: ["SolanaChain", "HyperliquidSigning"], path: "Sources/Guard/Core"),
