@@ -249,6 +249,8 @@ struct ContentView: View {
                 log("agent: active=\(ws.agentActive) \(ws.agentAddress ?? "")")
             }
             await ws.refresh()
+            // `-openPlace kamino`: opens that place's card from the rail, to check the canvas layout in a screenshot.
+            if let place = UserDefaults.standard.string(forKey: "openPlace") { ws.detail = place }
             // `--say "…"` replays messages on launch; used to check the app end to end.
             for text in sayArguments() { await ws.send(text) }
             await runTestHooks()
