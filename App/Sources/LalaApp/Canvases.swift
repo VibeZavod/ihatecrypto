@@ -46,12 +46,19 @@ struct CanvasSession: Codable, Identifiable {
     /// The plan was carried out: the canvas shows the position, not a new trade.
     var executed = false
     var bubbles: [ActivityBubble] = []
+    /// The user's own name for it; wins over the title LALA keeps updating. Optional, so older files still load.
+    var name: String?
+    /// The folder it sits in, by name; nil = no folder. A folder exists while a canvas is in it.
+    var folder: String?
+
+    var displayTitle: String { name ?? (title.isEmpty ? "Canvas" : title) }
 }
 
 extension Workspace {
-    /// Keeps the open canvas. Nothing is kept before the first message.
+    /// Keeps the open canvas: after every message and reply, and at quit. An empty canvas (no message, nothing
+    /// on the board) is not kept.
     func saveCanvas() {
-        guard messages.contains(where: \.fromUser) else { return }
+        guard messages.contains(where: \.fromUser) || canvasBubbles() != nil else { return }
         var c = canvases.first { $0.id == canvasID } ?? CanvasSession(providerID: providerID, model: model, messages: [], intent: intent)
         c.updated = Date()
         c.providerID = providerID
@@ -86,6 +93,22 @@ extension Workspace {
         intent = TradeIntent()
         executed = nil
     }
+
+    /// An empty name gives the canvas back its automatic title.
+    func renameCanvas(_ id: UUID, to name: String) {
+        guard let i = canvases.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        canvases[i].name = trimmed.isEmpty ? nil : String(trimmed.prefix(80))
+    }
+
+    /// nil takes it out of its folder.
+    func moveCanvas(_ id: UUID, to folder: String?) {
+        guard let i = canvases.firstIndex(where: { $0.id == id }) else { return }
+        let trimmed = folder?.trimmingCharacters(in: .whitespacesAndNewlines)
+        canvases[i].folder = trimmed?.isEmpty == false ? String(trimmed!.prefix(40)) : nil
+    }
+
+    var canvasFolders: [String] { Array(Set(canvases.compactMap(\.folder))).sorted { $0.localizedStandardCompare($1) == .orderedAscending } }
 
     func deleteCanvas(_ id: UUID) {
         if id == canvasID { newCanvas() }
@@ -133,6 +156,8 @@ struct CanvasList: View {
     /// Its own scroll view in the popover; the rail scrolls the list together with everything above it.
     var scrolls = true
     var close: (() -> Void)?
+    /// Folded folders, one name per line; kept between launches.
+    @AppStorage("foldedCanvasFolders") var foldedRaw = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -158,15 +183,55 @@ struct CanvasList: View {
 }
 
 extension CanvasList {
+    /// Folders first (open or folded), then the canvases in no folder; newest first inside each.
     private func rows(_ items: [CanvasSession]) -> some View {
-        LazyVStack(alignment: .leading, spacing: 2) {
-            ForEach(items) { c in
-                CanvasRow(canvas: c, current: c.id == ws.canvasID) {
-                    withAnimation(StudioView.spring) { ws.openCanvas(c) }
-                    close?()
+        let folded = Set(foldedRaw.split(separator: "\n").map(String.init))
+        return LazyVStack(alignment: .leading, spacing: 2) {
+            ForEach(ws.canvasFolders, id: \.self) { folder in
+                FolderRow(name: folder, count: items.filter { $0.folder == folder }.count, folded: folded.contains(folder)) {
+                    var set = folded
+                    if set.contains(folder) { set.remove(folder) } else { set.insert(folder) }
+                    withAnimation(.snappy) { foldedRaw = set.sorted().joined(separator: "\n") }
+                }
+                if !folded.contains(folder) {
+                    ForEach(items.filter { $0.folder == folder }) { row($0).padding(.leading, 12) }
                 }
             }
+            ForEach(items.filter { $0.folder == nil }) { row($0) }
         }
+    }
+
+    private func row(_ c: CanvasSession) -> some View {
+        CanvasRow(canvas: c, current: c.id == ws.canvasID) {
+            withAnimation(StudioView.spring) { ws.openCanvas(c) }
+            close?()
+        }
+    }
+}
+
+/// A folder of canvases: a click folds or unfolds it.
+struct FolderRow: View {
+    let name: String
+    let count: Int
+    let folded: Bool
+    let toggle: () -> Void
+
+    var body: some View {
+        Button(action: toggle) {
+            HStack(spacing: 8) {
+                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(.tertiary)
+                    .rotationEffect(.degrees(folded ? 0 : 90))
+                Image(systemName: folded ? "folder" : "folder.fill").font(.system(size: 12)).foregroundStyle(Brand.accent)
+                Text(name).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                Spacer(minLength: 0)
+                Text("\(count)").font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .pointerStyle(.link)
+        .help(folded ? "Show the canvases in \(name)" : "Fold \(name)")
     }
 }
 
@@ -176,32 +241,95 @@ struct CanvasRow: View {
     let current: Bool
     let open: () -> Void
     @State private var hover = false
+    @State private var renaming = false
+    @State private var draft = ""
+    @State private var newFolder = false
+    @State private var folderName = ""
+    @FocusState private var nameFocused: Bool
 
     var body: some View {
-        Button(action: open) {
-            HStack(spacing: 9) {
-                if canvas.intent != TradeIntent() {
-                    AssetBadge(coin: canvas.intent.asset, size: 26, dark: true)
-                } else {
-                    RoundedRectangle(cornerRadius: 8).fill(Brand.accent.opacity(0.12)).frame(width: 26, height: 26)
-                        .overlay(Image(systemName: canvas.bubbles.isEmpty ? "bubble.left" : "square.grid.2x2").font(.system(size: 11, weight: .semibold)).foregroundStyle(Brand.accent))
-                }
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(canvas.title.isEmpty ? "Canvas" : canvas.title).font(.system(size: 12.5, weight: current ? .semibold : .regular)).lineLimit(1)
-                    Text("\(canvas.model) · \(Fmt.date(canvas.updated))").font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
-                }
-                Spacer(minLength: 0)
+        HStack(spacing: 4) {
+            if renaming {
+                content
+            } else {
+                Button(action: open) { content }.buttonStyle(.plain)
             }
-            .padding(.horizontal, 8).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 10).fill(current ? Brand.accent.opacity(0.1) : hover ? Color.primary.opacity(0.05) : .clear))
-            .contentShape(Rectangle())
+            // The three dots show under the pointer, like ChatGPT's sidebar; they stay in the layout so an open menu
+            // keeps its anchor when the pointer moves onto it.
+            Menu { actions } label: {
+                Image(systemName: "ellipsis").font(.system(size: 12, weight: .bold)).foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22).contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .pointerStyle(.link)
+            .opacity(hover && !renaming ? 1 : 0)
+            .allowsHitTesting(hover && !renaming)
+            .help("Rename, move to a folder, delete")
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 10).fill(current ? Brand.accent.opacity(0.1) : hover ? Color.primary.opacity(0.05) : .clear))
         .onHover { hover = $0 }
-        .help("\(canvas.title) · \(LLMCatalog.provider(id: canvas.providerID)?.info.name ?? canvas.providerID) · \(canvas.model)")
-        .contextMenu {
-            Button("Delete canvas", role: .destructive) { withAnimation { ws.deleteCanvas(canvas.id) } }
+        .help("\(canvas.displayTitle) · \(LLMCatalog.provider(id: canvas.providerID)?.info.name ?? canvas.providerID) · \(canvas.model)")
+        .contextMenu { actions }
+        .alert("New folder", isPresented: $newFolder) {
+            TextField("Folder name", text: $folderName)
+            Button("Create") { withAnimation(.snappy) { ws.moveCanvas(canvas.id, to: folderName) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("“\(canvas.displayTitle)” goes into it.")
         }
+    }
+
+    private var content: some View {
+        HStack(spacing: 9) {
+            if canvas.intent != TradeIntent() {
+                AssetBadge(coin: canvas.intent.asset, size: 26, dark: true)
+            } else {
+                RoundedRectangle(cornerRadius: 8).fill(Brand.accent.opacity(0.12)).frame(width: 26, height: 26)
+                    .overlay(Image(systemName: canvas.bubbles.isEmpty ? "bubble.left" : "square.grid.2x2").font(.system(size: 11, weight: .semibold)).foregroundStyle(Brand.accent))
+            }
+            VStack(alignment: .leading, spacing: 1) {
+                if renaming {
+                    TextField("Name", text: $draft)
+                        .textFieldStyle(.plain).font(.system(size: 12.5, weight: .semibold))
+                        .focused($nameFocused)
+                        .onSubmit(commitRename)
+                        .onExitCommand { renaming = false }
+                        .onChange(of: nameFocused) { if !nameFocused, renaming { commitRename() } }
+                } else {
+                    Text(canvas.displayTitle).font(.system(size: 12.5, weight: current ? .semibold : .regular)).lineLimit(1)
+                }
+                Text("\(canvas.model) · \(Fmt.date(canvas.updated))").font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .contentShape(Rectangle())
+    }
+
+    @ViewBuilder private var actions: some View {
+        Button("Rename") {
+            draft = canvas.displayTitle
+            renaming = true
+            DispatchQueue.main.async { nameFocused = true }
+        }
+        Menu("Move to folder") {
+            let others = ws.canvasFolders.filter { $0 != canvas.folder }
+            ForEach(others, id: \.self) { f in
+                Button(f) { withAnimation(.snappy) { ws.moveCanvas(canvas.id, to: f) } }
+            }
+            if !others.isEmpty { Divider() }
+            Button("New folder…") { folderName = ""; newFolder = true }
+            if let current = canvas.folder {
+                Button("Remove from “\(current)”") { withAnimation(.snappy) { ws.moveCanvas(canvas.id, to: nil) } }
+            }
+        }
+        Divider()
+        Button("Delete canvas", role: .destructive) { withAnimation { ws.deleteCanvas(canvas.id) } }
+    }
+
+    private func commitRename() {
+        renaming = false
+        ws.renameCanvas(canvas.id, to: draft)
     }
 }
 

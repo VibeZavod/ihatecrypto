@@ -181,7 +181,13 @@ final class Workspace {
     private var aaveCheckedAt: Date?
     var reviewedIntent: TradeIntent?
 
-    init() { restoreLastCanvas() }
+    init() {
+        restoreLastCanvas()
+        // What is on the open canvas at quit (a chart opened by a click, a board that finished building) is kept too.
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.saveCanvas() }
+        }
+    }
     private var quotedKey: String?
 
     var solanaAddress = UserDefaults.standard.string(forKey: "solanaAddress") ?? "" {
