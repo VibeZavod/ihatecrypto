@@ -35,6 +35,8 @@ if prompt == "--route" {
     context.addressBook = ["Bybit"]
     context.balances = ["Solana 22.38 USDC, 0.0297 SOL", "Hyperliquid $7.47"]
     context.plan = env["LALA_ROUTE_PLAN"]
+    // `LALA_ROUTE_RECENT="user: …|LALA: …"`: the chat before the message, to check follow-ups like «да».
+    context.recent = env["LALA_ROUTE_RECENT"].map { $0.components(separatedBy: "|") } ?? []
     let client = try provider.client(credential, save: { _ in })
     for message in args.dropFirst(2) {
         let started = Date()

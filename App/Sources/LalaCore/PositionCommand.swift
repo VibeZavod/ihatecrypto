@@ -117,6 +117,8 @@ public enum WalletCommand: Equatable, Sendable {
     case sellStock(symbol: String, amount: Decimal?)
     /// USDG on Robinhood Chain back to Solana as USDC; nil = everything.
     case robinhoodToSolana(Decimal?)
+    /// USDC from the Solana wallet to our own address on «base», «arbitrum» or «robinhood» (USDG there); nil = ask.
+    case solanaTo(String, Decimal?)
 
     public static func parse(_ text: String) -> WalletCommand? {
         let q = text.lowercased()
@@ -158,7 +160,12 @@ public enum WalletCommand: Equatable, Sendable {
             }
             if q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bget\s+me\b|вложи\w*\s+в/) { return .buyStock(symbol: symbol, usdc: amount) }
         }
-        if q.contains(/robinhood|робинхуд/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
+        // Out of the Solana wallet: «move 3 USDC from Solana to Robinhood», «переведи 3 USDC из соланы в робингуд».
+        if let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(base|бейс\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*)/) {
+            let place = String(m.1)
+            return .solanaTo(place.hasPrefix("b") || place.hasPrefix("бейс") ? "base" : place.hasPrefix("arb") || place.hasPrefix("арб") ? "arbitrum" : "robinhood", amount)
+        }
+        if q.contains(/robinhood|робин[гх]уд/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .robinhoodToSolana(amount)
         }
         // Topping LALA up from outside: a deposit with no place to put it, or asking for our address.
@@ -225,7 +232,9 @@ public enum WalletCommand: Equatable, Sendable {
         if q.contains(/\bbase\b|бейс/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .baseToSolana(amount)
         }
-        if !vault, q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|withdraw\w*|move|send|bring)(?:[^.]|\.(?=\d))*(?:solana|солан)/) { return .withdrawToSolana(amount) }
+        // «…to Solana» from Hyperliquid; «из соланы» is the other direction and never lands here.
+        if !vault, !q.contains(/(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан)/),
+           q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|withdraw\w*|move|send|bring)(?:[^.]|\.(?=\d))*(?:solana|солан)/) { return .withdrawToSolana(amount) }
         return nil
     }
 
@@ -268,6 +277,7 @@ extension WalletCommand {
         case .buyNear(nil): "For how many USDC should I buy NEAR?"
         case .buyStock(let s, nil): "For how many USDC should I buy \(s)?"
         case .stake(nil): "How much SOL to stake?"
+        case .solanaTo(let place, nil): "How many USDC should I move from Solana to \(Self.placeName(place))?"
         default: nil
         }
     }
@@ -283,8 +293,13 @@ extension WalletCommand {
         case .buyNear: .buyNear(usdc: amount)
         case .buyStock(let s, _): .buyStock(symbol: s, usdc: amount)
         case .stake: .stake(amount)
+        case .solanaTo(let place, _): .solanaTo(place, amount)
         default: self
         }
+    }
+
+    static func placeName(_ place: String) -> String {
+        ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood Chain"][place] ?? place.capitalized
     }
 
     /// «1», «1 USDC», «$1.5», «да, 2», «ok 3» — a short reply that is only an amount.
@@ -321,6 +336,7 @@ extension WalletCommand {
         case .buyStock(let s, let u): return "buy \(s.hasPrefix("0x") ? "the token \(s)" : "\(s) stock tokens") for \(n(u)) USDC on Robinhood Chain"
         case .sellStock(let s, let x): return "sell \(n(x)) \(s.hasPrefix("0x") ? "of the token \(s)" : "\(s) stock tokens") on Robinhood Chain"
         case .robinhoodToSolana(let x): return "move \(n(x)) USDG from Robinhood Chain to Solana"
+        case .solanaTo(let place, let x): return "move \(n(x)) USDC from Solana to \(Self.placeName(place))"
         }
     }
 }

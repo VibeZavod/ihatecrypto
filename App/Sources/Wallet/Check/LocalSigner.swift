@@ -124,6 +124,8 @@ func moveMoney(_ text: String) async throws {
     case .buyStock(let symbol, let usdc): print(try await executor.buyStock(symbol, usdc: usdc ?? 1))
     case .sellStock(let symbol, let amount): print(try await executor.sellStock(symbol, amount: amount))
     case .robinhoodToSolana(let amount): print(try await executor.evmToSolana(.robinhood, usdc: amount))
+    case .solanaTo(let place, let amount):
+        print(try await executor.solanaToEVM(place == "base" ? .base : place == "arbitrum" ? .arbitrum : .robinhood, usdc: amount ?? 1))
     case .receive: print("Solana (USDC, SOL): \(signer.wallet.solana)\nBase / EVM (USDC, ETH): \(signer.wallet.evm)")
     case .allocate(let symbol, let share):
         let (text, ready, _) = try await executor.allocate(symbol, maxShare: share ?? 50, execute: send)

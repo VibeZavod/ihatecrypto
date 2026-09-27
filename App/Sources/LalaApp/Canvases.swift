@@ -612,6 +612,7 @@ extension Workspace {
         case .baseToSolana(let amount): backRoute(from: "base", amount: amount)
         case .arbitrumToSolana(let amount): backRoute(from: "arbitrum", amount: amount)
         case .robinhoodToSolana(let amount): backRoute(from: "robinhood", amount: amount)
+        case .solanaTo(let place, let amount?): outRoute(to: place, amount: amount)
         case .buyStock(let symbol, let usdc?): stockRoute(symbol, usdc)
         default: ends(command).map { from, to in
             MoveRoute(title: command.summary.prefix(1).uppercased() + command.summary.dropFirst(),
@@ -723,6 +724,22 @@ extension Workspace {
                  price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 2)) \(symbol) worth ≈ \(Fmt.usd(usdc)) · 1 \(symbol) = \(tokenPrice($0))" } ?? "at the pool price", .robinhood),
         ], warning: contract ? "A token by its contract is anyone's coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose."
                              : "Robinhood Stock Tokens give economic exposure, not the shares, and aren’t offered to US persons or in Canada, the UK and Switzerland.")
+    }
+
+    /// Solana → Relay → our own address on Base, Arbitrum or Robinhood Chain.
+    private func outRoute(to place: String, amount: Decimal) -> MoveRoute {
+        let name = ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood Chain"][place] ?? place
+        let stable = place == "robinhood" ? "USDG" : "USDC"
+        let there = place == "base" ? base?.usdc : place == "arbitrum" ? arbitrumUSDC : robinhood?.usdg
+        let fill: RouteFill = place == "base" ? .base : place == "arbitrum" ? .arbitrum : .robinhood
+        return MoveRoute(title: "Move \(Fmt.num(amount)) USDC · Solana → \(name)",
+                         footer: "One Solana signature for the Relay bridge, checked and simulated before it’s signed; it pays only your own address on \(name). Say “do it” or press Confirm.",
+                         steps: [
+            step("sol", "FROM · SOLANA", solana.map { "\(Fmt.num($0.usdc)) → \(Fmt.num(max(0, $0.usdc - amount)))" } ?? "\(Fmt.num(amount)) USDC", "USDC on Solana", .solana),
+            step("relay", "BRIDGE · RELAY", "\(Fmt.num(amount)) USDC", "a few seconds · + ETH for gas when there's none", .relay),
+            step(place == "arbitrum" ? "arb" : place, "TO · \(name.uppercased())", there.map { "\(Fmt.num($0)) → \(Fmt.num($0 + amount)) \(stable)" } ?? "\(Fmt.num(amount)) \(stable)",
+                 "your own address ✓", fill),
+        ])
     }
 
     /// Aave or idle USDC on Base, Arbitrum or Robinhood Chain → Relay → Solana.

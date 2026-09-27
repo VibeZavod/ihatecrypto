@@ -250,6 +250,9 @@ extension Workspace {
                 else { await tokenCommand(.favorite(address: symbol, chain: "robinhood")); await loadRobinhood() }
             case .sellStock(let symbol, let amount): reply(try await e.sellStock(symbol, amount: amount), note: "Robinhood Chain · Uniswap")
             case .robinhoodToSolana(let amount): reply(try await e.evmToSolana(.robinhood, usdc: amount), note: "Relay · Robinhood → Solana")
+            case .solanaTo(let place, let amount):
+                let net: EVMNetwork = place == "base" ? .base : place == "arbitrum" ? .arbitrum : .robinhood
+                reply(try await e.solanaToEVM(net, usdc: amount ?? 0), note: "Relay · Solana → \(net.name)")
             case .sendTo(let name, let amount): prepareTransfer(amount, to: name)
             case .receive: showReceive = true
             case .allocate(let symbol, let share):

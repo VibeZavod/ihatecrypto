@@ -59,7 +59,8 @@ import Testing
                     "buy token \(ai) for 2 USDC", "sell 3 tokens \(ai)", "buy Tesla stock for 3 USDC", "sell TSLA stock",
                     "move USDG from Robinhood to Solana", "buy NEAR for 5 USDC", "top up", "deposit 5 USDC to HLP",
                     "lend 2 USDC on Aave", "deposit 2 USDC into Morpho", "withdraw USDC from Morpho",
-                    "spread USDC across the best rates max 50% per protocol"]
+                    "spread USDC across the best rates max 50% per protocol",
+                    "move 3 USDC from Solana to Robinhood", "move 2 USDC from Solana to Base", "move 1 USDC from Solana to Arbitrum"]
     for command in commands { #expect(WalletCommand.parse(command) != nil, "\(command)") }
     #expect(TokenCommand.parse("watch token \(ai) on robinhood") == .favorite(address: ai, chain: "robinhood"))
     #expect(TokenCommand.parse("remove token AI from favorites") == .unfavorite(symbol: "AI"))
@@ -69,6 +70,18 @@ import Testing
     #expect(PositionCommand.parse("close half") == .close(Decimal(string: "0.5")!))
     #expect(IntentParser.apply("short oil risk $1 by the book", to: TradeIntent(), markets: markets)?.asset == "xyz:CL")
     #expect(ChatRouter.forms.contains("buy token <0xCONTRACT> for N USDC"))
+}
+
+@Test func movesKeepTheirDirection() {
+    // «из соланы» is out of Solana: it must never become a withdrawal to Solana (the bug in the user's screenshot).
+    #expect(WalletCommand.parse("переведи 3 USDC из соланы в робингуд") == .solanaTo("robinhood", 3))
+    #expect(WalletCommand.parse("move 3 USDC from Solana to Robinhood") == .solanaTo("robinhood", 3))
+    #expect(WalletCommand.parse("закинь 2 USDC с соланы на base") == .solanaTo("base", 2))
+    #expect(WalletCommand.parse("move USDC from Solana to Arbitrum") == .solanaTo("arbitrum", nil))
+    #expect(WalletCommand.parse("выведи 1 USDC в Solana") == .withdrawToSolana(1))
+    #expect(WalletCommand.parse("move 2 USDC from Base to Solana") == .baseToSolana(2))
+    #expect(WalletCommand.parse("верни USDG с робингуда на солану") == .robinhoodToSolana(nil))
+    #expect(WalletCommand.solanaTo("robinhood", nil).amountQuestion != nil)
 }
 
 @Test func routerNeverTakesAnAddressFromTheModel() throws {

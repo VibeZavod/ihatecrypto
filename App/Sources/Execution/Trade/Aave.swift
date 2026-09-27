@@ -121,6 +121,19 @@ extension Executor {
     /// is us, the token is USDC, the amount is the quote's, the recipient our Solana address. nil = everything on Base.
     public func baseToSolana(usdc requested: Decimal?) async throws -> String { try await evmToSolana(.base, usdc: requested) }
 
+    /// USDC from Solana to our own address on Base, Arbitrum or Robinhood Chain (USDG there) over Relay, with a little
+    /// ETH for gas when there is none. `usdc` is what arrives.
+    public func solanaToEVM(_ net: EVMNetwork, usdc: Decimal) async throws -> String {
+        let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
+        guard units >= 500_000 else { throw ExecutionError("At least 0.5 USDC: less isn't worth the bridge.") }
+        let stable = net.key == "robinhood" ? "USDG" : "USDC"
+        let before = try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)
+        try await ensureEVM(net, usdc: before + units)
+        let after = try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)
+        return "Moved \(Fmt.num(Decimal(after > before ? after - before : 0) / 1_000_000)) \(stable) to \(net.name): \(Fmt.num(Decimal(after) / 1_000_000)) \(stable) there now. "
+            + "Say “move \(stable) from \(net.name) to Solana” to bring it back."
+    }
+
     /// The same from any EVM network LALA knows (Base, Arbitrum).
     public func evmToSolana(_ net: EVMNetwork, usdc requested: Decimal?) async throws -> String {
         let base = net.rpc, usdc = net.usdc, me = wallet.evm, chain = net.relayChain

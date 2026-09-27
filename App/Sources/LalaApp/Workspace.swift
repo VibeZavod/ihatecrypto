@@ -434,7 +434,9 @@ final class Workspace {
             reply("OK — nothing was waiting, nothing moved.")
             return
         }
-        if text.lowercased().wholeMatch(of: /\s*(?:делай|да|давай|подтверждаю|го|do\s+it|go|yes|yep|ok|okay|confirm|sign)[.!\s]*/) != nil {
+        // «да» with nothing waiting answers LALA's last question: the model reads it with the chat. Without a model
+        // there is nothing to answer.
+        if llmClient() == nil, text.lowercased().wholeMatch(of: /\s*(?:делай|да|давай|подтверждаю|го|do\s+it|go|yes|yep|ok|okay|confirm|sign)[.!\s]*/) != nil {
             reply("Nothing is waiting for a confirmation right now. Tell me what to do — for example “deposit 1 USDC into Jupiter”.")
             return
         }
@@ -474,7 +476,11 @@ final class Workspace {
         // A connected model reads every message first: its meaning, not keywords. What it understood goes through
         // the same parsers, checks, Jev and confirmations as a typed command. The local parsers below read the message
         // as typed when no model is connected or it can't be reached.
-        if let client = llmClient(), await routeWithModel(text, client: client, before: before) { return }
+        if let client = llmClient() {
+            await routeWithModel(text, client: client, before: before)
+            return
+        }
+        // No model connected: the local parsers read the message as typed.
         if let command = TokenCommand.parse(text) {
             await tokenCommand(command)
             return
@@ -563,29 +569,36 @@ final class Workspace {
         await reviewPlan()
     }
 
-    /// The model's reading of the message (ChatRouter). False when it can't be reached or its command is one the
-    /// parsers don't know: then the local parsers read the message as typed.
-    private func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent) async -> Bool {
+    /// The model's reading of the message (ChatRouter) — the only reading while a model is connected: keywords guess,
+    /// and a wrong guess about money is worse than a question. The model is asked twice; if it still can't be reached,
+    /// nothing is done and the chat says so.
+    private func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent) async {
         busy = true
-        let route: ChatRouter.Route?
-        do {
-            route = try await ChatRouter.route(text, context: routerContext(), client: client, model: model)
-        } catch {
-            FileHandle.standardError.write(Data("LALA router: \(error)\n".utf8))
-            route = nil
+        var route: ChatRouter.Route?
+        var failure = ""
+        for _ in 0..<2 where route == nil {
+            do {
+                route = try await ChatRouter.route(text, context: routerContext(), client: client, model: model)
+            } catch {
+                failure = error.localizedDescription
+                FileHandle.standardError.write(Data("LALA router: \(error)\n".utf8))
+            }
         }
         busy = false
         switch route {
-        case nil: return false
-        case .question?: await answer(text); return true
-        case .plan?: await editPlanWithModel(text, client: client, before: before); return true
-        case .chat(let r)?, .clarify(let r)?: reply(r, note: model); return true
+        case nil:
+            reply("I couldn’t reach \(model) (\(failure.prefix(140))), so I didn’t act on this — nothing moved. Send it again, or pick another model above.", note: model)
+        case .question?: await answer(text)
+        case .plan?: await editPlanWithModel(text, client: client, before: before)
+        case .chat(let r)?, .clarify(let r)?: reply(r, note: model)
         case .command(let canonical)?:
             guard ChatRouter.addressesAllowed(canonical, userText: text, known: favoriteTokens.map(\.address)) else {
                 reply("I read that as “\(canonical)”, but its address is neither in your message nor among your favorites, so I won’t use it. Paste the address itself.", note: model)
-                return true
+                return
             }
-            return await runCanonical(canonical, userText: text, before: before)
+            if await !runCanonical(canonical, userText: text, before: before) {
+                reply("I read that as “\(canonical)”, but LALA can’t do that yet — nothing moved. Tell me another way, or ask what LALA can do.", note: model)
+            }
         }
     }
 
