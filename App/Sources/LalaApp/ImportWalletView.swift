@@ -1,3 +1,4 @@
+import AppKit
 import SignerAPI
 import SwiftUI
 import WalletCore
@@ -18,6 +19,8 @@ struct ImportWalletView: View {
     /// A phrase the signer just made, shown once for the paper backup and dropped after «I wrote it down».
     @State private var newPhrase: [String]?
     @State private var creating = false
+    /// The clipboard's change count right after the phrase was copied: it is wiped only while it still holds it.
+    @State private var copiedChange: Int?
 
     var body: some View {
         Form {
@@ -71,7 +74,9 @@ struct ImportWalletView: View {
         }
         .formStyle(.grouped)
         .frame(width: 760)
-        .onDisappear { phrase = ""; passphrase = ""; accounts = []; newPhrase = nil }
+        .onDisappear { phrase = ""; passphrase = ""; accounts = []; newPhrase = nil; wipeCopied() }
+        // While the words are on screen, screenshots, recordings and screen sharing get a blank window.
+        .onChange(of: newPhrase == nil) { _, hidden in NSApp.keyWindow?.sharingType = hidden ? .readOnly : .none }
         .onAppear {
             #if DEBUG
             // `-demoImport YES`: the public BIP-39 test phrase, for screenshots and checks only.
@@ -83,7 +88,9 @@ struct ImportWalletView: View {
         }
     }
 
-    /// «Create a new wallet»: the signer makes the phrase; the words appear once, numbered, not selectable — for paper.
+    /// «Create a new wallet»: the signer makes the phrase; the words appear once, numbered, not selectable — for paper,
+    /// or copied all at once into a password manager. After that nothing can read them: the signer has no request
+    /// that returns the phrase.
     @ViewBuilder private var create: some View {
         Section("New wallet") {
             if let words = newPhrase {
@@ -106,7 +113,14 @@ struct ImportWalletView: View {
                 .padding(.vertical, 4)
                 Text("Never type them into a website, a chat or a photo. Anyone with these words owns the money.")
                     .font(.caption).foregroundStyle(.orange)
-                Button("I wrote them down") { newPhrase = nil }.buttonStyle(.borderedProminent)
+                HStack(spacing: 10) {
+                    Button("I wrote them down") { newPhrase = nil; wipeCopied() }.buttonStyle(.borderedProminent)
+                    Button(copiedChange == nil ? "Copy all 12 words" : "Copied", systemImage: "doc.on.doc") { copy(words) }
+                }
+                if copiedChange != nil {
+                    Text("Paste them into your password manager now. The clipboard is wiped in 60 s or when you press «I wrote them down»; the words don't go to your other devices or to clipboard history apps.")
+                        .font(.caption).foregroundStyle(.secondary)
+                }
             } else {
                 Text("LALA makes a new 12-word recovery phrase inside the signer, from this Mac's random number generator, and keeps the key sealed by the Secure Enclave. Every signature asks for Touch ID or your password."
                      + (ws.signerWallet == nil ? "" : " It replaces the wallet that is in LALA now — move the money out of it first."))
@@ -117,6 +131,30 @@ struct ImportWalletView: View {
                 }
             }
         }
+    }
+
+    /// All 12 words at once, for a password manager: marked concealed and transient so clipboard history apps skip
+    /// them, kept on this Mac (no Universal Clipboard), and wiped after 60 s unless something else was copied since.
+    private func copy(_ words: [String]) {
+        let board = NSPasteboard.general
+        board.prepareForNewContents(with: .currentHostOnly)
+        let item = NSPasteboardItem()
+        item.setString(words.joined(separator: " "), forType: .string)
+        for marker in ["org.nspasteboard.ConcealedType", "org.nspasteboard.TransientType"] {
+            item.setData(Data(), forType: NSPasteboard.PasteboardType(marker))
+        }
+        board.writeObjects([item])
+        let change = board.changeCount
+        copiedChange = change
+        Task {
+            try? await Task.sleep(for: .seconds(60))
+            if copiedChange == change { wipeCopied() }
+        }
+    }
+
+    private func wipeCopied() {
+        if let change = copiedChange, NSPasteboard.general.changeCount == change { NSPasteboard.general.clearContents() }
+        copiedChange = nil
     }
 
     private func createWallet() {
