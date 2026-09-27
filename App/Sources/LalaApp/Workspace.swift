@@ -120,8 +120,10 @@ final class Workspace {
     var addressBook: [SavedAddress] = LocalStore.load("addressbook.json") ?? [] {
         didSet { LocalStore.save(addressBook, "addressbook.json") }
     }
-    /// The canvas on screen; nil for a fresh one nobody has written in yet.
-    var canvasID: UUID?
+    /// The canvas on screen; nil for a fresh one nobody has written in yet. Remembered, so it opens again at launch.
+    var canvasID: UUID? {
+        didSet { UserDefaults.standard.set(canvasID?.uuidString, forKey: "openCanvas") }
+    }
     /// A reopened canvas whose board isn't a live plan: drawn as it was.
     var savedBoard: CanvasSession?
     /// The open canvas once its money move is carried out: its route stays on screen, marked Done or Failed with the

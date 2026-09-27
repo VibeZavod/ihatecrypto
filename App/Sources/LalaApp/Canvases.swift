@@ -69,8 +69,8 @@ extension Workspace {
     /// on the board) is not kept.
     func saveCanvas() {
         guard messages.contains(where: \.fromUser) || canvasBubbles() != nil else { return }
-        var c = canvases.first { $0.id == canvasID } ?? CanvasSession(providerID: providerID, model: model, messages: [], intent: intent)
-        c.updated = Date()
+        let old = canvases.first { $0.id == canvasID }
+        var c = old ?? CanvasSession(providerID: providerID, model: model, messages: [], intent: intent)
         c.providerID = providerID
         c.model = model
         c.messages = messages
@@ -84,6 +84,11 @@ extension Workspace {
             savedBoard = nil
         } else if c.title.isEmpty, let first = messages.first(where: \.fromUser)?.text {
             c.title = first.count > 48 ? String(first.prefix(48)) + "…" : first
+        }
+        // The list is ordered by what the user did on a canvas: opening it, or prices moving on its board, doesn't lift it.
+        if old.map({ $0.messages != c.messages || $0.intent != c.intent || $0.providerID != c.providerID || $0.model != c.model
+                     || $0.title != c.title || $0.outcome != c.outcome }) ?? true {
+            c.updated = Date()
         }
         canvasID = c.id
         if let i = canvases.firstIndex(where: { $0.id == c.id }) { canvases[i] = c } else { canvases.append(c) }
@@ -127,9 +132,10 @@ extension Workspace {
         canvases.removeAll { $0.id == id }
     }
 
-    /// The canvas that was open last time.
+    /// The canvas that was open last time (else the one worked on last).
     func restoreLastCanvas() {
-        if let last = canvases.max(by: { $0.updated < $1.updated }) { load(last) }
+        let open = UserDefaults.standard.string(forKey: "openCanvas").flatMap(UUID.init(uuidString:))
+        if let last = canvases.first(where: { $0.id == open }) ?? canvases.max(by: { $0.updated < $1.updated }) { load(last) }
     }
 
     private func load(_ c: CanvasSession) {
