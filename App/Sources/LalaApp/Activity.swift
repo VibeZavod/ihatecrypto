@@ -185,6 +185,10 @@ extension Workspace {
             let stocks = r.stocks.map { "\(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol) (\($0.name)) ≈ \(Fmt.usd($0.usd))" }.joined(separator: ", ")
             facts.append("Robinhood Chain: \(stocks.isEmpty ? "no Stock Tokens" : "Stock Tokens " + stocks); \(Fmt.num(r.usdg)) USDG.")
         }
+        for t in favoriteTokens {
+            let i = tokenInfo[t.id]
+            facts.append("Favorite token \(t.name) (\(t.symbol)) on \(t.chainTitle): \(i?.priceUSD.map(tokenPrice) ?? "no price")\(i?.change24h.map { ", \(signedPct($0)) in 24 h" } ?? "")\(tokenBalances[t.id].map { ", you hold \(Fmt.num($0, maxFraction: 4))" } ?? "").")
+        }
         for a in alerts { facts.append("Price alert: \(IntentParser.pretty(a.coin)) \(a.above ? "above" : "below") \(Fmt.price(a.price))\(markets[a.coin].map { ", now \(Fmt.price($0.markPx))" } ?? "").") }
         for s in schedules { facts.append("Recurring buy: \(s.symbol) for \(Fmt.usd(s.usdc)) every \(s.days) days, next \(Fmt.date(s.next)).") }
         return facts

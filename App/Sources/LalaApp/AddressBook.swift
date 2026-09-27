@@ -189,12 +189,20 @@ struct AddressBookView: View {
                 .pickerStyle(.segmented).labelsHidden().fixedSize()
                 TextField("Search", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 180)
                 Spacer()
+                AddTokenButton()
                 Button { adding = true } label: { Label("Add address", systemImage: "plus") }.buttonStyle(.borderedProminent)
                 Button("Back to canvas", action: close)
             }
             .padding(.horizontal, 28).padding(.top, 22).padding(.bottom, 14)
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
+                    // Watched tokens: contracts to follow, never addresses to send to.
+                    if !ws.favoriteTokens.isEmpty, search.isEmpty {
+                        Text("FAVORITE TOKENS").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
+                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 290), spacing: 14)], alignment: .leading, spacing: 14) {
+                            ForEach(ws.favoriteTokens) { FavoriteTokenCard(token: $0) }
+                        }
+                    }
                     // Ours first: this is where money into LALA goes.
                     let own = ownWallets
                     if !own.isEmpty, search.isEmpty {
@@ -611,12 +619,32 @@ struct FavoriteChips: View {
 
     var body: some View {
         let favorites = ws.addressBook.filter(\.favorite).sorted { $0.name.lowercased() < $1.name.lowercased() }
-        if !favorites.isEmpty {
+        if !favorites.isEmpty || !ws.favoriteTokens.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 HStack {
                     Text("Favorites").font(.caption).foregroundStyle(.secondary)
                     Spacer()
                     Button("All") { withAnimation(.snappy) { mode = "book" } }.buttonStyle(.borderless).font(.caption)
+                }
+                ForEach(ws.favoriteTokens.prefix(4)) { t in
+                    let info = ws.tokenInfo[t.id]
+                    Button { withAnimation(.snappy) { mode = "book" } } label: {
+                        HStack(spacing: 8) {
+                            TokenIcon(token: t, size: 22)
+                            Text(t.symbol).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text(info?.priceUSD.map(tokenPrice) ?? "—").font(.system(size: 11.5, weight: .semibold)).monospacedDigit()
+                            if let c = info?.change24h {
+                                Text(signedPct(c)).font(.system(size: 10.5, weight: .bold)).foregroundStyle(c < 0 ? Brand.loss : Brand.profit)
+                            }
+                        }
+                        .padding(.horizontal, 8).padding(.vertical, 5)
+                        .background(RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.04)))
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .modifier(HoverLift(radius: 9))
+                    .help("\(t.name) on \(t.chainTitle)")
                 }
                 ForEach(favorites.prefix(4)) { f in
                     Button {

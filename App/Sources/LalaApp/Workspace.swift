@@ -96,6 +96,13 @@ final class Workspace {
     var equityHistory: [EquityPoint] = LocalStore.load("equity.json") ?? [] {
         didSet { LocalStore.save(equityHistory, "equity.json") }
     }
+    /// Tokens the user watches (TokensUI.swift), their DexScreener data and what the wallet holds of them.
+    var favoriteTokens: [FavoriteToken] = LocalStore.load("tokens.json") ?? [] {
+        didSet { LocalStore.save(favoriteTokens, "tokens.json") }
+    }
+    var tokenInfo: [String: TokenLookup.Info] = [:]
+    var tokenBalances: [String: Decimal] = [:]
+    var tokensCheckedAt = Date.distantPast
     /// Price alerts, one notification each; checked with every refresh (Alerts.swift).
     var alerts: [PriceAlert] = LocalStore.load("alerts.json") ?? [] {
         didSet { LocalStore.save(alerts, "alerts.json") }
@@ -416,6 +423,10 @@ final class Workspace {
             await resumeTradingKey()
             return
         }
+        if let command = TokenCommand.parse(text) {
+            await tokenCommand(command)
+            return
+        }
         if let command = AddressBookCommand.parse(text) {
             addressBookCommand(command)
             return
@@ -592,7 +603,8 @@ final class Workspace {
         async let h: Void = loadHL()
         async let b: Void = loadBase()
         async let r: Void = loadRobinhood()
-        _ = await (m, s, h, b, r)
+        async let t: Void = refreshTokens()
+        _ = await (m, s, h, b, r, t)
         await refreshQuote()
         updatedAt = Date()
         recordEquity()

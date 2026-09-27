@@ -44,3 +44,22 @@ func notCharts(_ phrase: String) {
     #expect(IntentParser.pretty("xyz:CL") == "WTI oil (xyz:CL)")
     #expect(IntentParser.pretty("ETH") == "ETH")
 }
+
+@Test func favoriteTokenPhrases() {
+    let ai = "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18"
+    #expect(TokenCommand.parse("и добавь в favorite вот этот токен на робингуде \(ai)") == .favorite(address: ai, chain: "robinhood"))
+    #expect(TokenCommand.parse("watch token \(ai) on Base") == .favorite(address: ai, chain: "base"))
+    #expect(TokenCommand.parse("add \(ai) to favorites") == .favorite(address: ai, chain: nil))
+    #expect(TokenCommand.parse("remove token AI from favorites") == .unfavorite(symbol: "AI"))
+    // An address for the book, or a transfer, is not a token.
+    #expect(TokenCommand.parse("save \(ai) as Bybit on Base") == nil)
+    #expect(TokenCommand.parse("send 1 USDC to \(ai)") == nil)
+}
+
+@Test func dexscreenerPairsToTokenInfo() {
+    let json = #"{"pairs":[{"chainId":"robinhood","url":"https://dexscreener.com/robinhood/0xpool1","baseToken":{"address":"0x2E8C31162B855A2FFA90F6F8634643AD6F111E18","name":"Artificial Inu","symbol":"AI"},"priceUsd":"0.2366","priceChange":{"h24":-3.5},"liquidity":{"usd":1369513.5},"info":{"imageUrl":"https://cdn.dexscreener.com/cms/images/x"}},{"chainId":"robinhood","baseToken":{"address":"0x2e8c31162b855a2ffa90f6f8634643ad6f111e18","name":"Artificial Inu","symbol":"AI"},"priceUsd":"0.2352","liquidity":{"usd":3301648.7}},{"chainId":"robinhood","baseToken":{"address":"0xother","name":"X","symbol":"X"},"priceUsd":"9","liquidity":{"usd":9999999}}]}"#
+    let infos = TokenLookup.parse(Data(json.utf8), address: "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18")
+    #expect(infos.count == 1)
+    #expect(infos[0].symbol == "AI" && infos[0].liquidityUSD == Decimal(string: "3301648.7")!)   // the deepest pair wins
+    #expect(infos[0].priceUSD == Decimal(string: "0.2352")!)
+}
