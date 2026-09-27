@@ -17,7 +17,17 @@ import WalletCore
 extension Executor {
     /// Relay from the Hyperliquid perp balance to our Solana address. `usdc: nil` = everything withdrawable.
     public func withdrawToSolana(usdc requested: Decimal?) async throws -> String {
-        let free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
+        var free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
+        // Margin left on a HIP-3 exchange (xyz, after an oil or stock trade) comes back to the main balance first;
+        // what an open position there uses stays (only the withdrawable part moves).
+        if requested.map({ $0 > free }) ?? true {
+            for dex in Hyperliquid.hip3Dexes {
+                let idle = (try await Hyperliquid.dexBalance(user: wallet.evm, dex: dex).withdrawable).rounded(2, .down)
+                guard idle > 0 else { continue }
+                try await moveMargin(from: dex, to: "", usdc: idle)
+            }
+            free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
+        }
         let usdc = (requested ?? free).rounded(2, .down)
         guard usdc > 0, usdc <= free else { throw ExecutionError("\(Fmt.usd(free)) free on Hyperliquid; can't withdraw \(Fmt.num(usdc)).") }
         let units = NSDecimalNumber(decimal: usdc * 100_000_000).uint64Value // Hyperliquid perp USDC: 8 decimals in Relay
@@ -90,7 +100,8 @@ extension Executor {
         let myAsset = try SPL.associatedAccount(owner: wallet.solana, mint: vault.assetMint)
         let myShares = try SPL.associatedAccount(owner: wallet.solana, mint: vault.address)
         let owners = [myAsset: wallet.solana, myShares: wallet.solana]
-        let inVault = try await JupiterLend.positions(user: wallet.solana).first { $0.vault == vault.symbol }?.assets ?? 0
+        let position = try await JupiterLend.positions(user: wallet.solana).first { $0.vault == vault.symbol }
+        let inVault = position?.assets ?? 0
         var units: UInt64
         if let requested { units = NSDecimalNumber(decimal: (requested * scale).rounded(0, .down)).uint64Value }
         else if deposit { throw ExecutionError("How much should go into the vault?") }
@@ -139,15 +150,18 @@ extension Executor {
                 return line
             }
         }
+        // Everything out goes by shares: withdrawing the reported amount fails by a rounding unit.
+        let all = !deposit && units >= inVault
         let wire = deposit
             ? try await JupiterLend.depositTransaction(asset: vault.assetMint, user: wallet.solana, amount: units)
+            : all ? try await JupiterLend.redeemTransaction(asset: vault.assetMint, user: wallet.solana, shares: position?.shares ?? 0)
             : try await JupiterLend.withdrawTransaction(asset: vault.assetMint, user: wallet.solana, amount: units)
         let lastValid = try await rpc.latestBlockhash().lastValidBlockHeight
         // SOL goes through our wSOL account (wrapped before the deposit, unwrapped after the withdraw), so the rule
         // is the same token rule for every asset.
         let before = Int64(try await rpc.tokenBalance(owner: wallet.solana, mint: vault.assetMint))
         var rules: [(String, String, Bool, Int64)] = deposit ? [(myShares, "\(vault.symbol) shares", true, 1)] : []
-        rules.append((myAsset, native ? "wSOL" : name, true, deposit ? -Int64(units) : Int64(units) - 1))
+        rules.append((myAsset, native ? "wSOL" : name, true, deposit ? -Int64(units) : Int64(units) - (all ? 2 : 1)))
         try await signAndSend(wire, lastValid: lastValid, owners: owners, rules: rules, note: "Jupiter Lend \(deposit ? "deposit" : "withdraw") \(name)")
         let after = Int64(try await rpc.tokenBalance(owner: wallet.solana, mint: vault.assetMint))
         var line = deposit
@@ -267,7 +281,8 @@ extension Executor {
         }
         before[wallet.solana] = Int64(try await rpc.balance(wallet.solana))
         let simulation = try await rpc.simulate(unsigned, watch: watch, sigVerify: false)
-        if let error = simulation.error { verdict.problems.append("Simulation failed: \(error)") }
+        // A failed simulation says nothing about balances: stop here rather than quote made-up changes.
+        if let error = simulation.error { throw ExecutionError("The simulation failed, so nothing was signed: \(error)") }
         verdict.merge(SolanaGuard.balances(rules.map { account, label, token, least in
             .init(label: label, before: before[account] ?? 0, after: Int64(token ? simulation.after[account]?.token ?? 0 : simulation.after[account]?.lamports ?? 0), atLeast: least)
         } + [.init(label: "lamports", before: before[wallet.solana] ?? 0, after: Int64(simulation.after[wallet.solana]?.lamports ?? 0), atLeast: lamportsAtLeast)]))

@@ -530,7 +530,8 @@ public actor Executor {
         var verdict = SolanaGuard.check(message, accounts: message.staticKeys, policy: SolanaPolicy(owner: wallet.solana), tokenOwners: owners)
         let solBefore = try await rpc.balance(wallet.solana)
         let simulation = try await rpc.simulate(unsigned, watch: [myUSDC, wallet.solana], sigVerify: false)
-        if let error = simulation.error { verdict.problems.append("Simulation failed: \(error)") }
+        // A failed simulation says nothing about balances: stop here rather than quote made-up changes.
+        if let error = simulation.error { throw ExecutionError("The simulation failed, so nothing was signed: \(error)") }
         let usdcAfter = simulation.after[myUSDC]?.token ?? 0
         let solAfter = simulation.after[wallet.solana]?.lamports ?? 0
         verdict.merge(SolanaGuard.balances([

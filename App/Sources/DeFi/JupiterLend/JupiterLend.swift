@@ -44,6 +44,12 @@ public enum JupiterLend {
         try await transaction("/withdraw", ["asset": asset, "signer": user, "amount": "\(amount)"])
     }
 
+    /// Unsigned transaction redeeming `shares`: the way to take everything out. The positions API rounds the assets
+    /// up by a unit, so withdrawing that amount fails with «insufficient funds» (measured 2026-09-28).
+    public static func redeemTransaction(asset: String, user: String, shares: UInt64) async throws -> Data {
+        try await transaction("/redeem", ["asset": asset, "signer": user, "shares": "\(shares)"])
+    }
+
     public static func positions(user: String) async throws -> [Position] {
         let data = try await get(URL(string: "\(base)/positions?users=\(user)")!)
         guard let list = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { throw LendError(data) }

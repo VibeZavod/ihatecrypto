@@ -112,7 +112,6 @@ extension SolanaRPC {
             "accounts": ["encoding": "jsonParsed", "addresses": watch],
         ]]) as? [String: Any]
         let value = r?["value"] as? [String: Any]
-        let err = value?["err"]
         var after: [String: (UInt64, UInt64?)] = [:]
         for (address, account) in zip(watch, value?["accounts"] as? [Any] ?? []) {
             guard let a = account as? [String: Any] else { after[address] = (0, nil); continue }
@@ -121,6 +120,11 @@ extension SolanaRPC {
                 .flatMap { ($0["tokenAmount"] as? [String: Any])?["amount"] as? String }.flatMap(UInt64.init)
             after[address] = (lamports, amount)
         }
-        return (err == nil || err is NSNull ? nil : "\(err!)", after)
+        guard let err = value?["err"], !(err is NSNull) else { return (nil, after) }
+        let text = JSONSerialization.isValidJSONObject(err)
+            ? (try? JSONSerialization.data(withJSONObject: err)).map { String(decoding: $0, as: UTF8.self) } ?? "\(err)" : "\(err)"
+        // The program's own words when it logged any, e.g. «Error: insufficient funds».
+        let reason = (value?["logs"] as? [String])?.first { $0.contains("Error") }?.replacingOccurrences(of: "Program log: ", with: "")
+        return (reason.map { "\($0) \(text)" } ?? text, after)
     }
 }

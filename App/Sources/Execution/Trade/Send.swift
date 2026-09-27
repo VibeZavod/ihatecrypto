@@ -76,7 +76,8 @@ extension Executor {
         var verdict = SolanaGuard.check(message, accounts: message.staticKeys, policy: SolanaPolicy(owner: wallet.solana, recipients: [owner]), tokenOwners: owners)
         let solBefore = try await rpc.balance(wallet.solana)
         let simulation = try await rpc.simulate(unsigned, watch: [mine, wallet.solana], sigVerify: false)
-        if let error = simulation.error { verdict.problems.append("Simulation failed: \(error)") }
+        // A failed simulation says nothing about balances: stop here rather than quote made-up changes.
+        if let error = simulation.error { throw ExecutionError("The simulation failed, so nothing was signed: \(error)") }
         verdict.merge(SolanaGuard.balances([
             .init(label: "USDC", before: Int64(have), after: Int64(simulation.after[mine]?.token ?? 0), atLeast: -Int64(units)),
             // The fee, plus the recipient's token account rent (≈ 0.002 SOL) when they have none yet.
