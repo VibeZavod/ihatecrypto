@@ -105,7 +105,7 @@ struct TokenBoard: View {
         let now = shown?.close ?? market?.priceUSD ?? points.last?.close ?? holding?.price
         let change = rangeChange
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(now.map(tokenPrice) ?? "—").font(.system(size: 28, weight: .heavy)).monospacedDigit().lineLimit(1).fixedSize()
+            Text(now.map(tokenPrice) ?? "—").font(.system(size: 28, weight: .heavy)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.5).layoutPriority(1)
             if let shown {
                 Text(shown.time.formatted(Date.FormatStyle(locale: Locale(identifier: "en_US")).day().month(.abbreviated).hour().minute()))
                     .font(.caption).foregroundStyle(.secondary)
@@ -163,7 +163,7 @@ struct TokenBoard: View {
 
     private func stats(_ m: TokenMarket.Info) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 6) {
+            Flow(spacing: 6) {
                 ForEach([("m5", "5m"), ("h1", "1h"), ("h6", "6h"), ("h24", "24h")], id: \.0) { key, title in
                     if let c = m.changes[key] {
                         HStack(spacing: 4) {
@@ -215,8 +215,9 @@ struct TokenBoard: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Brand.accent.opacity(0.08)))
     }
 
+    /// Wraps: a token with many socials must not spill past the card.
     private var links: some View {
-        HStack(spacing: 14) {
+        Flow(spacing: 14) {
             Button {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(address, forType: .string)
@@ -246,8 +247,8 @@ struct TokenBoard: View {
                 }
                 .buttonStyle(.plain).pointerStyle(.link).help("Puts “\(phrase)” into the chat")
             }
-            Spacer()
-            Text("DexScreener · GeckoTerminal").font(.caption2).foregroundStyle(.tertiary)
+            Spacer(minLength: 8)
+            Text("DexScreener · GeckoTerminal").font(.caption2).foregroundStyle(.tertiary).lineLimit(1).minimumScaleFactor(0.8)
         }
     }
 
