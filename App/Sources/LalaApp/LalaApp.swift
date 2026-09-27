@@ -325,14 +325,14 @@ struct ChatView: View {
                     ScrollView {
                         LazyVStack(alignment: .leading, spacing: 22) {
                             // The first message is the old greeting; the empty screen replaces it.
-                            ForEach(ws.messages.dropFirst()) { MessageRow(message: $0) }
+                            ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing)
                         }
                         .frame(maxWidth: 720)
                         .padding(24)
                         .frame(maxWidth: .infinity)
                     }
                     .onChange(of: ws.messages.count) {
-                        if let id = ws.messages.last?.id { withAnimation { proxy.scrollTo(id, anchor: .bottom) } }
+                        withAnimation { proxy.scrollTo(ChatHistory.end, anchor: .bottom) }
                     }
                 }
                 Composer(draft: $draft, busy: ws.busy, send: send)
@@ -414,32 +414,6 @@ struct Composer: View {
         .padding(.leading, 18).padding(.trailing, 8).padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 24).fill(.fill.tertiary))
         .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(.separator.opacity(0.6)))
-    }
-}
-
-struct MessageRow: View {
-    let message: Message
-
-    var body: some View {
-        if message.fromUser {
-            HStack {
-                Spacer(minLength: 120)
-                Text(message.text)
-                    .textSelection(.enabled)
-                    .padding(.horizontal, 16).padding(.vertical, 10)
-                    .background(RoundedRectangle(cornerRadius: 18).fill(.quaternary.opacity(0.8)))
-            }
-            .font(.system(size: 14))
-        } else {
-            VStack(alignment: .leading, spacing: 6) {
-                // Models answer with **bold** and `code`: shown as such, not as asterisks.
-                Text((try? AttributedString(markdown: message.text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(message.text))
-                    .textSelection(.enabled).lineSpacing(3)
-                if let note = message.note { Text(note).font(.caption).foregroundStyle(.secondary) }
-            }
-            .font(.system(size: 14))
-            .frame(maxWidth: .infinity, alignment: .leading)
-        }
     }
 }
 
