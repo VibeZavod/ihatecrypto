@@ -2371,15 +2371,19 @@ struct RailActions: View {
     @AppStorage("canvasMode") private var mode = "plan"
 
     var body: some View {
-        HStack(spacing: 6) {
-            tile("Portfolio", "chart.pie.fill", on: false, help: "The portfolio on the canvas") {
-                NotificationCenter.default.post(name: .lalaCanvasFit, object: nil)
+        Grid(horizontalSpacing: 6, verticalSpacing: 6) {
+            GridRow {
+                tile("Top up", "arrow.down.circle.fill", on: ws.showReceive, accent: true, help: "Your addresses: where to send money into LALA") {
+                    ws.showReceive.toggle()
+                }
+                tile("Portfolio", "chart.pie.fill", on: false, help: "The portfolio on the canvas") {
+                    NotificationCenter.default.post(name: .lalaCanvasFit, object: nil)
+                }
             }
-            tile("Top up", "arrow.down.circle.fill", on: ws.showReceive, accent: true, help: "Your addresses: where to send money into LALA") {
-                ws.showReceive.toggle()
+            GridRow {
+                tile("History", "clock.arrow.circlepath", on: ws.showHistory, help: "What LALA did lately") { ws.showHistory.toggle() }
+                tile("Favorites", "star.fill", on: ws.showFavorites, help: "Favorite tokens and addresses") { ws.showFavorites.toggle() }
             }
-            tile("History", "clock.arrow.circlepath", on: ws.showHistory, help: "What LALA did lately") { ws.showHistory.toggle() }
-            tile("Favorites", "star.fill", on: ws.showFavorites, help: "Favorite tokens and addresses") { ws.showFavorites.toggle() }
         }
     }
 
@@ -2388,11 +2392,13 @@ struct RailActions: View {
             withAnimation(StudioView.spring) { action() }
             mode = "plan"
         } label: {
-            VStack(spacing: 5) {
-                Image(systemName: icon).font(.system(size: 15, weight: .semibold))
-                Text(title).font(.system(size: 10.5, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+            HStack(spacing: 7) {
+                Image(systemName: icon).font(.system(size: 14, weight: .semibold))
+                Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                Spacer(minLength: 0)
             }
-            .frame(maxWidth: .infinity).padding(.vertical, 9)
+            .padding(.horizontal, 11).padding(.vertical, 10)
+            .frame(maxWidth: .infinity)
             .foregroundStyle(accent ? Color.white : on ? Brand.accent : Color.primary)
             .background(RoundedRectangle(cornerRadius: 12).fill(accent ? Brand.accent : Color.primary.opacity(on ? 0.1 : 0.05)))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(accent ? Color.white.opacity(on ? 0.7 : 0) : on ? Brand.accent : .clear, lineWidth: 1.5))
