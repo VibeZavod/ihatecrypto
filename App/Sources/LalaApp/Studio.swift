@@ -311,6 +311,9 @@ struct StudioRail: View {
                     }
                 }
             }
+            if let closed = ws.recentlyClosed, !closed.isEmpty {
+                ClosedTrades(stories: closed)
+            }
             FavoriteChips()
             CanvasList().frame(maxHeight: .infinity, alignment: .top)
             ProfileMenu(compact: false)
@@ -472,6 +475,44 @@ struct PositionChip: View {
         .foregroundStyle(.white)
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 14).fill(Brand.hl))
+    }
+}
+
+/// Positions closed in the last week with their result after fees; a click opens them in the history.
+struct ClosedTrades: View {
+    let stories: [TradeHistory.Story]
+
+    var body: some View {
+        let total = stories.reduce(Decimal(0)) { $0 + $1.realized }
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text("Closed · 7 days").font(.caption).foregroundStyle(.secondary)
+                Spacer()
+                Text(signed(total)).font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(total < 0 ? Brand.loss : Brand.profit)
+            }
+            ForEach(stories.prefix(3)) { s in
+                Button {
+                    UserDefaults.standard.set("positions", forKey: "historyTab")
+                    withAnimation(.snappy) { UserDefaults.standard.set("history", forKey: "canvasMode") }
+                } label: {
+                    HStack(spacing: 8) {
+                        AssetBadge(coin: s.coin, size: 20)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("\(s.long ? "Long" : "Short") \(IntentParser.pretty(s.coin))").font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                            Text(s.closed.map(Fmt.date) ?? "").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(signed(s.realized)).font(.system(size: 12, weight: .bold)).monospacedDigit()
+                            .foregroundStyle(s.realized < 0 ? Brand.loss : Brand.profit)
+                    }
+                    .padding(.vertical, 3).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).help("Open in History → Positions")
+            }
+            if stories.count > 3 {
+                Text("+\(stories.count - 3) more in History").font(.caption2).foregroundStyle(.tertiary)
+            }
+        }
     }
 }
 

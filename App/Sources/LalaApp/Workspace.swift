@@ -58,6 +58,9 @@ final class Workspace {
     var txReview: JevReview?
     var jevNote: String?
     var positions: [HyperliquidAccount.Position] = []
+    /// Positions closed in the last 7 days, newest first, from the exchange: a close shows up even if it happened
+    /// while LALA was shut or another run closed it. nil until loaded.
+    var recentlyClosed: [TradeHistory.Story]?
     /// Margin balances on HIP-3 exchanges («xyz»), separate from the main one.
     var dexBalances: [String: (accountValue: Decimal, withdrawable: Decimal)] = [:]
     /// The plan last carried out; while the intent equals it, the card shows the position, not a new trade.
@@ -673,6 +676,10 @@ final class Workspace {
                 for coin in before.subtracting(positions.map(\.coin)) { await closedByExchange(coin) }
             }
             orders = (try? await HyperliquidAccount.openOrders(hlAddress)) ?? []
+            if recentlyClosed == nil || before != Set(positions.map(\.coin)), let fills = try? await TradeHistory.fills(user: hlAddress) {
+                let week = Date().addingTimeInterval(-7 * 86400)
+                recentlyClosed = TradeHistory.stories(fills).filter { ($0.closed ?? .distantPast) > week }
+            }
         } catch {
             hl = nil
             hlError = error.localizedDescription
