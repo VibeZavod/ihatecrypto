@@ -53,6 +53,9 @@ struct CanvasSession: Codable, Identifiable {
     var folder: String?
     /// The money move on its board was carried out: when, and whether it went through.
     var outcome: CanvasOutcome?
+    /// Moves already carried out on this canvas before the one on its board, oldest first: a canvas can hold
+    /// several steps in a row («out of Jupiter», then «out of Kamino»). Optional, so older files still load.
+    var earlier: [DoneBoard]?
     /// When the board was last live.
     var boardAt: Date?
     /// The chart on it, candles included: reopened, it shows this snapshot until Refresh.
@@ -69,6 +72,13 @@ struct CanvasOutcome: Codable, Equatable {
     var ok: Bool
 }
 
+/// A finished move kept on its canvas once the next one begins.
+struct DoneBoard: Codable, Equatable {
+    var title: String
+    var bubbles: [ActivityBubble]
+    var outcome: CanvasOutcome
+}
+
 extension Workspace {
     /// Keeps the open canvas: after every message and reply, and at quit. An empty canvas (no message, nothing
     /// on the board) is not kept.
@@ -83,6 +93,10 @@ extension Workspace {
         c.executed = executed != nil && executed == intent
         c.chart = chart
         if let board = canvasBubbles() {
+            // A new move after a finished one: the finished one stays on the canvas, above it.
+            if let done = old?.outcome, let old, finishedAction?.outcome != done {
+                c.earlier = (c.earlier ?? []) + [DoneBoard(title: old.title, bubbles: old.bubbles, outcome: done)]
+            }
             c.title = board.title
             c.bubbles = board.bubbles
             c.outcome = finishedAction?.outcome
@@ -395,6 +409,34 @@ struct CanvasRow: View {
     private func commitRename() {
         renaming = false
         ws.renameCanvas(canvas.id, to: draft)
+    }
+}
+
+/// The moves already carried out on the open canvas, oldest first, above what is on it now.
+struct EarlierBoards: View {
+    @Environment(Workspace.self) private var ws
+
+    var body: some View {
+        let earlier = ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []
+        ForEach(Array(earlier.enumerated()), id: \.offset) { _, done in
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(spacing: 8) {
+                    Text(done.title).font(.system(size: 14, weight: .semibold))
+                    StatusChip(text: done.outcome.ok ? "executed" : "failed", tint: done.outcome.ok ? Brand.profit : Brand.loss)
+                }
+                Label("\(done.outcome.ok ? "Executed" : "Failed") · \(Fmt.date(done.outcome.at))",
+                      systemImage: done.outcome.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(done.outcome.ok ? Brand.profit : Brand.loss)
+                if done.bubbles.allSatisfy({ $0.kind == "step" }) {
+                    RouteSteps(steps: done.bubbles).frame(width: 470, alignment: .leading)
+                } else {
+                    LazyVGrid(columns: [GridItem(.fixed(220), alignment: .top), GridItem(.fixed(220), alignment: .top)], alignment: .leading, spacing: 14) {
+                        ForEach(done.bubbles, id: \.self) { HistoryBubble(bubble: $0) }
+                    }
+                }
+            }
+            .padding(.bottom, 6)
+        }
     }
 }
 

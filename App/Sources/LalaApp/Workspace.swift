@@ -624,8 +624,22 @@ final class Workspace {
         c.favorites = favoriteTokens.map { "\($0.symbol) (\($0.name)) = \($0.address) on \($0.chainTitle)" }
         c.addressBook = addressBook.map(\.name)
         if let s = solana { c.balances.append("Solana \(Fmt.num(s.usdc)) USDC, \(Fmt.num(s.sol, maxFraction: 4)) SOL") }
-        if let h = hlTotal { c.balances.append("Hyperliquid \(Fmt.usd(h))") }
-        if let r = robinhood { c.balances.append("Robinhood Chain \(Fmt.num(r.usdg)) USDG") }
+        // Every place with money, so «выведи всё из Jupiter» needs no question about which asset is there.
+        if let h = hl { c.balances.append("Hyperliquid trading balance \(Fmt.usd(h.accountValue)), withdrawable \(Fmt.usd(h.withdrawable))") }
+        for (dex, b) in dexBalances where b.accountValue > 0 { c.balances.append("Hyperliquid \(dex) exchange \(Fmt.usd(b.accountValue))") }
+        if hlp.equity > 0 { c.balances.append("HLP vault \(Fmt.usd(hlp.equity))" + (hlp.lockedUntil.map { ", locked until \(Fmt.date($0))" } ?? "")) }
+        for l in lend where l.usdc > 0 { c.balances.append("Jupiter Lend \(l.vault.replacingOccurrences(of: "jl", with: "")) \(Fmt.num(l.usdc))") }
+        if kamino > 0 { c.balances.append("Kamino \(Fmt.usd(kamino))") }
+        if let b = base {
+            if b.aave > 0 { c.balances.append("Aave on Base \(Fmt.num(b.aave)) USDC") }
+            if b.morpho > 0 { c.balances.append("Morpho on Base \(Fmt.num(b.morpho)) USDC") }
+            if b.usdc > 0 { c.balances.append("Base \(Fmt.num(b.usdc)) USDC idle") }
+        }
+        if near > 0 { c.balances.append("NEAR \(Fmt.num(near, maxFraction: 4)) NEAR") }
+        if let r = robinhood {
+            c.balances.append("Robinhood Chain \(Fmt.num(r.usdg)) USDG" + r.stocks.map { ", \(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol) stock" }.joined())
+        }
+        for t in favoriteTokens { if let held = tokenBalances[t.id], held > 0 { c.balances.append("\(t.symbol) token on \(t.chainTitle) \(Fmt.num(held, maxFraction: 4))") } }
         return c
     }
 

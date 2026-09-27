@@ -653,6 +653,8 @@ struct StudioCanvas: View {
             if ws.showReceive { ReceiveBoard() }
             if ws.showFavorites { FavoritesBoard().transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity)) }
             if ws.showHistory { HistoryBoard().transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity)) }
+            // Moves already done on this canvas stay above the current one.
+            EarlierBoards()
             HStack(spacing: 8) {
                 Text(ws.allocationPreview.map { "Plan · spread \($0.asset) across the best rates" }
                      ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : board?.title ?? "Plan"))
