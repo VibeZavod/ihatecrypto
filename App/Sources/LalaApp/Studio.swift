@@ -770,6 +770,13 @@ struct StudioCanvas: View {
     @ViewBuilder private var plan: some View {
         let nodes = nodes
         VStack(alignment: .leading, spacing: 14) {
+            // A place opened from the rail is its own block above the plan or the position: outside their frame,
+            // covering nothing.
+            if let place = ws.detail {
+                PlaceDetailBoard(place: place)
+                    .padding(.bottom, 10)
+                    .transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity))
+            }
             HStack(spacing: 8) {
                 Text(ws.allocationPreview.map { "Plan · spread \($0.asset) across the best rates" }
                      ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : board?.title ?? "Plan"))
@@ -811,15 +818,6 @@ struct StudioCanvas: View {
             }
         }
         .overlay(alignment: .topLeading) { cursors(nodes) }
-        // A place opened from the rail floats over the plan or the position instead of pushing them down.
-        .overlay(alignment: .topLeading) {
-            if let place = ws.detail {
-                PlaceDetailBoard(place: place)
-                    .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
-                    .padding(.top, 36)
-                    .transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity))
-            }
-        }
     }
 
     private func node(_ n: StudioNode, nodes: [StudioNode]) -> some View {
