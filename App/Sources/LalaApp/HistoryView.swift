@@ -22,8 +22,7 @@ struct HistoryView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Text("History").font(.system(size: 22, weight: .heavy))
+            PageHeader(title: "History", close: close) {
                 Picker("", selection: $tab) {
                     Text("Agent").tag("agent")
                     Text("Positions").tag("positions")
@@ -31,11 +30,8 @@ struct HistoryView: View {
                 }
                 .pickerStyle(.segmented).labelsHidden().fixedSize()
                 if loading { ProgressView().controlSize(.small) }
-                Spacer()
                 Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.hoverIcon).help("Refresh")
-                Button("Back to canvas", action: close)
             }
-            .padding(.horizontal, 28).padding(.top, 22).padding(.bottom, 14)
             if let loadError { Text(loadError).font(.caption).foregroundStyle(Brand.loss).padding(.horizontal, 28) }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
@@ -240,11 +236,8 @@ struct ActivityCard: View {
                 Label("understood as “\(u)”", systemImage: "character.bubble").font(.caption).foregroundStyle(.secondary)
             }
             if !activity.bubbles.isEmpty {
-                ScrollView(.horizontal, showsIndicators: false) {
-                    HStack(alignment: .top, spacing: 10) {
-                        ForEach(activity.bubbles, id: \.self) { HistoryBubble(bubble: $0) }
-                    }
-                    .padding(.vertical, 2)
+                Flow {
+                    ForEach(activity.bubbles, id: \.self) { HistoryBubble(bubble: $0) }
                 }
             }
             let lines = expanded ? activity.lines : Array(activity.lines.suffix(2))
@@ -283,7 +276,7 @@ struct HistoryBubble: View {
                 generic
             }
         }
-        .frame(width: 210, alignment: .topLeading)
+        .frame(idealWidth: 210, maxWidth: 210, alignment: .topLeading)
     }
 
     private var status: Block.Status {
@@ -345,8 +338,8 @@ struct StoryCard: View {
             HStack(spacing: 10) {
                 AssetBadge(coin: story.coin, size: 34, dark: true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(story.long ? "Long" : "Short") \(IntentParser.pretty(story.coin))").font(.system(size: 16, weight: .heavy))
-                    Text("\(Fmt.date(story.opened))\(story.closed.map { " → \(Fmt.date($0))" } ?? " · open")").font(.caption).foregroundStyle(.secondary)
+                    Text("\(story.long ? "Long" : "Short") \(IntentParser.pretty(story.coin))").font(.system(size: 16, weight: .heavy)).lineLimit(2)
+                    Text(span).font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if story.isOpen {
@@ -356,9 +349,9 @@ struct StoryCard: View {
                         .foregroundStyle(story.realized < 0 ? Brand.loss : Brand.profit)
                 }
             }
-            ScrollView(.horizontal, showsIndicators: false) {
-                HStack(alignment: .top, spacing: 10) {
-                    ForEach(events.indices, id: \.self) { i in
+            Flow {
+                ForEach(events.indices, id: \.self) { i in
+                    HStack(alignment: .top, spacing: 10) {
                         if i > 0 { Image(systemName: "chevron.right").foregroundStyle(.tertiary).padding(.top, 30) }
                         events[i]
                     }
@@ -372,6 +365,12 @@ struct StoryCard: View {
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 22).fill(Brand.card))
         .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Brand.cardBorder))
+    }
+
+    /// «Sep 25, 11:47 PM → 11:48 PM»: the day once when both ends share it.
+    private var span: String {
+        guard let closed = story.closed else { return "\(Fmt.date(story.opened)) · open" }
+        return "\(Fmt.date(story.opened)) → \(Calendar.current.isDate(story.opened, inSameDayAs: closed) ? Fmt.time(closed) : Fmt.date(closed))"
     }
 
     /// Fills and LALA's actions on this position, in time order, as bubbles.
@@ -388,5 +387,63 @@ struct StoryCard: View {
                                                                  title: a.request ?? a.title ?? "", lines: Array(a.lines.suffix(1))))))
         }
         return items.sorted { $0.0 < $1.0 }.map(\.1)
+    }
+}
+
+/// A page's top line on the canvas. The title and the way back always stay on one line; when the pane is narrow
+/// the controls move under them, and scroll sideways if even that is too tight.
+struct PageHeader<Controls: View>: View {
+    let title: String
+    let close: () -> Void
+    @ViewBuilder let controls: Controls
+
+    var body: some View {
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 12) {
+                name
+                controls
+                Spacer(minLength: 12)
+                back
+            }
+            VStack(alignment: .leading, spacing: 10) {
+                HStack { name; Spacer(); back }
+                ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 10) { controls } }
+            }
+        }
+        .padding(.horizontal, 28).padding(.top, 22).padding(.bottom, 14)
+    }
+
+    private var name: some View { Text(title).font(.system(size: 22, weight: .heavy)).lineLimit(1).fixedSize() }
+
+    private var back: some View {
+        Button(action: close) { Image(systemName: "xmark") }.buttonStyle(.hoverIcon).help("Back to the canvas")
+    }
+}
+
+/// Views left to right, a new line when the next one does not fit.
+struct Flow: Layout {
+    var spacing: CGFloat = 10
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let frames = frames(subviews, width: proposal.width ?? .infinity)
+        return CGSize(width: frames.map(\.maxX).max() ?? 0, height: frames.map(\.maxY).max() ?? 0)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (view, frame) in zip(subviews, frames(subviews, width: bounds.width)) {
+            view.place(at: CGPoint(x: bounds.minX + frame.minX, y: bounds.minY + frame.minY), proposal: ProposedViewSize(frame.size))
+        }
+    }
+
+    private func frames(_ subviews: Subviews, width: CGFloat) -> [CGRect] {
+        var x: CGFloat = 0, y: CGFloat = 0, row: CGFloat = 0
+        return subviews.map { view in
+            var size = view.sizeThatFits(.unspecified)
+            // Wider than the whole line: it gets the line and grows down instead.
+            if size.width > width { size = view.sizeThatFits(ProposedViewSize(width: width, height: nil)) }
+            if x > 0, x + size.width > width { x = 0; y += row + spacing; row = 0 }
+            defer { x += size.width + spacing; row = max(row, size.height) }
+            return CGRect(origin: CGPoint(x: x, y: y), size: size)
+        }
     }
 }

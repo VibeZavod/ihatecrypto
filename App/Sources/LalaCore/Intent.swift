@@ -201,6 +201,8 @@ public enum Fmt {
     public static func pct(_ d: Decimal) -> String { num(d) + "%" }
     /// «28 сент., 22:38»: no year, so a non-Gregorian system calendar does not show «2569 г. BE».
     public static func date(_ d: Date) -> String { d.formatted(Date.FormatStyle(locale: locale).day().month(.abbreviated).hour().minute()) }
+    /// «23:48» — for the second end of a span on the same day.
+    public static func time(_ d: Date) -> String { d.formatted(Date.FormatStyle(locale: locale).hour().minute()) }
 }
 
 extension Decimal {

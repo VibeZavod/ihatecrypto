@@ -117,8 +117,12 @@ struct StudioView: View {
     @AppStorage("chatY") private var chatY = 0.0
     /// The header's pull while the chat is being moved.
     @State private var moving: CGSize = .zero
+    @AppStorage("railCollapsed") private var railCollapsed = true
+    @State private var railFoldedForRoom = false
     static let spring = Animation.spring(response: 0.42, dampingFraction: 0.82)
     static let minChat: CGFloat = 320
+    /// Below this window width the wide rail (280) and the chat (350) would leave the canvas too little room.
+    static let crampedWidth: CGFloat = 1140
 
     /// Keeps the chat inside the canvas: offsets from the docked corner, never past the left or top edge.
     static func clamp(_ s: CGSize, room: CGSize) -> CGSize {
@@ -175,6 +179,13 @@ struct StudioView: View {
                 .animation(Self.spring, value: chatOpen)
                 .animation(Self.spring, value: chatX)
                 .animation(Self.spring, value: chatY)
+            }
+        }
+        // A window getting narrow folds the rail, and widening again brings back what it folded; by hand it still opens.
+        .onGeometryChange(for: Bool.self) { $0.size.width < Self.crampedWidth } action: { cramped in
+            withAnimation(Self.spring) {
+                if cramped, !railCollapsed { railCollapsed = true; railFoldedForRoom = true }
+                else if !cramped, railFoldedForRoom { railCollapsed = false; railFoldedForRoom = false }
             }
         }
         .sheet(isPresented: Binding(get: { ws.preparing || ws.prepared != nil || (ws.executionError != nil && !ws.executing) },
@@ -307,7 +318,7 @@ struct StudioRail: View {
                     Text("Positions · Hyperliquid").font(.caption).foregroundStyle(.secondary)
                     ForEach(ws.positions, id: \.coin) { p in
                         Button { Task { await ws.chartCommand(.chart(coin: p.coin, range: .day)) } } label: { PositionChip(position: p) }
-                            .buttonStyle(.plain).help("Open the \(IntentParser.pretty(p.coin)) chart")
+                            .buttonStyle(.plain).pointerStyle(.link).help("Open the \(IntentParser.pretty(p.coin)) chart")
                     }
                 }
             }
@@ -383,6 +394,7 @@ struct StudioRail: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .pointerStyle(.link)
         .help("Details: \(name)")
     }
 
@@ -507,7 +519,7 @@ struct ClosedTrades: View {
                     }
                     .padding(.vertical, 3).contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).help("Open in History → Positions")
+                .buttonStyle(.plain).pointerStyle(.link).help("Open in History → Positions")
             }
             if stories.count > 3 {
                 Text("+\(stories.count - 3) more in History").font(.caption2).foregroundStyle(.tertiary)
@@ -1340,11 +1352,10 @@ struct FloatingChat: View {
                     .buttonStyle(.hoverIcon).help(compact ? "Full-height chat" : "Compact chat")
             }
             .padding(.horizontal, 14).padding(.top, 12).padding(.bottom, 8)
-            .background(Color.clear.contentShape(Rectangle()).gesture(DragGesture(minimumDistance: 4, coordinateSpace: .global)
+            .background(Color.clear.contentShape(Rectangle()).pointerStyle(.grabIdle).gesture(DragGesture(minimumDistance: 4, coordinateSpace: .global)
                 .onChanged { drag = $0.translation }
                 .onEnded { endDrag($0.translation) })
                 .simultaneousGesture(TapGesture(count: 2).onEnded { dock() }))
-            .onHover { inside in if inside { NSCursor.openHand.push() } else { NSCursor.pop() } }
 
             ScrollViewReader { proxy in
                 ScrollView {
@@ -1360,7 +1371,7 @@ struct FloatingChat: View {
                                         .padding(.horizontal, 12).padding(.vertical, 7)
                                         .background(Capsule().fill(Brand.accent.opacity(0.1)))
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(.plain).pointerStyle(.link)
                             }
                         }
                     }
@@ -1389,6 +1400,7 @@ struct FloatingChat: View {
                         .background(RoundedRectangle(cornerRadius: 10).fill(Brand.card))
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(.link)
                 .foregroundStyle(Brand.accent)
                 .help("Plan templates")
                 .popover(isPresented: $templatesOpen, arrowEdge: .top) {
@@ -1405,6 +1417,7 @@ struct FloatingChat: View {
                         .background(RoundedRectangle(cornerRadius: 10).fill(ws.draft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary)))
                 }
                 .buttonStyle(.plain)
+                .pointerStyle(ws.draft.isEmpty || ws.busy ? nil : .link)
                 .disabled(ws.draft.isEmpty || ws.busy)
                 .keyboardShortcut(.return, modifiers: .command)
             }

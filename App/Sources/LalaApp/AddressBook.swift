@@ -180,20 +180,16 @@ struct AddressBookView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 12) {
-                Text("Addresses").font(.system(size: 22, weight: .heavy))
+            PageHeader(title: "Addresses", close: close) {
                 Picker("", selection: $tab) {
                     Label("Favorites", systemImage: "star.fill").tag("favorites")
                     Text("All").tag("all")
                 }
                 .pickerStyle(.segmented).labelsHidden().fixedSize()
-                TextField("Search", text: $search).textFieldStyle(.roundedBorder).frame(maxWidth: 180)
-                Spacer()
+                TextField("Search", text: $search).textFieldStyle(.roundedBorder).frame(width: 160)
                 AddTokenButton()
                 Button { adding = true } label: { Label("Add address", systemImage: "plus") }.buttonStyle(.borderedProminent)
-                Button("Back to canvas", action: close)
             }
-            .padding(.horizontal, 28).padding(.top, 22).padding(.bottom, 14)
             ScrollView {
                 VStack(alignment: .leading, spacing: 18) {
                     // Watched tokens: contracts to follow, never addresses to send to.

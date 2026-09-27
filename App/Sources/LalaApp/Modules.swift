@@ -378,10 +378,8 @@ struct Openable: ViewModifier {
             .scaleEffect(hover ? 1.015 : 1)
             .animation(.snappy(duration: 0.18), value: hover)
             .contentShape(Rectangle())
-            .onHover { inside in
-                hover = inside
-                if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-            }
+            .onHover { hover = $0 }
+            .pointerStyle(.link)
             .onTapGesture { ws.toggleDetail(place) }
             .help("Details")
     }
@@ -447,6 +445,7 @@ struct HoverIconStyle: ButtonStyle {
                 .animation(.snappy(duration: 0.1), value: configuration.isPressed)
                 .contentShape(Rectangle())
                 .onHover { hover = $0 }
+                .pointerStyle(enabled ? .link : nil)
         }
     }
 }
@@ -465,10 +464,8 @@ struct HoverLift: ViewModifier {
             .background(RoundedRectangle(cornerRadius: radius).fill(Color.primary.opacity(hover ? 0.07 : 0)))
             .scaleEffect(hover ? 1.04 : 1)
             .animation(.snappy(duration: 0.16), value: hover)
-            .onHover { inside in
-                hover = inside
-                if inside { NSCursor.pointingHand.push() } else { NSCursor.pop() }
-            }
+            .onHover { hover = $0 }
+            .pointerStyle(.link)
     }
 }
 
