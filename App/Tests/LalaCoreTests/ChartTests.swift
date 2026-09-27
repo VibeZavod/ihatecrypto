@@ -65,13 +65,13 @@ func notCharts(_ phrase: String) {
 }
 
 @Test func pinchKeepsThePointUnderTheFingers() {
-    let pan = CGSize(width: 40, height: -30), scale: CGFloat = 0.8, fingers = CGPoint(x: 300, y: 220)
+    let pan = (x: 40.0, y: -30.0), scale = 0.8, fingers = (x: 300.0, y: 220.0)
     // The content point under the fingers before the pinch…
-    let c = CGPoint(x: (fingers.x - pan.width) / scale, y: (fingers.y - pan.height) / scale)
-    for k in [0.5, 1.7, 2.5] as [CGFloat] {
+    let c = (x: (fingers.x - pan.x) / scale, y: (fingers.y - pan.y) / scale)
+    for k in [0.5, 1.7, 2.5] {
         let next = CanvasZoom.pan(keeping: fingers, from: pan, by: k)
         // …is still under them after it.
-        #expect(abs(next.width + c.x * scale * k - fingers.x) < 0.0001)
-        #expect(abs(next.height + c.y * scale * k - fingers.y) < 0.0001)
+        #expect(abs(next.x + c.x * scale * k - fingers.x) < 0.0001)
+        #expect(abs(next.y + c.y * scale * k - fingers.y) < 0.0001)
     }
 }

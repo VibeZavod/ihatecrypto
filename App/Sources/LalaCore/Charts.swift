@@ -82,8 +82,10 @@ public enum PortfolioSplit {
 }
 
 /// Zooming a canvas drawn at `pan + point·scale` about a screen point, so that point stays under the fingers.
+/// Plain Doubles: CoreGraphics types in this module's API crash the Release build's cross-module optimizer
+/// (Swift 6.3.3, «DESERIALIZATION FAILURE … CGPoint … x»).
 public enum CanvasZoom {
-    public static func pan(keeping point: CGPoint, from pan: CGSize, by k: CGFloat) -> CGSize {
-        CGSize(width: point.x - (point.x - pan.width) * k, height: point.y - (point.y - pan.height) * k)
+    public static func pan(keeping point: (x: Double, y: Double), from pan: (x: Double, y: Double), by k: Double) -> (x: Double, y: Double) {
+        (point.x - (point.x - pan.x) * k, point.y - (point.y - pan.y) * k)
     }
 }

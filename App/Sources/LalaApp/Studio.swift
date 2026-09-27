@@ -604,7 +604,8 @@ struct StudioCanvas: View {
         let k = Self.zoomRange.clamped(zoom * pinch) / zoom
         let scale = base * k
         let live = CGSize(width: pan.width + drag.width, height: pan.height + drag.height)
-        let shown = CanvasZoom.pan(keeping: pinchAt, from: live, by: k)
+        let moved = CanvasZoom.pan(keeping: (pinchAt.x, pinchAt.y), from: (live.width, live.height), by: k)
+        let shown = CGSize(width: moved.x, height: moved.y)
         return ZStack(alignment: .topLeading) {
             Brand.canvas
             Canvas { context, size in
@@ -840,7 +841,8 @@ struct StudioCanvas: View {
     private func zoomAbout(_ point: CGPoint, by factor: CGFloat) {
         let next = Self.zoomRange.clamped(zoom * factor)
         let k = next / zoom
-        pan = CanvasZoom.pan(keeping: point, from: pan, by: k)
+        let moved = CanvasZoom.pan(keeping: (point.x, point.y), from: (pan.width, pan.height), by: k)
+        pan = CGSize(width: moved.x, height: moved.y)
         zoom = next
         pinchAt = .zero
     }
