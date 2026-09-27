@@ -1539,19 +1539,23 @@ struct FloatingChat: View {
 }
 
 /// «ChatGPT · gpt-6-sol ▾»: the provider and model for the chat, right under LALA AI. The choice is kept per canvas.
+/// The menu lists companies; one with several ways in (subscription, API key) opens in place to show them.
 struct ChatModelMenu: View {
     @Environment(Workspace.self) private var ws
     @Environment(\.openSettings) private var openSettings
     @State private var open = false
+    /// The company opened in the menu; the current one's when the menu opens.
+    @State private var expanded: String?
 
     var body: some View {
-        Button { open.toggle() } label: {
-            HStack(spacing: 3) {
-                Text("\(ws.provider.info.name) · \(ws.model)").lineLimit(1)
+        Button { expanded = ModelCompany.of(ws.providerID)?.name; open.toggle() } label: {
+            HStack(spacing: 4) {
+                if let c = ModelCompany.of(ws.providerID) { ModelCompanyLogo(company: c, size: 15) }
+                Text([ws.provider.info.name, ws.model].filter { !$0.isEmpty }.joined(separator: " · ")).lineLimit(1)
                 Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
             }
             .font(.caption).foregroundStyle(Brand.accent)
-            .padding(.horizontal, 6).padding(.vertical, 2)
+            .padding(.leading, 3).padding(.trailing, 6).padding(.vertical, 2)
             .background(Capsule().fill(Brand.accent.opacity(open ? 0.12 : 0)))
         }
         .buttonStyle(.plain)
@@ -1562,19 +1566,10 @@ struct ChatModelMenu: View {
 
     private var menu: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("MODEL FOR THIS CANVAS").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
-                .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 4)
-            ForEach(LLMCatalog.all, id: \.info.id) { p in
-                let info = p.info, connected = info.kind == .local || Keychain.load(info.id) != nil
-                MenuRow(title: info.name, detail: info.unavailable ?? detail(info, connected: connected), checked: info.id == ws.providerID) {
-                    ws.providerID = info.id
-                    ws.saveCanvas()
-                    open = false
-                    if !connected { openSettings() }
-                }
-                .disabled(info.unavailable != nil)
-                .opacity(info.unavailable != nil ? 0.5 : 1)
-            }
+            caption("MODEL FOR THIS CANVAS")
+            ForEach(ModelCompany.all.filter { !$0.local }) { company($0) }
+            caption("ON THIS MAC · NO INTERNET").padding(.top, 6)
+            ForEach(ModelCompany.all.filter(\.local)) { company($0) }
             Divider().padding(.vertical, 4)
             HStack {
                 Label("The model never sees your wallet key.", systemImage: "lock.shield").font(.caption).foregroundStyle(.secondary)
@@ -1584,15 +1579,150 @@ struct ChatModelMenu: View {
             .padding(.horizontal, 10).padding(.bottom, 4)
         }
         .padding(8)
-        .frame(width: 320)
+        .frame(width: 340)
+        .animation(.snappy(duration: 0.22), value: expanded)
     }
 
-    private func detail(_ info: ProviderInfo, connected: Bool) -> String {
-        let model = ws.modelChoices[info.id] ?? info.defaultModel
-        switch info.kind {
-        case .local: return "\(model) · on this Mac, no internet"
-        default: return connected ? "\(model) · connected" : "\(info.takesKey ? "any model by key" : model) · sign-in needed"
+    private func caption(_ text: String) -> some View {
+        Text(text).font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 4)
+    }
+
+    /// A company's row; several ways in open under it, a single one is picked right away.
+    @ViewBuilder private func company(_ c: ModelCompany) -> some View {
+        let ways = c.ids.compactMap { LLMCatalog.provider(id: $0)?.info }
+        let current = ways.first { $0.id == ws.providerID }
+        let isOpen = ways.count > 1 && expanded == c.name
+        CompanyRow(company: c, detail: summary(ways, current: isOpen ? nil : current), current: current != nil,
+                   disclosure: ways.count > 1 ? isOpen : nil) {
+            if ways.count > 1 { expanded = isOpen ? nil : c.name } else if let only = ways.first { pick(only) }
         }
+        if isOpen {
+            ForEach(ways) { info in
+                MenuRow(title: info.name, detail: info.unavailable == nil ? detail(info) : "not open to apps yet — use the API key",
+                        icon: info.kind == .subscription ? "person.crop.circle" : "key", checked: info.id == ws.providerID) { pick(info) }
+                    .disabled(info.unavailable != nil)
+                    .opacity(info.unavailable != nil ? 0.5 : 1)
+                    .help(info.unavailable ?? info.note)
+                    .padding(.leading, 26)
+            }
+            .transition(.opacity.combined(with: .move(edge: .top)))
+        }
+    }
+
+    /// Under the company: what's in use, or else the ways in.
+    private func summary(_ ways: [ProviderInfo], current: ProviderInfo?) -> String {
+        if ways.count == 1, let only = ways.first { return detail(only) }
+        if let current { return "\(current.kind == .subscription ? "Subscription" : "API key") · \(detail(current))" }
+        return ways.filter { $0.unavailable == nil }.map { $0.kind == .subscription ? "Subscription" : "API key" }
+            .joined(separator: " or ")
+    }
+
+    private func pick(_ info: ProviderInfo) {
+        ws.providerID = info.id
+        ws.saveCanvas()
+        open = false
+        if !connected(info) { openSettings() }
+    }
+
+    private func connected(_ info: ProviderInfo) -> Bool { info.kind == .local || Keychain.load(info.id) != nil }
+
+    private func detail(_ info: ProviderInfo) -> String {
+        let model = ws.modelChoices[info.id] ?? info.defaultModel
+        let state = info.kind == .local ? "on this Mac" : connected(info) ? "connected" : "sign-in needed"
+        let shown = info.takesKey && !connected(info) ? "any model by key" : model
+        return [shown, state].filter { !$0.isEmpty }.joined(separator: " · ")
+    }
+}
+
+/// A model maker in the chat's model menu: its logo on a brand tile and its ways in (catalog ids).
+struct ModelCompany: Identifiable {
+    let name: String
+    /// Logos/<logo>.png
+    let logo: String
+    let tile: UInt32
+    /// The color for a one-color logo; nil keeps the logo's own colors.
+    var ink: UInt32?
+    let ids: [String]
+    var id: String { name }
+    var local: Bool { LLMCatalog.provider(id: ids[0])?.info.kind == .local }
+
+    static let known: [ModelCompany] = [
+        .init(name: "OpenAI", logo: "llm-openai", tile: 0x000000, ink: 0xFFFFFF, ids: ["chatgpt", "openai"]),
+        .init(name: "Anthropic", logo: "llm-claude", tile: 0xF4F3EE, ids: ["claude-code", "anthropic"]),
+        .init(name: "Google", logo: "llm-gemini", tile: 0xFFFFFF, ids: ["gemini-subscription", "gemini"]),
+        .init(name: "xAI", logo: "llm-grok", tile: 0x000000, ink: 0xFFFFFF, ids: ["grok-subscription", "xai"]),
+        .init(name: "DeepSeek", logo: "llm-deepseek", tile: 0xFFFFFF, ids: ["deepseek"]),
+        .init(name: "OpenRouter", logo: "llm-openrouter", tile: 0x6566F1, ink: 0xFFFFFF, ids: ["openrouter"]),
+        .init(name: "Ollama", logo: "llm-ollama", tile: 0xFFFFFF, ink: 0x000000, ids: ["ollama"]),
+        .init(name: "LM Studio", logo: "llm-lmstudio", tile: 0x4338CA, ink: 0xFFFFFF, ids: ["lmstudio"]),
+    ]
+    /// A provider added to the catalog but not to a company above still shows, as its own company with a lettered tile.
+    static let all = known + LLMCatalog.all.map(\.info).filter { info in !known.contains { $0.ids.contains(info.id) } }
+        .map { ModelCompany(name: $0.name, logo: "", tile: 0x8E8E93, ids: [$0.id]) }
+
+    static func of(_ providerID: String) -> ModelCompany? { all.first { $0.ids.contains(providerID) } }
+}
+
+/// The company's logo on its brand tile, like an app icon.
+struct ModelCompanyLogo: View {
+    let company: ModelCompany
+    var size: CGFloat = 28
+
+    var body: some View {
+        let shape = RoundedRectangle(cornerRadius: size * 0.26, style: .continuous)
+        shape.fill(Color(hex: company.tile))
+            .overlay { glyph.frame(width: size * 0.64, height: size * 0.64) }
+            .overlay(shape.strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+            .frame(width: size, height: size)
+    }
+
+    @ViewBuilder private var glyph: some View {
+        if let image = TokenLogo.image(company.logo) {
+            if let ink = company.ink {
+                Image(nsImage: image).renderingMode(.template).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+                    .foregroundStyle(Color(hex: ink))
+            } else {
+                Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
+            }
+        } else {
+            Text(company.name.prefix(1)).font(.system(size: size * 0.5, weight: .bold)).foregroundStyle(.white)
+        }
+    }
+}
+
+private struct CompanyRow: View {
+    let company: ModelCompany
+    let detail: String
+    let current: Bool
+    /// Open or closed for a company with several ways in; nil when a tap picks it.
+    let disclosure: Bool?
+    let action: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                ModelCompanyLogo(company: company)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(company.name).font(.system(size: 13, weight: .semibold))
+                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 8)
+                if let disclosure {
+                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(disclosure ? 90 : 0))
+                } else if current {
+                    Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Brand.accent)
+                }
+            }
+            .padding(.horizontal, 8).padding(.vertical, 6)
+            .background(RoundedRectangle(cornerRadius: 10).fill(
+                current && disclosure != true ? Brand.accent.opacity(0.09) : hover ? Color.primary.opacity(0.06) : .clear))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
     }
 }
 
