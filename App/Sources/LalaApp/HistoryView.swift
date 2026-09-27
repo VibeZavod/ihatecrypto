@@ -229,6 +229,12 @@ struct HistoryBoard: View {
                 Button { withAnimation(StudioView.spring) { ws.showHistory = false } } label: { Image(systemName: "xmark") }
                     .buttonStyle(.hoverIcon).help("Close")
             }
+            if let closed = ws.recentlyClosed, !closed.isEmpty {
+                ClosedTrades(stories: closed)
+                    .padding(16)
+                    .background(RoundedRectangle(cornerRadius: 22).fill(Brand.card))
+                    .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Brand.cardBorder))
+            }
             if items.isEmpty {
                 Text("Nothing yet. Every request from now on is kept here with the bubbles it had on the canvas.")
                     .font(.callout).foregroundStyle(.secondary)

@@ -285,8 +285,8 @@ struct StudioRail: View {
                 Button { withAnimation(StudioView.spring) { collapsed = true } } label: { Image(systemName: "sidebar.left") }
                     .buttonStyle(.hoverIcon).help("Collapse wallet")
             }
-            // Everything between the header and the profile scrolls as one: the balance, its buttons, closed trades and
-            // canvases, however many there are. Places, positions and favorites are on the canvas.
+            // Everything between the header and the profile scrolls as one: the balance, its buttons and the canvases,
+            // however many there are. Places, positions, closed trades and favorites are on the canvas.
             ScrollView {
                 VStack(alignment: .leading, spacing: 20) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -306,9 +306,6 @@ struct StudioRail: View {
                     }
                     .onHover { balanceHover = $0 }
                     RailActions()
-                    if let closed = ws.recentlyClosed, !closed.isEmpty {
-                        ClosedTrades(stories: closed)
-                    }
                     CanvasList(scrolls: false)
                 }
                 // Loaded numbers and sections that arrive later fade in instead of popping up.
@@ -354,7 +351,7 @@ struct StudioRail: View {
     static let railLimit = 4
 
     private var railKey: String {
-        "\(ws.updatedAt == nil)·\(ws.recentlyClosed?.count ?? -1)"
+        "\(ws.updatedAt == nil)"
     }
 }
 
@@ -481,7 +478,8 @@ struct PositionChip: View {
     }
 }
 
-/// Positions closed in the last week with their result after fees; a click opens them in the history.
+/// Positions closed in the last week with their result after fees, on the History board; a click opens them in the
+/// full history.
 struct ClosedTrades: View {
     let stories: [TradeHistory.Story]
     @State private var all = false
