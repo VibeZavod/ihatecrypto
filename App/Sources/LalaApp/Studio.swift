@@ -284,55 +284,62 @@ struct StudioRail: View {
                 Button { withAnimation(StudioView.spring) { collapsed = true } } label: { Image(systemName: "sidebar.left") }
                     .buttonStyle(.hoverIcon).help("Collapse wallet")
             }
-            VStack(alignment: .leading, spacing: 3) {
-                HStack {
-                    Text("Balance").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button { withAnimation(StudioView.spring) { ws.showReceive.toggle(); if ws.showReceive { UserDefaults.standard.set("plan", forKey: "canvasMode") } } } label: {
-                        Label("Top up", systemImage: "arrow.down.circle.fill").font(.caption.weight(.semibold))
+            // Everything between the header and the profile scrolls as one: balances, positions, closed trades,
+            // favorites and canvases, however many there are.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        HStack {
+                            Text("Balance").font(.caption).foregroundStyle(.secondary)
+                            Spacer()
+                            Button { withAnimation(StudioView.spring) { ws.showReceive.toggle(); if ws.showReceive { UserDefaults.standard.set("plan", forKey: "canvasMode") } } } label: {
+                                Label("Top up", systemImage: "arrow.down.circle.fill").font(.caption.weight(.semibold))
+                            }
+                            .buttonStyle(.borderless).help("Your addresses: where to send money into LALA")
+                        }
+                        Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 34, weight: .bold)).monospacedDigit().tracking(-1)
+                        if !ws.positions.isEmpty {
+                            Text("\(signed(ws.positionsPnl)) in positions").font(.caption.weight(.semibold))
+                                .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
+                        }
                     }
-                    .buttonStyle(.borderless).help("Your addresses: where to send money into LALA")
-                }
-                Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 34, weight: .bold)).monospacedDigit().tracking(-1)
-                if !ws.positions.isEmpty {
-                    Text("\(signed(ws.positionsPnl)) in positions").font(.caption.weight(.semibold))
-                        .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
-                }
-            }
-            BalanceFreshness()
-            VStack(spacing: 2) {
-                account("solana", logo: "sol", name: "Solana", value: ws.solana.map { "\(Fmt.num($0.usdc)) USDC" } ?? "—")
-                account("hyperliquid", logo: "hype", name: "Hyperliquid", value: ws.hlTotal.map(Fmt.usd) ?? "—")
-                if ws.lendTotal > 0 {
-                    account("jupiter", logo: "jup", name: "Jupiter Lend", value: "\(Fmt.num(ws.lendTotal)) USDC")
-                }
-                if ws.kamino > 0 {
-                    account("kamino", logo: "kamino", name: "Kamino", value: Fmt.usd(ws.kamino))
-                }
-                if ws.near > 0 {
-                    account("near", logo: "near", name: "NEAR", value: "\(Fmt.num(ws.near, maxFraction: 4)) NEAR")
-                }
-                if let b = ws.base, b.aave + b.usdc > 0 {
-                    account("aave", logo: "aave", name: "Aave · Base", value: "\(Fmt.num(b.aave + b.usdc)) USDC")
-                }
-                if ws.robinhoodTotal > 0 {
-                    account("robinhood", logo: "robinhood", name: "Robinhood Chain", value: Fmt.usd(ws.robinhoodTotal))
-                }
-            }
-            if !ws.positions.isEmpty {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Positions · Hyperliquid").font(.caption).foregroundStyle(.secondary)
-                    ForEach(ws.positions, id: \.coin) { p in
-                        Button { Task { await ws.chartCommand(.chart(coin: p.coin, range: .day)) } } label: { PositionChip(position: p) }
-                            .buttonStyle(.plain).pointerStyle(.link).help("Open the \(IntentParser.pretty(p.coin)) chart")
+                    BalanceFreshness()
+                    VStack(spacing: 2) {
+                        account("solana", logo: "sol", name: "Solana", value: ws.solana.map { "\(Fmt.num($0.usdc)) USDC" } ?? "—")
+                        account("hyperliquid", logo: "hype", name: "Hyperliquid", value: ws.hlTotal.map(Fmt.usd) ?? "—")
+                        if ws.lendTotal > 0 {
+                            account("jupiter", logo: "jup", name: "Jupiter Lend", value: "\(Fmt.num(ws.lendTotal)) USDC")
+                        }
+                        if ws.kamino > 0 {
+                            account("kamino", logo: "kamino", name: "Kamino", value: Fmt.usd(ws.kamino))
+                        }
+                        if ws.near > 0 {
+                            account("near", logo: "near", name: "NEAR", value: "\(Fmt.num(ws.near, maxFraction: 4)) NEAR")
+                        }
+                        if let b = ws.base, b.aave + b.usdc > 0 {
+                            account("aave", logo: "aave", name: "Aave · Base", value: "\(Fmt.num(b.aave + b.usdc)) USDC")
+                        }
+                        if ws.robinhoodTotal > 0 {
+                            account("robinhood", logo: "robinhood", name: "Robinhood Chain", value: Fmt.usd(ws.robinhoodTotal))
+                        }
                     }
+                    if !ws.positions.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("Positions · Hyperliquid").font(.caption).foregroundStyle(.secondary)
+                            ForEach(ws.positions, id: \.coin) { p in
+                                Button { Task { await ws.chartCommand(.chart(coin: p.coin, range: .day)) } } label: { PositionChip(position: p) }
+                                    .buttonStyle(.plain).pointerStyle(.link).help("Open the \(IntentParser.pretty(p.coin)) chart")
+                            }
+                        }
+                    }
+                    if let closed = ws.recentlyClosed, !closed.isEmpty {
+                        ClosedTrades(stories: closed)
+                    }
+                    FavoriteChips()
+                    CanvasList(scrolls: false)
                 }
             }
-            if let closed = ws.recentlyClosed, !closed.isEmpty {
-                ClosedTrades(stories: closed)
-            }
-            FavoriteChips()
-            CanvasList().frame(maxHeight: .infinity, alignment: .top)
+            .scrollIndicators(.never)
             ProfileMenu(compact: false)
         }
         .padding(18)
@@ -356,32 +363,37 @@ struct StudioRail: View {
                 .popover(isPresented: $canvasesOpen, arrowEdge: .trailing) {
                     CanvasList { canvasesOpen = false }.frame(width: 280, height: 380).padding(14)
                 }
-            VStack(spacing: 1) {
-                Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 12, weight: .heavy)).monospacedDigit()
-                if !ws.positions.isEmpty {
-                    Text(signed(ws.positionsPnl)).font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
-                }
-            }
-            Divider().frame(width: 36)
-            icon("sol", ws.solana.map { Fmt.num($0.usdc) } ?? "—", help: "Solana, USDC").onTapGesture { ws.toggleDetail("solana") }
-            icon("hype", ws.hlTotal.map(Fmt.usd) ?? "—", help: "Hyperliquid").onTapGesture { ws.toggleDetail("hyperliquid") }
-            if ws.lendTotal > 0 { icon("jup", Fmt.num(ws.lendTotal), help: "Jupiter Lend, USDC").onTapGesture { ws.toggleDetail("jupiter") } }
-            if ws.kamino > 0 { icon("kamino", Fmt.usd(ws.kamino), help: "Kamino Lend").onTapGesture { ws.toggleDetail("kamino") } }
-            if ws.near > 0 { icon("near", Fmt.num(ws.near, maxFraction: 3), help: "NEAR on the NEAR chain").onTapGesture { ws.toggleDetail("near") } }
-            if let b = ws.base, b.aave + b.usdc > 0 { icon("aave", Fmt.num(b.aave + b.usdc), help: "Aave on Base, USDC").onTapGesture { ws.toggleDetail("aave") } }
-            if !ws.positions.isEmpty {
-                Divider().frame(width: 36)
-                ForEach(ws.positions, id: \.coin) { p in
-                    VStack(spacing: 3) {
-                        AssetBadge(coin: p.coin, size: 34, dark: true)
-                        Text(signed(p.unrealizedPnl)).font(.system(size: 10, weight: .bold))
-                            .foregroundStyle(p.unrealizedPnl < 0 ? Brand.loss : Brand.profit)
+            // The balances and positions scroll when the window is too low for all of them.
+            ScrollView {
+                VStack(spacing: 14) {
+                    VStack(spacing: 1) {
+                        Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 12, weight: .heavy)).monospacedDigit()
+                        if !ws.positions.isEmpty {
+                            Text(signed(ws.positionsPnl)).font(.system(size: 10, weight: .semibold))
+                                .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
+                        }
                     }
-                    .help("\(p.size > 0 ? "Long" : "Short") \(IntentParser.pretty(p.coin))")
+                    Divider().frame(width: 36)
+                    icon("sol", ws.solana.map { Fmt.num($0.usdc) } ?? "—", help: "Solana, USDC").onTapGesture { ws.toggleDetail("solana") }
+                    icon("hype", ws.hlTotal.map(Fmt.usd) ?? "—", help: "Hyperliquid").onTapGesture { ws.toggleDetail("hyperliquid") }
+                    if ws.lendTotal > 0 { icon("jup", Fmt.num(ws.lendTotal), help: "Jupiter Lend, USDC").onTapGesture { ws.toggleDetail("jupiter") } }
+                    if ws.kamino > 0 { icon("kamino", Fmt.usd(ws.kamino), help: "Kamino Lend").onTapGesture { ws.toggleDetail("kamino") } }
+                    if ws.near > 0 { icon("near", Fmt.num(ws.near, maxFraction: 3), help: "NEAR on the NEAR chain").onTapGesture { ws.toggleDetail("near") } }
+                    if let b = ws.base, b.aave + b.usdc > 0 { icon("aave", Fmt.num(b.aave + b.usdc), help: "Aave on Base, USDC").onTapGesture { ws.toggleDetail("aave") } }
+                    if !ws.positions.isEmpty {
+                        Divider().frame(width: 36)
+                        ForEach(ws.positions, id: \.coin) { p in
+                            VStack(spacing: 3) {
+                                AssetBadge(coin: p.coin, size: 34, dark: true)
+                                Text(signed(p.unrealizedPnl)).font(.system(size: 10, weight: .bold))
+                                    .foregroundStyle(p.unrealizedPnl < 0 ? Brand.loss : Brand.profit)
+                            }
+                            .help("\(p.size > 0 ? "Long" : "Short") \(IntentParser.pretty(p.coin))")
+                        }
+                    }
                 }
             }
-            Spacer(minLength: 0)
+            .scrollIndicators(.never)
             ProfileMenu(compact: true)
         }
         .padding(.vertical, 16)

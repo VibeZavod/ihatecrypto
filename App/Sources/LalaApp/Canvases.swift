@@ -130,6 +130,8 @@ extension Workspace {
 /// The saved canvases, newest first; a click opens one with its chat, plan and model.
 struct CanvasList: View {
     @Environment(Workspace.self) private var ws
+    /// Its own scroll view in the popover; the rail scrolls the list together with everything above it.
+    var scrolls = true
     var close: (() -> Void)?
 
     var body: some View {
@@ -146,17 +148,24 @@ struct CanvasList: View {
             if items.isEmpty {
                 Text("Each conversation gets its own canvas and is kept here.").font(.caption).foregroundStyle(.tertiary)
             }
-            ScrollView {
-                LazyVStack(alignment: .leading, spacing: 2) {
-                    ForEach(items) { c in
-                        CanvasRow(canvas: c, current: c.id == ws.canvasID) {
-                            withAnimation(StudioView.spring) { ws.openCanvas(c) }
-                            close?()
-                        }
-                    }
+            if scrolls {
+                ScrollView { rows(items) }.scrollIndicators(.never)
+            } else {
+                rows(items)
+            }
+        }
+    }
+}
+
+extension CanvasList {
+    private func rows(_ items: [CanvasSession]) -> some View {
+        LazyVStack(alignment: .leading, spacing: 2) {
+            ForEach(items) { c in
+                CanvasRow(canvas: c, current: c.id == ws.canvasID) {
+                    withAnimation(StudioView.spring) { ws.openCanvas(c) }
+                    close?()
                 }
             }
-            .scrollIndicators(.never)
         }
     }
 }
