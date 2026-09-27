@@ -387,7 +387,20 @@ struct SettingsView: View {
             Section("Key and signing") {
                 Label(ws.signerWallet == nil ? "No key on this Mac yet — import a wallet" : "Key in secure storage; a separate process without network signs",
                       systemImage: ws.signerWallet == nil ? "xmark.circle" : "checkmark.circle.fill")
-                Label("Touch ID: one confirmation covers 60 s", systemImage: "touchid")
+                Picker(selection: Binding(get: { ws.sessionLength }, set: { chosen in
+                    Task {
+                        // Cancelled Touch ID: the signer keeps the old time and the picker shows it again.
+                        _ = try? await SignerClient().send(.setSessionLength(seconds: chosen))
+                        await ws.loadSigner()
+                    }
+                })) {
+                    ForEach(SignerSession.choices, id: \.self) { Text("\($0 / 60) min").tag($0) }
+                } label: {
+                    Label("Touch ID stays valid for", systemImage: "touchid")
+                }
+                .disabled(ws.signerWallet == nil)
+                Text("After one Touch ID, signatures in this time need no new one; each still passes the guard and Jev. Locking the screen or sleep ends it. A longer time asks for Touch ID.")
+                    .font(.caption).foregroundStyle(.secondary)
                 Label(ws.agentActive ? "Hyperliquid trading key on: orders only, can't withdraw" : "Hyperliquid trading key off: every order asks for Touch ID",
                       systemImage: ws.agentActive ? "checkmark.circle.fill" : "circle")
                 if ws.signerWallet != nil {

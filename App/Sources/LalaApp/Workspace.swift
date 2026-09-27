@@ -49,6 +49,8 @@ final class Workspace {
     /// The signer's Hyperliquid agent: orders without Touch ID, no withdrawals.
     var agentAddress: String?
     var agentActive = false
+    /// Seconds one Touch ID confirmation keeps signing open (the signer's setting).
+    var sessionLength = SignerSession.standard
 
     // Execution
     var prepared: Executor.Prepared?
@@ -200,6 +202,12 @@ final class Workspace {
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             MainActor.assumeIsolated { self?.saveCanvas() }
         }
+        // A locked screen or sleep ends the Touch ID session, however long the user let it be.
+        let endSession: @Sendable (Notification) -> Void = { _ in
+            Task { if SignerClient.isAvailable { _ = try? await SignerClient().send(.endSession) } }
+        }
+        DistributedNotificationCenter.default().addObserver(forName: .init("com.apple.screenIsLocked"), object: nil, queue: .main, using: endSession)
+        NSWorkspace.shared.notificationCenter.addObserver(forName: NSWorkspace.willSleepNotification, object: nil, queue: .main, using: endSession)
     }
     private var quotedKey: String?
 
@@ -871,6 +879,7 @@ final class Workspace {
         if let near, nearAddress != near { nearAddress = near; await loadSolana() }
         agentAddress = status.agentAddress
         agentActive = status.agentActive ?? false
+        sessionLength = status.sessionLength ?? SignerSession.standard
         if status.hasWallet == true, let solana = status.solanaAddress, let evm = status.evmAddress {
             signerWallet = TradeWallet(solana: solana, evm: evm)
             // The key holder defines the wallet: balances and plans follow it.

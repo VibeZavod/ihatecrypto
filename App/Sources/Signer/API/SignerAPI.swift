@@ -49,8 +49,19 @@ public enum SignerRequest: Codable, Sendable {
     /// The NEAR implicit account of the same phrase (m/44'/397'/0'). Wallets imported before NEAR have it derived
     /// here once, which unlocks the seed; afterwards `status` returns it without touching the seed.
     case nearAddress
-    /// Ends the minute-long Touch ID session and pauses the trading key: the next signature asks for Touch ID.
+    /// Ends the Touch ID session and pauses the trading key: the next signature asks for Touch ID.
     case lock
+    /// How long one Touch ID confirmation keeps signing open: one of `SignerSession.choices`, in seconds. A longer
+    /// time than now asks for Touch ID first, so the app alone can't stretch it.
+    case setSessionLength(seconds: Int)
+    /// Ends the Touch ID session only (the Mac's screen locked or it went to sleep); the trading key stays as it is.
+    case endSession
+}
+
+public enum SignerSession {
+    /// 1, 5, 15 or 30 minutes; 1 minute until the user picks another.
+    public static let choices = [60, 300, 900, 1800]
+    public static let standard = 60
 }
 
 public struct SignerReply: Codable, Sendable {
@@ -70,6 +81,8 @@ public struct SignerReply: Codable, Sendable {
     public var signatureBytes: Data?
     public var agentAddress: String?
     public var agentActive: Bool?
+    /// Seconds one Touch ID confirmation keeps signing open.
+    public var sessionLength: Int?
     public var action: MsgPack?
     public var nonce: UInt64?
     public var checks: [String] = []

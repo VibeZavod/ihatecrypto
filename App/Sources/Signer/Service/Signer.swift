@@ -25,6 +25,7 @@ enum Signer {
             r.nearAddress = defaults.string(forKey: "near")
             r.agentAddress = AgentStore.load().flatMap { try? EVMAccount.address(privateKey: $0) }
             r.agentActive = defaults.bool(forKey: "agentActive") && r.agentAddress != nil
+            r.sessionLength = SeedStore.sessionLength
             return r
 
         case .enableAgent:
@@ -95,6 +96,21 @@ enum Signer {
             r.agentActive = false
             r.checks = ["Touch ID session ended; the trading key is paused."]
             return r
+
+        case .setSessionLength(let seconds):
+            guard SignerSession.choices.contains(seconds) else { throw WalletError("Touch ID can stay valid for 1, 5, 15 or 30 minutes.") }
+            if seconds > SeedStore.sessionLength {
+                try SeedStore.confirm("keep Touch ID valid for \(seconds / 60) min after each confirmation")
+            }
+            defaults.set(seconds, forKey: "sessionLength")
+            SeedStore.endSession()
+            var r = SignerReply(ok: true)
+            r.sessionLength = seconds
+            return r
+
+        case .endSession:
+            SeedStore.endSession()
+            return SignerReply(ok: true)
 
         case .forget:
             try confirmReplacing("remove the wallet from LALA")

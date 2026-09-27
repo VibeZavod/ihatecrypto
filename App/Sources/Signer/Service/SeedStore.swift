@@ -1,6 +1,7 @@
 import Foundation
 import LocalAuthentication
 import Security
+import SignerAPI
 import WalletCore
 
 /// The seed in the data-protection Keychain: this device only, never synced, readable only by the signer's own
@@ -108,13 +109,19 @@ enum SeedStore {
     }
 
     /// One Touch ID per trade, not per signature: a context that already authenticated opens the key again
-    /// without a prompt, so it is reused for a minute. Every signature still passes the guard.
+    /// without a prompt, for `sessionLength` (1 minute unless the user picked 5, 15 or 30). Every signature still
+    /// passes the guard; a locked screen or sleep ends the session.
     nonisolated(unsafe) private static var session: (context: LAContext, since: Date)?
+
+    static var sessionLength: Int {
+        let chosen = Signer.defaults.integer(forKey: "sessionLength")
+        return SignerSession.choices.contains(chosen) ? chosen : SignerSession.standard
+    }
     private static let lock = NSLock()
 
     static func load(reason: String) throws -> Data {
         let context: LAContext = lock.withLock {
-            if let s = session, Date().timeIntervalSince(s.since) < 60 { return s.context }
+            if let s = session, Date().timeIntervalSince(s.since) < TimeInterval(sessionLength) { return s.context }
             let fresh = LAContext()
             fresh.localizedReason = reason
             session = (fresh, Date())
