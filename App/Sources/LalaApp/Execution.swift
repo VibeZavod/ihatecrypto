@@ -239,6 +239,7 @@ extension Workspace {
                 nearAddress = account
                 reply(try await e.buyNear(usdc: usdc ?? 0, account: account), note: "NEAR Intents · 1Click")
             case .aave(let deposit, let amount): reply(try await e.aave(deposit: deposit, usdc: amount), note: "Aave · Base")
+            case .morpho(let deposit, let amount): reply(try await e.morpho(deposit: deposit, usdc: amount), note: "Morpho · Base")
             case .baseToSolana(let amount): reply(try await e.baseToSolana(usdc: amount), note: "Relay · Base → Solana")
             case .arbitrumToSolana(let amount): reply(try await e.evmToSolana(.arbitrum, usdc: amount), note: "Relay · Arbitrum → Solana")
             case .buyStock(let symbol, let usdc):

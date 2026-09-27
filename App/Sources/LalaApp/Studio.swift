@@ -389,6 +389,7 @@ struct StudioRail: View {
                     if ws.kamino > 0 { icon("kamino", Fmt.usd(ws.kamino), help: "Kamino Lend").onTapGesture { ws.toggleDetail("kamino") } }
                     if ws.near > 0 { icon("near", Fmt.num(ws.near, maxFraction: 3), help: "NEAR on the NEAR chain").onTapGesture { ws.toggleDetail("near") } }
                     if let b = ws.base, b.aave + b.usdc > 0 { icon("aave", Fmt.num(b.aave + b.usdc), help: "Aave on Base, USDC").onTapGesture { ws.toggleDetail("aave") } }
+                    if let b = ws.base, b.morpho > 0 { icon("morpho", Fmt.num(b.morpho), help: "Morpho on Base, USDC").onTapGesture { ws.toggleDetail("morpho") } }
                     if !ws.positions.isEmpty {
                         Divider().frame(width: 36)
                         ForEach(ws.positions, id: \.coin) { p in
@@ -419,6 +420,7 @@ struct StudioRail: View {
         if ws.kamino > 0 { rows.append(("kamino", "kamino", "Kamino", Fmt.usd(ws.kamino))) }
         if ws.near > 0 { rows.append(("near", "near", "NEAR", "\(Fmt.num(ws.near, maxFraction: 4)) NEAR")) }
         if let b = ws.base, b.aave + b.usdc > 0 { rows.append(("aave", "aave", "Aave · Base", "\(Fmt.num(b.aave + b.usdc)) USDC")) }
+        if let b = ws.base, b.morpho > 0 { rows.append(("morpho", "morpho", "Morpho · Base", "\(Fmt.num(b.morpho)) USDC")) }
         if ws.robinhoodTotal > 0 { rows.append(("robinhood", "robinhood", "Robinhood Chain", Fmt.usd(ws.robinhoodTotal))) }
         return rows.map { (place: $0.0, logo: $0.1, name: $0.2, value: $0.3) }
     }
@@ -1257,6 +1259,10 @@ struct StudioPortfolio: View {
             }
 
             if ws.kamino > 0 { place("kamino", "Kamino", "earning", Fmt.usd(ws.kamino), tint: Color(light: 0xE8F0FF, dark: 0x0B1B33), ink: Color(hex: 0x3B82F6)) }
+            if let b = ws.base, b.morpho > 0 {
+                place("morpho", "Morpho · Base", "earning" + (ws.morphoAPY.map { " \(Fmt.num($0))%" } ?? ""), "\(Fmt.num(b.morpho)) USDC",
+                      tint: Color(light: 0xE6EEFF, dark: 0x0F1C3A), ink: Color(hex: 0x2F6FEB))
+            }
             if ws.near > 0 {
                 place("near", "NEAR", ws.markets["NEAR"] != nil ? "≈ \(Fmt.usd(ws.nearUSD))" : "native NEAR",
                       "\(Fmt.num(ws.near, maxFraction: 4)) NEAR", tint: Color(light: 0xE6FBF3, dark: 0x0E2A20), ink: Color(light: 0x05785A, dark: 0x00EC97))

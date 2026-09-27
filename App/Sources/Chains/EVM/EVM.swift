@@ -253,6 +253,8 @@ public enum EVMCall: Equatable, Sendable {
     /// Any other contract function, by selector.
     /// A Uniswap swap (SwapRouter02.exactInputSingle): who gets what comes out.
     case swap(recipient: String)
+    /// An ERC-4626 vault (Morpho): who gets the shares or the assets, and whose shares are spent (nil for a deposit).
+    case vault(receiver: String, owner: String?)
     case contract(selector: String)
 
     public static func decode(_ data: Data) -> EVMCall {
@@ -269,6 +271,8 @@ public enum EVMCall: Equatable, Sendable {
         case "a22cb465": if let o = address(0), let b = word(1) { return .setApprovalForAll(operator: o, approved: b.last == 1) }
         case "d505accf", "8fcbaf0c": return .permit
         case "04e45aaf": if let r = address(3) { return .swap(recipient: r) }
+        case "6e553f65": if let r = address(1) { return .vault(receiver: r, owner: nil) }
+        case "b460af94", "ba087652": if let r = address(1), let o = address(2) { return .vault(receiver: r, owner: o) }
         default: break
         }
         return .contract(selector: "0x" + selector)
@@ -281,6 +285,10 @@ public enum EVMCall: Equatable, Sendable {
     public func refusal(sender: String) -> String? {
         if case .swap(let recipient) = self, recipient.lowercased() != sender.lowercased() {
             return "The swap would pay \(recipient), not this wallet."
+        }
+        if case .vault(let receiver, let owner) = self {
+            if receiver.lowercased() != sender.lowercased() { return "The vault would credit \(receiver), not this wallet." }
+            if let owner, owner.lowercased() != sender.lowercased() { return "The vault call spends shares of \(owner), not this wallet's." }
         }
         return switch self {
         case .approve(_, let a) where Self.unlimited(a), .increaseAllowance(_, let a) where Self.unlimited(a):

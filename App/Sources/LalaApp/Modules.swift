@@ -1,5 +1,6 @@
 import AppKit
 import Charts
+import EVMChain
 import ExecutionCore
 import Foundation
 import LalaCore
@@ -297,8 +298,8 @@ struct PlaceDetailBoard: View {
         .transition(.scale(scale: 0.94, anchor: .topLeading).combined(with: .opacity))
     }
 
-    private var logo: String { ["solana": "sol", "hyperliquid": "hype", "jupiter": "jup", "kamino": "kamino", "near": "near", "aave": "aave", "robinhood": "robinhood"][place] ?? "usdc" }
-    private var title: String { ["solana": "Solana wallet", "hyperliquid": "Hyperliquid account", "jupiter": "Jupiter Lend", "kamino": "Kamino Lend", "near": "NEAR account", "aave": "Aave v3 · Base", "robinhood": "Robinhood Chain"][place] ?? place }
+    private var logo: String { ["solana": "sol", "hyperliquid": "hype", "jupiter": "jup", "kamino": "kamino", "near": "near", "aave": "aave", "morpho": "morpho", "robinhood": "robinhood"][place] ?? "usdc" }
+    private var title: String { ["solana": "Solana wallet", "hyperliquid": "Hyperliquid account", "jupiter": "Jupiter Lend", "kamino": "Kamino Lend", "near": "NEAR account", "aave": "Aave v3 · Base", "morpho": "Morpho · Base", "robinhood": "Robinhood Chain"][place] ?? place }
     private var subtitle: String {
         switch place {
         case "solana": "USDC and SOL you hold; every move starts here"
@@ -307,6 +308,7 @@ struct PlaceDetailBoard: View {
         case "kamino": "lending on Solana · withdraw any time"
         case "near": "native NEAR on the NEAR chain · bought through NEAR Intents"
         case "robinhood": "Robinhood Stock Tokens · economic exposure, not shares"
+        case "morpho": "\(MorphoVault.name) vault · lending on Base · withdraw any time"
         default: "lending on Base · bridged from Solana"
         }
     }
@@ -318,6 +320,7 @@ struct PlaceDetailBoard: View {
         case "kamino": URL(string: "https://app.kamino.finance")
         case "near": ws.nearAddress.flatMap { URL(string: "https://nearblocks.io/address/\($0)") }
         case "robinhood": isEVMAddress(ws.hlAddress) ? URL(string: "https://robinhoodchain.blockscout.com/address/\(ws.hlAddress)") : nil
+        case "morpho": URL(string: "https://app.morpho.org/base/vault/\(MorphoVault.gauntletUSDCPrime)")
         default: isEVMAddress(ws.hlAddress) ? URL(string: "https://basescan.org/address/\(ws.hlAddress)") : nil
         }
     }
@@ -373,6 +376,13 @@ struct PlaceDetailBoard: View {
             row("near", "NEAR", Fmt.num(ws.near, maxFraction: 6), ws.markets["NEAR"].map { "≈ \(Fmt.usd(ws.nearUSD)) at \(Fmt.price($0.markPx))" } ?? "")
             Text("The account is yours from the same phrase (m/44'/397'/0'). Selling NEAR back to USDC isn’t in LALA yet.")
                 .font(.caption2).foregroundStyle(.secondary)
+        case "morpho":
+            if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }
+            row("morpho", "In the vault", "\(ws.base.map { Fmt.num($0.morpho) } ?? "—") USDC",
+                ws.morphoAPY.map { "≈ \(Fmt.num($0))% a year after the vault’s fee" } ?? "earning")
+            row("base", "Idle on Base", "\(ws.base.map { Fmt.num($0.usdc) } ?? "—") USDC", "gas: \(ws.base.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH")
+            Text("Your USDC is lent by Gauntlet’s curated Morpho markets; the vault shares are only ever credited to this wallet.")
+                .font(.caption2).foregroundStyle(.secondary)
         case "kamino":
             row("kamino", "USDC", Fmt.usd(ws.kamino), "earning · withdraw any time")
             if let rate = ws.yieldOptions?.first(where: { $0.place.contains("Kamino") && $0.asset == "USDC" })?.apy {
@@ -399,6 +409,7 @@ struct PlaceDetailBoard: View {
         case "kamino": [("Withdraw all", "withdraw USDC from Kamino"), ("Best rates", "where to keep USDC")]
         case "near": [("Buy more", "buy NEAR for 3 USDC")]
         case "robinhood": [("Buy SpaceX", "buy SpaceX stock for 2 USDC"), ("Sell", "sell my SpaceX shares"), ("USDG to Solana", "move USDG from Robinhood to Solana")]
+        case "morpho": [("Deposit more", "deposit 1 USDC into Morpho"), ("Withdraw to Solana", "withdraw USDC from Morpho"), ("Best rates", "where to keep USDC")]
         default: [("Lend more", "lend 1 USDC on Aave"), ("Withdraw to Solana", "withdraw USDC from Aave"), ("Best rates", "where to keep USDC")]
         }
         HStack(spacing: 6) {
@@ -467,7 +478,7 @@ struct Openable: ViewModifier {
 struct PortfolioRing: View {
     @Environment(Workspace.self) private var ws
 
-    static let colors: [String: Color] = ["Solana": Color(hex: 0x9945FF), "Hyperliquid": Color(hex: 0x2FB39A), "Jupiter Lend": Color(hex: 0xC7F284), "Aave · Base": Color(hex: 0xB6509E),
+    static let colors: [String: Color] = ["Solana": Color(hex: 0x9945FF), "Hyperliquid": Color(hex: 0x2FB39A), "Jupiter Lend": Color(hex: 0xC7F284), "Aave · Base": Color(hex: 0xB6509E), "Morpho · Base": Color(hex: 0x2F6FEB),
                                           "Kamino": Color(hex: 0x3B82F6), "NEAR": Color(hex: 0x00EC97)]
 
     var body: some View {
@@ -478,6 +489,7 @@ struct PortfolioRing: View {
             ("Kamino", ws.kamino),
             ("NEAR", ws.nearUSD),
             ("Aave · Base", ws.base.map { $0.aave + $0.usdc } ?? 0),
+            ("Morpho · Base", ws.base?.morpho ?? 0),
         ])
         if slices.count > 1 {
             HStack(spacing: 12) {

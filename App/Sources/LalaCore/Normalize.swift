@@ -41,7 +41,7 @@ public enum ChatRouter {
     ANY TOKEN BY ITS CONTRACT (Robinhood Chain): buy token <0xCONTRACT> for N USDC | sell [N] tokens <0xCONTRACT>
     EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault") | withdraw [N] <USDC|SOL> from the vault
       deposit N <USDC|SOL> to kamino | withdraw <USDC|SOL> from kamino | stake N SOL | unstake N JitoSOL
-      deposit N USDC to HLP | withdraw from HLP | lend N USDC on Aave | withdraw USDC from Aave
+      deposit N USDC to HLP | withdraw from HLP | lend N USDC on Aave | withdraw USDC from Aave | deposit N USDC into Morpho | withdraw USDC from Morpho
       where to keep <USDC|SOL> | spread <USDC|SOL> across the best rates [max N% per protocol]
     MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from Base to Solana | move N USDC from Arbitrum to Solana
       send N USDC to <NAME from the address book> | top up (where to send money into LALA)

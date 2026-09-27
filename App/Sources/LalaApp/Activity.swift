@@ -1,8 +1,9 @@
 import DeFiYields
+import EVMChain
 import Foundation
 import LalaCore
-import TradeExecution
 import LLMCore
+import TradeExecution
 
 /// One thing that happened with LALA: what the user asked, how it was understood, the bubbles on the canvas at that
 /// moment, and what LALA said and did. Kept on this Mac only (Application Support/LALA/activity.json, owner-only).
@@ -114,7 +115,7 @@ extension Workspace {
 
     static func logo(for place: String) -> String {
         place.contains("Jupiter") || place.contains("JUP") ? "jup" : place.contains("Kamino") ? "kamino" : place.contains("Jito") ? "jitosol"
-            : place.contains("HLP") || place.contains("Hyperliquid") ? "hype" : place.contains("Aave") ? "aave" : "usdc"
+            : place.contains("HLP") || place.contains("Hyperliquid") ? "hype" : place.contains("Aave") ? "aave" : place.contains("Morpho") ? "morpho" : "usdc"
     }
 }
 
@@ -190,6 +191,7 @@ extension Workspace {
         if near > 0 { facts.append("NEAR on the user's own NEAR account: \(Fmt.num(near, maxFraction: 6)) NEAR (≈ \(Fmt.usd(nearUSD))).") }
         if hlp.equity > 0 { facts.append("HLP vault on Hyperliquid: \(Fmt.usd(hlp.equity))\(hlp.lockedUntil.map { ", locked until \(Fmt.date($0)) (4 days after a deposit)" } ?? ", can be withdrawn").") }
         if let b = base {
+            if b.morpho > 0 { facts.append("Morpho vault \(MorphoVault.name) on Base: \(Fmt.num(b.morpho)) USDC\(morphoAPY.map { " at ≈ \(Fmt.num($0))% a year" } ?? "").") }
             facts.append("Aave v3 on Base: \(Fmt.num(b.aave)) USDC supplied\(aaveAPY.map { " at ≈ \(Fmt.num($0.rounded(2, .plain)))% a year" } ?? ""); \(Fmt.num(b.usdc)) USDC idle on Base; \(Fmt.num(b.eth, maxFraction: 7)) ETH for gas there.")
         }
         if positions.isEmpty { facts.append("Open positions: none.") }

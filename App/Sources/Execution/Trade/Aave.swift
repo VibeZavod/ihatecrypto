@@ -85,24 +85,27 @@ extension Executor {
     func ensureBase(usdc want: UInt64) async throws { try await ensureEVM(.base, usdc: want) }
 
     /// At least `want` USDC and some ETH for gas on the network: what is missing comes from Solana over Relay.
-    func ensureEVM(_ net: EVMNetwork, usdc want: UInt64) async throws {
+    /// `gas`: a floor and a top-up for calls heavier than a supply (a Morpho vault deposit is ≈ 450k gas);
+    /// the top-up must land above the floor, or the wait below runs out.
+    func ensureEVM(_ net: EVMNetwork, usdc want: UInt64, gas heavier: (floor: UInt64, topupUSD: Decimal)? = nil) async throws {
         let me = wallet.evm
         func show(_ u: UInt64) -> String { Fmt.num(Decimal(u) / 1_000_000, maxFraction: 6) }
+        let floor = max(net.gasFloor, heavier?.floor ?? 0), topupUSD = max(net.topupUSD, heavier?.topupUSD ?? 0)
         var there = try await net.rpc.tokenBalance(net.usdc, owner: me)
         var gas = try await net.rpc.balance(me)
-        guard there < want || gas < net.gasFloor else { return }
+        guard there < want || gas < floor else { return }
         let short = Decimal(want > there ? want - there : 0) / 1_000_000
-        let needGas = gas < net.gasFloor
+        let needGas = gas < floor
         // Relay has minimums: a gas top-up rides on at least half a dollar of USDC.
         let arrive = max(short, needGas ? Decimal(string: "0.5")! : 0)
         let (step, changes) = try await prepareBridge(.arrive(arrive), to: net.relayChain, currency: net.usdc, decimals: 6,
-                                                      topupGasUSD: needGas ? net.topupUSD : nil)
+                                                      topupGasUSD: needGas ? topupUSD : nil)
         let stable = net.key == "robinhood" ? "USDG" : "USDC"
         report("Bridge to \(net.name): \(Fmt.num(step.spend)) USDC from Solana → \(Fmt.num(step.arriving)) \(stable)\(needGas ? " plus ETH for gas" : ""). "
                + changes.joined(separator: " "))
         try await sendBridge(step)
         let started = Date()
-        while there < want || gas < net.gasFloor {
+        while there < want || gas < floor {
             guard Date().timeIntervalSince(started) < 240 else {
                 throw ExecutionError("The USDC didn't reach \(net.name) within 4 minutes. Relay order \(step.requestId) is in the journal; nothing else was signed.")
             }

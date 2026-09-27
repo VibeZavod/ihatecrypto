@@ -1,3 +1,4 @@
+import EVMChain
 import Foundation
 import LalaCore
 import LLMCatalog
@@ -577,7 +578,7 @@ struct MoveRoute {
 
 /// A route step's color, by place; kept by name, so a saved route draws the same.
 enum RouteFill: String, Codable, Hashable, Sendable {
-    case solana, relay, hyperliquid, hlp, jupiter, kamino, jito, aave, base, arbitrum, robinhood
+    case solana, relay, hyperliquid, hlp, jupiter, kamino, jito, aave, morpho, base, arbitrum, robinhood
 
     var color: Color {
         switch self {
@@ -589,6 +590,7 @@ enum RouteFill: String, Codable, Hashable, Sendable {
         case .kamino: Color(hex: 0x082A56)
         case .jito: Color(hex: 0x1F9D6A)
         case .aave: Color(hex: 0x2B2D3C)
+        case .morpho: Color(hex: 0x1D4FC4)
         case .base: Color(hex: 0x0052FF)
         case .arbitrum: Color(hex: 0x213147)
         case .robinhood: Color(hex: 0x3A4A00)
@@ -605,6 +607,8 @@ extension Workspace {
         case .withdrawToSolana(let asked): withdrawRoute(asked)
         case .aave(deposit: true, amount: let amount?): aaveRoute(amount)
         case .aave(deposit: false, amount: let amount): backRoute(from: "aave", amount: amount)
+        case .morpho(deposit: true, amount: let amount?): aaveRoute(amount, morpho: true)
+        case .morpho(deposit: false, amount: let amount): backRoute(from: "morpho", amount: amount)
         case .baseToSolana(let amount): backRoute(from: "base", amount: amount)
         case .arbitrumToSolana(let amount): backRoute(from: "arbitrum", amount: amount)
         case .robinhoodToSolana(let amount): backRoute(from: "robinhood", amount: amount)
@@ -634,12 +638,13 @@ extension Workspace {
         ])
     }
 
-    private func aaveRoute(_ amount: Decimal) -> MoveRoute {
+    /// Aave, or Morpho's vault: the same way in on Base.
+    private func aaveRoute(_ amount: Decimal, morpho: Bool = false) -> MoveRoute {
         let onBase = base?.usdc ?? 0
         let short = max(0, amount - onBase)
         let needGas = (base?.eth ?? 0) < Decimal(string: "0.000005")!
         let bridging = short > 0 || needGas
-        let apy = aaveAPY.map { "≈ \(Fmt.num($0.rounded(2, .plain)))% a year" } ?? "rate from the pool"
+        let apy = (morpho ? morphoAPY : aaveAPY).map { "≈ \(Fmt.num($0.rounded(2, .plain)))% a year" } ?? "rate from the pool"
         var steps: [ActivityBubble] = []
         if bridging {
             steps.append(step("sol", "FROM · SOLANA", solana.map { "\(Fmt.num($0.usdc)) USDC" } ?? "—",
@@ -649,10 +654,12 @@ extension Workspace {
         } else {
             steps.append(step("base", "ON BASE", "\(Fmt.num(onBase)) USDC", "already there, gas too", .base))
         }
-        steps.append(step("aave", "AAVE V3 · BASE", "\(Fmt.num(amount)) USDC", apy, .aave))
-        return MoveRoute(title: "Aave · lend \(Fmt.num(amount)) USDC on Base",
+        steps.append(morpho ? step("morpho", "MORPHO · \(MorphoVault.name.uppercased())", "\(Fmt.num(amount)) USDC", apy, .morpho)
+                            : step("aave", "AAVE V3 · BASE", "\(Fmt.num(amount)) USDC", apy, .aave))
+        return MoveRoute(title: morpho ? "Morpho · deposit \(Fmt.num(amount)) USDC on Base" : "Aave · lend \(Fmt.num(amount)) USDC on Base",
                          footer: (bridging ? "One Solana signature for the bridge, then " : "")
-                            + "two on Base: approve exactly \(Fmt.num(amount)) USDC, then supply. Pool and rate are re-read from Base first. Say “do it” or press Confirm.",
+                            + "two on Base: approve exactly \(Fmt.num(amount)) USDC, then \(morpho ? "deposit; the shares come to this wallet only" : "supply"). "
+                            + "\(morpho ? "The vault’s asset is" : "Pool and rate are") re-read from Base first. Say “do it” or press Confirm.",
                          steps: steps)
     }
 
@@ -720,17 +727,20 @@ extension Workspace {
 
     /// Aave or idle USDC on Base, Arbitrum or Robinhood Chain → Relay → Solana.
     private func backRoute(from place: String, amount: Decimal?) -> MoveRoute {
-        let available = place == "aave" ? base?.aave : place == "arbitrum" ? arbitrumUSDC : place == "robinhood" ? robinhood?.usdg : base?.usdc
+        let available = place == "aave" ? base?.aave : place == "morpho" ? base?.morpho : place == "arbitrum" ? arbitrumUSDC : place == "robinhood" ? robinhood?.usdg : base?.usdc
         let moving = amount.map { min($0, available ?? $0) } ?? available
         let chainName = place == "arbitrum" ? "Arbitrum" : place == "robinhood" ? "Robinhood Chain" : "Base"
-        let from = place == "aave"
+        let from = place == "morpho"
+            ? step("morpho", "FROM · MORPHO ON BASE", available.map { "\(Fmt.num($0)) USDC" } ?? "—",
+                   morphoAPY.map { "earning ≈ \(Fmt.num($0))% until now" } ?? "with the interest", .morpho)
+            : place == "aave"
             ? step("aave", "FROM · AAVE ON BASE", available.map { "\(Fmt.num($0)) USDC" } ?? "—",
                    aaveAPY.map { "earning ≈ \(Fmt.num($0.rounded(2, .plain)))% until now" } ?? "with the interest", .aave)
             : step(place == "arbitrum" ? "arb" : place == "robinhood" ? "robinhood" : "base", "FROM · \(chainName.uppercased())",
                    available.map { "\(Fmt.num($0)) \(place == "robinhood" ? "USDG" : "USDC")" } ?? "—",
                    "idle \(place == "robinhood" ? "USDG" : "USDC")", place == "arbitrum" ? .arbitrum : place == "robinhood" ? .robinhood : .base)
-        return MoveRoute(title: place == "aave" ? "Aave · withdraw \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana" : "\(chainName) · \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana",
-                         footer: (place == "aave" ? "Three Base transactions: withdraw from Aave, an exact approve and Relay’s deposit" : "Two Base transactions: an exact approve and Relay’s deposit")
+        return MoveRoute(title: place == "aave" || place == "morpho" ? "\(place == "aave" ? "Aave" : "Morpho") · withdraw \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana" : "\(chainName) · \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana",
+                         footer: (place == "aave" || place == "morpho" ? "Three Base transactions: withdraw from \(place == "aave" ? "Aave" : "Morpho"), an exact approve and Relay’s deposit" : "Two Base transactions: an exact approve and Relay’s deposit")
                             + " — checked field by field before signing. Say “do it” or press Confirm.", steps: [
             from,
             step("relay", "BRIDGE · RELAY", moving.map { "\(Fmt.num($0)) USDC" } ?? "—", "≈ $0.02 · a few seconds", .relay),

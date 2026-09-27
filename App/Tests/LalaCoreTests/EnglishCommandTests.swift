@@ -58,7 +58,8 @@ import Testing
     let commands = ["withdraw 1 USDC to Solana", "lend 1 USDC", "stake 0.1 SOL", "where to keep SOL", "stop recurring buys",
                     "buy token \(ai) for 2 USDC", "sell 3 tokens \(ai)", "buy Tesla stock for 3 USDC", "sell TSLA stock",
                     "move USDG from Robinhood to Solana", "buy NEAR for 5 USDC", "top up", "deposit 5 USDC to HLP",
-                    "lend 2 USDC on Aave", "spread USDC across the best rates max 50% per protocol"]
+                    "lend 2 USDC on Aave", "deposit 2 USDC into Morpho", "withdraw USDC from Morpho",
+                    "spread USDC across the best rates max 50% per protocol"]
     for command in commands { #expect(WalletCommand.parse(command) != nil, "\(command)") }
     #expect(TokenCommand.parse("watch token \(ai) on robinhood") == .favorite(address: ai, chain: "robinhood"))
     #expect(TokenCommand.parse("remove token AI from favorites") == .unfavorite(symbol: "AI"))
@@ -186,4 +187,12 @@ import Testing
     #expect(WalletCommand.parse("send 3 USDC to Solana") == .withdrawToSolana(3))
     #expect(WalletCommand.parse("send 0.5 USDC to My Base wallet") == .sendTo(name: "My Base wallet", amount: Decimal(string: "0.5")!))
     #expect(WalletCommand.parse("send 1 USDC to 0x742d35Cc6634C0532925a3b844Bc454e4438f44e") != .sendTo(name: "0x742d35Cc6634C0532925a3b844Bc454e4438f44e", amount: 1))
+}
+
+@Test func morphoCommandsReadInBothLanguages() {
+    #expect(WalletCommand.parse("deposit 2 USDC into Morpho") == .morpho(deposit: true, amount: 2))
+    #expect(WalletCommand.parse("положи 2 USDC в морфо") == .morpho(deposit: true, amount: 2))
+    #expect(WalletCommand.parse("withdraw USDC from Morpho") == .morpho(deposit: false, amount: nil))
+    #expect(WalletCommand.parse("выведи из морфо") == .morpho(deposit: false, amount: nil))
+    #expect(WalletCommand.parse("lend 2 USDC on Aave") == .aave(deposit: true, amount: 2))
 }

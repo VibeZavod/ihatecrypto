@@ -124,3 +124,19 @@ import WalletCore
     #expect(EVMCall.decode(other).refusal(sender: me) != nil)
     #expect(AddressCheck.problem(spcx, network: .robinhood) == nil)
 }
+
+@Test func morphoVaultCallsUseTheERC4626SelectorsAndPayOnlyUs() throws {
+    let me = "0x" + String(repeating: "a", count: 40), other = "0x" + String(repeating: "b", count: 40)
+    func selector(_ signature: String) -> Data { Keccak.hash256(Data(signature.utf8)).prefix(4) }
+    #expect(try MorphoVault.deposit(assets: 1, receiver: me).prefix(4) == selector("deposit(uint256,address)"))
+    #expect(try MorphoVault.withdraw(assets: 1, receiver: me, owner: me).prefix(4) == selector("withdraw(uint256,address,address)"))
+    #expect(try MorphoVault.redeem(shares: Data(count: 32), receiver: me, owner: me).prefix(4) == selector("redeem(uint256,address,address)"))
+    #expect(try MorphoVault.maxWithdraw(me).prefix(4) == selector("maxWithdraw(address)"))
+    #expect(MorphoVault.asset == selector("asset()"))
+
+    #expect(EVMCall.decode(try MorphoVault.deposit(assets: 2_000_000, receiver: me)).refusal(sender: me) == nil)
+    #expect(EVMCall.decode(try MorphoVault.deposit(assets: 2_000_000, receiver: other)).refusal(sender: me) != nil)
+    #expect(EVMCall.decode(try MorphoVault.redeem(shares: Data(count: 32), receiver: me, owner: me)).refusal(sender: me) == nil)
+    #expect(EVMCall.decode(try MorphoVault.redeem(shares: Data(count: 32), receiver: other, owner: me)).refusal(sender: me) != nil)
+    #expect(EVMCall.decode(try MorphoVault.withdraw(assets: 1, receiver: me, owner: other)).refusal(sender: me) != nil)
+}

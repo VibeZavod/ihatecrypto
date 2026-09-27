@@ -181,13 +181,15 @@ final class Workspace {
     /// Hyperliquid's HLP vault: what is in it and, while a deposit is locked, until when.
     var hlp: (equity: Decimal, lockedUntil: Date?) = (0, nil)
     /// On Base, at the Hyperliquid (EVM) address: idle USDC, USDC supplied to Aave, ETH for gas.
-    var base: (usdc: Decimal, aave: Decimal, eth: Decimal)?
+    var base: (usdc: Decimal, aave: Decimal, morpho: Decimal, eth: Decimal)?
     /// USDC on Arbitrum at our EVM address (money in transit or left from a transfer).
     var arbitrumUSDC: Decimal?
     /// Robinhood Chain at our EVM address: USDG, ETH for gas, the Stock Tokens bought through LALA (StocksUI.swift).
     var robinhood: (usdg: Decimal, eth: Decimal, stocks: [StockHolding])?
     /// Aave v3 USDC supply APY on Base, %, read from the pool itself.
     var aaveAPY: Decimal?
+    /// Morpho's Gauntlet USDC Prime vault on Base, net of its fee.
+    var morphoAPY: Decimal?
     private var aaveCheckedAt: Date?
     var reviewedIntent: TradeIntent?
 
@@ -322,7 +324,7 @@ final class Workspace {
     var equity: Decimal? {
         guard solana != nil || hl != nil else { return nil }
         return (solana?.usdc ?? 0) + (hl?.accountValue ?? 0) + lend.reduce(0) { $0 + $1.usdc } + dexBalances.values.reduce(0) { $0 + $1.accountValue }
-            + (base.map { $0.usdc + $0.aave } ?? 0) + (arbitrumUSDC ?? 0) + robinhoodTotal + kamino + hlp.equity + nearUSD
+            + (base.map { $0.usdc + $0.aave + $0.morpho } ?? 0) + (arbitrumUSDC ?? 0) + robinhoodTotal + kamino + hlp.equity + nearUSD
     }
     /// The plan with what the user left to the rules filled in.
     var resolved: (intent: TradeIntent, notes: [String]) { Plan.resolve(intent, market: market, equity: equity, policy: policy) }
@@ -725,17 +727,19 @@ final class Workspace {
         let rpc = EVMRPC.base, me = hlAddress
         async let usdc = rpc.tokenBalance(EVMRPC.baseUSDC, owner: me)
         async let supplied = rpc.tokenBalance(AaveV3.baseAUSDC, owner: me)
+        async let vault = MorphoVault.value(me, rpc: rpc)
         async let eth = rpc.balance(me)
         async let arb = EVMRPC.arbitrum.tokenBalance(EVMRPC.arbitrumUSDC, owner: me)
         // Awaited first, assigned together: every assignment after an await is one more redraw of the window.
-        let u = try? await usdc, a = try? await supplied, e = try? await eth, arbitrum = try? await arb
+        let u = try? await usdc, a = try? await supplied, m = try? await vault, e = try? await eth, arbitrum = try? await arb
         if let u, let a, let e {
-            base = (Decimal(u) / 1_000_000, Decimal(a) / 1_000_000, Decimal(e) / Decimal(sign: .plus, exponent: 18, significand: 1))
+            base = (Decimal(u) / 1_000_000, Decimal(a) / 1_000_000, Decimal(m ?? 0) / 1_000_000, Decimal(e) / Decimal(sign: .plus, exponent: 18, significand: 1))
         }
         if let arbitrum { arbitrumUSDC = Decimal(arbitrum) / 1_000_000 }
         // The rate moves slowly: re-read it every ten minutes, not on every refresh.
         if aaveCheckedAt.map({ Date().timeIntervalSince($0) > 600 }) ?? true, let apy = try? await AaveV3.verifyBase(rpc) {
             aaveAPY = apy
+            morphoAPY = await MorphoRates.netAPY()
             aaveCheckedAt = Date()
         }
     }

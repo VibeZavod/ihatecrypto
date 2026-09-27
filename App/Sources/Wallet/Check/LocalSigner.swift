@@ -117,6 +117,7 @@ func moveMoney(_ text: String) async throws {
         _ = try await executor.buyNear(usdc: usdc ?? 0, account: try TestWallet.nearAccount())
         if let b = try? await Near.balance(account: try TestWallet.nearAccount()) { print("NEAR account: \(Fmt.num(b.near, maxFraction: 6)) NEAR, \(Fmt.num(b.wrapped, maxFraction: 6)) wNEAR") }
     case .aave(let deposit, let amount): print(try await executor.aave(deposit: deposit, usdc: amount))
+    case .morpho(let deposit, let amount): print(try await executor.morpho(deposit: deposit, usdc: amount))
     case .baseToSolana(let amount): print(try await executor.baseToSolana(usdc: amount))
     case .arbitrumToSolana(let amount): print(try await executor.evmToSolana(.arbitrum, usdc: amount))
     case .sendTo: throw ExecutionError("Sending to a saved address works in LALA.app, where the address book is.")
