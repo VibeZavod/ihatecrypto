@@ -1105,6 +1105,12 @@ struct StudioPortfolio: View {
                 .modifier(Openable(place: "aave"))
             }
 
+            if ws.kamino > 0 { place("kamino", "Kamino", "earning", Fmt.usd(ws.kamino), tint: Color(light: 0xE8F0FF, dark: 0x0B1B33), ink: Color(hex: 0x3B82F6)) }
+            if ws.near > 0 {
+                place("near", "NEAR", ws.markets["NEAR"] != nil ? "≈ \(Fmt.usd(ws.nearUSD))" : "native NEAR",
+                      "\(Fmt.num(ws.near, maxFraction: 4)) NEAR", tint: Color(light: 0xE6FBF3, dark: 0x0E2A20), ink: Color(light: 0x05785A, dark: 0x00EC97))
+            }
+
             RobinhoodCard()
             AlertsCard()
 
@@ -1124,6 +1130,24 @@ struct StudioPortfolio: View {
         .frame(width: 270)
         .background(RoundedRectangle(cornerRadius: 26).fill(Brand.card).shadow(color: .black.opacity(0.08), radius: 18, y: 10))
         .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Brand.cardBorder))
+    }
+}
+
+extension StudioPortfolio {
+    /// One more place on the portfolio card: logo, name, a line under it, the amount; a click opens its details.
+    func place(_ id: String, _ name: String, _ line: String, _ amount: String, tint: Color, ink: Color) -> some View {
+        HStack(spacing: 10) {
+            TokenLogo(name: id, size: 34)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.system(size: 14, weight: .semibold))
+                Text(line).font(.caption).foregroundStyle(ink).lineLimit(1)
+            }
+            Spacer()
+            Text(amount).font(.system(size: 13, weight: .bold)).monospacedDigit().lineLimit(1).fixedSize()
+        }
+        .padding(11)
+        .background(RoundedRectangle(cornerRadius: 16).fill(tint))
+        .modifier(Openable(place: id))
     }
 }
 

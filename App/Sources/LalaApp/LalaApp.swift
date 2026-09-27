@@ -89,20 +89,17 @@ struct LalaApp: App {
         MenuBarExtra {
             MenuBarContent().environment(workspace)
         } label: {
-            MenuBarLabel().environment(workspace)
+            MenuBarLabel()
         }
         .menuBarExtraStyle(.window)
     }
 }
 
-/// The status item: the icon, and the open positions' P/L when there are any.
+/// The status item: a fixed icon. A label that changes (the P/L it used to show) is re-rendered by SwiftUI in the
+/// middle of the main window's layout, and AppKit crashes on that (NSStatusBarButton setImage, macOS 26.2,
+/// 2026-09-27). The P/L is inside the menu.
 struct MenuBarLabel: View {
-    @Environment(Workspace.self) private var ws
-
-    var body: some View {
-        Text(ws.positions.isEmpty ? "\(Image(systemName: "chart.line.uptrend.xyaxis"))"
-             : "\(Image(systemName: "chart.line.uptrend.xyaxis")) \(signed(ws.positionsPnl))")
-    }
+    var body: some View { Image(systemName: "chart.line.uptrend.xyaxis") }
 }
 
 /// With the window closed, LALA keeps watching from the menu bar (S13): positions, exit rules, regular purchases.
@@ -120,7 +117,13 @@ struct MenuBarContent: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
-                Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 14, weight: .heavy)).monospacedDigit()
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 14, weight: .heavy)).monospacedDigit()
+                    if !ws.positions.isEmpty {
+                        Text("\(signed(ws.positionsPnl)) in positions").font(.caption.weight(.semibold))
+                            .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
+                    }
+                }
             }
             ForEach(ws.positions, id: \.coin) { PositionChip(position: $0) }
             ForEach(ws.exitRules.keys.sorted(), id: \.self) { coin in
