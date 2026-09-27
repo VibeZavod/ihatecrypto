@@ -1034,15 +1034,20 @@ struct CanvasViewport<Content: View>: View {
         }
     }
 
+    private func zoomGlyph(_ name: String) -> some View {
+        Image(systemName: name).frame(width: 26, height: 26).contentShape(Rectangle())
+    }
+
     private func zoomBar(_ scale: CGFloat) -> some View {
         HStack(spacing: 4) {
-            Button { withAnimation { zoom = Self.zoomRange.clamped(zoom - 0.1) } } label: { Image(systemName: "minus") }.help("Zoom out · or pinch")
+            // A borderless button is clickable only where its label is: the «minus» glyph alone is 14×4 pt.
+            Button { withAnimation { zoom = Self.zoomRange.clamped(zoom - 0.1) } } label: { zoomGlyph("minus") }.help("Zoom out · or pinch")
             Text("\(Int((scale * 100).rounded()))%").font(.system(size: 12, weight: .semibold)).monospacedDigit().frame(width: 44)
-            Button { withAnimation { zoom = Self.zoomRange.clamped(zoom + 0.1) } } label: { Image(systemName: "plus") }.help("Zoom in · or pinch")
+            Button { withAnimation { zoom = Self.zoomRange.clamped(zoom + 0.1) } } label: { zoomGlyph("plus") }.help("Zoom in · or pinch")
             Button("Fit") { withAnimation { zoom = 1; pan = .zero } }
         }
         .buttonStyle(.borderless)
-        .padding(.horizontal, 10).padding(.vertical, 6)
+        .padding(.leading, 4).padding(.trailing, 10).padding(.vertical, 1)
         .background(RoundedRectangle(cornerRadius: 12).fill(Brand.card))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Brand.cardBorder))
     }
