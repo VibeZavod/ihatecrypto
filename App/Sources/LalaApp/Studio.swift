@@ -1041,10 +1041,12 @@ struct CanvasViewport<Content: View>: View {
     private func zoomBar(_ scale: CGFloat) -> some View {
         HStack(spacing: 4) {
             // A borderless button is clickable only where its label is: the «minus» glyph alone is 14×4 pt.
-            Button { withAnimation { zoom = Self.zoomRange.clamped(zoom - 0.1) } } label: { zoomGlyph("minus") }.help("Zoom out · or pinch")
+            // No animation: an animated zoom re-renders and re-lays out the whole canvas on every frame (≈ 60 a click
+            // at 120 Hz) and saturated the main thread; a step is one redraw.
+            Button { zoom = Self.zoomRange.clamped(zoom - 0.1) } label: { zoomGlyph("minus") }.help("Zoom out · or pinch")
             Text("\(Int((scale * 100).rounded()))%").font(.system(size: 12, weight: .semibold)).monospacedDigit().frame(width: 44)
-            Button { withAnimation { zoom = Self.zoomRange.clamped(zoom + 0.1) } } label: { zoomGlyph("plus") }.help("Zoom in · or pinch")
-            Button("Fit") { withAnimation { zoom = 1; pan = .zero } }
+            Button { zoom = Self.zoomRange.clamped(zoom + 0.1) } label: { zoomGlyph("plus") }.help("Zoom in · or pinch")
+            Button("Fit") { zoom = 1; pan = .zero }
         }
         .buttonStyle(.borderless)
         .padding(.leading, 4).padding(.trailing, 10).padding(.vertical, 1)
