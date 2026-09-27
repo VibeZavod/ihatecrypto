@@ -686,19 +686,10 @@ final class Workspace {
         return true
     }
 
-    /// «На стопе −$0,99 (−6,8% капитала), на тейке +$1,90 (+13%), 1:1,9» after every plan change.
+    /// After every message about the plan: the plan checked item by item and the next step (TradeAdvice.swift).
     var outcomeLine: String {
-        // A plan without a risk or a stop can't run: ask for them, with the by-the-book numbers.
-        if let question = detailsQuestion { return question }
-        // In the studio the Result block on the canvas says this; the chat doesn't repeat it.
-        if isStudio { return "" }
-        guard let s = evaluation.sizing else { return "" }
-        func share(_ v: Decimal) -> String { equity.map { $0 > 0 ? " (\(Fmt.pct((v / $0 * 100).rounded(1, .plain))) of capital)" : "" } ?? "" }
-        var line = "\nAt the stop −\(Fmt.usd(s.lossAtStopUSD))\(share(s.lossAtStopUSD))"
-        if let p = s.profitAtTakeUSD, s.lossAtStopUSD > 0 {
-            line += ", at the take +\(Fmt.usd(p))\(share(p)), reward/risk 1:\(Fmt.num((p / s.lossAtStopUSD).rounded(1, .plain)))"
-        }
-        return line + "."
+        let list = planChecklist
+        return list.isEmpty ? "" : "\n" + list
     }
 
     func reply(_ text: String, note: String? = nil) {

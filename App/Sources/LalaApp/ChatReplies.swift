@@ -91,6 +91,8 @@ struct Reply: View {
                         .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(Brand.profit.opacity(0.16)))
                     styled(emoji.map { "\($0) \(text)" } ?? text).padding(.top, 5)
                 }
+            } else if let list = Checklist(text) {
+                ChecklistCard(list: list)
             } else if let emoji {
                 HStack(alignment: .top, spacing: 10) {
                     Text(emoji).font(.system(size: 15))
@@ -122,6 +124,62 @@ struct Reply: View {
         }
         .font(.system(size: 10, weight: .semibold))
         .foregroundStyle(note == "incoming" ? AnyShapeStyle(Brand.profit) : AnyShapeStyle(.tertiary))
+    }
+}
+
+/// «✓ Market: …», «✗ Stop: not set — …»: a plan checked item by item (Workspace.planChecklist), with the text
+/// before the marked lines above the card and the next step under it.
+struct Checklist {
+    let intro: String
+    let items: [(mark: Character, text: String)]
+    let next: String
+
+    init?(_ text: String) {
+        let lines = text.components(separatedBy: "\n")
+        func mark(_ line: String) -> Character? {
+            guard let first = line.first, "✓✗⚠·".contains(first), line.dropFirst().first == " " else { return nil }
+            return first
+        }
+        guard let first = lines.firstIndex(where: { mark($0) != nil }), let last = lines.lastIndex(where: { mark($0) != nil }),
+              lines[first...last].filter({ mark($0) != nil }).count >= 3 else { return nil }
+        intro = lines[..<first].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        items = lines[first...last].compactMap { line in mark(line).map { (mark: $0, text: String(line.dropFirst(2))) } }
+        next = lines[(last + 1)...].joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+struct ChecklistCard: View {
+    let list: Checklist
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if !list.intro.isEmpty { text(list.intro) }
+            VStack(alignment: .leading, spacing: 7) {
+                ForEach(Array(list.items.enumerated()), id: \.offset) { _, item in
+                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                        icon(item.mark).font(.system(size: 12, weight: .semibold)).frame(width: 14)
+                        text(item.text)
+                    }
+                }
+            }
+            .padding(12)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.5)))
+            if !list.next.isEmpty { text(list.next).fontWeight(.semibold) }
+        }
+    }
+
+    private func text(_ s: String) -> some View {
+        Text(ChatText.styled(s)).textSelection(.enabled).lineSpacing(2).fixedSize(horizontal: false, vertical: true)
+    }
+
+    @ViewBuilder private func icon(_ mark: Character) -> some View {
+        switch mark {
+        case "✓": Image(systemName: "checkmark.circle.fill").foregroundStyle(Brand.profit).accessibilityLabel("OK")
+        case "✗": Image(systemName: "xmark.circle.fill").foregroundStyle(Brand.loss).accessibilityLabel("Missing or blocked")
+        case "⚠": Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange).accessibilityLabel("Warning")
+        default: Image(systemName: "circle.dotted").foregroundStyle(.secondary).accessibilityLabel("Optional")
+        }
     }
 }
 

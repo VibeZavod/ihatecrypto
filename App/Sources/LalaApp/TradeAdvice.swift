@@ -1,3 +1,4 @@
+import Foundation
 import LalaCore
 import TradeExecution
 
@@ -32,11 +33,80 @@ extension Workspace {
         return (line, advice)
     }
 
-    /// After a plan change that left the risk or the stop open: the question, with LALA's suggestion in numbers.
-    var detailsQuestion: String? {
-        guard let missing = missingDetails else { return nil }
-        let book = bookPlan(asset: intent.asset, side: intent.side)
-        return "\nExecute needs \(missing). " + (book.map { "By the book: \($0.line). " } ?? "")
-            + "Tap “By the book” or say your own, e.g. “risk $1 stop 3%”."
+    /// The plan checked item by item after every message about it, the way the canvas checks it: market, direction,
+    /// risk, stop, take, entry, size, money, the rules and the result, then the one next step. What's missing carries
+    /// its by-the-book value. Lines start with ✓ ✗ ⚠ · and the chat draws them as a checklist card.
+    var planChecklist: String {
+        guard intent != TradeIntent(), !managesPosition else { return "" }
+        let r = resolved.intent, sizing = evaluation.sizing
+        var trial = intent
+        trial.autoRules = true
+        let book = Plan.resolve(trial, market: market, equity: equity, policy: policy).intent
+        func share(_ v: Decimal) -> String { equity.map { $0 > 0 ? " (\(Fmt.pct((v / $0 * 100).rounded(1, .plain))) of capital)" : "" } ?? "" }
+        var out: [String] = []
+
+        guard let m = market else {
+            return "✗ Market: \(IntentParser.pretty(r.asset)) has no price yet\n· Direction: \(r.side == .long ? "long" : "short")\n· The rest is checked once the price loads."
+        }
+        let entry = r.entryPx ?? m.markPx
+        var marketLine = "✓ Market: \(IntentParser.pretty(r.asset)) \(Fmt.price(m.markPx))"
+        if let prev = m.prevDayPx, prev > 0 { marketLine += ", 24h \(signedPct((m.markPx - prev) / prev * 100))" }
+        out.append(marketLine)
+        out.append("✓ Direction: \(r.side == .long ? "long" : "short")")
+        if let risk = r.riskUSD {
+            out.append("✓ Risk: \(Fmt.usd(risk))\(share(risk))\(intent.riskUSD == nil ? " by the book" : "")")
+        } else {
+            out.append("✗ Risk: not set" + (book.riskUSD.map { " — by the book \(Fmt.usd($0)), \(Fmt.pct(policy.defaultRiskPct)) of capital" } ?? ""))
+        }
+        if let stop = r.stopPct {
+            let direction: Decimal = r.side == .short ? 1 : -1
+            let price = sizing?.stopPrice ?? entry * (1 + direction * stop / 100)
+            out.append("✓ Stop: \(Fmt.pct(stop)) at \(Fmt.price(price))\(intent.stopPct == nil ? " by the book" : "")")
+        } else {
+            out.append("✗ Stop: not set" + (book.stopPct.map { " — by the book \(Fmt.pct($0)), \(Fmt.num(policy.atrStopMultiple)) × 4h volatility" } ?? ""))
+        }
+        if let take = r.takePct {
+            out.append("✓ Take: \(Fmt.pct(take))" + (sizing?.takePrice.map { " at \(Fmt.price($0))" } ?? "") + (r.partialTake == true ? ", half at 1R" : ""))
+        } else {
+            out.append("· Take: none — by the book \(Fmt.num(policy.defaultRewardRisk))R")
+        }
+        out.append(r.entryPx.map { "✓ Entry: limit \(Fmt.price($0))" + (r.pullbackPct.map { " (\(Fmt.pct($0)) pullback)" } ?? "") } ?? "✓ Entry: at market")
+        if let s = sizing {
+            out.append("✓ Size: \(Fmt.usd(s.notional)) · \(Fmt.num(r.leverage ?? 1))× · margin \(Fmt.usd(s.margin))")
+            // Where the margin comes from: Hyperliquid's free balance, topped up from Solana over the bridge.
+            let bridge = blocks.first { $0.id == "bridge" }, source = blocks.first { $0.id == "source" }
+            let free = hl.map { Fmt.usd($0.withdrawable) } ?? "—"
+            if source?.status == .blocked {
+                out.append("✗ Money: \(source?.lines.first ?? "not enough USDC on Solana")")
+            } else if bridge?.status == .ready, let q = quote {
+                out.append("✓ Money: \(free) free on Hyperliquid + \(Fmt.num(q.amountIn)) USDC from Solana over \(q.provider) (≈ \(Fmt.num(q.amountOut)) arrive)")
+            } else if bridge?.status == .noData {
+                out.append("· Money: \(free) free on Hyperliquid; the bridge quote from Solana is loading")
+            } else {
+                out.append("✓ Money: \(free) free on Hyperliquid covers the margin")
+            }
+            let advice = RiskRules.check(r, s, market: m, equity: equity, policy: policy,
+                                         openRisk: HyperliquidAccount.riskAtStops(positions: positions, orders: orders))
+            let problems = advice.filter { $0.level != .ok }
+            out += problems.map { "\($0.level == .block ? "✗" : "⚠") Rules: \($0.text)" }
+            if problems.isEmpty { out.append("✓ Rules: all met") }
+            var result = "✓ Result: at the stop −\(Fmt.usd(s.lossAtStopUSD))\(share(s.lossAtStopUSD))"
+            if let p = s.profitAtTakeUSD, s.lossAtStopUSD > 0 {
+                result += ", at the take +\(Fmt.usd(p)), 1:\(Fmt.num((p / s.lossAtStopUSD).rounded(1, .plain)))"
+            }
+            out.append(result)
+        } else {
+            out.append("· Size, money and rules: checked once the risk and the stop are set")
+        }
+
+        let next: String
+        if missingDetails != nil {
+            next = "Tap “By the book” or say your own, e.g. “risk $1 stop 3%”."
+        } else if out.contains(where: { $0.hasPrefix("✗") }) {
+            next = "Fix the ✗ above — for example a smaller risk or a wider stop — and I'll check again."
+        } else {
+            next = "Ready: press Execute — you'll see the simulation before anything is signed."
+        }
+        return out.joined(separator: "\n") + "\n" + next
     }
 }
