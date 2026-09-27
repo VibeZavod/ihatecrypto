@@ -276,7 +276,7 @@ extension Executor {
             return "\(label): \(after - (before[account] ?? 0)) (raw units)"
         }
         let solDelta = Decimal(Int64(simulation.after[wallet.solana]?.lamports ?? 0) - (before[wallet.solana] ?? 0)) / 1_000_000_000
-        changes.append("SOL: \(Fmt.num(solDelta, maxFraction: 6)) (fee and rent for new accounts)")
+        changes.append("SOL: \(Fmt.num(solDelta, maxFraction: 6)) (\(solDelta < 0 ? "fee and rent for new accounts" : "rent back from closed accounts"))")
         if dryRun { return changes }
         let signed = try await signer.signSolana(unsigned, accounts: accounts, recipients: [], tokenOwners: owners)
         guard signed.count == unsigned.count, signed.subdata(in: 65..<signed.count) == unsigned.subdata(in: 65..<unsigned.count) else {
@@ -300,17 +300,25 @@ extension Executor {
     /// Hyperliquid's HLP vault from the main perp balance. Deposits are locked for 4 days; withdraw with nil takes
     /// everything that can be withdrawn now.
     public func hlp(deposit: Bool, amount requested: Decimal?) async throws -> String {
-        let free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
+        var free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
         let equity = try await HyperliquidAccount.vaultEquity(user: wallet.evm, vault: HLGuard.hlpVault)
         let amount: Decimal
         if deposit {
             // Hyperliquid refuses vault deposits under $5 (checked live 2026-09-25); say so before signing.
             guard let requested, requested >= 5 else { throw ExecutionError("Hyperliquid accepts vault deposits from $5.") }
+            // Margin left on a HIP-3 exchange (after an oil or stock trade) comes back to the main balance first.
+            for dex in Hyperliquid.hip3Dexes where free < requested {
+                let there = try await Hyperliquid.dexBalance(user: wallet.evm, dex: dex).withdrawable
+                let pull = min(there, requested - free).rounded(2, .up)
+                guard pull > 0, pull <= there else { continue }
+                try await moveMargin(from: dex, to: "", usdc: pull)
+                free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
+            }
             guard requested <= free else { throw ExecutionError("\(Fmt.usd(free)) free on Hyperliquid; can't deposit \(Fmt.usd(requested)).") }
             amount = requested
         } else {
             guard equity.withdrawable > 0 else {
-                throw ExecutionError(equity.equity > 0 ? "\(Fmt.usd(equity.equity)) in HLP, but it can't be withdrawn yet: 4 days after a deposit." : "Nothing in HLP.")
+                throw ExecutionError(equity.equity > 0 ? "\(Fmt.usd(equity.equity)) in HLP, locked for 4 days after a deposit: withdrawable from \(equity.lockedUntil.map(Fmt.date) ?? "soon")." : "Nothing in HLP.")
             }
             amount = min(requested ?? equity.withdrawable, equity.withdrawable)
         }
@@ -424,7 +432,8 @@ extension Executor {
 
     /// Kamino Lend, main market. `symbol`: USDC, SOL, USDT… `amount` in tokens; withdraw with nil takes the whole
     /// position (USD value for stablecoins). `dryRun` only simulates: the first deposit's rent shows up here.
-    public func kamino(_ symbol: String, amount requested: Decimal?, deposit: Bool, dryRun: Bool = false) async throws -> String {
+    /// `acceptRent`: the user asked for Kamino knowing the first deposit's rent, so the 10% rule does not stop it.
+    public func kamino(_ symbol: String, amount requested: Decimal?, deposit: Bool, dryRun: Bool = false, acceptRent: Bool = false) async throws -> String {
         guard let reserve = try await Kamino.reserves().first(where: { $0.symbol.uppercased() == symbol.uppercased() }) else {
             throw ExecutionError("Kamino has no \(symbol) market.")
         }
@@ -433,10 +442,14 @@ extension Executor {
         let decimals = ((supply?["value"] as? [String: Any])?["decimals"] as? NSNumber)?.intValue ?? 6
         let scale = Decimal(sign: .plus, exponent: decimals, significand: 1)
         let position = try await Kamino.positions(wallet: wallet.solana).first { $0.reserve == reserve.address }
-        guard let amount = requested ?? (deposit ? nil : position.map { ($0.valueUSD * Decimal(string: "0.999")!).rounded(6, .down) }), amount > 0 else {
+        // Everything: ask for 1% over the value — Kamino caps a withdrawal at what is there (checked live), so no dust stays.
+        let all = !deposit && requested == nil
+        guard let amount = requested ?? (deposit ? nil : position.map { ($0.valueUSD * Decimal(string: "1.01")!).rounded(6, .up) }), amount > 0 else {
             throw ExecutionError(deposit ? "How much should go into Kamino?" : "No \(symbol) position in Kamino.")
         }
         let units = NSDecimalNumber(decimal: (amount * scale).rounded(0, .down)).uint64Value
+        /// What should come out: the position's value when taking everything, else what was asked.
+        let expected = Int64(all ? units * 100 / 101 : units)
         let myToken = try SPL.associatedAccount(owner: wallet.solana, mint: reserve.mint)
         if deposit {
             let have = native ? try await rpc.balance(wallet.solana) : try await rpc.tokenBalance(owner: wallet.solana, mint: reserve.mint)
@@ -449,10 +462,10 @@ extension Executor {
         // The first deposit pays rent for the user's Kamino accounts and lookup table; later ones only the fee.
         let firstTime = position == nil && deposit
         var rules: [(String, String, Bool, Int64)] = []
-        if !native { rules.append((myToken, symbol, true, deposit ? -Int64(units) : Int64(units) * 99 / 100)) }
-        let lamports: Int64 = native ? (deposit ? -Int64(units) - (firstTime ? 60_000_000 : 5_000_000) : Int64(units) * 99 / 100 - 5_000_000)
+        if !native { rules.append((myToken, symbol, true, deposit ? -Int64(units) : expected * 99 / 100)) }
+        let lamports: Int64 = native ? (deposit ? -Int64(units) - (firstTime ? 60_000_000 : 5_000_000) : expected * 99 / 100 - 5_000_000)
                                      : (firstTime ? -60_000_000 : -5_000_000)
-        if firstTime, !dryRun {
+        if firstTime, !dryRun, !acceptRent {
             // The first deposit pays ~0.03 SOL of rent for Kamino's user accounts and lookup table. Not worth it for
             // a small amount: simulate first and refuse when the rent is over a tenth of what goes in.
             let preview = try await signAndSend(wire, lastValid: lastValid, owners: [myToken: wallet.solana], rules: rules,
@@ -466,7 +479,7 @@ extension Executor {
         }
         let changes = try await signAndSend(wire, lastValid: lastValid, owners: [myToken: wallet.solana], rules: rules,
                                             note: "Kamino \(deposit ? "deposit" : "withdraw") \(symbol)", lamportsAtLeast: lamports, dryRun: dryRun)
-        let line = (dryRun ? "Kamino simulation (nothing signed): " : "Kamino \(symbol) \(Fmt.num(reserve.supplyAPY.rounded(2, .plain)))% APY: \(deposit ? "deposited" : "withdrawn") \(Fmt.num(amount, maxFraction: 6)) \(symbol). ")
+        let line = (dryRun ? "Kamino simulation (nothing signed): " : "Kamino \(symbol) \(Fmt.num(reserve.supplyAPY.rounded(2, .plain)))% APY: \(deposit ? "deposited \(Fmt.num(amount, maxFraction: 6)) \(symbol)" : all ? "withdrew everything" : "withdrew \(Fmt.num(amount, maxFraction: 6)) \(symbol)"). ")
             + changes.joined(separator: "; ") + "."
         report(line)
         return line

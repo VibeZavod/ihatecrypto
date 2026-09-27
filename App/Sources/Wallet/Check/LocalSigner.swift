@@ -271,7 +271,8 @@ func explainPlan(_ phrase: String) async throws {
     if !e.missing.isEmpty { print("Missing: \(e.missing.joined(separator: ", "))") }
 }
 
-/// `kamino <deposit|withdraw> <SYMBOL> [amount] [--yes]` — without --yes only simulates (shows rent and changes).
+/// `kamino <deposit|withdraw> <SYMBOL> [amount] [--yes] [--accept-rent]` — without --yes only simulates (shows rent and
+/// changes); --accept-rent lets a first deposit pay Kamino's account rent even when it is over 10% of the amount.
 /// `kamino reserves`, `kamino position`.
 func kaminoCommand(_ args: [String]) async throws {
     let signer = try LocalSigner()
@@ -286,7 +287,8 @@ func kaminoCommand(_ args: [String]) async throws {
         let symbol = args.dropFirst().first ?? "USDC"
         let amount = args.dropFirst(2).first.flatMap { Decimal(string: $0) }
         let executor = Executor(wallet: signer.wallet, signer: signer, journal: journal, rpc: rpc) { print("[\(stamp())] \($0)") }
-        _ = try await executor.kamino(symbol, amount: amount, deposit: action == "deposit", dryRun: !send)
+        _ = try await executor.kamino(symbol, amount: amount, deposit: action == "deposit", dryRun: !send,
+                                      acceptRent: CommandLine.arguments.contains("--accept-rent"))
         try await printBalances()
     default:
         print("kamino reserves | position | deposit USDC 1 [--yes] | withdraw USDC [amount] [--yes]")

@@ -202,7 +202,7 @@ public actor Executor {
         }
         let long = p.intent.side == .long
         if let b = p.bridge { try await sendBridge(b) }
-        if let t = p.dexTransfer { try await moveToDex(t.dex, usdc: t.usdc) }
+        if let t = p.dexTransfer { try await moveMargin(from: "", to: t.dex, usdc: t.usdc) }
 
         let lev = try await post(Self.leverageAction(asset: p.market.index, leverage: p.leverage), label: "leverage")
         guard case .ok = lev else { throw ExecutionError("Hyperliquid rejected leverage \(p.leverage)×: \(lev).") }
@@ -317,26 +317,31 @@ public actor Executor {
         return line
     }
 
-    /// sendAsset to our own address from the main perp balance to a HIP-3 exchange, then wait for the credit.
-    private func moveToDex(_ dex: String, usdc: Decimal) async throws {
-        let before = try await Hyperliquid.dexBalance(user: wallet.evm, dex: dex).withdrawable
-        let action = HLSigner.sendAssetAction(destination: wallet.evm, sourceDex: "", destinationDex: dex,
+    /// sendAsset to our own address between perp balances — "" is the main one, "xyz" a HIP-3 exchange — then wait
+    /// for the credit.
+    func moveMargin(from source: String, to dex: String, usdc: Decimal) async throws {
+        func free() async throws -> Decimal {
+            dex.isEmpty ? try await Hyperliquid.balance(user: wallet.evm).withdrawable : try await Hyperliquid.dexBalance(user: wallet.evm, dex: dex).withdrawable
+        }
+        let name = { (d: String) in d.isEmpty ? "the main balance" : d }
+        let before = try await free()
+        let action = HLSigner.sendAssetAction(destination: wallet.evm, sourceDex: source, destinationDex: dex,
                                               token: "USDC:0x6d1e7cde53ba9467b783cb7c530ce054", amount: try HLAction.number(usdc),
                                               nonce: nonce(), mainnet: true)
         guard case .map(let pairs) = action, case .uint(let n)? = pairs.first(where: { $0.0 == "nonce" })?.1 else { throw ExecutionError("No nonce.") }
         let signature = try await signer.signHyperliquidUser(action, recipients: [])
-        try journal.append(.init(chain: "hyperliquid", id: "\(n)", kind: .signed, note: "sendAsset → \(dex) \(usdc)"))
+        try journal.append(.init(chain: "hyperliquid", id: "\(n)", kind: .signed, note: "sendAsset \(name(source)) → \(name(dex)) \(usdc)"))
         let reply = HLReply.parse(try await HLExchange.send(action: action, nonce: n, signature: signature, mainnet: true))
         try journal.append(.init(chain: "hyperliquid", id: "\(n)", kind: reply.isError ? .failed : .confirmed, note: "\(reply)"))
-        guard !reply.isError else { throw ExecutionError("Transfer to \(dex) rejected: \(reply).") }
+        guard !reply.isError else { throw ExecutionError("Transfer to \(name(dex)) rejected: \(reply).") }
         for _ in 0..<20 {
-            if try await Hyperliquid.dexBalance(user: wallet.evm, dex: dex).withdrawable >= before + usdc * Decimal(string: "0.99")! {
-                report("Margin on \(dex): +\(Fmt.num(usdc)) USDC from the main balance.")
+            if try await free() >= before + usdc * Decimal(string: "0.99")! {
+                report("Margin on \(name(dex)): +\(Fmt.num(usdc)) USDC from \(name(source)).")
                 return
             }
             try await Task.sleep(for: .milliseconds(500))
         }
-        throw ExecutionError("Transfer to \(dex) wasn't credited within 10 s.")
+        throw ExecutionError("Transfer to \(name(dex)) wasn't credited within 10 s.")
     }
 
     // MARK: Manage
@@ -678,13 +683,14 @@ public enum HyperliquidAccount {
     }
 
     /// What the user has in a vault: its equity and what can be withdrawn now (lockups hold the rest).
-    public static func vaultEquity(user: String, vault: String) async throws -> (equity: Decimal, withdrawable: Decimal) {
+    public static func vaultEquity(user: String, vault: String) async throws -> (equity: Decimal, withdrawable: Decimal, lockedUntil: Date?) {
         struct Row: Decodable { let vaultAddress: String; let equity: String; let lockedUntilTimestamp: Double? }
         let rows = try JSONDecoder().decode([Row].self, from: try await info(["type": "userVaultEquities", "user": user]))
-        guard let row = rows.first(where: { $0.vaultAddress.lowercased() == vault.lowercased() }) else { return (0, 0) }
+        guard let row = rows.first(where: { $0.vaultAddress.lowercased() == vault.lowercased() }) else { return (0, 0, nil) }
         let equity = Decimal(string: row.equity) ?? 0
-        let unlocked = (row.lockedUntilTimestamp ?? 0) / 1000 <= Date().timeIntervalSince1970
-        return (equity, unlocked ? equity : 0)
+        let until = row.lockedUntilTimestamp.map { Date(timeIntervalSince1970: $0 / 1000) }
+        let unlocked = (until ?? .distantPast) <= Date()
+        return (equity, unlocked ? equity : 0, unlocked ? nil : until)
     }
 
     /// The latest fill that closed (part of) a position in `coin`: price and realised PnL.

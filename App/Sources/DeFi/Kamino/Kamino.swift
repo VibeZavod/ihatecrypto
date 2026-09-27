@@ -66,11 +66,17 @@ public enum Kamino {
         let names = Dictionary((try? await reserves())?.map { ($0.address, $0) } ?? [], uniquingKeysWith: { a, _ in a })
         var out: [Position] = []
         for o in obligations {
-            let state = (o["state"] as? [String: Any]) ?? [:]
-            for d in state["deposits"] as? [[String: Any]] ?? [] {
-                guard let reserve = d["depositReserve"] as? String, reserve != "11111111111111111111111111111111" else { continue }
-                // Kamino keeps values as fixed-point numbers scaled by 2⁶⁰.
-                let value = (d["marketValueSf"] as? String).flatMap { Decimal(string: $0) }.map { $0 / pow(Decimal(2), 60) } ?? 0
+            let deposits = (((o["state"] as? [String: Any])?["deposits"] as? [[String: Any]]) ?? [])
+                .filter { ($0["depositReserve"] as? String).map { $0 != "11111111111111111111111111111111" } ?? false }
+            // The stored per-deposit value (fixed point, 2⁶⁰) is only as fresh as the obligation's last refresh — 0 right
+            // after a first deposit. The API's refreshed total is current, so it is split in the stored proportions.
+            let stored = deposits.map { d in (d["marketValueSf"] as? String).flatMap { Decimal(string: $0) }.map { $0 / pow(Decimal(2), 60) } ?? 0 }
+            let storedSum = stored.reduce(0, +)
+            let total = ((o["refreshedStats"] as? [String: Any])?["userTotalDeposit"] as? String).flatMap { Decimal(string: $0) } ?? storedSum
+            for (i, d) in deposits.enumerated() {
+                let reserve = d["depositReserve"] as? String ?? ""
+                // ponytail: all stored values 0 with several deposits splits evenly; exact would read each reserve's exchange rate.
+                let value = storedSum > 0 ? total * stored[i] / storedSum : total / Decimal(deposits.count)
                 let shares = (d["depositedAmount"] as? String).flatMap { Decimal(string: $0) } ?? 0
                 out.append(Position(reserve: reserve, symbol: names[reserve]?.symbol ?? "?", amount: shares, valueUSD: value))
             }
