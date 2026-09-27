@@ -444,7 +444,8 @@ struct PageHeader<Controls: View>: View {
             }
             VStack(alignment: .leading, spacing: 10) {
                 HStack { name; Spacer(); back }
-                ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 10) { controls } }
+                // Room for a hovered icon button's lift, which the scroll view would clip; the row stays aligned.
+                ScrollView(.horizontal, showsIndicators: false) { HStack(spacing: 10) { controls }.padding(3) }.padding(.horizontal, -3)
             }
         }
         .padding(.horizontal, 28).padding(.top, 22).padding(.bottom, 14)

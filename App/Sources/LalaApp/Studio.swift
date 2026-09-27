@@ -308,9 +308,13 @@ struct StudioRail: View {
                     RailActions()
                     CanvasList(scrolls: false)
                 }
+                // A hovered button grows 4 %; the scroll view clips at its edges, so the content keeps 6 pt of room on
+                // each side and the scroll view reaches 6 pt further out: the rail's layout stays where it was.
+                .padding(.horizontal, 6)
                 // Loaded numbers and sections that arrive later fade in instead of popping up.
                 .animation(.easeOut(duration: 0.35), value: railKey)
             }
+            .padding(.horizontal, -6)
             .scrollIndicators(.never)
             ProfileMenu(compact: false)
         }
