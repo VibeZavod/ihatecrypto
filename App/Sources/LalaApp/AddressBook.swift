@@ -166,78 +166,72 @@ extension AddressCheck.Network {
     }
 }
 
-// MARK: Tab
+// MARK: Favorites
 
-/// The address book on the canvas: favorites first, your own wallets, everything saved.
-struct AddressBookView: View {
+/// Favorites on the canvas: watched tokens, saved addresses (starred first, «All» for the rest) and, under All, your
+/// own wallets. Tokens and addresses are added and edited right here; there is no separate address book.
+struct FavoritesBoard: View {
     @Environment(Workspace.self) private var ws
     @AppStorage("bookTab") private var tab = "favorites"
     @State private var search = ""
     @State private var adding = false
     @State private var editing: SavedAddress?
-    var inset: CGFloat = 0
-    let close: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            PageHeader(title: "Addresses", close: close) {
+        let items = filtered
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "star.fill").foregroundStyle(Color(hex: 0xF5B301)).font(.system(size: 16, weight: .semibold))
+                Text("Favorites").font(.system(size: 16, weight: .bold))
+                Spacer()
+                Button { withAnimation(StudioView.spring) { ws.showFavorites = false } } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.hoverIcon).help("Close")
+            }
+            HStack(spacing: 8) {
                 Picker("", selection: $tab) {
                     Label("Favorites", systemImage: "star.fill").tag("favorites")
                     Text("All").tag("all")
                 }
                 .pickerStyle(.segmented).labelsHidden().fixedSize()
-                TextField("Search", text: $search).textFieldStyle(.roundedBorder).frame(width: 160)
+                Spacer()
                 AddTokenButton()
-                Button { adding = true } label: { Label("Add address", systemImage: "plus") }.buttonStyle(.borderedProminent)
+                Button { adding = true } label: { Label("Address", systemImage: "plus") }.buttonStyle(.borderedProminent)
             }
-            ScrollView {
-                VStack(alignment: .leading, spacing: 18) {
-                    // Watched tokens: contracts to follow, never addresses to send to.
-                    if !ws.favoriteTokens.isEmpty, search.isEmpty {
-                        Text("FAVORITE TOKENS").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 290), spacing: 14)], alignment: .leading, spacing: 14) {
-                            ForEach(ws.favoriteTokens) { FavoriteTokenCard(token: $0) }
-                        }
-                    }
-                    // Ours first: this is where money into LALA goes.
-                    let own = ownWallets
-                    if !own.isEmpty, search.isEmpty {
-                        HStack {
-                            Text("YOUR WALLETS · SEND MONEY HERE TO TOP UP").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
-                            Spacer()
-                            Button { ws.showReceive = true; close() } label: { Label("Top up with QR", systemImage: "qrcode") }.buttonStyle(.borderless).font(.caption)
-                        }
-                        LazyVGrid(columns: [GridItem(.adaptive(minimum: 290), spacing: 14)], alignment: .leading, spacing: 14) {
-                            ForEach(own) { AddressCard(entry: $0, readOnly: true) }
-                        }
-                        Text("SAVED ADDRESSES").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary).padding(.top, 8)
-                    }
-                    let items = filtered
-                    if items.isEmpty { empty }
-                    grid(items)
-                    Label("LALA only ever sends to your own wallets. Saved addresses are for copying and, later, for transfers you sign with Touch ID — never to an address from a chat, a site or a model.",
-                          systemImage: "lock.shield")
-                        .font(.caption).foregroundStyle(.secondary).padding(.top, 8)
+            TextField("Search addresses", text: $search).textFieldStyle(.roundedBorder)
+            // Watched tokens: contracts to follow, never addresses to send to.
+            if !ws.favoriteTokens.isEmpty, search.isEmpty {
+                section("TOKENS")
+                ForEach(ws.favoriteTokens) { FavoriteTokenCard(token: $0) }
+            }
+            // Ours: this is where money into LALA goes.
+            let own = ownWallets
+            if tab == "all", !own.isEmpty, search.isEmpty {
+                HStack {
+                    section("YOUR WALLETS · SEND MONEY HERE TO TOP UP")
+                    Spacer()
+                    Button { withAnimation(StudioView.spring) { ws.showReceive = true } } label: { Label("QR", systemImage: "qrcode") }
+                        .buttonStyle(.borderless).font(.caption)
                 }
-                .padding(.horizontal, 28).padding(.bottom, 28)
-                .frame(maxWidth: 940, alignment: .leading)
+                ForEach(own) { AddressCard(entry: $0, readOnly: true) }
             }
-        }
-        .padding(.trailing, inset)
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        .background(Brand.canvas)
-        .sheet(isPresented: $adding) { AddressEditor(entry: nil).environment(ws) }
-        .sheet(item: $editing) { AddressEditor(entry: $0).environment(ws) }
-    }
-
-    private func grid(_ items: [SavedAddress]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 290), spacing: 14)], alignment: .leading, spacing: 14) {
+            section("ADDRESSES")
+            if items.isEmpty { empty }
             ForEach(items) { entry in
                 AddressCard(entry: entry, edit: { editing = $0 })
                     .transition(.scale(scale: 0.94).combined(with: .opacity))
             }
+            Label("LALA only ever sends to your own wallets. Saved addresses are for copying and, later, for transfers you sign with Touch ID — never to an address from a chat, a site or a model.",
+                  systemImage: "lock.shield")
+                .font(.caption).foregroundStyle(.secondary)
         }
         .animation(.snappy, value: items)
+        .frame(width: 470, alignment: .leading)
+        .sheet(isPresented: $adding) { AddressEditor(entry: nil).environment(ws) }
+        .sheet(item: $editing) { AddressEditor(entry: $0).environment(ws) }
+    }
+
+    private func section(_ title: String) -> some View {
+        Text(title).font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary).padding(.top, 4)
     }
 
     private var filtered: [SavedAddress] {
@@ -584,21 +578,7 @@ struct IconPicker: View {
     }
 }
 
-// MARK: Rail button
-
-struct BookButton: View {
-    @Environment(Workspace.self) private var ws
-    @AppStorage("canvasMode") private var mode = "plan"
-
-    var body: some View {
-        Button { withAnimation(.snappy) { mode = mode == "book" ? "plan" : "book" } } label: {
-            Image(systemName: mode == "book" ? "book.closed.fill" : "book.closed")
-                .foregroundStyle(mode == "book" ? Brand.accent : .secondary)
-        }
-        .buttonStyle(.hoverIcon)
-        .help(mode == "book" ? "Back to the canvas" : "Addresses: favorites, exchanges, other wallets")
-    }
-}
+// MARK: Rail
 
 extension Workspace {
     func toggleFavorite(_ id: UUID) {
@@ -607,35 +587,7 @@ extension Workspace {
     }
 }
 
-/// Favorite tokens and starred addresses as cards on the canvas; the address book is one click away.
-struct FavoritesBoard: View {
-    @Environment(Workspace.self) private var ws
-    @AppStorage("canvasMode") private var mode = "plan"
-
-    var body: some View {
-        let favorites = ws.addressBook.filter(\.favorite).sorted { $0.name.lowercased() < $1.name.lowercased() }
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 8) {
-                Image(systemName: "star.fill").foregroundStyle(Color(hex: 0xF5B301)).font(.system(size: 16, weight: .semibold))
-                Text("Favorites").font(.system(size: 16, weight: .bold))
-                Spacer()
-                Button { withAnimation(StudioView.spring) { ws.showFavorites = false } } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.hoverIcon).help("Close")
-            }
-            if ws.favoriteTokens.isEmpty, favorites.isEmpty {
-                Text("Nothing starred yet. Star a token or an address in the address book and it shows up here.")
-                    .font(.callout).foregroundStyle(.secondary)
-            }
-            ForEach(ws.favoriteTokens) { FavoriteTokenCard(token: $0) }
-            ForEach(favorites) { AddressCard(entry: $0, edit: { _ in mode = "book" }) }
-            Button { withAnimation(.snappy) { mode = "book" } } label: { Label("Address book", systemImage: "book.closed") }
-                .buttonStyle(.borderless).font(.caption.weight(.semibold))
-        }
-        .frame(width: 470, alignment: .leading)
-    }
-}
-
-/// Starred addresses in the wide rail: a click copies one, the tab has the rest.
+/// Starred addresses in the wide rail: a click copies one, the Favorites board on the canvas has the rest.
 struct FavoriteChips: View {
     @Environment(Workspace.self) private var ws
     @AppStorage("canvasMode") private var mode = "plan"
@@ -649,13 +601,13 @@ struct FavoriteChips: View {
                 HStack {
                     Text("Favorites").font(.caption).foregroundStyle(.secondary)
                     Spacer()
-                    Button("All") { withAnimation(.snappy) { mode = "book" } }.buttonStyle(.borderless).font(.caption)
+                    Button("All") { openBoard() }.buttonStyle(.borderless).font(.caption)
                 }
                 // Tokens first, then addresses: four rows together, the rest behind «Show N more».
                 let tokens = all ? ws.favoriteTokens : Array(ws.favoriteTokens.prefix(StudioRail.railLimit))
                 ForEach(tokens) { t in
                     let info = ws.tokenInfo[t.id]
-                    Button { withAnimation(.snappy) { mode = "book" } } label: {
+                    Button { openBoard() } label: {
                         HStack(spacing: 8) {
                             TokenIcon(token: t, size: 22)
                             Text(t.symbol).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
@@ -701,6 +653,11 @@ struct FavoriteChips: View {
                 RailMore(total: ws.favoriteTokens.count + favorites.count, expanded: $all)
             }
         }
+    }
+
+    private func openBoard() {
+        withAnimation(StudioView.spring) { ws.showFavorites = true }
+        mode = "plan"
     }
 }
 

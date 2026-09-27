@@ -148,8 +148,6 @@ struct StudioView: View {
                 ZStack(alignment: .topTrailing) {
                     if mode == "history" {
                         HistoryView(inset: docked ? width + 32 : 0) { withAnimation(.snappy) { mode = "plan" } }
-                    } else if mode == "book" {
-                        AddressBookView(inset: docked ? width + 32 : 0) { withAnimation(.snappy) { mode = "plan" } }
                     } else {
                         // The canvas's scale follows the window alone: moving or resizing the chat, which floats
                         // above everything, never shifts or rescales the boards.
@@ -286,7 +284,6 @@ struct StudioRail: View {
                 LalaLogo(size: 34)
                 Text("lala").font(.system(size: 20, weight: .heavy)).tracking(-0.5)
                 Spacer()
-                BookButton()
                 Button { withAnimation(StudioView.spring) { collapsed = true } } label: { Image(systemName: "sidebar.left") }
                     .buttonStyle(.hoverIcon).help("Collapse wallet")
             }
@@ -350,12 +347,7 @@ struct StudioRail: View {
             LalaLogo(size: 38)
             Button { withAnimation(StudioView.spring) { collapsed = false } } label: { Image(systemName: "sidebar.left") }
                 .buttonStyle(.hoverIcon).help("Expand wallet")
-            HistoryButton()
-            BookButton()
-            Button { withAnimation(StudioView.spring) { ws.showReceive.toggle(); if ws.showReceive { UserDefaults.standard.set("plan", forKey: "canvasMode") } } } label: {
-                Image(systemName: "arrow.down.circle")
-            }
-            .buttonStyle(.hoverIcon).help("Top up: your addresses")
+            RailActions(compact: true)
             Button { withAnimation(StudioView.spring) { ws.newCanvas() } } label: { Image(systemName: "square.and.pencil") }
                 .buttonStyle(.hoverIcon).help("New canvas").disabled(ws.busy)
             Button { canvasesOpen.toggle() } label: { Image(systemName: "rectangle.stack") }
@@ -2363,28 +2355,42 @@ struct AllocationBoard: View {
     private func ink(_ place: String) -> Color { place.contains("Jupiter") ? Color(hex: 0xC7F284) : .white }
 }
 
-/// Opens the history on the canvas, and back.
 /// Under the balance: four ways onto the canvas, each with its own icon. Top up is in the accent colour; the others
-/// light up while their board is on the canvas.
+/// light up while their board is on the canvas. The collapsed rail has the same buttons in a column, icons only.
 struct RailActions: View {
     @Environment(Workspace.self) private var ws
     @AppStorage("canvasMode") private var mode = "plan"
+    var compact = false
 
     var body: some View {
-        Grid(horizontalSpacing: 6, verticalSpacing: 6) {
-            GridRow {
-                tile("Top up", "arrow.down.circle.fill", on: ws.showReceive, accent: true, help: "Your addresses: where to send money into LALA") {
-                    ws.showReceive.toggle()
-                }
-                tile("Portfolio", "chart.pie.fill", on: false, help: "The portfolio on the canvas") {
-                    NotificationCenter.default.post(name: .lalaCanvasFit, object: nil)
-                }
-            }
-            GridRow {
-                tile("History", "clock.arrow.circlepath", on: ws.showHistory, help: "What LALA did lately") { ws.showHistory.toggle() }
-                tile("Favorites", "star.fill", on: ws.showFavorites, help: "Favorite tokens and addresses") { ws.showFavorites.toggle() }
+        if compact {
+            VStack(spacing: 8) { topUp; portfolio; history; favorites }
+        } else {
+            Grid(horizontalSpacing: 6, verticalSpacing: 6) {
+                GridRow { topUp; portfolio }
+                GridRow { history; favorites }
             }
         }
+    }
+
+    private var topUp: some View {
+        tile("Top up", "arrow.down.circle.fill", on: ws.showReceive, accent: true, help: "Your addresses: where to send money into LALA") {
+            ws.showReceive.toggle()
+        }
+    }
+
+    private var portfolio: some View {
+        tile("Portfolio", "chart.pie.fill", on: false, help: "The portfolio on the canvas") {
+            NotificationCenter.default.post(name: .lalaCanvasFit, object: nil)
+        }
+    }
+
+    private var history: some View {
+        tile("History", "clock.arrow.circlepath", on: ws.showHistory, help: "What LALA did lately") { ws.showHistory.toggle() }
+    }
+
+    private var favorites: some View {
+        tile("Favorites", "star.fill", on: ws.showFavorites, help: "Favorite tokens, saved addresses, your wallets") { ws.showFavorites.toggle() }
     }
 
     private func tile(_ title: String, _ icon: String, on: Bool, accent: Bool = false, help: String, action: @escaping () -> Void) -> some View {
@@ -2392,13 +2398,19 @@ struct RailActions: View {
             withAnimation(StudioView.spring) { action() }
             mode = "plan"
         } label: {
-            HStack(spacing: 7) {
-                Image(systemName: icon).font(.system(size: 14, weight: .semibold))
-                Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
-                Spacer(minLength: 0)
+            Group {
+                if compact {
+                    Image(systemName: icon).font(.system(size: 15, weight: .semibold)).frame(width: 38, height: 38)
+                } else {
+                    HStack(spacing: 7) {
+                        Image(systemName: icon).font(.system(size: 14, weight: .semibold))
+                        Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 11).padding(.vertical, 10)
+                    .frame(maxWidth: .infinity)
+                }
             }
-            .padding(.horizontal, 11).padding(.vertical, 10)
-            .frame(maxWidth: .infinity)
             .foregroundStyle(accent ? Color.white : on ? Brand.accent : Color.primary)
             .background(RoundedRectangle(cornerRadius: 12).fill(accent ? Brand.accent : Color.primary.opacity(on ? 0.1 : 0.05)))
             .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(accent ? Color.white.opacity(on ? 0.7 : 0) : on ? Brand.accent : .clear, lineWidth: 1.5))
@@ -2406,19 +2418,7 @@ struct RailActions: View {
         }
         .buttonStyle(.plain)
         .modifier(HoverLift(radius: 12))
-        .help(help)
+        .help(compact ? "\(title): \(help)" : help)
     }
 }
 
-struct HistoryButton: View {
-    @AppStorage("canvasMode") private var mode = "plan"
-
-    var body: some View {
-        Button { withAnimation(.snappy) { mode = mode == "history" ? "plan" : "history" } } label: {
-            Image(systemName: "clock.arrow.circlepath")
-                .foregroundStyle(mode == "history" ? Brand.accent : .secondary)
-        }
-        .buttonStyle(.hoverIcon)
-        .help(mode == "history" ? "Back to the canvas" : "History: what LALA did, positions, everything")
-    }
-}
