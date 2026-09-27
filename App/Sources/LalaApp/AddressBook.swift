@@ -728,6 +728,7 @@ struct PendingAddressBoard: View {
                 Label("Taken from your own message and checked for \(entry.network.title). Compare the start and the end with the source before you confirm.",
                       systemImage: "checkmark.shield")
                     .font(.caption).foregroundStyle(.secondary).frame(width: 470, alignment: .leading)
+                PendingButtons(confirm: "Save")
             }
             .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
         }
@@ -826,6 +827,7 @@ struct TransferBoard: View {
                 Label("Only this saved address may receive the money: the guard and the signer check it, the simulation must show exactly \(Fmt.num(amount)) USDC leaving. Say “do it” or press Confirm.",
                       systemImage: "checkmark.shield")
                     .font(.caption).foregroundStyle(.secondary)
+                PendingButtons()
             }
             .frame(width: 470, alignment: .leading)
             .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))

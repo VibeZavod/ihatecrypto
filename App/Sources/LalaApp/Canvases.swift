@@ -510,6 +510,25 @@ struct FixChoices: View {
     }
 }
 
+/// Confirm and Cancel under a board waiting for «do it»: the same path as typing «do it» or «cancel» in the chat,
+/// so the signer, the guard and Jev see exactly what they would.
+struct PendingButtons: View {
+    @Environment(Workspace.self) private var ws
+    var confirm = "Confirm"
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Button { Task { await ws.send("do it") } } label: {
+                Label(confirm, systemImage: "signature").font(.system(size: 13, weight: .semibold)).padding(.horizontal, 6)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large)
+            Button("Cancel") { Task { await ws.send("cancel") } }
+                .buttonStyle(.bordered).controlSize(.large)
+        }
+        .disabled(ws.busy)
+    }
+}
+
 /// A move of money waiting for «do it», drawn as a route (S10): a withdrawal to Solana, or USDC into Aave on Base.
 struct WithdrawBoard: View {
     @Environment(Workspace.self) private var ws
@@ -673,6 +692,7 @@ struct WithdrawBoard: View {
             }
             HStack(alignment: .top, spacing: 12) { steps() }
             Label(footer, systemImage: "signature").font(.caption).foregroundStyle(.secondary)
+            PendingButtons()
         }
         .frame(width: 470, alignment: .leading)
         .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
