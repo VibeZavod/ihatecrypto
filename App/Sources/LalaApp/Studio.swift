@@ -1538,7 +1538,7 @@ struct FloatingChat: View {
     }
 }
 
-/// «ChatGPT · gpt-6-sol ▾»: the provider and model for the chat, right under LALA AI. The choice is kept per canvas.
+/// «gpt-6-sol · ChatGPT ▾»: the model and provider for the chat, right under LALA AI. The choice is kept per canvas.
 /// The menu lists companies; one with several ways in (subscription, API key) opens in place to show them.
 struct ChatModelMenu: View {
     @Environment(Workspace.self) private var ws
@@ -1546,12 +1546,18 @@ struct ChatModelMenu: View {
     @State private var open = false
     /// The company opened in the menu; the current one's when the menu opens.
     @State private var expanded: String?
+    /// Providers with a saved login, read once per opening: each Keychain read is a round trip to securityd.
+    @State private var linked: Set<String> = []
 
     var body: some View {
-        Button { expanded = ModelCompany.of(ws.providerID)?.name; open.toggle() } label: {
+        Button {
+            linked = Set(LLMCatalog.all.map(\.info.id).filter { Keychain.load($0) != nil })
+            expanded = ModelCompany.of(ws.providerID)?.name
+            open.toggle()
+        } label: {
             HStack(spacing: 4) {
                 if let c = ModelCompany.of(ws.providerID) { ModelCompanyLogo(company: c, size: 15) }
-                Text([ws.provider.info.name, ws.model].filter { !$0.isEmpty }.joined(separator: " · ")).lineLimit(1)
+                Text([ws.model, ws.provider.info.name].filter { !$0.isEmpty }.joined(separator: " · ")).lineLimit(1)
                 Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
             }
             .font(.caption).foregroundStyle(Brand.accent)
@@ -1580,7 +1586,6 @@ struct ChatModelMenu: View {
         }
         .padding(8)
         .frame(width: 340)
-        .animation(.snappy(duration: 0.22), value: expanded)
     }
 
     private func caption(_ text: String) -> some View {
@@ -1606,7 +1611,6 @@ struct ChatModelMenu: View {
                     .help(info.unavailable ?? info.note)
                     .padding(.leading, 26)
             }
-            .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
 
@@ -1625,7 +1629,7 @@ struct ChatModelMenu: View {
         if !connected(info) { openSettings() }
     }
 
-    private func connected(_ info: ProviderInfo) -> Bool { info.kind == .local || Keychain.load(info.id) != nil }
+    private func connected(_ info: ProviderInfo) -> Bool { info.kind == .local || linked.contains(info.id) }
 
     private func detail(_ info: ProviderInfo) -> String {
         let model = ws.modelChoices[info.id] ?? info.defaultModel
