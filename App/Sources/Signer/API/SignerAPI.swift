@@ -10,8 +10,13 @@ import WalletCore
 
 public enum SignerRequest: Codable, Sendable {
     case status
-    /// Validates and stores the seed; the phrase itself is not kept. `requirePresence`: Touch ID or password on every use.
+    /// Validates and stores the seed; the phrase itself is not kept. `requirePresence`: Touch ID or password on every use
+    /// (always, in a Release signer). Replacing a wallet that is already there asks for Touch ID first.
     case importMnemonic(phrase: String, passphrase: String, requirePresence: Bool)
+    /// A new 12-word phrase made inside the signer from system randomness and stored like an import. The reply
+    /// carries the phrase once, for the user to write down; the signer doesn't keep it.
+    case createWallet(requirePresence: Bool)
+    /// Removes the wallet; asks for Touch ID first.
     case forget
     /// Signs a Solana transaction after the guard checks it. `accounts`: the full account list the app resolved.
     /// `extraPrograms`: programs outside the built-in list that the user allowed for this one transaction
@@ -55,6 +60,8 @@ public struct SignerReply: Codable, Sendable {
     public var solanaAddress: String?
     public var evmAddress: String?
     public var nearAddress: String?
+    /// Only in the reply to createWallet: the new phrase, for the user's paper backup.
+    public var phrase: String?
     public var signedWire: Data?
     /// A signed raw EVM transaction.
     public var signedRaw: Data?

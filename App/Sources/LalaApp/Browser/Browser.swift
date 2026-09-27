@@ -322,7 +322,8 @@ final class Browser {
     }
 
     private func ask(_ kind: SiteRequest.Kind, origin: String, site: SiteCheck.Verdict) async -> Bool {
-        // `-browserAutoApprove YES`: only for local test pages, and never over a refusal.
+        #if DEBUG
+        // `-browserAutoApprove YES` (Debug builds): only for local test pages, and never over a refusal.
         if UserDefaults.standard.bool(forKey: "browserAutoApprove"), origin.hasPrefix("file://") {
             if case .transaction(let r, _) = kind { return r.problems.isEmpty }
             if case .evmTransaction(let r) = kind { return r.problems.isEmpty }
@@ -332,6 +333,7 @@ final class Browser {
         if UserDefaults.standard.bool(forKey: "browserAutoConnect"), origin.hasPrefix("file://") {
             if case .transaction = kind {} else { return true }
         }
+        #endif
         return await withCheckedContinuation { continuation in
             pending = SiteRequest(origin: origin, site: site, kind: kind, answer: continuation)
         }

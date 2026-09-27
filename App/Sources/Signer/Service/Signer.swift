@@ -64,19 +64,17 @@ enum Signer {
             r.agentActive = defaults.bool(forKey: "agentActive")
             return r
 
-        case .importMnemonic(let phrase, let passphrase, let requirePresence):
-            let seed = try Mnemonic.seed(phrase, passphrase: passphrase)
-            let solana = try SolanaAccount.address(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.solana(0)))
-            let evm = try EVMAccount.address(privateKey: Derivation.secp256k1(seed: seed, path: WalletPath.evm(0)))
-            try SeedStore.save(seed, requirePresence: requirePresence)
-            defaults.set(solana, forKey: "solana")
-            defaults.set(evm, forKey: "evm")
-            defaults.set(try NearAccount.implicit(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.near(0))), forKey: "near")
-            var r = SignerReply(ok: true)
-            r.hasWallet = true
-            r.solanaAddress = solana
-            r.evmAddress = evm
+        case .createWallet(let requirePresence):
+            let phrase = Mnemonic.generate()
+            try confirmReplacing("replace the wallet in LALA with a new one")
+            var r = try store(phrase: phrase, passphrase: "", requirePresence: requirePresence)
+            r.phrase = phrase
             return r
+
+        case .importMnemonic(let phrase, let passphrase, let requirePresence):
+            _ = try Mnemonic.validate(phrase) // a mistyped phrase fails before any prompt
+            try confirmReplacing("replace the wallet in LALA with another recovery phrase")
+            return try store(phrase: phrase, passphrase: passphrase, requirePresence: requirePresence)
 
         case .nearAddress:
             var r = SignerReply(ok: true)
@@ -99,11 +97,14 @@ enum Signer {
             return r
 
         case .forget:
+            try confirmReplacing("remove the wallet from LALA")
+            RecipientStore.delete()
             SeedStore.delete()
             AgentStore.delete()
             defaults.removeObject(forKey: "agentActive")
             defaults.removeObject(forKey: "solana")
             defaults.removeObject(forKey: "evm")
+            defaults.removeObject(forKey: "near")
             return SignerReply(ok: true)
 
         case .signSolanaMessage(let message):
@@ -162,6 +163,7 @@ enum Signer {
             default: break
             }
             guard v.ok else { return refused(v) }
+            try approve(recipients)
             let seed = try SeedStore.load(reason: "sign an EVM transaction for a site: \(to.prefix(10))…, network \(chainId)")
             let tx = EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee,
                                     gasLimit: gasLimit, to: to, value: value, data: data)
@@ -184,6 +186,7 @@ enum Signer {
                                             policy: SolanaPolicy(owner: owner, recipients: Set(recipients), programs: programs, trustLookupTables: false),
                                             tokenOwners: verifiedOwners(tokenOwners, mints: accounts))
             guard verdict.ok else { return refused(verdict) }
+            try approve(recipients)
             let seed = try SeedStore.load(reason: prompt("sign a Solana transaction", verdict))
             var r = SignerReply(ok: true)
             r.signedWire = try SolanaTransaction.sign(wire, privateKey: Derivation.ed25519(seed: seed, path: WalletPath.solana(0))).wire
@@ -229,6 +232,7 @@ enum Signer {
             let verdict = HLGuard.check(action, owner: try address("evm"), recipients: Set(recipients))
             guard verdict.ok else { return refused(verdict) }
             let (type, fields) = try userAction(action)
+            try approve(recipients)
             let seed = try SeedStore.load(reason: prompt("sign a Hyperliquid transfer", verdict))
             let key = try Derivation.secp256k1(seed: seed, path: WalletPath.evm(0))
             var r = SignerReply(ok: true)
@@ -236,6 +240,50 @@ enum Signer {
             r.checks = verdict.checks
             return r
         }
+    }
+
+    /// Stores the phrase's seed and the public addresses derived from it.
+    static func store(phrase: String, passphrase: String, requirePresence: Bool) throws -> SignerReply {
+        let seed = try Mnemonic.seed(phrase, passphrase: passphrase)
+        let solana = try SolanaAccount.address(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.solana(0)))
+        let evm = try EVMAccount.address(privateKey: Derivation.secp256k1(seed: seed, path: WalletPath.evm(0)))
+        try SeedStore.save(seed, requirePresence: requirePresence)
+        if defaults.string(forKey: "evm")?.lowercased() != evm.lowercased() {
+            // Another wallet: the old one's approved addresses and its Hyperliquid trading key are not its business.
+            RecipientStore.delete()
+            AgentStore.delete()
+            defaults.set(false, forKey: "agentActive")
+        }
+        defaults.set(solana, forKey: "solana")
+        defaults.set(evm, forKey: "evm")
+        defaults.set(try NearAccount.implicit(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.near(0))), forKey: "near")
+        var r = SignerReply(ok: true)
+        r.hasWallet = true
+        r.solanaAddress = solana
+        r.evmAddress = evm
+        return r
+    }
+
+    /// The public BIP-39 test phrase («abandon … about»): anyone can sign for it, so the self-test runs without prompts.
+    static var holdsPublicTestWallet: Bool { defaults.string(forKey: "solana") == "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk" }
+
+    /// Replacing or removing a wallet that holds money is the user's act, in person: Touch ID or the password.
+    /// A program that talks to the signer as LALA can't swap in its own phrase and wait for the user's deposits.
+    static func confirmReplacing(_ reason: String) throws {
+        guard SeedStore.exists, !holdsPublicTestWallet else { return }
+        try SeedStore.confirm(reason)
+    }
+
+    /// Money to an address outside the wallet: each new address is confirmed in person once, with the address on
+    /// the prompt, and remembered in the signer's own Keychain. The app saying «the user approved it» isn't enough.
+    static func approve(_ recipients: [String]) throws {
+        guard !holdsPublicTestWallet else { return }
+        let own = Set([defaults.string(forKey: "solana"), defaults.string(forKey: "evm")?.lowercased()].compactMap { $0 })
+        let known = RecipientStore.all()
+        let new = Array(Set(recipients.map(RecipientStore.key).filter { !known.contains($0) && !own.contains($0) })).sorted()
+        guard !new.isEmpty else { return }
+        try SeedStore.confirm("allow LALA to send money to a new address:\n" + new.joined(separator: "\n"))
+        try RecipientStore.add(new)
     }
 
     static func address(_ key: String) throws -> String {

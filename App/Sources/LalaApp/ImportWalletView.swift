@@ -15,20 +15,27 @@ struct ImportWalletView: View {
     @State private var store = false
     @State private var requirePresence = true
     @State private var stored: String?
+    /// A phrase the signer just made, shown once for the paper backup and dropped after «I wrote it down».
+    @State private var newPhrase: [String]?
+    @State private var creating = false
 
     var body: some View {
         Form {
-            Section {
+            if SignerClient.isAvailable { create }
+            Section("Import a phrase") {
                 SecureField("12 or 24 words separated by spaces", text: $phrase)
                 SecureField("Extra passphrase, if any", text: $passphrase)
                 if SignerClient.isAvailable {
                     Toggle("Save the key in secure storage to sign", isOn: $store)
+                    // A Release signer always asks: the toggle exists only for automated checks in Debug builds.
+                    #if DEBUG
                     if store {
                         Toggle("Ask for Touch ID or password on every signature", isOn: $requirePresence)
                     }
+                    #endif
                 }
                 Text(store
-                     ? "The phrase goes only to the separate signer, which has no network access. It keeps the key in this Mac's Keychain and signs only what passes the guard. The app never sees the key."
+                     ? "The phrase goes only to the separate signer, which has no network access. It keeps the key sealed by this Mac's Secure Enclave and signs only what passes the guard, after Touch ID or your password. Replacing a wallet that is already there asks for Touch ID too."
                      : "The phrase isn't saved or sent anywhere. The app takes only the public addresses from it to show balances. Try the test phrase first.")
                     .font(.caption).foregroundStyle(.secondary)
                 Button(store ? "Save and show addresses" : "Show addresses", action: derive).disabled(phrase.isEmpty)
@@ -64,12 +71,67 @@ struct ImportWalletView: View {
         }
         .formStyle(.grouped)
         .frame(width: 760)
-        .onDisappear { phrase = ""; passphrase = ""; accounts = [] }
+        .onDisappear { phrase = ""; passphrase = ""; accounts = []; newPhrase = nil }
         .onAppear {
+            #if DEBUG
             // `-demoImport YES`: the public BIP-39 test phrase, for screenshots and checks only.
             if UserDefaults.standard.bool(forKey: "demoImport") {
                 phrase = "abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon abandon about"
                 derive()
+            }
+            #endif
+        }
+    }
+
+    /// «Create a new wallet»: the signer makes the phrase; the words appear once, numbered, not selectable — for paper.
+    @ViewBuilder private var create: some View {
+        Section("New wallet") {
+            if let words = newPhrase {
+                Text("Write these 12 words on paper, in order. They are the only way back to this wallet if the Mac is lost or wiped; LALA won't show them again.")
+                    .font(.callout)
+                Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
+                    ForEach(0..<3, id: \.self) { row in
+                        GridRow {
+                            ForEach(0..<4, id: \.self) { column in
+                                let i = row * 4 + column
+                                HStack(spacing: 6) {
+                                    Text("\(i + 1)").foregroundStyle(.secondary).monospacedDigit().frame(width: 20, alignment: .trailing)
+                                    Text(words[i]).font(.system(.body, design: .monospaced).weight(.semibold))
+                                }
+                            }
+                        }
+                    }
+                }
+                .textSelection(.disabled)
+                .padding(.vertical, 4)
+                Text("Never type them into a website, a chat or a photo. Anyone with these words owns the money.")
+                    .font(.caption).foregroundStyle(.orange)
+                Button("I wrote them down") { newPhrase = nil }.buttonStyle(.borderedProminent)
+            } else {
+                Text("LALA makes a new 12-word recovery phrase inside the signer, from this Mac's random number generator, and keeps the key sealed by the Secure Enclave. Every signature asks for Touch ID or your password."
+                     + (ws.signerWallet == nil ? "" : " It replaces the wallet that is in LALA now — move the money out of it first."))
+                    .font(.caption).foregroundStyle(.secondary)
+                HStack {
+                    Button("Create a new wallet", action: createWallet).disabled(creating)
+                    if creating { ProgressView().controlSize(.small) }
+                }
+            }
+        }
+    }
+
+    private func createWallet() {
+        creating = true
+        error = nil
+        Task {
+            defer { creating = false }
+            do {
+                let reply = try await SignerClient().send(.createWallet(requirePresence: true))
+                guard reply.ok, let phrase = reply.phrase else { throw WalletError(reply.error ?? "The signer refused.") }
+                newPhrase = phrase.split(separator: " ").map(String.init)
+                stored = "New wallet: Solana \(reply.solanaAddress ?? "?"), EVM \(reply.evmAddress ?? "?")."
+                await ws.loadSigner()
+            } catch {
+                self.error = error.localizedDescription
             }
         }
     }

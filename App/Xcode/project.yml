@@ -8,6 +8,11 @@ packages:
   Lala:
     path: ..
 settings:
+  configs:
+    # Release is what runs with real money: no get-task-allow, so nothing — not even root with SIP on — can attach a
+    # debugger to the app or the signer and read the seed from memory. Debug keeps it for Xcode and xctrace.
+    Release:
+      CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
   base:
     DEVELOPMENT_TEAM: N78L833HCS
     CODE_SIGN_STYLE: Automatic

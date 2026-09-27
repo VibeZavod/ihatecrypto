@@ -14,7 +14,12 @@ struct LalaApp: App {
 
     /// `-signerSelfTest YES`: checks the signing process inside LALA.app with the public test phrase, then quits.
     /// The main window stays empty so nothing else (balances, model logins) runs meanwhile.
+    /// Launch flags that drive the app are Debug-only: in a Release build any program could `open LALA.app --args …`.
+    #if DEBUG
     private let selfTest = UserDefaults.standard.bool(forKey: "signerSelfTest")
+    #else
+    private let selfTest = false
+    #endif
 
     init() {
         if selfTest {
@@ -24,6 +29,7 @@ struct LalaApp: App {
             // menu bar until ⌘Q.
             let ws = workspace
             Task { await ws.watch() }
+            #if DEBUG
             // `-browserResultAfter N`: after N seconds prints the browser page's text and quits (the browser test).
             let resultAfter = UserDefaults.standard.double(forKey: "browserResultAfter")
             if resultAfter > 0 {
@@ -57,6 +63,7 @@ struct LalaApp: App {
                     NSApp.terminate(nil)
                 }
             }
+            #endif
         }
     }
 
@@ -189,8 +196,9 @@ struct ContentView: View {
             // Launched from `swift run`, the process is not a regular app until told so.
             NSApp.setActivationPolicy(.regular)
             NSApp.activate()
-            // Launch flags for checking the app end to end. Written as `-key YES` pairs: a lone argument would be
-            // taken by macOS as a file to open, and the main window would not appear.
+            // Launch flags for checking the app end to end (Debug builds only). Written as `-key YES` pairs: a lone
+            // argument would be taken by macOS as a file to open, and the main window would not appear.
+            #if DEBUG
             if UserDefaults.standard.bool(forKey: "connectExisting") { ws.useExistingLogin() }
             if UserDefaults.standard.bool(forKey: "openSettings") { openSettings() }
             if UserDefaults.standard.bool(forKey: "demoImport") { openWindow(id: "import") }
@@ -209,23 +217,30 @@ struct ContentView: View {
                 let r = try? await SignerClient().send(.importMnemonic(phrase: phrase, passphrase: "", requirePresence: UserDefaults.standard.bool(forKey: "presence")))
                 log("import: ok=\(r?.ok ?? false) \(r?.solanaAddress ?? "") \(r?.evmAddress ?? "") \(r?.error ?? "")")
             }
+            #endif
             await ws.loadSigner()
+            #if DEBUG
             // `-openBrowser <url>`: opens the dApp browser on that page, once the wallet is known.
             if UserDefaults.standard.string(forKey: "openBrowser") != nil { openWindow(id: "browser") }
             if UserDefaults.standard.bool(forKey: "enableAgent"), !ws.agentActive {
                 await ws.enableAgent()
                 log("agent: active=\(ws.agentActive) \(ws.agentAddress ?? "")")
             }
+            #endif
             await ws.refresh()
             // `-openPlace kamino`: opens that place's card from the rail, to check the canvas layout in a screenshot.
+            // Only shows a card, so it stays in Release builds.
             if let place = UserDefaults.standard.string(forKey: "openPlace") { ws.detail = place }
+            #if DEBUG
             // `--say "…"` replays messages on launch; used to check the app end to end.
             for text in sayArguments() { await ws.send(text) }
             await runTestHooks()
+            #endif
 
             }
     }
 
+    #if DEBUG
     private func log(_ text: String) { FileHandle.standardError.write(Data("LALA \(text)\n".utf8)) }
 
     /// `-executePlan YES`: presses «Execute», waits `-confirmDelay` seconds on the confirmation, confirms.
@@ -306,6 +321,7 @@ struct ContentView: View {
         let args = CommandLine.arguments
         return args.indices.dropLast().filter { args[$0] == "--say" }.map { args[$0 + 1] }
     }
+    #endif
 }
 
 /// Hyperliquid and its sub-items: crypto on the main exchange, commodities, stocks and indices on HIP-3 xyz.

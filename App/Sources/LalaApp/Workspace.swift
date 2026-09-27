@@ -220,7 +220,9 @@ final class Workspace {
     var policy: RiskPolicy = (UserDefaults.standard.data(forKey: "riskPolicy").flatMap { try? JSONDecoder().decode(RiskPolicy.self, from: $0) }) ?? {
         var p = RiskPolicy()
         // `-maxRiskPct 10`: a looser limit for tests on a tiny wallet.
+        #if DEBUG
         if let v = UserDefaults.standard.string(forKey: "maxRiskPct").flatMap({ Decimal(string: $0) }) { p.maxRiskPct = v }
+        #endif
         return p
     }() {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(policy), forKey: "riskPolicy") }

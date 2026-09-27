@@ -3,21 +3,52 @@ import LocalAuthentication
 import Security
 import WalletCore
 
-/// The seed in the data-protection Keychain: this device only, never synced, readable only by the signer's
-/// own access group. With `requirePresence`, every read asks for Touch ID or the login password.
-/// ponytail: the seed is ordinary Swift memory while signing and is not zeroed afterwards.
+/// The seed in the data-protection Keychain: this device only, never synced, readable only by the signer's own
+/// access group. Since 2026-09-28 it is sealed to a Secure Enclave key: the Keychain holds only ciphertext, and
+/// opening it takes the Enclave, which asks for Touch ID or the login password. Code that manages to read the
+/// Keychain item — a re-signed copy of the signer — gets bytes it cannot open without the user.
+/// A wallet saved before then sits unsealed under «default» until it is replaced.
+/// ponytail: the opened seed is ordinary Swift memory while signing; Swift can't promise to wipe it, so the guard
+/// against reading it is that no debugger can attach to a Release signer (no get-task-allow).
 enum SeedStore {
-    static var base: [String: Any] {
+    static func item(_ account: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "app.lala.seed",
-            kSecAttrAccount as String: "default",
+            kSecAttrAccount as String: account,
             kSecUseDataProtectionKeychain as String: true,
         ]
     }
 
-    static var exists: Bool {
-        var q = base
+    static let sealedAccount = "sealed", legacyAccount = "default"
+    static let algorithm = SecKeyAlgorithm.eciesEncryptionCofactorVariableIVX963SHA256AESGCM
+
+    /// Each sealing makes its own Enclave key; the sealed item names it (kSecAttrGeneric), so a new wallet is
+    /// written before the old one and its key are removed — a failure halfway never leaves no wallet at all.
+    static func keyQuery(_ tag: Data) -> [String: Any] {
+        [
+            kSecClass as String: kSecClassKey,
+            kSecAttrApplicationTag as String: tag,
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecUseDataProtectionKeychain as String: true,
+        ]
+    }
+
+    /// The sealed seed and the tag of the key that opens it.
+    private static func sealed() -> (data: Data, tag: Data)? {
+        var q = item(sealedAccount)
+        q[kSecReturnData as String] = true
+        q[kSecReturnAttributes as String] = true
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let found = out as? [String: Any],
+              let data = found[kSecValueData as String] as? Data, let tag = found[kSecAttrGeneric as String] as? Data else { return nil }
+        return (data, tag)
+    }
+
+    static var exists: Bool { present(sealedAccount) || present(legacyAccount) }
+
+    private static func present(_ account: String) -> Bool {
+        var q = item(account)
         q[kSecReturnAttributes as String] = true
         let context = LAContext()
         context.interactionNotAllowed = true
@@ -26,28 +57,62 @@ enum SeedStore {
         return status == errSecSuccess || status == errSecInteractionNotAllowed
     }
 
+    /// Seals the seed to a new Enclave key. Release builds always ask for Touch ID or the password to open it;
+    /// Debug builds may skip that for the automated self-test with the public test phrase.
     static func save(_ seed: Data, requirePresence: Bool) throws {
-        SecItemDelete(base as CFDictionary)
+        #if DEBUG
+        let presence = requirePresence
+        #else
+        let presence = true
+        #endif
         var error: Unmanaged<CFError>?
+        func fail(_ what: String) -> WalletError { WalletError("\(what): \(error.map { "\($0.takeRetainedValue())" } ?? "?")") }
         guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
-                                                           requirePresence ? .userPresence : [], &error) else {
-            throw WalletError("Couldn't set access to the key: \(error.map { "\($0.takeRetainedValue())" } ?? "?")")
+                                                           presence ? [.privateKeyUsage, .userPresence] : [.privateKeyUsage], &error) else {
+            throw fail("Couldn't set access to the key")
         }
-        var q = base
-        q[kSecValueData as String] = seed
-        q[kSecAttrAccessControl as String] = access
-        let status = SecItemAdd(q as CFDictionary, nil)
-        guard status == errSecSuccess else { throw WalletError("Keychain didn't save the key: \(status) \(SecCopyErrorMessageString(status, nil) as String? ?? "")") }
+        let tag = Data("app.lala.seed.key.\(UUID().uuidString)".utf8)
+        let attributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeySizeInBits as String: 256,
+            kSecAttrTokenID as String: kSecAttrTokenIDSecureEnclave,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecPrivateKeyAttrs as String: [
+                kSecAttrIsPermanent as String: true,
+                kSecAttrApplicationTag as String: tag,
+                kSecAttrAccessControl as String: access,
+            ] as [String: Any],
+        ]
+        guard let key = SecKeyCreateRandomKey(attributes as CFDictionary, &error) else { throw fail("The Secure Enclave didn't make a key") }
+        guard let publicKey = SecKeyCopyPublicKey(key),
+              let ciphertext = SecKeyCreateEncryptedData(publicKey, algorithm, seed as CFData, &error) as Data? else {
+            SecItemDelete(keyQuery(tag) as CFDictionary)
+            throw fail("Couldn't seal the key")
+        }
+        // Written over the old wallet in one step; only then is the old key removed.
+        let old = sealed()?.tag
+        let values: [String: Any] = [kSecValueData as String: ciphertext, kSecAttrGeneric as String: tag]
+        var status = SecItemUpdate(item(sealedAccount) as CFDictionary, values as CFDictionary)
+        if status == errSecItemNotFound {
+            var q = item(sealedAccount).merging(values) { $1 }
+            q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            status = SecItemAdd(q as CFDictionary, nil)
+        }
+        guard status == errSecSuccess else {
+            SecItemDelete(keyQuery(tag) as CFDictionary)
+            throw WalletError("Keychain didn't save the key: \(status) \(SecCopyErrorMessageString(status, nil) as String? ?? "")")
+        }
+        endSession()
+        if let old { SecItemDelete(keyQuery(old) as CFDictionary) }
+        SecItemDelete(item(legacyAccount) as CFDictionary)
     }
 
-    /// One Touch ID per trade, not per signature: a context that already authenticated opens the item again
+    /// One Touch ID per trade, not per signature: a context that already authenticated opens the key again
     /// without a prompt, so it is reused for a minute. Every signature still passes the guard.
     nonisolated(unsafe) private static var session: (context: LAContext, since: Date)?
     private static let lock = NSLock()
 
     static func load(reason: String) throws -> Data {
-        var q = base
-        q[kSecReturnData as String] = true
         let context: LAContext = lock.withLock {
             if let s = session, Date().timeIntervalSince(s.since) < 60 { return s.context }
             let fresh = LAContext()
@@ -55,19 +120,57 @@ enum SeedStore {
             session = (fresh, Date())
             return fresh
         }
-        q[kSecUseAuthenticationContext as String] = context
-        var out: CFTypeRef?
-        let status = SecItemCopyMatching(q as CFDictionary, &out)
-        guard status == errSecSuccess, let seed = out as? Data else {
+        do {
+            if let sealed = sealed() {
+                var q = keyQuery(sealed.tag)
+                q[kSecReturnRef as String] = true
+                q[kSecUseAuthenticationContext as String] = context
+                var ref: CFTypeRef?
+                guard SecItemCopyMatching(q as CFDictionary, &ref) == errSecSuccess, let ref else { throw WalletError("The Secure Enclave key is missing.") }
+                var error: Unmanaged<CFError>?
+                // The Enclave asks for Touch ID or the password here, unless this context already did.
+                guard let seed = SecKeyCreateDecryptedData(ref as! SecKey, algorithm, sealed.data as CFData, &error) as Data? else {
+                    throw WalletError("Touch ID was cancelled or didn't match: nothing was signed.")
+                }
+                return seed
+            }
+            guard let seed = read(legacyAccount, context: context) else { throw WalletError("No wallet imported.") }
+            return seed
+        } catch {
             lock.withLock { session = nil } // a cancelled or failed prompt must not be reused
-            throw WalletError(status == errSecItemNotFound ? "No wallet imported." : "Couldn't access the key: \(status)")
+            throw error
         }
-        return seed
+    }
+
+    private static func read(_ account: String, context: LAContext?) -> Data? {
+        var q = item(account)
+        q[kSecReturnData as String] = true
+        if let context { q[kSecUseAuthenticationContext as String] = context }
+        var out: CFTypeRef?
+        return SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess ? out as? Data : nil
+    }
+
+    /// The user in person — Touch ID or the login password — with `reason` on the system prompt, always a fresh
+    /// prompt. The authenticated context then serves the signature that follows, so there is one prompt, not two.
+    static func confirm(_ reason: String) throws {
+        let context = LAContext()
+        context.localizedReason = reason
+        let done = DispatchSemaphore(value: 0)
+        nonisolated(unsafe) var outcome: Error?
+        context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason) { ok, error in
+            if !ok { outcome = error ?? WalletError("Not confirmed.") }
+            done.signal()
+        }
+        done.wait()
+        if let outcome { throw WalletError("Not confirmed (\(outcome.localizedDescription)): nothing was changed.") }
+        lock.withLock { session = (context, Date()) }
     }
 
     static func delete() {
         endSession()
-        SecItemDelete(base as CFDictionary)
+        if let tag = sealed()?.tag { SecItemDelete(keyQuery(tag) as CFDictionary) }
+        SecItemDelete(item(sealedAccount) as CFDictionary)
+        SecItemDelete(item(legacyAccount) as CFDictionary)
     }
 
     /// The next load asks for Touch ID again.
@@ -77,6 +180,43 @@ enum SeedStore {
             session = nil
         }
     }
+}
+
+/// Addresses outside the wallet that the user allowed money to go to, each confirmed in person once. Kept in the
+/// signer's own Keychain group, so the app — or anything posing as it — can't add one silently.
+enum RecipientStore {
+    static var base: [String: Any] {
+        [
+            kSecClass as String: kSecClassGenericPassword,
+            kSecAttrService as String: "app.lala.recipients",
+            kSecAttrAccount as String: "approved",
+            kSecUseDataProtectionKeychain as String: true,
+        ]
+    }
+
+    static func all() -> Set<String> {
+        var q = base
+        q[kSecReturnData as String] = true
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data,
+              let list = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return Set(list)
+    }
+
+    static func add(_ addresses: [String]) throws {
+        let list = Array(all().union(addresses.map(key))).sorted()
+        SecItemDelete(base as CFDictionary)
+        var q = base
+        q[kSecValueData as String] = try JSONEncoder().encode(list)
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        let status = SecItemAdd(q as CFDictionary, nil)
+        guard status == errSecSuccess else { throw WalletError("Keychain didn't save the approved address: \(status)") }
+    }
+
+    /// EVM addresses compare without case; Solana's base58 is case-sensitive.
+    static func key(_ address: String) -> String { address.hasPrefix("0x") ? address.lowercased() : address }
+
+    static func delete() { SecItemDelete(base as CFDictionary) }
 }
 
 /// The Hyperliquid agent key: data-protection Keychain, this device, no Touch ID — it cannot withdraw.
