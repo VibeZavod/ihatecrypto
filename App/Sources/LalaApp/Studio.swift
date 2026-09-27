@@ -285,37 +285,28 @@ struct StudioRail: View {
                 Button { withAnimation(StudioView.spring) { collapsed = true } } label: { Image(systemName: "sidebar.left") }
                     .buttonStyle(.hoverIcon).help("Collapse wallet")
             }
-            // Everything between the header and the profile scrolls as one: the balance, its buttons and the canvases,
-            // however many there are. Places, positions, closed trades and favorites are on the canvas.
-            ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
-                    VStack(alignment: .leading, spacing: 3) {
-                        HStack(spacing: 6) {
-                            Text("Balance").font(.caption).foregroundStyle(.secondary)
-                            BalanceFreshness(hovering: balanceHover)
-                        }
-                        if ws.updatedAt == nil {
-                            Skeleton(width: 150, height: 34, radius: 9).padding(.vertical, 3)
-                        } else {
-                            Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 34, weight: .bold)).monospacedDigit().tracking(-1)
-                        }
-                        if !ws.positions.isEmpty {
-                            Text("\(signed(ws.positionsPnl)) in positions").font(.caption.weight(.semibold))
-                                .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
-                        }
-                    }
-                    .onHover { balanceHover = $0 }
-                    RailActions()
-                    CanvasList(scrolls: false)
+            // The balance and its buttons stay put; only the canvases scroll, in the room left above the profile.
+            // Places, positions, closed trades and favorites are on the canvas.
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    Text("Balance").font(.caption).foregroundStyle(.secondary)
+                    BalanceFreshness(hovering: balanceHover)
                 }
-                // A hovered button grows 4 %; the scroll view clips at its edges, so the content keeps 6 pt of room on
-                // each side and the scroll view reaches 6 pt further out: the rail's layout stays where it was.
-                .padding(.horizontal, 6)
-                // Loaded numbers and sections that arrive later fade in instead of popping up.
-                .animation(.easeOut(duration: 0.35), value: railKey)
+                if ws.updatedAt == nil {
+                    Skeleton(width: 150, height: 34, radius: 9).padding(.vertical, 3)
+                } else {
+                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 34, weight: .bold)).monospacedDigit().tracking(-1)
+                }
+                if !ws.positions.isEmpty {
+                    Text("\(signed(ws.positionsPnl)) in positions").font(.caption.weight(.semibold))
+                        .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
+                }
             }
-            .padding(.horizontal, -6)
-            .scrollIndicators(.never)
+            .onHover { balanceHover = $0 }
+            // The loaded balance fades in instead of popping up.
+            .animation(.easeOut(duration: 0.35), value: ws.updatedAt == nil)
+            RailActions()
+            CanvasList()
             ProfileMenu(compact: false)
         }
         .padding(18)
@@ -353,10 +344,6 @@ struct StudioRail: View {
 
     /// Every section of the rail but the canvases shows this many rows, then «Show N more».
     static let railLimit = 4
-
-    private var railKey: String {
-        "\(ws.updatedAt == nil)"
-    }
 }
 
 /// «Show 3 more» under a rail list cut to its first few rows; «Show less» folds it back.

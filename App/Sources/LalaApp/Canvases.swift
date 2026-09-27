@@ -174,6 +174,14 @@ extension Workspace {
         chart = nil
         currentActivity = nil
         draft = ""
+        // What the rail opened belongs to the canvas it was opened on; the next one starts clean, at 100 %.
+        detail = nil
+        showReceive = false
+        showMovers = false
+        showHistory = false
+        showFavorites = false
+        UserDefaults.standard.set("plan", forKey: "canvasMode")
+        NotificationCenter.default.post(name: .lalaCanvasFit, object: nil)
     }
 }
 
@@ -182,8 +190,6 @@ extension Workspace {
 /// The saved canvases, newest first; a click opens one with its chat, plan and model.
 struct CanvasList: View {
     @Environment(Workspace.self) private var ws
-    /// Its own scroll view in the popover; the rail scrolls the list together with everything above it.
-    var scrolls = true
     var close: (() -> Void)?
     /// Folded folders, one name per line; kept between launches.
     @AppStorage("foldedCanvasFolders") var foldedRaw = ""
@@ -193,20 +199,18 @@ struct CanvasList: View {
             HStack {
                 Text("Canvases").font(.caption).foregroundStyle(.secondary)
                 Spacer()
+                // The whole pill is the button and lights up under the pointer, not only its glyphs.
                 Button { withAnimation(StudioView.spring) { ws.newCanvas() }; close?() } label: {
-                    Label("New", systemImage: "square.and.pencil").font(.caption.weight(.semibold))
+                    Label("New", systemImage: "square.and.pencil").font(.caption.weight(.semibold)).padding(.horizontal, 8)
                 }
-                .buttonStyle(.borderless).help("New canvas").disabled(ws.busy)
+                .buttonStyle(.hoverIcon).help(ws.busy ? "LALA is still answering" : "New canvas").disabled(ws.busy)
+                .padding(.trailing, -8)   // the word lines up with the rows' right edge; only the hover wash goes past it
             }
             let items = ws.canvases.sorted { $0.updated > $1.updated }
             if items.isEmpty {
                 Text("Each conversation gets its own canvas and is kept here.").font(.caption).foregroundStyle(.tertiary)
             }
-            if scrolls {
-                ScrollView { rows(items) }.scrollIndicators(.never)
-            } else {
-                rows(items)
-            }
+            ScrollView { rows(items) }.scrollIndicators(.never)
         }
     }
 }
