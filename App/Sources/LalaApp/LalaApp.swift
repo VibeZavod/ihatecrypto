@@ -85,27 +85,52 @@ struct LalaApp: App {
         Settings {
             SettingsView().environment(workspace)
         }
-
-        MenuBarExtra {
-            MenuBarContent().environment(workspace)
-        } label: {
-            MenuBarLabel()
-        }
-        .menuBarExtraStyle(.window)
     }
 }
 
-/// The status item: a fixed icon. A label that changes (the P/L it used to show) is re-rendered by SwiftUI in the
-/// middle of the main window's layout, and AppKit crashes on that (NSStatusBarButton setImage, macOS 26.2,
-/// 2026-09-27). The P/L is inside the menu.
-struct MenuBarLabel: View {
-    var body: some View { Image(systemName: "chart.line.uptrend.xyaxis") }
+/// The menu-bar icon in plain AppKit, its menu a popover with `MenuBarContent`. SwiftUI's MenuBarExtra re-set the
+/// icon whenever the button's appearance changed, and on macOS 26 the status item's own snapshot redraw changes that
+/// appearance: a loop that held 35–45 % of the main thread for seconds at a time (xctrace, 2026-09-27). Before that
+/// a changing label crashed AppKit (NSStatusBarButton setImage mid-layout). Here the image is set once.
+@MainActor final class StatusItem: NSObject {
+    static let shared = StatusItem()
+    private var item: NSStatusItem?
+    private let popover = NSPopover()
+    /// The main window's `openWindow`, kept so «Open LALA» works after the window was closed.
+    var openWindow: OpenWindowAction?
+
+    func install(_ ws: Workspace) {
+        guard item == nil else { return }
+        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        item.button?.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "LALA")
+        item.button?.target = self
+        item.button?.action = #selector(toggle(_:))
+        let hosting = NSHostingController(rootView: MenuBarContent().environment(ws))
+        hosting.sizingOptions = [.preferredContentSize]
+        popover.contentViewController = hosting
+        popover.behavior = .transient
+        self.item = item
+    }
+
+    @objc private func toggle(_ sender: NSStatusBarButton) {
+        if popover.isShown {
+            popover.performClose(sender)
+        } else {
+            popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
+            popover.contentViewController?.view.window?.makeKey()
+        }
+    }
+
+    func openMain() {
+        popover.performClose(nil)
+        openWindow?(id: "main")
+        NSApp.activate()
+    }
 }
 
 /// With the window closed, LALA keeps watching from the menu bar (S13): positions, exit rules, regular purchases.
 struct MenuBarContent: View {
     @Environment(Workspace.self) private var ws
-    @Environment(\.openWindow) private var openWindow
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -137,7 +162,7 @@ struct MenuBarContent: View {
             }
             Divider()
             HStack {
-                Button("Open LALA") { openWindow(id: "main"); NSApp.activate() }.buttonStyle(.borderedProminent)
+                Button("Open LALA") { StatusItem.shared.openMain() }.buttonStyle(.borderedProminent)
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }.keyboardShortcut("q")
             }
@@ -191,6 +216,8 @@ struct ContentView: View {
             }
             .toolbar(removing: .title)
             .task {
+            StatusItem.shared.openWindow = openWindow
+            StatusItem.shared.install(ws)
             // Launched from `swift run`, the process is not a regular app until told so.
             NSApp.setActivationPolicy(.regular)
             NSApp.activate()
