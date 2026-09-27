@@ -192,8 +192,8 @@ extension Workspace {
             reply("Transfers work in LALA.app once the key is in secure storage.")
             return
         }
-        if case .yields(let asset) = command, isStudio {
-            // Read-only, works without a key: the studio draws the rates on the canvas.
+        if case .yields(let asset) = command {
+            // Read-only: the rates are drawn on the canvas.
             yieldOptions = await Yields.options(for: asset)
             // Aave on Base, from the pool itself: LALA bridges there and supplies with «lend N USDC on Aave».
             if asset != "SOL", aaveAPY == nil { aaveAPY = try? await AaveV3.verifyBase() }
@@ -203,11 +203,6 @@ extension Workspace {
                 yieldOptions?.sort { $0.apy > $1.apy }
             }
             reply(yieldOptions?.isEmpty == false ? "Rates are on the canvas — the bigger the bubble, the higher the rate." : "Yield sources didn't respond right now.", note: "DeFi")
-            return
-        }
-        if case .yields(let asset) = command {
-            // Read-only: works without a key too.
-            reply(await Self.yieldsText(asset), note: "DeFi")
             return
         }
         // The route as confirmed, before any balance moves: the canvas keeps it with the outcome and the time.
@@ -231,7 +226,7 @@ extension Workspace {
             case .kamino(let deposit, let symbol, let amount): _ = try await e.kamino(symbol, amount: amount, deposit: deposit)
             case .stake(let sol): _ = try await e.convert(from: SpotAsset.all[0], to: .jitoSOL, amount: sol)
             case .unstake(let jito): _ = try await e.convert(from: .jitoSOL, to: SpotAsset.all[0], amount: jito)
-            case .yields(let asset): reply(await Self.yieldsText(asset), note: "DeFi")
+            case .yields: break   // drawn on the canvas above
             case .hlp(let deposit, let amount): _ = try await e.hlp(deposit: deposit, amount: amount)
             case .buyNear(let usdc):
                 // The NEAR address comes from the signer alone; the first time it unlocks the seed to derive it.
@@ -257,15 +252,11 @@ extension Workspace {
             case .receive: showReceive = true
             case .allocate(let symbol, let share):
                 // Two steps: the plan first, the deposits only after «do it».
-                let (text, ready, preview) = try await e.allocate(symbol, maxShare: share ?? 50, execute: confirmed)
+                let (_, ready, preview) = try await e.allocate(symbol, maxShare: share ?? 50, execute: confirmed)
                 pendingAllocation = ready ? command : nil
                 allocationPreview = confirmed ? nil : preview
                 if !confirmed {
-                    if isStudio {
-                        reply(ready ? "The plan is on the canvas. Sign it, or ask for another limit, e.g. “max \(share.map { $0 == 70 ? 50 : 70 } ?? 70)% per protocol”." : "Nowhere to put it now — see the canvas.", note: "DeFi")
-                    } else {
-                        reply(text + (ready ? "\nSay “do it” and I'll allocate by this plan, each transfer checked and signed." : ""), note: "DeFi")
-                    }
+                    reply(ready ? "The plan is on the canvas. Sign it, or ask for another limit, e.g. “max \(share.map { $0 == 70 ? 50 : 70 } ?? 70)% per protocol”." : "Nowhere to put it now — see the canvas.", note: "DeFi")
                 }
             case .schedule(let asset, let usdc, let days):
                 // The per-purchase rule applies to each run; a schedule adds up, so it is shown per month too.
@@ -396,18 +387,6 @@ extension Workspace {
             await guardPositions()
             await runSchedules()
         }
-    }
-
-    /// «Where to keep USDC»: options by yield, what LALA can do there and the catch, plus the one piece of advice
-    /// that matters most — spread it.
-    static func yieldsText(_ asset: String?) async -> String {
-        let options = await Yields.options(for: asset)
-        guard !options.isEmpty else { return "Yield sources didn't respond right now." }
-        var lines = options.prefix(8).map { o in
-            "\(o.asset) · \(o.place): \(Fmt.num(o.apy.rounded(2, .plain)))% APY\(o.tvlUSD.map { ", pool \(Fmt.usd(($0 / 1_000_000).rounded(0, .plain)))M" } ?? ""). \(o.note.prefix(1).uppercased() + o.note.dropFirst()).\(o.how.map { " Say: “\($0)”." } ?? "")"
-        }
-        lines.append("Tip: don't keep everything in one protocol — the yield difference is usually smaller than the risk of a single contract. Stablecoins into lending, SOL into liquid staking.")
-        return lines.joined(separator: "\n")
     }
 
     /// Due regular purchases, one run each; the next date moves on even after a failure, so it does not retry in a loop.

@@ -139,8 +139,6 @@ final class Workspace {
     var allocationPreview: AllocationPreview?
     /// Yields shown as bubbles on the studio canvas; nil when none.
     var yieldOptions: [Yields.Option]?
-    /// The R4 layout is on (see ContentView).
-    var isStudio: Bool { (UserDefaults.standard.string(forKey: "layout") ?? "studio") == "studio" }
     /// Take-profit styles offered on the canvas after «take profit like the best investors»; nil when none.
     var takeChoices: [TakeStyle]?
     var schedules: [Schedule] = (UserDefaults.standard.data(forKey: "schedules").flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) }) ?? [] {
@@ -252,19 +250,20 @@ final class Workspace {
         return Keychain.load(providerID)
     }
     /// Whether the chosen provider has a login, for views: a Keychain read is a round trip to securityd (≈ 4 ms) and
-    /// the rail redraws with every balance refresh. Read once per provider; a token refresh never removes a login.
+    /// the rail redraws with every balance refresh. A login found is remembered (a token refresh never removes one);
+    /// «none» is read again, since a read can fail once (a fresh build's Keychain prompt) and must not stick.
     var signedIn: Bool {
         _ = credentialVersion
-        if let known = signedInCache[providerID] { return known }
-        let known = Keychain.load(providerID) != nil
-        signedInCache[providerID] = known
-        return known
+        if signedInCache.contains(providerID) { return true }
+        guard Keychain.load(providerID) != nil else { return false }
+        signedInCache.insert(providerID)
+        return true
     }
-    @ObservationIgnored private var signedInCache: [String: Bool] = [:]
+    @ObservationIgnored private var signedInCache: Set<String> = []
 
     func setCredential(_ credential: Credential?) {
         Keychain.save(credential, for: providerID)
-        signedInCache[providerID] = nil
+        signedInCache.remove(providerID)
         credentialVersion += 1
     }
 
@@ -686,7 +685,7 @@ final class Workspace {
             return true
         }
         if let command = WalletCommand.parse(canonical) {
-            await handleWallet(command, note: note, confirmAlways: true)
+            await handleWallet(command, note: note)
             return true
         }
         if let coin = targetCoin(for: canonical), let command = PositionCommand.parse(canonical) {

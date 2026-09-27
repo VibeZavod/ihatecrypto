@@ -6,8 +6,8 @@ import LLMCore
 import SwiftUI
 import TradeExecution
 
-// «Студия» (R4 on the design canvas): the wallet rail on the left, the portfolio and the plan on one canvas,
-// the chat floating on top of it. The classic layout (chat + route) stays behind a switch in the profile menu.
+// «Студия» (R4 on the design canvas), LALA's only layout: the wallet rail on the left, the portfolio and the plan on
+// one canvas, the chat floating on top of it.
 
 extension Color {
     /// One color for light and one for dark appearance.
@@ -639,7 +639,6 @@ struct ProfileMenu: View {
     @Environment(Workspace.self) private var ws
     @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
-    @AppStorage("layout") private var layout = "studio"
     @State private var open = false
     @State private var confirmSignOut = false
     let compact: Bool
@@ -692,7 +691,6 @@ struct ProfileMenu: View {
             MenuRow(title: "Key and signing", detail: ws.signerWallet == nil ? "import a wallet" : "Touch ID, key in a separate process", icon: "key") { go { openWindow(id: "import") } }
             MenuRow(title: "Risk rules", detail: "at most \(Fmt.pct(ws.policy.maxRiskPct)) per trade", icon: "shield.lefthalf.filled") { go { openSettings() } }
             MenuRow(title: "dApp browser", icon: "globe") { go { openWindow(id: "browser") } }
-            MenuRow(title: "Layout: classic", detail: "chat beside the route", icon: "rectangle.split.2x1") { go { layout = "classic" } }
             Divider().padding(.vertical, 4)
             if ws.signerWallet != nil {
                 MenuRow(title: "Lock — Touch ID again", detail: "the next signature asks; the trading key pauses", icon: "lock") {
@@ -798,10 +796,12 @@ struct StudioCanvas: View {
             PendingAddressBoard()
             TransferBoard()
             if nodes.isEmpty {
-                ForEach(ws.positions, id: \.coin) { PositionBoard(position: $0) }
+                // Only this canvas's own position, or one the user tapped (a tap opens its chart), not every open one.
+                let positions = ws.positions.filter { $0.coin == ws.chart?.coin || (ws.managesPosition && $0.coin == ws.intent.asset) }
+                ForEach(positions, id: \.coin) { PositionBoard(position: $0) }
                 if ws.yieldOptions == nil, ws.allocationPreview == nil {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
-                    if let board { SavedBoard(canvas: board) } else if ws.positions.isEmpty, ws.schedules.isEmpty { placeholder }
+                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty { placeholder }
                 }
             } else {
                 let left = nodes.filter { $0.column == 0 }, right = nodes.filter { $0.column == 1 }
@@ -1204,7 +1204,7 @@ struct StudioPortfolio: View {
                         }
                         Text(ws.positionSummary(p)).font(.caption2).foregroundStyle(Brand.hlSoft).lineLimit(2)
                         if let rules = ws.exitRules[p.coin] {
-                            Label(ScheduleView.duties(rules).joined(separator: " "), systemImage: "shield.lefthalf.filled")
+                            Label(rules.duties.joined(separator: " "), systemImage: "shield.lefthalf.filled")
                                 .font(.caption2).foregroundStyle(Brand.hlMint).lineLimit(2)
                         }
                     }
@@ -1308,6 +1308,19 @@ extension StudioPortfolio {
         .padding(11)
         .background(RoundedRectangle(cornerRadius: 16).fill(tint))
         .modifier(Openable(place: id))
+    }
+}
+
+extension ExitRules {
+    /// What LALA's guardian does for this position, one line each.
+    var duties: [String] {
+        var out: [String] = []
+        if partialOrderPending { out.append("After entry, places half at 1R.") }
+        if breakevenAfterPartial {
+            out.append(movedToBreakeven ? "Stop is already at breakeven (\(Fmt.price(entry)))." : "After the first half, moves the stop to breakeven (\(Fmt.price(entry))).")
+        }
+        if let t = trailingPct { out.append("Trailing \(Fmt.pct(t)): the stop follows the best price, now \(Fmt.price(peak)).") }
+        return out.isEmpty ? ["Stop and take-profit sit on the exchange; LALA doesn't move anything."] : out
     }
 }
 

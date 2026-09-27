@@ -824,8 +824,8 @@ extension Workspace {
     static let help = "I didn’t catch what to do. For example: “deposit 1 USDC into Jupiter”, “long ETH risk $5 by the book”, “send 5 USDC to Bybit”, “where to keep USDC”, “alert me when ETH is below 2,500”."
 
     /// One path for every wallet command, typed or read by the model: a missing amount is asked for and remembered;
-    /// in the studio (or whenever the model read it) money moves only after «do it» on the drawn route.
-    func handleWallet(_ command: WalletCommand, note: String? = nil, confirmAlways: Bool = false) async {
+    /// money moves only after «do it» on the drawn route.
+    func handleWallet(_ command: WalletCommand, note: String? = nil) async {
         updateActivity { $0.understood = command.summary }
         if case .sendTo(let name, let amount) = command { prepareTransfer(amount, to: name, note: note); return }
         if case .receive = command {
@@ -844,7 +844,6 @@ extension Workspace {
             // Read-only, or with a board and a step of their own.
             await move(command)
         default:
-            guard isStudio || confirmAlways else { await move(command); return }
             pendingAction = .wallet(command)
             pendingText = command.summary
             reply("Understood: \(command.summary). It’s on the canvas — Sign it, or say anything else to cancel.", note: note)
