@@ -445,6 +445,10 @@ final class Workspace {
             await resumeTradingKey()
             return
         }
+        // A connected model reads every message first: its meaning, not keywords. What it understood goes through
+        // the same parsers, checks, Jev and confirmations as a typed command. The local parsers below read the message
+        // as typed when no model is connected or it can't be reached.
+        if let client = llmClient(), await routeWithModel(text, client: client, before: before) { return }
         if let command = TokenCommand.parse(text) {
             await tokenCommand(command)
             return
@@ -498,28 +502,13 @@ final class Workspace {
             await refreshQuote()
             reply((changes.isEmpty ? "That’s already in the plan." : "Plan updated: " + changes.joined(separator: ", ") + ".") + outcomeLine)
         } else if let client {
-            // Another language or wording the parsers don't know: the model rewrites it as one English command,
-            // which then goes through the same parsers. The reply says how it was understood.
-            if !IntentParser.hasTradeWords(text) || parsed == nil, await runNormalized(text, client: client, before: before) { return }
             // No plan and nothing about trading: the plan editor would only invent one.
             guard startsPlan || IntentParser.hasTradeWords(text) else {
                 reply(Self.help)
                 return
             }
-            busy = true
-            defer { busy = false }
-            let note = "\(model) · \(provider.info.name)"
-            do {
-                let (next, answer) = try await ChatModel.edit(intent, message: text, client: client, model: model, history: recentChat())
-                if let next, await editExecuted(from: before, to: next) { return }
-                if let next { intent = next }
-                let changes = next?.changes(from: before) ?? []
-                let fallback = changes.isEmpty ? "The model changed nothing." : "Plan updated: " + changes.joined(separator: ", ") + "."
-                await refreshQuote()
-                reply((answer.isEmpty ? fallback : answer) + outcomeLine, note: note)
-            } catch {
-                reply("The model is unavailable: \(error.localizedDescription)", note: note)
-            }
+            await editPlanWithModel(text, client: client, before: before)
+            return
         } else {
             reply("I didn’t get that. Without a model I understand: long/short, a ticker ($ETH), “risk $10”, “stop 3%”, “take 6%”, “leverage 2x”, “100 USDC” — in English or Russian. For other languages and free wording like “take closer”, connect a model in Settings (⌘,): a ChatGPT subscription, Claude Code, OpenRouter or an API key.")
         }
@@ -548,15 +537,96 @@ final class Workspace {
         await reviewPlan()
     }
 
-    /// Runs the model's English rewrite of `text` through the parsers. False when it is not a command they know.
-    private func runNormalized(_ text: String, client: any LLMClient, before: TradeIntent) async -> Bool {
+    /// The model's reading of the message (ChatRouter). False when it can't be reached or its command is one the
+    /// parsers don't know: then the local parsers read the message as typed.
+    private func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent) async -> Bool {
         busy = true
-        let canonical = try? await CommandNormalizer.normalize(text, client: client, model: model,
-                                                              context: messages.last(where: { !$0.fromUser })?.text)
+        let route: ChatRouter.Route?
+        do {
+            route = try await ChatRouter.route(text, context: routerContext(), client: client, model: model)
+        } catch {
+            FileHandle.standardError.write(Data("LALA router: \(error)\n".utf8))
+            route = nil
+        }
         busy = false
-        guard let canonical, canonical.lowercased() != text.lowercased() else { return false }
+        switch route {
+        case nil: return false
+        case .question?: await answer(text); return true
+        case .plan?: await editPlanWithModel(text, client: client, before: before); return true
+        case .chat(let r)?, .clarify(let r)?: reply(r, note: model); return true
+        case .command(let canonical)?:
+            guard ChatRouter.addressesAllowed(canonical, userText: text, known: favoriteTokens.map(\.address)) else {
+                reply("I read that as “\(canonical)”, but its address is neither in your message nor among your favorites, so I won’t use it. Paste the address itself.", note: model)
+                return true
+            }
+            return await runCanonical(canonical, userText: text, before: before)
+        }
+    }
+
+    /// What the model may know besides the message: the chat, the plan, positions, favorites, address book names and
+    /// the main balances. Never keys or the user's own addresses.
+    private func routerContext() -> ChatRouter.Context {
+        var c = ChatRouter.Context()
+        c.recent = Array(recentChat().dropLast())   // the last line is the message itself
+        if intent != TradeIntent(), let json = try? JSONEncoder().encode(intent) { c.plan = String(decoding: json, as: UTF8.self) }
+        c.positions = positions.map { "\($0.size > 0 ? "long" : "short") \(IntentParser.pretty($0.coin))" }
+        c.favorites = favoriteTokens.map { "\($0.symbol) (\($0.name)) = \($0.address) on \($0.chainTitle)" }
+        c.addressBook = addressBook.map(\.name)
+        if let s = solana { c.balances.append("Solana \(Fmt.num(s.usdc)) USDC, \(Fmt.num(s.sol, maxFraction: 4)) SOL") }
+        if let h = hlTotal { c.balances.append("Hyperliquid \(Fmt.usd(h))") }
+        if let r = robinhood { c.balances.append("Robinhood Chain \(Fmt.num(r.usdg)) USDG") }
+        return c
+    }
+
+    /// Free-form plan edits («take closer», «less risk») by the model.
+    private func editPlanWithModel(_ text: String, client: any LLMClient, before: TradeIntent) async {
+        busy = true
+        let note = "\(model) · \(provider.info.name)"
+        do {
+            let (next, answer) = try await ChatModel.edit(intent, message: text, client: client, model: model, history: recentChat())
+            busy = false
+            if let next, await editExecuted(from: before, to: next) { return }
+            if let next { intent = next }
+            let changes = next?.changes(from: before) ?? []
+            let fallback = changes.isEmpty ? "The model changed nothing." : "Plan updated: " + changes.joined(separator: ", ") + "."
+            await refreshQuote()
+            reply((answer.isEmpty ? fallback : answer) + outcomeLine, note: note)
+        } catch {
+            busy = false
+            reply("The model is unavailable: \(error.localizedDescription)", note: note)
+        }
+        await refreshQuote()
+        await reviewPlan()
+    }
+
+    /// Runs the model's English command through the parsers. False when it is not a command they know.
+    private func runCanonical(_ canonical: String, userText text: String, before: TradeIntent) async -> Bool {
         updateActivity { $0.understood = canonical }
         let note = "understood as “\(canonical)” · \(model)"
+        switch canonical.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! ")) {
+        case "new canvas":
+            messages.removeLast()
+            newCanvas()
+            return true
+        case "clear the plan":
+            intent = TradeIntent()
+            executed = nil
+            takeChoices = nil
+            reply("The plan is cleared. Tell me what to do next.", note: note)
+            return true
+        case "lock":
+            await lockSigner()
+            return true
+        default: break
+        }
+        if let command = TokenCommand.parse(canonical) {
+            await tokenCommand(command, note: note)
+            return true
+        }
+        if let command = ChartCommand.parse(canonical, markets: Set(markets.keys)) {
+            await chartCommand(command, note: note)
+            return true
+        }
         if TakeStyle.asksForChoice(canonical), intent != TradeIntent() {
             takeChoices = TakeStyle.allCases
             reply("Three ways to take profit are on the canvas. The stop stays the same; pick one.", note: note)

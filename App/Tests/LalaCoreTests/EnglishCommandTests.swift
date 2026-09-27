@@ -3,7 +3,7 @@ import Foundation
 import Testing
 
 // The app is in English; the parsers read English as well as Russian. Other languages go through the model,
-// which rewrites them into these same English forms (CommandNormalizer.forms).
+// which rewrites them into these same English forms (ChatRouter.forms).
 
 @Test func englishTradePhrases() throws {
     let a = try #require(IntentParser.apply("long ETH risk $10 stop 3% take 6% leverage 2x", to: TradeIntent()))
@@ -52,12 +52,34 @@ import Testing
     #expect(WalletCommand.parse("выведи 1 USDC в Solana") == .withdrawToSolana(1))
 }
 
-@Test func normalizerFormsCoverTheParsers() {
-    // Every example the model is told to produce must parse locally.
-    for command in ["withdraw 1 USDC to Solana", "lend 1 USDC", "stake 0.1 SOL", "where to keep SOL", "stop recurring buys"] {
-        #expect(WalletCommand.parse(command) != nil, "\(command)")
-    }
-    #expect(CommandNormalizer.forms.contains("spread <USDC|SOL> across the best rates"))
+@Test func routerFormsCoverTheParsers() {
+    // Every form the model is told to write must parse locally, in the order the app tries the parsers.
+    let ai = "0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18", markets: Set<String> = ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]
+    let commands = ["withdraw 1 USDC to Solana", "lend 1 USDC", "stake 0.1 SOL", "where to keep SOL", "stop recurring buys",
+                    "buy token \(ai) for 2 USDC", "sell 3 tokens \(ai)", "buy Tesla stock for 3 USDC", "sell TSLA stock",
+                    "move USDG from Robinhood to Solana", "buy NEAR for 5 USDC", "top up", "deposit 5 USDC to HLP",
+                    "lend 2 USDC on Aave", "spread USDC across the best rates max 50% per protocol"]
+    for command in commands { #expect(WalletCommand.parse(command) != nil, "\(command)") }
+    #expect(TokenCommand.parse("watch token \(ai) on robinhood") == .favorite(address: ai, chain: "robinhood"))
+    #expect(TokenCommand.parse("remove token AI from favorites") == .unfavorite(symbol: "AI"))
+    #expect(ChartCommand.parse("chart ETH week", markets: markets) == .chart(coin: "ETH", range: .week))
+    #expect(ChartCommand.parse("what's moving") == .movers)
+    #expect(AlertCommand.parse("alert me when ETH is above 4000", markets: markets) != nil)
+    #expect(PositionCommand.parse("close half") == .close(Decimal(string: "0.5")!))
+    #expect(IntentParser.apply("short oil risk $1 by the book", to: TradeIntent(), markets: markets)?.asset == "xyz:CL")
+    #expect(ChatRouter.forms.contains("buy token <0xCONTRACT> for N USDC"))
+}
+
+@Test func routerNeverTakesAnAddressFromTheModel() throws {
+    let ai = "0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18", other = "0x1111111111111111111111111111111111111111"
+    #expect(ChatRouter.addressesAllowed("buy token \(ai) for 2 USDC", userText: "купи \(ai) на 2$", known: []))
+    #expect(ChatRouter.addressesAllowed("buy token \(ai) for 2 USDC", userText: "купи AI на 2$", known: [ai.lowercased()]))
+    #expect(!ChatRouter.addressesAllowed("buy token \(other) for 2 USDC", userText: "купи AI на 2$", known: [ai]))
+    #expect(ChatRouter.addressesAllowed("long ETH risk $1", userText: "лонг эфир", known: []))
+    #expect(try ChatRouter.decode(Data(#"{"route":"command","command":"lend 1 USDC"}"#.utf8)) == .command("lend 1 USDC"))
+    #expect(try ChatRouter.decode(Data(#"{"route":"chat","reply":"Hi!"}"#.utf8)) == .chat("Hi!"))
+    #expect(try ChatRouter.decode(Data(#"{"route":"question"}"#.utf8)) == .question)
+    #expect(throws: (any Error).self) { try ChatRouter.decode(Data(#"{"route":"command","command":""}"#.utf8)) }
 }
 
 @Test func takeProfitChoices() {

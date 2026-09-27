@@ -176,7 +176,12 @@ extension Workspace {
             let open = s.fills.first, close = s.fills.last
             facts.append("Closed: \(s.long ? "long" : "short") \(IntentParser.pretty(s.coin)), opened \(Fmt.date(s.opened)) at \(open.map { Fmt.price($0.px) } ?? "?"), closed \(s.closed.map(Fmt.date) ?? "?") at \(close.map { Fmt.price($0.px) } ?? "?"), realized \(signed(s.realized)) after fees.")
         }
-        if intent != TradeIntent(), !managesPosition { facts.append("Plan on the canvas (not executed): \(intent.side == .long ? "long" : "short") \(IntentParser.pretty(intent.asset)).") }
+        if intent != TradeIntent(), !managesPosition {
+            let sizing = evaluation.sizing.map { s in
+                ", at the stop −\(Fmt.usd(s.lossAtStopUSD))" + (s.profitAtTakeUSD.map { ", at the take +\(Fmt.usd($0))" } ?? "")
+            } ?? ""
+            facts.append("Plan on the canvas (not executed): \(intent.side == .long ? "long" : "short") \(IntentParser.pretty(intent.asset))\(sizing).")
+        }
         for a in activities.suffix(10) where a.request != nil || a.title != nil {
             facts.append("Activity \(Fmt.date(a.at)): \(a.request.map { "user said “\($0)”" } ?? a.title ?? "") → \(a.lines.first ?? "")")
         }

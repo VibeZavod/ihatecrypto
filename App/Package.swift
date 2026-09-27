@@ -28,7 +28,7 @@ let package = Package(
             dependencies: ["LLMCore", "LLMAPIKey", "LLMOpenRouter", "LLMChatGPT", "LLMClaudeCode"],
             path: "Sources/LLM/Catalog"
         ),
-        .executableTarget(name: "LalaLLMCheck", dependencies: ["LLMCatalog", "LLMCore"], path: "Sources/LLM/Check"),
+        .executableTarget(name: "LalaLLMCheck", dependencies: ["LLMCatalog", "LLMCore", "LalaCore"], path: "Sources/LLM/Check"),
 
         // Keys and signatures: BIP-39, derivation, Keccak, EIP-712. Knows nothing about protocols or UI.
         .target(name: "WalletCore", dependencies: [.product(name: "P256K", package: "swift-secp256k1")], path: "Sources/Wallet/Core"),
