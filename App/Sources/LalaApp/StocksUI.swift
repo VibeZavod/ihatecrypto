@@ -9,6 +9,8 @@ struct StockHolding: Identifiable, Equatable {
     var id: String { symbol }
     let symbol: String
     let name: String
+    /// The contract on Robinhood Chain.
+    let address: String
     let amount: Decimal
     let price: Decimal?
     let logo: URL?
@@ -37,7 +39,7 @@ extension Workspace {
                       let raw = try? await rpc.read(t.address, try ERC20.balanceOf(me)), let units = ABI.decimal(in: raw, word: 0), units > 0 else { continue }
                 let amount = units / Decimal(sign: .plus, exponent: t.decimals, significand: 1)
                 let price = (try? await RobinhoodStocks.quote(symbol))?.bid
-                holdings.append(StockHolding(symbol: symbol, name: t.name, amount: amount, price: price, logo: t.logo))
+                holdings.append(StockHolding(symbol: symbol, name: t.name, address: t.address, amount: amount, price: price, logo: t.logo))
             }
         }
         // Tokens bought by their contract (favorites on Robinhood Chain), priced by DexScreener.
@@ -51,7 +53,7 @@ extension Workspace {
             if tokenInfo[t.id]?.priceUSD == nil, let info = try? await TokenLookup.lookup(t.address).first(where: { $0.chain == "robinhood" }) {
                 found[t.id] = info
             }
-            holdings.append(StockHolding(symbol: t.symbol, name: t.name, amount: amount, price: (found[t.id] ?? tokenInfo[t.id])?.priceUSD, logo: t.image))
+            holdings.append(StockHolding(symbol: t.symbol, name: t.name, address: t.address, amount: amount, price: (found[t.id] ?? tokenInfo[t.id])?.priceUSD, logo: t.image))
         }
         tokenBalances.merge(held) { $1 }
         tokenInfo.merge(found) { $1 }
@@ -98,15 +100,19 @@ struct RobinhoodCard: View {
                     }
                 }
                 ForEach(r.stocks) { s in
-                    HStack(spacing: 8) {
-                        StockLogo(symbol: s.symbol, url: s.logo, size: 22)
-                        VStack(alignment: .leading, spacing: 0) {
-                            Text(s.symbol).font(.system(size: 12.5, weight: .bold))
-                            Text("\(Fmt.num(s.amount, maxFraction: 6)) · \(s.price.map { Fmt.usd($0) } ?? "—")").font(.caption2).foregroundStyle(.secondary)
+                    Button { ws.openToken(s.address) } label: {
+                        HStack(spacing: 8) {
+                            StockLogo(symbol: s.symbol, url: s.logo, size: 22)
+                            VStack(alignment: .leading, spacing: 0) {
+                                Text(s.symbol).font(.system(size: 12.5, weight: .bold))
+                                Text("\(Fmt.num(s.amount, maxFraction: 6)) · \(s.price.map { Fmt.usd($0) } ?? "—")").font(.caption2).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(Fmt.usd(s.usd)).font(.system(size: 12.5, weight: .bold)).monospacedDigit()
                         }
-                        Spacer()
-                        Text(Fmt.usd(s.usd)).font(.system(size: 12.5, weight: .bold)).monospacedDigit()
+                        .contentShape(Rectangle())
                     }
+                    .buttonStyle(.plain).help("\(s.symbol): chart and details")
                 }
                 if r.usdg > 0 {
                     HStack { Text("USDG").font(.caption); Spacer(); Text(Fmt.num(r.usdg)).font(.caption.weight(.semibold)).monospacedDigit() }

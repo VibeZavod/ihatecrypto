@@ -270,6 +270,10 @@ struct PlaceDetailBoard: View {
 
     @ViewBuilder private var content: some View {
         switch place {
+        if let token = TokenBoard.parse(place) { TokenBoard(chain: token.chain, address: token.address) } else { board }
+    }
+
+    private var board: some View {
         case "solana":
             if isSolanaAddress(ws.solanaAddress) { addressRow(ws.solanaAddress) }
             row("usdc", "USDC", ws.solana.map { Fmt.num($0.usdc) } ?? "—", "≈ \(ws.solana.map { Fmt.usd($0.usdc) } ?? "—")")
@@ -295,16 +299,21 @@ struct PlaceDetailBoard: View {
         case "robinhood":
             if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }
             ForEach(ws.robinhood?.stocks ?? []) { s in
-                HStack(spacing: 10) {
-                    StockLogo(symbol: s.symbol, url: s.logo, size: 24)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("\(s.symbol) · \(s.name)").font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                        Text("\(Fmt.num(s.amount, maxFraction: 6)) tokens · Robinhood bid \(s.price.map { Fmt.usd($0) } ?? "—")").font(.caption2).foregroundStyle(.secondary)
+                Button { ws.openToken(s.address) } label: {
+                    HStack(spacing: 10) {
+                        StockLogo(symbol: s.symbol, url: s.logo, size: 24)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("\(s.symbol) · \(s.name)").font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                            Text("\(Fmt.num(s.amount, maxFraction: 6)) tokens · \(s.price.map { Fmt.usd($0) } ?? "—")").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(Fmt.usd(s.usd)).font(.system(size: 13, weight: .bold)).monospacedDigit()
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary)
                     }
-                    Spacer()
-                    Text(Fmt.usd(s.usd)).font(.system(size: 13, weight: .bold)).monospacedDigit()
+                    .padding(9).background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
+                    .contentShape(Rectangle())
                 }
-                .padding(9).background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
+                .buttonStyle(.plain).pointerStyle(.link).help("\(s.symbol): chart and details")
             }
             row("usdc", "USDG", "\(ws.robinhood.map { Fmt.num($0.usdg) } ?? "—")", "gas: \(ws.robinhood.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH")
             Text("Stock Tokens aren’t offered to US persons, or in Canada, the UK and Switzerland; they give economic exposure, not the shares.")
