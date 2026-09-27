@@ -4,7 +4,7 @@ import SwiftUI
 import TradeExecution
 import WalletCore
 
-/// A Stock Token held on Robinhood Chain, priced by Robinhood's own quote.
+/// A Stock Token held on Robinhood Chain, priced by Robinhood's own quote, or a token bought by its contract.
 struct StockHolding: Identifiable, Equatable {
     var id: String { symbol }
     let symbol: String
@@ -24,7 +24,7 @@ extension Workspace {
         Task { await loadRobinhood() }
     }
 
-    /// USDG, ETH for gas and the remembered Stock Tokens on Robinhood Chain.
+    /// USDG, ETH for gas, the remembered Stock Tokens and the favorite tokens held on Robinhood Chain.
     func loadRobinhood() async {
         guard isEVMAddress(hlAddress) else { return }
         let rpc = EVMRPC.robinhood, me = hlAddress
@@ -39,6 +39,17 @@ extension Workspace {
                 let price = (try? await RobinhoodStocks.quote(symbol))?.bid
                 holdings.append(StockHolding(symbol: symbol, name: t.name, amount: amount, price: price, logo: t.logo))
             }
+        }
+        // Tokens bought by their contract (favorites on Robinhood Chain), priced by DexScreener.
+        for t in favoriteTokens where t.chain == "robinhood" {
+            guard let raw = try? await rpc.read(t.address, try ERC20.balanceOf(me)), let units = ABI.decimal(in: raw, word: 0), units > 0,
+                  let d = ABI.uint(in: (try? await rpc.read(t.address, Data([0x31, 0x3c, 0xe5, 0x67]))) ?? Data(), word: 0) else { continue }
+            let amount = units / Decimal(sign: .plus, exponent: Int(d), significand: 1)
+            tokenBalances[t.id] = amount
+            if tokenInfo[t.id]?.priceUSD == nil, let info = try? await TokenLookup.lookup(t.address).first(where: { $0.chain == "robinhood" }) {
+                tokenInfo[t.id] = info
+            }
+            holdings.append(StockHolding(symbol: t.symbol, name: t.name, amount: amount, price: tokenInfo[t.id]?.priceUSD, logo: t.image))
         }
         robinhood = (Decimal(usdg) / 1_000_000, Decimal(eth) / Decimal(sign: .plus, exponent: 18, significand: 1), holdings)
     }
