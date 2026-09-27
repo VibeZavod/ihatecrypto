@@ -401,6 +401,22 @@ struct PlaceDetailBoard: View {
         }
     }
 
+    /// A picture for each action, so a button says what it does before it's read: money in, money out, rates, trade.
+    static func icon(_ title: String) -> String {
+        switch title {
+        case "Top up": "arrow.down.circle"
+        case "Deposit", "Deposit more", "Lend more", "Buy more": "plus.circle"
+        case "Withdraw", "Withdraw all", "Withdraw to Solana", "USDG to Solana": "arrow.up.circle"
+        case "Best rates": "percent"
+        case "Stake SOL": "lock.circle"
+        case "Send to a saved address": "paperplane"
+        case "Trade by the book": "chart.line.uptrend.xyaxis"
+        case "What’s moving": "flame"
+        case "Sell": "arrow.left.arrow.right"
+        default: title.hasPrefix("Buy") ? "cart" : "arrow.right.circle"
+        }
+    }
+
     @ViewBuilder private var actions: some View {
         let phrases: [(String, String)] = switch place {
         case "solana": [("Top up", "top up"), ("Stake SOL", "stake 0.01 SOL"), ("Send to a saved address", "send 1 USDC to ")]
@@ -412,12 +428,13 @@ struct PlaceDetailBoard: View {
         case "morpho": [("Deposit more", "deposit 1 USDC into Morpho"), ("Withdraw to Solana", "withdraw USDC from Morpho"), ("Best rates", "where to keep USDC")]
         default: [("Lend more", "lend 1 USDC on Aave"), ("Withdraw to Solana", "withdraw USDC from Aave"), ("Best rates", "where to keep USDC")]
         }
-        HStack(spacing: 6) {
+        // Buttons wrap to a new line rather than run past the card's edge.
+        Flow(spacing: 6) {
             ForEach(phrases, id: \.0) { p in
                 Button {
                     if p.1 == "top up" { withAnimation(StudioView.spring) { ws.showReceive = true } } else { ws.draft = p.1 }
                 } label: {
-                    Text(p.0).font(.system(size: 12, weight: .semibold)).foregroundStyle(Brand.accent)
+                    Label(p.0, systemImage: Self.icon(p.0)).font(.system(size: 12, weight: .semibold)).foregroundStyle(Brand.accent)
                         .padding(.horizontal, 10).padding(.vertical, 6).background(Capsule().fill(Brand.accent.opacity(0.1)))
                 }
                 .buttonStyle(.plain)

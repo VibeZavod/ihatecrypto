@@ -775,9 +775,9 @@ struct StudioCanvas: View {
                      ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : board?.title ?? "Plan"))
                     .font(.system(size: 14, weight: .semibold))
                 StatusChip(text: statusText(nodes), tint: statusTint(nodes))
-                if hasRoute { MarketPicker() }
+                // An open position is on its market for good: nothing to pick until it closes.
+                if hasRoute, !ws.managesPosition { MarketPicker() }
             }
-            if let place = ws.detail { PlaceDetailBoard(place: place) }
             if ws.showReceive { ReceiveBoard() }
             if let chart = ws.chart { ChartBoard(state: chart) }
             if ws.showMovers { MoversBoard() }
@@ -811,6 +811,15 @@ struct StudioCanvas: View {
             }
         }
         .overlay(alignment: .topLeading) { cursors(nodes) }
+        // A place opened from the rail floats over the plan or the position instead of pushing them down.
+        .overlay(alignment: .topLeading) {
+            if let place = ws.detail {
+                PlaceDetailBoard(place: place)
+                    .shadow(color: .black.opacity(0.35), radius: 24, y: 12)
+                    .padding(.top, 36)
+                    .transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity))
+            }
+        }
     }
 
     private func node(_ n: StudioNode, nodes: [StudioNode]) -> some View {
@@ -1604,8 +1613,9 @@ private struct ChatActions: View {
         } else if ws.managesPosition, ws.positions.contains(where: { $0.coin == ws.intent.asset }) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
-                    ForEach(["move stop to breakeven", "trail 2%", "close half", "close"], id: \.self) { phrase in
-                        Button(phrase) { Task { await ws.send(phrase) } }
+                    ForEach([("move stop to breakeven", "shield.lefthalf.filled"), ("trail 2%", "arrow.up.forward"),
+                             ("close half", "circle.lefthalf.filled"), ("close", "xmark.circle")], id: \.0) { phrase, icon in
+                        Button { Task { await ws.send(phrase) } } label: { Label(phrase, systemImage: icon) }
                             .buttonStyle(.plain).font(.system(size: 12))
                             .padding(.horizontal, 10).padding(.vertical, 6)
                             .background(Capsule().fill(Brand.accent.opacity(0.1)))
@@ -2119,15 +2129,16 @@ struct PositionBoard: View {
         let takes = triggers.filter { ($0.orderType ?? "").contains("Take") }.compactMap(\.triggerPx)
         let mark = ws.markets[position.coin]?.markPx
         VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 6) {
-                ForEach([("breakeven", "Stop to breakeven", "move stop to breakeven"), ("trail", "Trailing 2%", "trail 2%"), ("half", "Close ½", "close half"), ("close", "Close", "close")], id: \.0) { item in
-                    Button(item.1) {
+            Flow(spacing: 6) {
+                ForEach([("breakeven", "Stop to breakeven", "move stop to breakeven", "shield.lefthalf.filled"), ("trail", "Trailing 2%", "trail 2%", "arrow.up.forward"),
+                         ("half", "Close ½", "close half", "circle.lefthalf.filled"), ("close", "Close", "close", "xmark.circle")], id: \.0) { item in
+                    Button {
                         switch item.0 {
                         case "breakeven": Task { await ws.manage(.stopToBreakeven, coin: position.coin) }
                         case "trail": Task { await ws.manage(.trail(2), coin: position.coin) }
                         default: confirmClose = item.2
                         }
-                    }
+                    } label: { Label(item.1, systemImage: item.3) }
                     .buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
                     .padding(.horizontal, 10).padding(.vertical, 7)
                     .background(RoundedRectangle(cornerRadius: 9).fill(item.0 == "breakeven" ? Brand.accent : Color.white.opacity(0.12)))
@@ -2197,7 +2208,7 @@ struct PriceRuler: View {
                 if let mark { RoundedRectangle(cornerRadius: 2).fill(.primary).frame(width: 4, height: 26).offset(x: x(mark, w) - 2, y: 5) }
                 let labels = placed([("entry \(Fmt.price(entry))", x(entry, w), Color.secondary)]
                                     + (stop.map { [("stop \(Fmt.price($0))", x($0, w), Brand.loss)] } ?? [])
-                                    + takes.map { ("take \(Fmt.price($0))", x($0, w), Brand.profit) })
+                                    + takes.map { ("take \(Fmt.price($0))", x($0, w), Brand.profit) }, width: w)
                 ForEach(labels.indices, id: \.self) { i in
                     Text(labels[i].text).font(.system(size: 10, weight: .semibold)).foregroundStyle(labels[i].color).fixedSize()
                         .offset(x: labels[i].x, y: 30 + CGFloat(labels[i].row) * 14)
@@ -2207,12 +2218,14 @@ struct PriceRuler: View {
         .frame(height: 76)
     }
 
-    /// Labels sorted along the bar, each in the first row where it doesn't overlap the previous one.
-    private func placed(_ items: [(text: String, x: CGFloat, color: Color)]) -> [(text: String, x: CGFloat, color: Color, row: Int)] {
+    /// Labels sorted along the bar, each in the first row where it doesn't overlap the previous one, and never past
+    /// either end of the bar: a label near an edge is pushed inside, so nothing leaves the card.
+    private func placed(_ items: [(text: String, x: CGFloat, color: Color)], width w: CGFloat) -> [(text: String, x: CGFloat, color: Color, row: Int)] {
         var ends: [CGFloat] = []
+        let font = NSFont.systemFont(ofSize: 10, weight: .semibold)
         return items.sorted { $0.x < $1.x }.map { item in
-            let width = CGFloat(item.text.count) * 5.6
-            let start = max(0, item.x - width / 2)
+            let width = ceil((item.text as NSString).size(withAttributes: [.font: font]).width)
+            let start = min(max(0, item.x - width / 2), max(0, w - width))
             let row = ends.firstIndex { $0 + 6 < start } ?? ends.count
             if row == ends.count { ends.append(start + width) } else { ends[row] = start + width }
             return (item.text, start, item.color, row)
