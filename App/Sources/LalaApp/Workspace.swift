@@ -78,6 +78,8 @@ final class Workspace {
     var chart: ChartState?
     /// The day's biggest movers on the canvas.
     var showMovers = false
+    /// Where the chat is in the window, so scrolling over it isn't taken by the canvas.
+    @ObservationIgnored var chatFrame: CGRect = .zero
     /// The plan being assembled on the canvas, block by block (S02: the chat shows the count).
     var assembly: (shown: Int, total: Int)?
     /// A place opened from the rail or the portfolio: «solana», «hyperliquid», «jupiter», «aave».

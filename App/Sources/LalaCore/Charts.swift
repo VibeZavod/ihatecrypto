@@ -80,3 +80,10 @@ public enum PortfolioSplit {
         return out
     }
 }
+
+/// Zooming a canvas drawn at `pan + point·scale` about a screen point, so that point stays under the fingers.
+public enum CanvasZoom {
+    public static func pan(keeping point: CGPoint, from pan: CGSize, by k: CGFloat) -> CGSize {
+        CGSize(width: point.x - (point.x - pan.width) * k, height: point.y - (point.y - pan.height) * k)
+    }
+}

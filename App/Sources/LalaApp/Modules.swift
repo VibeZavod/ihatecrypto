@@ -471,3 +471,12 @@ struct HoverLift: ViewModifier {
             }
     }
 }
+
+extension ClosedRange where Bound == CGFloat {
+    func clamped(_ x: CGFloat) -> CGFloat { Swift.min(upperBound, Swift.max(lowerBound, x)) }
+}
+
+extension Notification.Name {
+    /// ⌘ + scroll wheel over the canvas: userInfo["factor"].
+    static let lalaCanvasZoom = Notification.Name("lalaCanvasZoom")
+}

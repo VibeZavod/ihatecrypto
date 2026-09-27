@@ -165,6 +165,7 @@ struct StudioView: View {
                     )
                     .frame(width: width, height: height)
                     .overlay(alignment: .leading) { edge(width: width, maxWidth: maxWidth) }
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { ws.chatFrame = $0 }
                     .shadow(color: .black.opacity(docked ? 0 : 0.22), radius: 26, y: 16)
                     .offset(place)
                     .padding(16)
@@ -575,6 +576,14 @@ struct StudioCanvas: View {
     @State private var zoom: CGFloat = 1
     @State private var pan: CGSize = .zero
     @GestureState private var drag: CGSize = .zero
+    /// A trackpad pinch in progress, and the point between the fingers that stays put.
+    @GestureState private var pinch: CGFloat = 1
+    @State private var pinchAt: CGPoint = .zero
+    /// Two-finger scrolling pans the canvas while the pointer is over it (not over the chat).
+    @State private var hovering = false
+    @State private var pointer: CGPoint = .zero
+    @State private var scrollMonitor: Any?
+    static let zoomRange: ClosedRange<CGFloat> = 0.4...2.5
     @State private var frames: [String: CGRect] = [:]
     /// How many plan blocks are on the canvas; grows one by one when a new plan arrives.
     @State private var shown = 0
@@ -590,8 +599,13 @@ struct StudioCanvas: View {
         }
     }
 
-    private func canvas(scale: CGFloat) -> some View {
-        ZStack(alignment: .topLeading) {
+    private func canvas(scale base: CGFloat) -> some View {
+        // Zooming about a point P keeps it still: the offset becomes P − (P − pan)·k.
+        let k = Self.zoomRange.clamped(zoom * pinch) / zoom
+        let scale = base * k
+        let live = CGSize(width: pan.width + drag.width, height: pan.height + drag.height)
+        let shown = CanvasZoom.pan(keeping: pinchAt, from: live, by: k)
+        return ZStack(alignment: .topLeading) {
             Brand.canvas
             Canvas { context, size in
                 for x in stride(from: CGFloat(11), through: size.width, by: 22) {
@@ -604,13 +618,29 @@ struct StudioCanvas: View {
 
             content
                 .scaleEffect(scale, anchor: .topLeading)
-                .offset(x: pan.width + drag.width, y: pan.height + drag.height)
+                .offset(shown)
         }
         .clipped()
         .contentShape(Rectangle())
         .gesture(DragGesture(minimumDistance: 6)
             .updating($drag) { value, state, _ in state = value.translation }
             .onEnded { value in pan.width += value.translation.width; pan.height += value.translation.height })
+        // Pinch with two fingers: in and out around the point between them.
+        .simultaneousGesture(MagnifyGesture()
+            .updating($pinch) { value, state, _ in state = value.magnification }
+            .onChanged { value in pinchAt = value.startLocation }
+            .onEnded { value in zoomAbout(value.startLocation, by: value.magnification) })
+        .onContinuousHover { phase in
+            switch phase {
+            case .active(let p): hovering = true; pointer = p
+            case .ended: hovering = false
+            }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasZoom)) { note in
+            if let f = note.userInfo?["factor"] as? CGFloat { zoomAbout(pointer, by: f) }
+        }
+        .onAppear(perform: watchScrolling)
+        .onDisappear { if let m = scrollMonitor { NSEvent.removeMonitor(m); scrollMonitor = nil } }
         .overlay(alignment: .bottomLeading) { zoomBar(scale).padding(18) }
         .task(id: planKey) { await assemble() }
     }
@@ -806,11 +836,41 @@ struct StudioCanvas: View {
         if frames[id] != frame { frames[id] = frame }
     }
 
+    /// Changes the zoom by `factor`, keeping `point` (in the canvas) where it is.
+    private func zoomAbout(_ point: CGPoint, by factor: CGFloat) {
+        let next = Self.zoomRange.clamped(zoom * factor)
+        let k = next / zoom
+        pan = CanvasZoom.pan(keeping: point, from: pan, by: k)
+        zoom = next
+        pinchAt = .zero
+    }
+
+    /// Trackpad two-finger scrolling pans; ⌘ + scroll zooms (for a mouse wheel). Over the chat, scrolling stays the chat's.
+    private func watchScrolling() {
+        guard scrollMonitor == nil else { return }
+        let hovering = $hovering, pan = $pan
+        let ws = ws
+        scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
+            guard hovering.wrappedValue, let window = event.window else { return event }
+            let height = window.contentView?.bounds.height ?? 0
+            let point = CGPoint(x: event.locationInWindow.x, y: height - event.locationInWindow.y)
+            if ws.chatFrame.contains(point) { return event }
+            let step: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 10
+            if event.modifierFlags.contains(.command) {
+                NotificationCenter.default.post(name: .lalaCanvasZoom, object: nil, userInfo: ["factor": 1 + event.scrollingDeltaY * step * 0.01])
+            } else {
+                pan.wrappedValue.width += event.scrollingDeltaX * step
+                pan.wrappedValue.height += event.scrollingDeltaY * step
+            }
+            return nil
+        }
+    }
+
     private func zoomBar(_ scale: CGFloat) -> some View {
         HStack(spacing: 4) {
-            Button { withAnimation { zoom = max(0.5, zoom - 0.1) } } label: { Image(systemName: "minus") }.help("Zoom out")
+            Button { withAnimation { zoom = Self.zoomRange.clamped(zoom - 0.1) } } label: { Image(systemName: "minus") }.help("Zoom out · or pinch")
             Text("\(Int((scale * 100).rounded()))%").font(.system(size: 12, weight: .semibold)).monospacedDigit().frame(width: 44)
-            Button { withAnimation { zoom = min(1.6, zoom + 0.1) } } label: { Image(systemName: "plus") }.help("Zoom in")
+            Button { withAnimation { zoom = Self.zoomRange.clamped(zoom + 0.1) } } label: { Image(systemName: "plus") }.help("Zoom in · or pinch")
             Button("Fit") { withAnimation { zoom = 1; pan = .zero } }
         }
         .buttonStyle(.borderless)
