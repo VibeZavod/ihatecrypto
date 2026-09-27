@@ -147,7 +147,7 @@ struct StudioView: View {
                 let docked = place.width > -40 && place.height > -40
                 ZStack(alignment: .topTrailing) {
                     if mode == "history" {
-                        HistoryView(inset: docked ? width + 32 : 0) { withAnimation(.snappy) { mode = "plan" } }
+                        HistoryView { withAnimation(.snappy) { mode = "plan" } }
                     } else {
                         // The canvas's scale follows the window alone: moving or resizing the chat, which floats
                         // above everything, never shifts or rescales the boards.

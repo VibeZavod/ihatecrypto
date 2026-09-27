@@ -17,7 +17,6 @@ struct HistoryView: View {
     @State private var earlier: [Activity] = []
     @State private var loading = false
     @State private var loadError: String?
-    var inset: CGFloat = 0
     let close: () -> Void
 
     var body: some View {
@@ -45,7 +44,7 @@ struct HistoryView: View {
                 .frame(maxWidth: 760, alignment: .leading)
             }
         }
-        .padding(.trailing, inset)
+        // Full width: the chat floats above the page, as it does over the canvas.
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Brand.canvas)
         .task { await load() }
@@ -101,7 +100,7 @@ struct HistoryView: View {
                 Image(systemName: r.icon).foregroundStyle(r.tint).frame(width: 18)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(r.text).font(.system(size: 13))
-                    if let d = r.detail { Text(d).font(.caption).foregroundStyle(.secondary) }
+                    if let d = r.detail { Text(ChatText.styled(d)).font(.caption).foregroundStyle(.secondary) }
                 }
                 Spacer(minLength: 0)
                 if let link = r.link { Link(destination: link) { Image(systemName: "arrow.up.right.square") }.help(link.absoluteString) }
@@ -277,7 +276,7 @@ struct ActivityCard: View {
             }
             let lines = expanded ? activity.lines : Array(activity.lines.suffix(2))
             ForEach(lines.indices, id: \.self) { i in
-                Text(lines[i]).font(.caption).foregroundStyle(.secondary).lineLimit(expanded ? nil : 3).textSelection(.enabled)
+                Text(ChatText.styled(lines[i])).font(.caption).foregroundStyle(.secondary).lineLimit(expanded ? nil : 3).textSelection(.enabled)
             }
             if activity.lines.count > 2 {
                 Button(expanded ? "Less" : "All \(activity.lines.count) lines") { withAnimation { expanded.toggle() } }
@@ -336,7 +335,7 @@ struct HistoryBubble: View {
                 Text(bubble.label.uppercased()).font(.system(size: 9.5, weight: .heavy)).tracking(0.5).opacity(0.8)
             }
             Text(bubble.title).font(.system(size: 14, weight: .bold)).lineLimit(3)
-            ForEach(bubble.lines.prefix(2), id: \.self) { Text($0).font(.caption).opacity(0.8).lineLimit(3) }
+            ForEach(bubble.lines.prefix(2), id: \.self) { Text(ChatText.styled($0)).font(.caption).opacity(0.8).lineLimit(3) }
         }
         .foregroundStyle(dark ? Color.white : Color.primary)
         .padding(12)
