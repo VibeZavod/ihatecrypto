@@ -57,6 +57,8 @@ struct CanvasSession: Codable, Identifiable {
     var boardAt: Date?
     /// The chart on it, candles included: reopened, it shows this snapshot until Refresh.
     var chart: ChartState?
+    /// When it was pinned to the top of the list; nil = not pinned. Pinned ones keep the order they were pinned in.
+    var pinnedAt: Date?
 
     var displayTitle: String { name ?? (title.isEmpty ? "Canvas" : title) }
 }
@@ -127,6 +129,16 @@ extension Workspace {
         guard let i = canvases.firstIndex(where: { $0.id == id }) else { return }
         let trimmed = folder?.trimmingCharacters(in: .whitespacesAndNewlines)
         canvases[i].folder = trimmed?.isEmpty == false ? String(trimmed!.prefix(40)) : nil
+    }
+
+    /// At most this many canvases stay pinned to the top of the list.
+    static let maxPinned = 5
+
+    /// Pinning past the limit does nothing; the menu says to unpin one first.
+    func pinCanvas(_ id: UUID, _ on: Bool) {
+        guard let i = canvases.firstIndex(where: { $0.id == id }),
+              !on || canvases.filter({ $0.pinnedAt != nil }).count < Self.maxPinned else { return }
+        canvases[i].pinnedAt = on ? Date() : nil
     }
 
     var canvasFolders: [String] { Array(Set(canvases.compactMap(\.folder))).sorted { $0.localizedStandardCompare($1) == .orderedAscending } }
@@ -216,11 +228,16 @@ struct CanvasList: View {
 }
 
 extension CanvasList {
-    /// Folders first (open or folded), then the canvases in no folder; newest first inside each.
-    private func rows(_ items: [CanvasSession]) -> some View {
+    /// Pinned canvases first (in the order they were pinned), then folders (open or folded), then the canvases in no
+    /// folder; newest first inside each. A pinned canvas shows only at the top, not again in its folder.
+    private func rows(_ all: [CanvasSession]) -> some View {
         let folded = Set(foldedRaw.split(separator: "\n").map(String.init))
+        let pinned = all.filter { $0.pinnedAt != nil }.sorted { $0.pinnedAt! < $1.pinnedAt! }
+        let items = all.filter { $0.pinnedAt == nil }
         return LazyVStack(alignment: .leading, spacing: 2) {
-            ForEach(ws.canvasFolders, id: \.self) { folder in
+            ForEach(pinned) { row($0) }
+            if !pinned.isEmpty, !items.isEmpty { Divider().padding(.vertical, 4).padding(.horizontal, 8) }
+            ForEach(ws.canvasFolders.filter { f in items.contains { $0.folder == f } }, id: \.self) { folder in
                 FolderRow(name: folder, count: items.filter { $0.folder == folder }.count, folded: folded.contains(folder)) {
                     var set = folded
                     if set.contains(folder) { set.remove(folder) } else { set.insert(folder) }
@@ -297,7 +314,7 @@ struct CanvasRow: View {
             .pointerStyle(.link)
             .opacity(hover && !renaming ? 1 : 0)
             .allowsHitTesting(hover && !renaming)
-            .help("Rename, move to a folder, delete")
+            .help("Pin, rename, move to a folder, delete")
         }
         .padding(.horizontal, 8).padding(.vertical, 6)
         .background(RoundedRectangle(cornerRadius: 10).fill(current ? Brand.accent.opacity(0.1) : hover ? Color.primary.opacity(0.05) : .clear))
@@ -330,7 +347,12 @@ struct CanvasRow: View {
                         .onExitCommand { renaming = false }
                         .onChange(of: nameFocused) { if !nameFocused, renaming { commitRename() } }
                 } else {
-                    Text(canvas.displayTitle).font(.system(size: 12.5, weight: current ? .semibold : .regular)).lineLimit(1)
+                    HStack(spacing: 4) {
+                        Text(canvas.displayTitle).font(.system(size: 12.5, weight: current ? .semibold : .regular)).lineLimit(1)
+                        if canvas.pinnedAt != nil {
+                            Image(systemName: "pin.fill").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary).help("Pinned")
+                        }
+                    }
                 }
                 Text("\(canvas.model) · \(Fmt.date(canvas.updated))").font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
             }
@@ -340,6 +362,16 @@ struct CanvasRow: View {
     }
 
     @ViewBuilder private var actions: some View {
+        if canvas.pinnedAt != nil {
+            Button { withAnimation(.snappy) { ws.pinCanvas(canvas.id, false) } } label: { Label("Unpin", systemImage: "pin.slash") }
+        } else {
+            let full = ws.canvases.filter { $0.pinnedAt != nil }.count >= Workspace.maxPinned
+            Button { withAnimation(.snappy) { ws.pinCanvas(canvas.id, true) } } label: {
+                Label(full ? "Pin — \(Workspace.maxPinned) already pinned, unpin one first" : "Pin to the top", systemImage: "pin")
+            }
+            .disabled(full)
+        }
+        Divider()
         Button("Rename") {
             draft = canvas.displayTitle
             renaming = true
