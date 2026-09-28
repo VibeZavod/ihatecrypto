@@ -326,7 +326,8 @@ func sweepSolana(to destination: String) async throws {
     if usdc > 0 { print(try await executor.sendUSDC(Decimal(usdc) / 1_000_000, to: .solana(destination), label: "the new wallet")) }
 
     // Empty token accounts hold ≈ 0.002 SOL of rent each: closing them brings it back before the SOL leaves.
-    let accounts = (try await rpc.call("getTokenAccountsByOwner", [me, ["programId": SPL.tokenProgram], ["encoding": "jsonParsed"]]) as? [String: Any])?["value"] as? [[String: Any]] ?? []
+    // «confirmed», not the default «finalized»: right after the USDC left, finalized still shows it there.
+    let accounts = (try await rpc.call("getTokenAccountsByOwner", [me, ["programId": SPL.tokenProgram], ["encoding": "jsonParsed", "commitment": "confirmed"]]) as? [String: Any])?["value"] as? [[String: Any]] ?? []
     let empty = accounts.compactMap { a -> String? in
         let amount = ((((a["account"] as? [String: Any])?["data"] as? [String: Any])?["parsed"] as? [String: Any])?["info"] as? [String: Any])
             .flatMap { ($0["tokenAmount"] as? [String: Any])?["amount"] as? String }
@@ -371,7 +372,9 @@ func sweepNear(to destination: String) async throws {
     guard destination.wholeMatch(of: /[0-9a-f]{64}/) != nil, destination != me else { throw WalletError("Not a NEAR implicit account to move to: \(destination)") }
     let context = try await Near.txContext(account: me)
     let balance = UInt128(context.balance) ?? 0
-    let keep = UInt128(context.storageBytes) * 10_000_000_000_000_000_000 + 1_000_000_000_000_000_000_000   // storage + 0.001 NEAR
+    // Storage, and 0.01 NEAR: a transfer that creates the new implicit account prepays ≈ 0.0076 NEAR of gas at the
+    // pessimistic price (measured 2026-09-28); the unused part comes back to the old account.
+    let keep = UInt128(context.storageBytes) * 10_000_000_000_000_000_000 + 10_000_000_000_000_000_000_000
     guard balance > keep else { throw WalletError("Nothing to move: \(NearTransaction.near(balance)) NEAR, \(NearTransaction.near(keep)) stays for storage.") }
     let amount = (balance - keep) / 1_000_000_000_000_000_000 * 1_000_000_000_000_000_000
     guard send else { print("Moves \(NearTransaction.near(amount)) NEAR from \(me) to \(destination). Add --yes."); return }
@@ -379,4 +382,21 @@ func sweepNear(to destination: String) async throws {
                                           actions: [.transfer(deposit: amount)], privateKey: key).signed
     let hash = try await Near.send(signed)
     print("Sent \(NearTransaction.near(amount)) NEAR to \(destination.prefix(8))…: https://nearblocks.io/txns/\(hash)")
+}
+
+/// `sweep-hyperliquid <new EVM address> --yes`: the old test wallet's HLP (once its 4-day lock is over) back to its
+/// perp balance, then everything there to the new wallet's Hyperliquid account with usdSend — no bridge, no Solana
+/// fee. Only that address may receive it (the guard and the signer check).
+func sweepHyperliquid(to destination: String) async throws {
+    let signer = try LocalSigner()
+    guard destination.wholeMatch(of: /0x[0-9a-fA-F]{40}/) != nil, destination.lowercased() != signer.wallet.evm.lowercased() else { throw WalletError("Not an EVM address to move to: \(destination)") }
+    let executor = Executor(wallet: signer.wallet, signer: signer, journal: journal, rpc: rpc) { print("[\(stamp())] \($0)") }
+    let vault = try await HyperliquidAccount.vaultEquity(user: signer.wallet.evm, vault: HLGuard.hlpVault)
+    guard send else {
+        print("HLP \(Fmt.usd(vault.equity))\(vault.lockedUntil.map { ", locked until \(Fmt.date($0))" } ?? ""); then all perp USDC to \(destination) on Hyperliquid. Add --yes.")
+        return
+    }
+    if vault.equity > 0 { print(try await executor.hlp(deposit: false, amount: nil)) }
+    let free = try await Hyperliquid.balance(user: signer.wallet.evm).withdrawable
+    print(try await executor.sendUSDC(free, to: .hyperliquid(destination), label: "the new wallet"))
 }
