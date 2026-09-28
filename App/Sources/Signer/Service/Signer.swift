@@ -69,9 +69,11 @@ enum Signer {
             return r
 
         case .createWallet(let requirePresence):
+            // Without Touch ID it can only be a test wallet: a phrase made here and now, never one imported with money on it.
             let phrase = Mnemonic.generate()
-            try confirmInPerson("add a new wallet to ihatecrypto and sign with it")
-            var r = try store(phrase: phrase, passphrase: "", requirePresence: requirePresence)
+            try confirmInPerson(requirePresence ? "add a new wallet to ihatecrypto and sign with it"
+                                                : "add a TEST wallet that signs WITHOUT Touch ID — keep only a few dollars on it")
+            var r = try store(phrase: phrase, passphrase: "", requirePresence: requirePresence, test: !requirePresence)
             r.phrase = phrase
             return r
 
@@ -337,25 +339,27 @@ enum Signer {
     }
 
     /// A phrase wallet: its seed and the public addresses derived from it.
-    static func store(phrase: String, passphrase: String, requirePresence: Bool) throws -> SignerReply {
+    static func store(phrase: String, passphrase: String, requirePresence: Bool, test: Bool = false) throws -> SignerReply {
         var seed = try Mnemonic.seed(phrase, passphrase: passphrase)
         defer { SeedStore.wipe(&seed) }
         return try add(secret: seed, kind: "phrase",
                        solana: try SolanaAccount.address(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.solana(0))),
                        evm: try EVMAccount.address(privateKey: Derivation.secp256k1(seed: seed, path: WalletPath.evm(0))),
                        near: try NearAccount.implicit(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.near(0))),
-                       requirePresence: requirePresence)
+                       requirePresence: requirePresence, test: test)
     }
 
     /// Adds a wallet (or re-seals the same one: same kind and addresses keep its id, trading key and approved
     /// addresses) and signs with it from now on.
-    static func add(secret: Data, kind: String, solana: String?, evm: String?, near: String?, requirePresence: Bool) throws -> SignerReply {
+    static func add(secret: Data, kind: String, solana: String?, evm: String?, near: String?, requirePresence: Bool,
+                    test: Bool = false) throws -> SignerReply {
         var list = Wallets.all
         let same = list.first { $0.kind == kind && $0.solana == solana && $0.evm?.lowercased() == evm?.lowercased() }
         let id = same?.id ?? (list.isEmpty ? SignerWallet.firstID : String(UUID().uuidString.prefix(8)).lowercased())
-        try SeedStore.save(secret, requirePresence: requirePresence, id: id)
-        let wallet = SignerWallet(id: id, label: same?.label ?? (list.isEmpty ? "Main" : "Wallet \(list.count + 1)"),
-                                  kind: kind, solana: solana, evm: evm, near: near)
+        try SeedStore.save(secret, requirePresence: requirePresence, id: id, test: test)
+        let tests = list.filter(\.isTest).count
+        let wallet = SignerWallet(id: id, label: same?.label ?? (test ? (tests == 0 ? "Test" : "Test \(tests + 1)") : list.isEmpty ? "Main" : "Wallet \(list.count + 1)"),
+                                  kind: kind, solana: solana, evm: evm, near: near, test: test ? true : nil)
         if let i = list.firstIndex(where: { $0.id == id }) { list[i] = wallet } else { list.append(wallet) }
         Wallets.save(list)
         Wallets.activate(wallet)

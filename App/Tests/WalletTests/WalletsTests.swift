@@ -59,3 +59,13 @@ private let rfcPublic = Data(hex: "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62
     let phrase = SignerWallet(id: "1", label: "Main", kind: "phrase", solana: "S", evm: "E", near: "N")
     #expect(["solana", "evm", "near"].allSatisfy { phrase.missing($0) == nil })
 }
+
+@Test func testWalletsAreMarkedAndOldRegistriesStayTouchID() throws {
+    // A registry written before test wallets has no «test»: every wallet in it keeps asking for Touch ID.
+    let old = #"[{"id":"1","label":"Main","kind":"phrase","solana":"S","evm":"E","near":"N"}]"#
+    let read = try JSONDecoder().decode([SignerWallet].self, from: Data(old.utf8))
+    #expect(read.count == 1 && !read[0].isTest)
+    let test = SignerWallet(id: "t1", label: "Test", kind: "phrase", solana: "S2", evm: "E2", near: nil, test: true)
+    let round = try JSONDecoder().decode(SignerWallet.self, from: JSONEncoder().encode(test))
+    #expect(round.isTest && round == test)
+}

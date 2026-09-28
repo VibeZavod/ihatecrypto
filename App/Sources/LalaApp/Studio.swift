@@ -488,6 +488,8 @@ struct StudioRail: View {
                 HStack(spacing: 6) {
                     Text("Balance").font(.ui(12)).foregroundStyle(.secondary)
                     BalanceFreshness(hovering: balanceHover)
+                    Spacer(minLength: 4)
+                    WalletChip()
                 }
                 if ws.updatedAt == nil {
                     Skeleton(width: 150, height: 34, radius: 9).padding(.vertical, 3)
@@ -542,6 +544,7 @@ struct StudioRail: View {
             .buttonStyle(LitBlock())
             .disabled(refreshing)
             .help(refreshing ? "Updating the balance…" : "Balance — click to update it")
+            WalletChip(compact: true)
             Divider().frame(width: 32)
             RailActions(compact: true)
             Divider().frame(width: 32)

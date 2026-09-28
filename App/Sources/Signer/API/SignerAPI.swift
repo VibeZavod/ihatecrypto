@@ -87,10 +87,15 @@ public struct SignerWallet: Codable, Sendable, Equatable, Identifiable {
     public var solana: String?
     public var evm: String?
     public var near: String?
+    /// A test wallet: made fresh in the app for small amounts, it signs without Touch ID (nil in older registries: no).
+    /// Only it may sign what came through the local debug API.
+    public var test: Bool?
 
-    public init(id: String, label: String, kind: String, solana: String?, evm: String?, near: String?) {
-        (self.id, self.label, self.kind, self.solana, self.evm, self.near) = (id, label, kind, solana, evm, near)
+    public init(id: String, label: String, kind: String, solana: String?, evm: String?, near: String?, test: Bool? = nil) {
+        (self.id, self.label, self.kind, self.solana, self.evm, self.near, self.test) = (id, label, kind, solana, evm, near, test)
     }
+
+    public var isTest: Bool { test == true }
 
     /// Wallet «1» is the one LALA held before several wallets: its Keychain items keep their old names.
     public static let firstID = "1"
@@ -174,13 +179,21 @@ public final class SignerClient: @unchecked Sendable {
     deinit { connection.invalidate() }
 
     /// Set while LALA handles a message from its local debug API (DebugAPI.swift): only status requests pass, so
-    /// nothing that came from outside the window can sign or change the key, whatever path the message takes.
+    /// nothing that came from outside the window can sign or change the key, whatever path the message takes —
+    /// except a trade's signatures while a test wallet signs (the user made it for exactly that; no Touch ID).
+    /// Adding, switching, renaming or removing wallets never passes.
     @TaskLocal public static var untrusted = false
 
     public func send(_ request: SignerRequest) async throws -> SignerReply {
         if Self.untrusted {
             switch request {
             case .status, .nearAddress, .endSession: break
+            case .signSolana, .signEVMTransaction, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
+                 .signNearIntentDeposit, .signNearTransfer, .signNearDeleteAccount:
+                let status = try await Self.$untrusted.withValue(false) { try await send(.status) }
+                guard status.wallets?.first(where: { $0.id == status.activeWallet })?.isTest == true else {
+                    throw WalletError("Nothing is signed from the debug API while a Touch ID wallet signs: confirm money moves in ihatecrypto’s window, or switch to a test wallet.")
+                }
             default: throw WalletError("Nothing is signed from the debug API: confirm money moves in ihatecrypto’s window.")
             }
         }

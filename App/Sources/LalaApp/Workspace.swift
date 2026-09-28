@@ -462,7 +462,7 @@ final class Workspace {
         let before = intent
 
         // A confirmation from the debug API would only fail at the signer and lose the card: keep it for the window.
-        if SignerClient.untrusted, pendingAction != nil || pendingAllocation != nil,
+        if SignerClient.untrusted, activeWallet?.isTest != true, pendingAction != nil || pendingAllocation != nil,
            text.lowercased().contains(/^(?:делай|да|давай|подтверждаю|го|do\s+it|go|yes|confirm|sign)\b/) {
             reply(say("That «do it» came from the debug API, which can’t confirm money moves. In the window, press Confirm on the card or type «do it» yourself.",
                       "Это «do it» пришло из отладочного API, а он не подтверждает переводы. В окне нажми Confirm на карточке или напиши «делай» сам."), note: "debug API")

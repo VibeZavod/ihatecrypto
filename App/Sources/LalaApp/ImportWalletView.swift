@@ -26,6 +26,8 @@ struct ImportWalletView: View {
     @State private var renaming: String?
     @State private var draftName = ""
     @State private var removing: SignerWallet?
+    /// «New test wallet…» in the rail's wallet menu opens this window with it chosen.
+    @AppStorage("newWalletTest") private var newTest = false
 
     var body: some View {
         Form {
@@ -132,8 +134,13 @@ struct ImportWalletView: View {
                 Text("ihatecrypto makes a new 12-word recovery phrase inside the signer, from this Mac's random number generator, and keeps the key sealed by the Secure Enclave. Every signature asks for Touch ID or your password."
                      + (ws.signerWallet == nil ? "" : " It is added next to your other wallets and signs until you switch back."))
                     .font(.ui(10)).foregroundStyle(.secondary)
+                Toggle("Test wallet: signs without Touch ID", isOn: $newTest)
+                if newTest {
+                    Text("For trying things out, and for Claude to test ihatecrypto without asking you: keep only a few dollars on it. It can't be made from an imported phrase, and adding it still asks for Touch ID once.")
+                        .font(.ui(10)).foregroundStyle(.orange)
+                }
                 HStack {
-                    Button("Create a new wallet", action: createWallet).disabled(creating)
+                    Button(newTest ? "Create a test wallet" : "Create a new wallet", action: createWallet).disabled(creating)
                     if creating { ProgressView().controlSize(.small) }
                 }
             }
@@ -266,7 +273,8 @@ struct ImportWalletView: View {
         Task {
             defer { creating = false }
             do {
-                let reply = try await SignerClient().send(.createWallet(requirePresence: true))
+                let reply = try await SignerClient().send(.createWallet(requirePresence: !newTest))
+                newTest = false
                 guard reply.ok, let phrase = reply.phrase else { throw WalletError(reply.error ?? "The signer refused.") }
                 newPhrase = phrase.split(separator: " ").map(String.init)
                 stored = "New wallet: Solana \(reply.solanaAddress ?? "?"), EVM \(reply.evmAddress ?? "?")."

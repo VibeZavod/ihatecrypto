@@ -68,14 +68,15 @@ enum SeedStore {
         return status == errSecSuccess || status == errSecInteractionNotAllowed
     }
 
-    /// Seals the seed to a new Enclave key. Release builds always ask for Touch ID or the password to open it;
-    /// Debug builds may skip that for the automated self-test with the public test phrase.
-    static func save(_ seed: Data, requirePresence: Bool, id: String) throws {
+    /// Seals the seed to a new Enclave key. Release builds ask for Touch ID or the password to open it, except for a
+    /// test wallet (made fresh in the app, for small amounts); Debug builds may skip it for the automated self-test
+    /// with the public test phrase.
+    static func save(_ seed: Data, requirePresence: Bool, id: String, test: Bool = false) throws {
         let account = account(id)
         #if DEBUG
         let presence = requirePresence
         #else
-        let presence = true
+        let presence = requirePresence || !test
         #endif
         var error: Unmanaged<CFError>?
         func fail(_ what: String) -> WalletError { WalletError("\(what): \(error.map { "\($0.takeRetainedValue())" } ?? "?")") }
