@@ -44,6 +44,12 @@ final class Workspace {
     var signerHasWallet: Bool?
     /// The wallet whose key the signing process holds; only then can a plan be executed.
     var signerWallet: TradeWallet?
+    /// Every wallet in the signer (public parts) and the one that signs; state kept on this Mac per wallet (exit rules,
+    /// recurring buys, the portfolio curve) sits under its id (Wallets.swift).
+    var wallets: [SignerWallet] = []
+    var activeWalletID: String? = UserDefaults.standard.string(forKey: "activeWalletID") {
+        didSet { UserDefaults.standard.set(activeWalletID, forKey: "activeWalletID") }
+    }
     /// The in-app dApp browser; its wallet is the signer's.
     @ObservationIgnored let browser = Browser()
     /// The signer's Hyperliquid agent: orders without Touch ID, no withdrawals.
@@ -113,8 +119,8 @@ final class Workspace {
         didSet { LocalStore.save(canvases, "canvases.json") }
     }
     /// The portfolio's value every ten minutes for 30 days (Alerts.swift).
-    var equityHistory: [EquityPoint] = LocalStore.load("equity.json") ?? [] {
-        didSet { LocalStore.save(equityHistory, "equity.json") }
+    var equityHistory: [EquityPoint] = LocalStore.load(Workspace.scoped("equity") + ".json") ?? [] {
+        didSet { LocalStore.save(equityHistory, Workspace.scoped("equity", activeWalletID) + ".json") }
     }
     /// Tokens the user watches (TokensUI.swift), their DexScreener data and what the wallet holds of them.
     var favoriteTokens: [FavoriteToken] = LocalStore.load("tokens.json") ?? [] {
@@ -152,12 +158,12 @@ final class Workspace {
     var yieldOptions: [Yields.Option]?
     /// Take-profit styles offered on the canvas after «take profit like the best investors»; nil when none.
     var takeChoices: [TakeStyle]?
-    var schedules: [Schedule] = (UserDefaults.standard.data(forKey: "schedules").flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) }) ?? [] {
-        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(schedules), forKey: "schedules") }
+    var schedules: [Schedule] = (UserDefaults.standard.data(forKey: Workspace.scoped("schedules")).flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) }) ?? [] {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(schedules), forKey: Workspace.scoped("schedules", activeWalletID)) }
     }
     /// Exit rules the app keeps for open positions (breakeven after the partial take, trailing), by coin.
-    var exitRules: [String: ExitRules] = (UserDefaults.standard.data(forKey: "exitRules").flatMap { try? JSONDecoder().decode([String: ExitRules].self, from: $0) }) ?? [:] {
-        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(exitRules), forKey: "exitRules") }
+    var exitRules: [String: ExitRules] = (UserDefaults.standard.data(forKey: Workspace.scoped("exitRules")).flatMap { try? JSONDecoder().decode([String: ExitRules].self, from: $0) }) ?? [:] {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(exitRules), forKey: Workspace.scoped("exitRules", activeWalletID)) }
     }
     /// The position the plan card shows: the plan's asset if open, otherwise the first one.
     var position: HyperliquidAccount.Position? { positions.first { $0.coin == intent.asset } ?? positions.first }
@@ -493,6 +499,13 @@ final class Workspace {
         }
         if text.lowercased().wholeMatch(of: /\s*(?:lock|lock\s+(?:it|the\s+wallet|signing)|заблокируй\w*|блокир\w*)\s*[.!]?\s*/) != nil {
             await lockSigner()
+            return
+        }
+        // «переключись на кошелёк Main»: the wallet by its name; the signer asks for Touch ID.
+        if let target = walletSwitch(text) {
+            if let target { await switchWallet(target) } else {
+                reply("No wallet has that name. Yours: \(wallets.map { "«\($0.label)»" }.joined(separator: ", ")).")
+            }
             return
         }
         if text.lowercased().contains(/(?:resume|unpause|turn\s+on|включи|верни)\s+(?:the\s+)?(?:trading\s+key|торгов\w*\s+ключ)/) {
@@ -904,13 +917,19 @@ final class Workspace {
     func loadSigner() async {
         guard SignerClient.isAvailable, let status = try? await SignerClient().send(.status) else { return }
         signerHasWallet = status.hasWallet
-        // A wallet imported before NEAR: the signer derives the address once (one unlock), then keeps it.
-        let near = status.hasWallet == true && status.nearAddress == nil ? try? await SignerClient().send(.nearAddress).nearAddress : status.nearAddress
-        if let near, nearAddress != near { nearAddress = near; await loadSolana() }
+        wallets = status.wallets ?? []
+        if status.activeWallet != activeWalletID { walletChanged(to: status.activeWallet) }
+        // A phrase wallet imported before NEAR: the signer derives the address once (one unlock), then keeps it.
+        // A key wallet has no NEAR account at all.
+        let phrase = activeWallet?.kind ?? "phrase" == "phrase"
+        let near = status.hasWallet == true && status.nearAddress == nil && phrase ? try? await SignerClient().send(.nearAddress).nearAddress : status.nearAddress
+        if nearAddress != near { nearAddress = near; await loadSolana() }
         agentAddress = status.agentAddress
         agentActive = status.agentActive ?? false
         sessionLength = status.sessionLength ?? SignerSession.standard
-        if status.hasWallet == true, let solana = status.solanaAddress, let evm = status.evmAddress {
+        if status.hasWallet == true, status.solanaAddress != nil || status.evmAddress != nil {
+            // A key wallet leaves the other chain's address empty: its balances show nothing, its commands say why.
+            let solana = status.solanaAddress ?? "", evm = status.evmAddress ?? ""
             signerWallet = TradeWallet(solana: solana, evm: evm)
             // The key holder defines the wallet: balances and plans follow it.
             if solanaAddress != solana { solanaAddress = solana }

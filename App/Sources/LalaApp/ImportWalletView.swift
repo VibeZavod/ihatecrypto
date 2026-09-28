@@ -21,9 +21,15 @@ struct ImportWalletView: View {
     @State private var creating = false
     /// The clipboard's change count right after the phrase was copied: it is wiped only while it still holds it.
     @State private var copiedChange: Int?
+    /// A private key pasted from Phantom or MetaMask: recognized and shown as its address before anything is saved.
+    @State private var privateKey = ""
+    @State private var renaming: String?
+    @State private var draftName = ""
+    @State private var removing: SignerWallet?
 
     var body: some View {
         Form {
+            if SignerClient.isAvailable, !ws.wallets.isEmpty { walletList }
             if SignerClient.isAvailable { create }
             Section("Import a phrase") {
                 SecureField("12 or 24 words separated by spaces", text: $phrase)
@@ -38,13 +44,14 @@ struct ImportWalletView: View {
                     #endif
                 }
                 Text(store
-                     ? "The phrase goes only to the separate signer, which has no network access. It keeps the key sealed by this Mac's Secure Enclave and signs only what passes the guard, after Touch ID or your password. Replacing a wallet that is already there asks for Touch ID too."
+                     ? "The phrase goes only to the separate signer, which has no network access. It keeps the key sealed by this Mac's Secure Enclave and signs only what passes the guard, after Touch ID or your password. It is added next to your other wallets; adding one when there is a wallet already asks for Touch ID."
                      : "The phrase isn't saved or sent anywhere. The app takes only the public addresses from it to show balances. Try the test phrase first.")
                     .font(.caption).foregroundStyle(.secondary)
                 Button(store ? "Save and show addresses" : "Show addresses", action: derive).disabled(phrase.isEmpty)
                 if let stored { Text(stored).font(.caption).foregroundStyle(.green) }
                 if let error { Text(error).font(.caption).foregroundStyle(.red) }
             }
+            if SignerClient.isAvailable { keyImport }
             if !accounts.isEmpty {
                 Section("Compare with MetaMask and Phantom") {
                     Grid(alignment: .leading, horizontalSpacing: 12, verticalSpacing: 8) {
@@ -74,7 +81,7 @@ struct ImportWalletView: View {
         }
         .formStyle(.grouped)
         .frame(width: 760)
-        .onDisappear { phrase = ""; passphrase = ""; accounts = []; newPhrase = nil; wipeCopied() }
+        .onDisappear { phrase = ""; passphrase = ""; privateKey = ""; accounts = []; newPhrase = nil; wipeCopied() }
         // While the words are on screen, screenshots, recordings and screen sharing get a blank window.
         .onChange(of: newPhrase == nil) { _, hidden in NSApp.keyWindow?.sharingType = hidden ? .readOnly : .none }
         .onAppear {
@@ -123,12 +130,108 @@ struct ImportWalletView: View {
                 }
             } else {
                 Text("LALA makes a new 12-word recovery phrase inside the signer, from this Mac's random number generator, and keeps the key sealed by the Secure Enclave. Every signature asks for Touch ID or your password."
-                     + (ws.signerWallet == nil ? "" : " It replaces the wallet that is in LALA now — move the money out of it first."))
+                     + (ws.signerWallet == nil ? "" : " It is added next to your other wallets and signs until you switch back."))
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {
                     Button("Create a new wallet", action: createWallet).disabled(creating)
                     if creating { ProgressView().controlSize(.small) }
                 }
+            }
+        }
+    }
+
+    /// Every wallet in the signer: which one signs, switching (Touch ID), a name of the user's own, removal.
+    @ViewBuilder private var walletList: some View {
+        Section("Your wallets") {
+            ForEach(ws.wallets) { w in
+                HStack(alignment: .firstTextBaseline, spacing: 10) {
+                    Image(systemName: w.id == ws.activeWalletID ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(w.id == ws.activeWalletID ? Color.green : Color.secondary)
+                    VStack(alignment: .leading, spacing: 2) {
+                        if renaming == w.id {
+                            TextField("Name", text: $draftName).onSubmit { rename(w) }.frame(maxWidth: 220)
+                        } else {
+                            Text(w.label).font(.body.weight(.semibold))
+                        }
+                        Text(Workspace.describe(w)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                    }
+                    Spacer()
+                    if w.id == ws.activeWalletID {
+                        Text("signs now").font(.caption).foregroundStyle(.green)
+                    } else {
+                        Button("Use this one") { Task { await ws.switchWallet(w) } }
+                    }
+                    Button { renaming = w.id; draftName = w.label } label: { Image(systemName: "pencil") }
+                        .buttonStyle(.borderless).help("Rename").accessibilityLabel("Rename \(w.label)")
+                    Button(role: .destructive) { removing = w } label: { Image(systemName: "trash") }
+                        .buttonStyle(.borderless).help("Remove this wallet").accessibilityLabel("Remove \(w.label)")
+                }
+            }
+            Text("One wallet signs at a time; switching or removing one asks for Touch ID. Each keeps its own trading key and approved addresses. In the chat: «переключись на кошелёк \(ws.wallets.first?.label ?? "Main")».")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .confirmationDialog("Remove «\(removing?.label ?? "")»?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
+            Button("Remove the wallet", role: .destructive) {
+                guard let w = removing else { return }
+                Task {
+                    do {
+                        let reply = try await SignerClient().send(.removeWallet(id: w.id))
+                        guard reply.ok else { throw WalletError(reply.error ?? "The signer refused.") }
+                        await ws.loadSigner()
+                        await ws.refresh()
+                    } catch { self.error = error.localizedDescription }
+                }
+            }
+        } message: {
+            Text("Only if its recovery phrase or key is written down: without it the money on this wallet can't be reached from here again. The money itself stays where it is.")
+        }
+    }
+
+    private func rename(_ w: SignerWallet) {
+        let name = draftName
+        renaming = nil
+        Task {
+            do {
+                let reply = try await SignerClient().send(.renameWallet(id: w.id, label: name))
+                guard reply.ok else { throw WalletError(reply.error ?? "The signer refused.") }
+                await ws.loadSigner()
+            } catch { self.error = error.localizedDescription }
+        }
+    }
+
+    /// A single private key: Phantom's Solana key (base58, or a key file's 64 numbers) or MetaMask's EVM key (hex).
+    /// Recognized here as it is pasted and shown as its address to compare; only «Save» sends it to the signer.
+    @ViewBuilder private var keyImport: some View {
+        Section("Import a private key") {
+            SecureField("Solana key from Phantom, or EVM key from MetaMask", text: $privateKey)
+            switch privateKey.isEmpty ? nil : Result(catching: { try ImportedKey.parse(privateKey) }) {
+            case .success(let key)?:
+                LabeledContent(key.chain, value: (try? key.address()) ?? "?")
+                    .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
+                Text("Compare it with \(key.chain == "Solana" ? "Phantom" : "MetaMask") before saving. This wallet signs only on \(key.chain); for the other chains, switch wallets.")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("Save as a wallet", action: importKey).buttonStyle(.borderedProminent)
+            case .failure(let e)?:
+                Text(e.localizedDescription).font(.caption).foregroundStyle(.red)
+            case nil:
+                Text("The key goes only to the separate signer, which seals it with this Mac's Secure Enclave like a phrase and never shows it again.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    private func importKey() {
+        let key = privateKey
+        privateKey = ""
+        Task {
+            do {
+                let reply = try await SignerClient().send(.importPrivateKey(key: key))
+                guard reply.ok else { throw WalletError(reply.error ?? "The signer refused.") }
+                stored = "Key saved as a wallet: \(reply.solanaAddress ?? reply.evmAddress ?? "?"). It signs now."
+                await ws.loadSigner()
+                await ws.refresh()
+            } catch {
+                self.error = error.localizedDescription
             }
         }
     }

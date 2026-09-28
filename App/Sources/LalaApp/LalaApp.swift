@@ -396,6 +396,14 @@ struct SettingsView: View {
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Key and signing") {
+                // Several wallets: the one that signs (the signer asks for Touch ID to switch); the list is in the key window.
+                if ws.wallets.count > 1 {
+                    Picker("Wallet that signs", selection: Binding(get: { ws.activeWalletID ?? "" }, set: { id in
+                        if let w = ws.wallets.first(where: { $0.id == id }) { Task { await ws.switchWallet(w) } }
+                    })) {
+                        ForEach(ws.wallets) { Text("\($0.label) — \(Workspace.describe($0))").tag($0.id) }
+                    }
+                }
                 Label(ws.signerWallet == nil ? "No key on this Mac yet — import a wallet" : "Key in secure storage; a separate process without network signs",
                       systemImage: ws.signerWallet == nil ? "xmark.circle" : "checkmark.circle.fill")
                 Picker(selection: Binding(get: { ws.sessionLength }, set: { chosen in

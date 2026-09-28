@@ -19,34 +19,36 @@ enum Signer {
         switch request {
         case .status:
             var r = SignerReply(ok: true)
-            r.hasWallet = SeedStore.exists
+            let wallets = Wallets.all
+            r.hasWallet = !wallets.isEmpty
+            r.wallets = wallets
+            r.activeWallet = Wallets.active?.id
             r.solanaAddress = defaults.string(forKey: "solana")
             r.evmAddress = defaults.string(forKey: "evm")
             r.nearAddress = defaults.string(forKey: "near")
             r.agentAddress = AgentStore.load().flatMap { try? EVMAccount.address(privateKey: $0) }
-            r.agentActive = defaults.bool(forKey: "agentActive") && r.agentAddress != nil
+            r.agentActive = defaults.bool(forKey: agentActiveKey) && r.agentAddress != nil
             r.sessionLength = SeedStore.sessionLength
             return r
 
         case .enableAgent:
             let owner = try address("evm")
-            var key = AgentStore.load()
-            if key == nil {
+            var agentKey = AgentStore.load()
+            if agentKey == nil {
                 // 32 random bytes; retried in the vanishing case they are not a valid secp256k1 key.
-                for _ in 0..<4 where key == nil {
+                for _ in 0..<4 where agentKey == nil {
                     var bytes = Data(count: 32)
                     guard bytes.withUnsafeMutableBytes({ SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }) == errSecSuccess else { continue }
-                    if (try? EVMAccount.address(privateKey: bytes)) != nil { key = bytes }
+                    if (try? EVMAccount.address(privateKey: bytes)) != nil { agentKey = bytes }
                 }
-                guard let key else { throw WalletError("Couldn't create the agent key.") }
-                try AgentStore.save(key)
+                guard let agentKey else { throw WalletError("Couldn't create the agent key.") }
+                try AgentStore.save(agentKey)
             }
-            let agent = try EVMAccount.address(privateKey: key!)
+            let agent = try EVMAccount.address(privateKey: agentKey!)
             guard agent.lowercased() != owner.lowercased() else { throw WalletError("The agent key matches the main key.") }
-            let seed = try SeedStore.load(reason: "approve a trading key: orders without Touch ID; it can't withdraw money")
+            let main = try key("evm", reason: "approve a trading key: orders without Touch ID; it can't withdraw money")
             let nonce = UInt64(Date().timeIntervalSince1970 * 1000)
-            let (action, signature) = try HLSigner.approveAgent(agent: agent, name: "lala", nonce: nonce,
-                                                                privateKey: Derivation.secp256k1(seed: seed, path: WalletPath.evm(0)), mainnet: true)
+            let (action, signature) = try HLSigner.approveAgent(agent: agent, name: "lala", nonce: nonce, privateKey: main, mainnet: true)
             var r = SignerReply(ok: true)
             r.agentAddress = agent
             r.action = action
@@ -57,41 +59,83 @@ enum Signer {
 
         case .setAgentActive(let on):
             // Resuming a paused trading key is the user's decision: it asks for Touch ID like a signature.
-            if on, !defaults.bool(forKey: "agentActive"), AgentStore.load() != nil {
-                _ = try SeedStore.load(reason: "turn the Hyperliquid trading key back on")
+            if on, !defaults.bool(forKey: agentActiveKey), AgentStore.load() != nil {
+                _ = try key("evm", reason: "turn the Hyperliquid trading key back on")
             }
-            defaults.set(on && AgentStore.load() != nil, forKey: "agentActive")
+            defaults.set(on && AgentStore.load() != nil, forKey: agentActiveKey)
             var r = SignerReply(ok: true)
-            r.agentActive = defaults.bool(forKey: "agentActive")
+            r.agentActive = defaults.bool(forKey: agentActiveKey)
             return r
 
         case .createWallet(let requirePresence):
             let phrase = Mnemonic.generate()
-            try confirmReplacing("replace the wallet in LALA with a new one")
+            try confirmInPerson("add a new wallet to ihatecrypto and sign with it")
             var r = try store(phrase: phrase, passphrase: "", requirePresence: requirePresence)
             r.phrase = phrase
             return r
 
         case .importMnemonic(let phrase, let passphrase, let requirePresence):
             _ = try Mnemonic.validate(phrase) // a mistyped phrase fails before any prompt
-            try confirmReplacing("replace the wallet in LALA with another recovery phrase")
+            try confirmInPerson("add a wallet from a recovery phrase to ihatecrypto and sign with it")
             return try store(phrase: phrase, passphrase: passphrase, requirePresence: requirePresence)
+
+        case .importPrivateKey(let text):
+            let imported = try ImportedKey.parse(text) // a malformed key fails before any prompt
+            let address = try imported.address()
+            try confirmInPerson("add the \(imported.chain) key of \(address) to ihatecrypto and sign with it")
+            return switch imported {
+            case .solana(let secret): try add(secret: secret, kind: "solana", solana: address, evm: nil, near: nil, requirePresence: true)
+            case .evm(let secret): try add(secret: secret, kind: "evm", solana: nil, evm: address, near: nil, requirePresence: true)
+            }
+
+        case .setActiveWallet(let id):
+            guard let wallet = Wallets.all.first(where: { $0.id == id }) else { throw WalletError("No such wallet.") }
+            // Which wallet signs, and whose addresses LALA shows for deposits, is the user's call in person.
+            if wallet.id != Wallets.active?.id { try confirmInPerson("sign with the wallet «\(wallet.label)» from now on:\n\(addresses(wallet))") }
+            Wallets.activate(wallet)
+            var r = SignerReply(ok: true)
+            r.wallets = Wallets.all
+            r.activeWallet = wallet.id
+            return r
+
+        case .removeWallet(let id):
+            guard let wallet = Wallets.all.first(where: { $0.id == id }) else { throw WalletError("No such wallet.") }
+            try confirmInPerson("REMOVE the wallet «\(wallet.label)» from ihatecrypto: without its phrase or key its money can't be reached from here\n\(addresses(wallet))")
+            remove(wallet)
+            var r = SignerReply(ok: true)
+            r.wallets = Wallets.all
+            r.activeWallet = Wallets.active?.id
+            return r
+
+        case .renameWallet(let id, let label):
+            let name = label.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !name.isEmpty, name.count <= 32 else { throw WalletError("A wallet's name is 1 to 32 characters.") }
+            var list = Wallets.all
+            guard let i = list.firstIndex(where: { $0.id == id }) else { throw WalletError("No such wallet.") }
+            list[i].label = name
+            Wallets.save(list)
+            var r = SignerReply(ok: true)
+            r.wallets = list
+            r.activeWallet = Wallets.active?.id
+            return r
 
         case .nearAddress:
             var r = SignerReply(ok: true)
             if let known = defaults.string(forKey: "near") {
                 r.nearAddress = known
             } else {
-                let seed = try SeedStore.load(reason: "show your NEAR address, derived from your phrase")
-                let near = try NearAccount.implicit(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.near(0)))
+                // A phrase wallet imported before NEAR: derive once (one unlock), then keep it with the wallet.
+                let near = try NearAccount.implicit(privateKey: key("near", reason: "show your NEAR address, derived from your phrase"))
                 defaults.set(near, forKey: "near")
+                var list = Wallets.all
+                if let i = list.firstIndex(where: { $0.id == Wallets.activeID }) { list[i].near = near; Wallets.save(list) }
                 r.nearAddress = near
             }
             return r
 
         case .lock:
             SeedStore.endSession()
-            defaults.set(false, forKey: "agentActive")
+            defaults.set(false, forKey: agentActiveKey)
             var r = SignerReply(ok: true)
             r.agentActive = false
             r.checks = ["Touch ID session ended; the trading key is paused."]
@@ -117,14 +161,11 @@ enum Signer {
             guard depositAddress.wholeMatch(of: /[0-9a-f]{64}/) != nil else { throw WalletError("Not a 1Click deposit account: \(depositAddress).") }
             guard blockHash.count == 32 else { throw WalletError("A NEAR block hash is 32 bytes.") }
             try approve([depositAddress])
-            let seed = try SeedStore.load(reason: "sell \(NearTransaction.near(yocto)) NEAR: wrapped and sent to the 1Click deposit \(depositAddress.prefix(8))…\(depositAddress.suffix(6))")
-            let key = try Derivation.ed25519(seed: seed, path: WalletPath.near(0))
-            let account = try NearAccount.implicit(privateKey: key)
-            if let known = defaults.string(forKey: "near"), known != account { throw WalletError("The NEAR key doesn't match this wallet's NEAR account.") }
+            let (nearSecret, account) = try nearKey(reason: "sell \(NearTransaction.near(yocto)) NEAR: wrapped and sent to the 1Click deposit \(depositAddress.prefix(8))…\(depositAddress.suffix(6))")
             var r = SignerReply(ok: true)
             r.signedRaw = try NearTransaction.sign(receiver: NearTransaction.wrapContract, nonce: nonce, blockHash: blockHash,
                                                    actions: NearTransaction.intentDeposit(account: account, depositAddress: depositAddress, amount: yocto),
-                                                   privateKey: key).signed
+                                                   privateKey: nearSecret).signed
             r.checks = ["\(NearTransaction.near(yocto)) NEAR → wNEAR → \(depositAddress) (1Click)"]
             return r
 
@@ -132,10 +173,10 @@ enum Signer {
             guard let yocto = UInt128(amount), yocto > 0 else { throw WalletError("Not a NEAR amount: \(amount).") }
             try checkNearRecipient(receiver, recipients, blockHash)
             try approve([receiver])
-            let (key, account) = try nearKey(reason: "send \(NearTransaction.near(yocto)) NEAR to \(receiver)")
+            let (nearSecret, account) = try nearKey(reason: "send \(NearTransaction.near(yocto)) NEAR to \(receiver)")
             guard receiver != account else { throw WalletError("That is this wallet's own NEAR account.") }
             var r = SignerReply(ok: true)
-            r.signedRaw = try NearTransaction.sign(receiver: receiver, nonce: nonce, blockHash: blockHash, actions: [.transfer(deposit: yocto)], privateKey: key).signed
+            r.signedRaw = try NearTransaction.sign(receiver: receiver, nonce: nonce, blockHash: blockHash, actions: [.transfer(deposit: yocto)], privateKey: nearSecret).signed
             r.checks = ["\(NearTransaction.near(yocto)) NEAR → \(receiver)"]
             return r
 
@@ -144,23 +185,18 @@ enum Signer {
             try approve([beneficiary])
             // Always a fresh prompt, whatever Touch ID session is open: this empties and removes the account.
             try SeedStore.confirm("DELETE your NEAR account and send all the NEAR on it to \(beneficiary)")
-            let (key, account) = try nearKey(reason: "delete your NEAR account into \(beneficiary)")
+            let (nearSecret, account) = try nearKey(reason: "delete your NEAR account into \(beneficiary)")
             guard beneficiary != account else { throw WalletError("An account can't be deleted into itself.") }
             var r = SignerReply(ok: true)
             r.signedRaw = try NearTransaction.sign(receiver: account, nonce: nonce, blockHash: blockHash,
-                                                   actions: [.deleteAccount(beneficiary: beneficiary)], privateKey: key).signed
+                                                   actions: [.deleteAccount(beneficiary: beneficiary)], privateKey: nearSecret).signed
             r.checks = ["NEAR account \(account.prefix(8))… deleted into \(beneficiary)"]
             return r
 
         case .forget:
-            try confirmReplacing("remove the wallet from LALA")
-            RecipientStore.delete()
-            SeedStore.delete()
-            AgentStore.delete()
-            defaults.removeObject(forKey: "agentActive")
-            defaults.removeObject(forKey: "solana")
-            defaults.removeObject(forKey: "evm")
-            defaults.removeObject(forKey: "near")
+            guard let wallet = Wallets.active else { return SignerReply(ok: true) }
+            try confirmInPerson("remove the wallet «\(wallet.label)» from ihatecrypto")
+            remove(wallet)
             return SignerReply(ok: true)
 
         case .signSolanaMessage(let message):
@@ -171,10 +207,9 @@ enum Signer {
                 v.problems.append("This isn't text but data that looks like a transaction: message signing refused.")
                 return refused(v)
             }
-            let seed = try SeedStore.load(reason: "sign text for a site:\n" + String(text.prefix(160)))
-            let key = try Curve25519.Signing.PrivateKey(rawRepresentation: Derivation.ed25519(seed: seed, path: WalletPath.solana(0)))
+            let solanaKey = try Curve25519.Signing.PrivateKey(rawRepresentation: key("solana", reason: "sign text for a site:\n" + String(text.prefix(160))))
             var r = SignerReply(ok: true)
-            r.signatureBytes = try key.signature(for: message)
+            r.signatureBytes = try solanaKey.signature(for: message)
             r.checks = ["Only text was signed, not a transaction."]
             return r
 
@@ -185,9 +220,9 @@ enum Signer {
                 return refused(v)
             }
             let text = String(data: message, encoding: .utf8) ?? "\(message.count) bytes"
-            let seed = try SeedStore.load(reason: "sign text for a site:\n" + String(text.prefix(160)))
+            let evmKey = try key("evm", reason: "sign text for a site:\n" + String(text.prefix(160)))
             var r = SignerReply(ok: true)
-            r.signature = try EVMSigner.sign(digest: PersonalMessage.digest(message), privateKey: Derivation.secp256k1(seed: seed, path: WalletPath.evm(0)))
+            r.signature = try EVMSigner.sign(digest: PersonalMessage.digest(message), privateKey: evmKey)
             r.checks = ["Text was signed, not a transaction or an approval."]
             return r
 
@@ -195,12 +230,12 @@ enum Signer {
             let typed = try TypedData.parse(json)
             guard !typed.isTokenPermission else {
                 var v = Verdict()
-                v.problems.append("\(typed.primaryType): this is permission to spend your tokens (Permit) — the drainers' main trick. LALA doesn't sign these.")
+                v.problems.append("\(typed.primaryType): this is permission to spend your tokens (Permit) — the drainers' main trick. ihatecrypto doesn't sign these.")
                 return refused(v)
             }
-            let seed = try SeedStore.load(reason: "sign \(typed.primaryType) for «\(typed.domainName)»")
+            let evmKey = try key("evm", reason: "sign \(typed.primaryType) for «\(typed.domainName)»")
             var r = SignerReply(ok: true)
-            r.signature = try EVMSigner.sign(digest: typed.digest, privateKey: Derivation.secp256k1(seed: seed, path: WalletPath.evm(0)))
+            r.signature = try EVMSigner.sign(digest: typed.digest, privateKey: evmKey)
             r.checks = ["Signed \(typed.primaryType) data for «\(typed.domainName)»; the hash was computed by the signer."]
             return r
 
@@ -209,7 +244,7 @@ enum Signer {
             var v = Verdict()
             let call = EVMCall.decode(data)
             let approved = Set(recipients.map { $0.lowercased() } + [owner.lowercased()])
-            if ![1, 42161, 8453, 4663].contains(chainId) { v.problems.append("LALA doesn't sign for network \(chainId).") }
+            if ![1, 42161, 8453, 4663].contains(chainId) { v.problems.append("ihatecrypto doesn't sign for network \(chainId).") }
             if let refusal = call.refusal(sender: owner) { v.problems.append(refusal) }
             switch call {
             case .transfer(let recipient, _) where !approved.contains(recipient.lowercased()):
@@ -220,11 +255,11 @@ enum Signer {
             }
             guard v.ok else { return refused(v) }
             try approve(recipients)
-            let seed = try SeedStore.load(reason: "sign an EVM transaction for a site: \(to.prefix(10))…, network \(chainId)")
+            let evmKey = try key("evm", reason: "sign an EVM transaction for a site: \(to.prefix(10))…, network \(chainId)")
             let tx = EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee,
                                     gasLimit: gasLimit, to: to, value: value, data: data)
             var r = SignerReply(ok: true)
-            r.signedRaw = try tx.signed(privateKey: Derivation.secp256k1(seed: seed, path: WalletPath.evm(0))).raw
+            r.signedRaw = try tx.signed(privateKey: evmKey).raw
             r.checks = ["Calldata parsed by the signer: no unlimited approvals and no spending by others."]
             return r
 
@@ -243,9 +278,9 @@ enum Signer {
                                             tokenOwners: verifiedOwners(tokenOwners, mints: accounts))
             guard verdict.ok else { return refused(verdict) }
             try approve(recipients)
-            let seed = try SeedStore.load(reason: prompt("sign a Solana transaction", verdict))
+            let solanaKey = try key("solana", reason: prompt("sign a Solana transaction", verdict))
             var r = SignerReply(ok: true)
-            r.signedWire = try SolanaTransaction.sign(wire, privateKey: Derivation.ed25519(seed: seed, path: WalletPath.solana(0))).wire
+            r.signedWire = try SolanaTransaction.sign(wire, privateKey: solanaKey).wire
             r.checks = verdict.checks
             return r
 
@@ -254,19 +289,18 @@ enum Signer {
             guard verdict.ok else { return refused(verdict) }
             // Orders, cancels and leverage go through the agent when it is active: it cannot move money out,
             // so no Touch ID. Otherwise the main key signs.
-            let key: Data
+            let signingKey: Data
             // The agent signs trading only; anything that moves money (a vault transfer) takes the main key.
             let trading: Bool = if case .map(let pairs) = action, case .string(let t)? = pairs.first(where: { $0.0 == "type" })?.1 {
                 ["order", "cancel", "updateLeverage", "batchModify", "modify"].contains(t)
             } else { false }
-            if trading, defaults.bool(forKey: "agentActive"), let agent = AgentStore.load() {
-                key = agent
+            if trading, defaults.bool(forKey: agentActiveKey), let agent = AgentStore.load() {
+                signingKey = agent
             } else {
-                let seed = try SeedStore.load(reason: prompt("sign a Hyperliquid order", verdict))
-                key = try Derivation.secp256k1(seed: seed, path: WalletPath.evm(0))
+                signingKey = try key("evm", reason: prompt("sign a Hyperliquid order", verdict))
             }
             var r = SignerReply(ok: true)
-            r.signature = try HLSigner.signL1(action, privateKey: key, nonce: nonce, mainnet: mainnet)
+            r.signature = try HLSigner.signL1(action, privateKey: signingKey, nonce: nonce, mainnet: mainnet)
             r.checks = verdict.checks
             return r
 
@@ -278,9 +312,9 @@ enum Signer {
                 return refused(v)
             }
             let digest = try HLSigner.relayNonceMappingDigest(wallet: wallet, depositor: depositor, id: id, nonce: nonce)
-            let seed = try SeedStore.load(reason: "link a Hyperliquid withdrawal to a Relay order")
+            let evmKey = try key("evm", reason: "link a Hyperliquid withdrawal to a Relay order")
             var r = SignerReply(ok: true)
-            r.signature = try EVMSigner.sign(digest: digest, privateKey: Derivation.secp256k1(seed: seed, path: WalletPath.evm(0)))
+            r.signature = try EVMSigner.sign(digest: digest, privateKey: evmKey)
             r.checks = ["Deposit mapping: the wallet and depositor are yours."]
             return r
 
@@ -289,44 +323,86 @@ enum Signer {
             guard verdict.ok else { return refused(verdict) }
             let (type, fields) = try userAction(action)
             try approve(recipients)
-            let seed = try SeedStore.load(reason: prompt("sign a Hyperliquid transfer", verdict))
-            let key = try Derivation.secp256k1(seed: seed, path: WalletPath.evm(0))
+            let evmKey = try key("evm", reason: prompt("sign a Hyperliquid transfer", verdict))
             var r = SignerReply(ok: true)
-            r.signature = try HLSigner.signUserAction(type, fields: fields, privateKey: key, mainnet: mainnet)
+            r.signature = try HLSigner.signUserAction(type, fields: fields, privateKey: evmKey, mainnet: mainnet)
             r.checks = verdict.checks
             return r
         }
     }
 
-    /// Stores the phrase's seed and the public addresses derived from it.
+    /// A phrase wallet: its seed and the public addresses derived from it.
     static func store(phrase: String, passphrase: String, requirePresence: Bool) throws -> SignerReply {
         let seed = try Mnemonic.seed(phrase, passphrase: passphrase)
-        let solana = try SolanaAccount.address(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.solana(0)))
-        let evm = try EVMAccount.address(privateKey: Derivation.secp256k1(seed: seed, path: WalletPath.evm(0)))
-        try SeedStore.save(seed, requirePresence: requirePresence)
-        if defaults.string(forKey: "evm")?.lowercased() != evm.lowercased() {
-            // Another wallet: the old one's approved addresses and its Hyperliquid trading key are not its business.
-            RecipientStore.delete()
-            AgentStore.delete()
-            defaults.set(false, forKey: "agentActive")
-        }
-        defaults.set(solana, forKey: "solana")
-        defaults.set(evm, forKey: "evm")
-        defaults.set(try NearAccount.implicit(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.near(0))), forKey: "near")
+        return try add(secret: seed, kind: "phrase",
+                       solana: try SolanaAccount.address(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.solana(0))),
+                       evm: try EVMAccount.address(privateKey: Derivation.secp256k1(seed: seed, path: WalletPath.evm(0))),
+                       near: try NearAccount.implicit(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.near(0))),
+                       requirePresence: requirePresence)
+    }
+
+    /// Adds a wallet (or re-seals the same one: same kind and addresses keep its id, trading key and approved
+    /// addresses) and signs with it from now on.
+    static func add(secret: Data, kind: String, solana: String?, evm: String?, near: String?, requirePresence: Bool) throws -> SignerReply {
+        var list = Wallets.all
+        let same = list.first { $0.kind == kind && $0.solana == solana && $0.evm?.lowercased() == evm?.lowercased() }
+        let id = same?.id ?? (list.isEmpty ? SignerWallet.firstID : String(UUID().uuidString.prefix(8)).lowercased())
+        try SeedStore.save(secret, requirePresence: requirePresence, id: id)
+        let wallet = SignerWallet(id: id, label: same?.label ?? (list.isEmpty ? "Main" : "Wallet \(list.count + 1)"),
+                                  kind: kind, solana: solana, evm: evm, near: near)
+        if let i = list.firstIndex(where: { $0.id == id }) { list[i] = wallet } else { list.append(wallet) }
+        Wallets.save(list)
+        Wallets.activate(wallet)
         var r = SignerReply(ok: true)
         r.hasWallet = true
         r.solanaAddress = solana
         r.evmAddress = evm
+        r.nearAddress = near
+        r.wallets = list
+        r.activeWallet = id
         return r
+    }
+
+    /// Removes a wallet with everything kept for it; signing moves to the first one left.
+    static func remove(_ wallet: SignerWallet) {
+        let wasActive = Wallets.active?.id == wallet.id
+        SeedStore.delete(id: wallet.id)
+        AgentStore.delete(id: wallet.id)
+        RecipientStore.delete(id: wallet.id)
+        defaults.removeObject(forKey: Wallets.scoped("agentActive", wallet.id))
+        let rest = Wallets.all.filter { $0.id != wallet.id }
+        Wallets.save(rest)
+        if wasActive { Wallets.activate(rest.first) }
+    }
+
+    static var agentActiveKey: String { Wallets.scoped("agentActive") }
+
+    /// A wallet's addresses for a Touch ID prompt: its name is the app's to set, its addresses are not.
+    static func addresses(_ w: SignerWallet) -> String {
+        [w.solana.map { "Solana \($0)" }, w.evm.map { "EVM \($0)" }].compactMap { $0 }.joined(separator: "\n")
+    }
+
+    /// The active wallet's key for one chain («solana», «evm», «near»), after Touch ID or within its session: derived
+    /// from its phrase, or its one imported key. A key wallet asked for another chain says so plainly.
+    static func key(_ chain: String, reason: String) throws -> Data {
+        guard let wallet = Wallets.active else { throw WalletError("No wallet imported.") }
+        if let missing = wallet.missing(chain) { throw WalletError(missing) }
+        let secret = try SeedStore.load(reason: reason, id: wallet.id)
+        switch (wallet.kind, chain) {
+        case ("phrase", "solana"): return try Derivation.ed25519(seed: secret, path: WalletPath.solana(0))
+        case ("phrase", "evm"): return try Derivation.secp256k1(seed: secret, path: WalletPath.evm(0))
+        case ("phrase", _): return try Derivation.ed25519(seed: secret, path: WalletPath.near(0))
+        default: return secret // a key wallet holds that chain's key itself
+        }
     }
 
     /// The public BIP-39 test phrase («abandon … about»): anyone can sign for it, so the self-test runs without prompts.
     static var holdsPublicTestWallet: Bool { defaults.string(forKey: "solana") == "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk" }
 
-    /// Replacing or removing a wallet that holds money is the user's act, in person: Touch ID or the password.
-    /// A program that talks to the signer as LALA can't swap in its own phrase and wait for the user's deposits.
-    static func confirmReplacing(_ reason: String) throws {
-        guard SeedStore.exists, !holdsPublicTestWallet else { return }
+    /// Adding, switching or removing a wallet once there is one is the user's act, in person: Touch ID or the password.
+    /// A program that talks to the signer as LALA can't slip in its own wallet and wait for the user's deposits.
+    static func confirmInPerson(_ reason: String) throws {
+        guard !Wallets.all.isEmpty, !holdsPublicTestWallet else { return }
         try SeedStore.confirm(reason)
     }
 
@@ -338,7 +414,7 @@ enum Signer {
         let known = RecipientStore.all()
         let new = Array(Set(recipients.map(RecipientStore.key).filter { !known.contains($0) && !own.contains($0) })).sorted()
         guard !new.isEmpty else { return }
-        try SeedStore.confirm("allow LALA to send money to a new address:\n" + new.joined(separator: "\n"))
+        try SeedStore.confirm("allow ihatecrypto to send money to a new address:\n" + new.joined(separator: "\n"))
         try RecipientStore.add(new)
     }
 
@@ -351,16 +427,16 @@ enum Signer {
 
     /// The wallet's NEAR key (m/44'/397'/0') after Touch ID, and its implicit account, which must be the one stored.
     static func nearKey(reason: String) throws -> (key: Data, account: String) {
-        let seed = try SeedStore.load(reason: reason)
-        let key = try Derivation.ed25519(seed: seed, path: WalletPath.near(0))
-        let account = try NearAccount.implicit(privateKey: key)
+        let secret = try key("near", reason: reason)
+        let account = try NearAccount.implicit(privateKey: secret)
         if let known = defaults.string(forKey: "near"), known != account { throw WalletError("The NEAR key doesn't match this wallet's NEAR account.") }
-        return (key, account)
+        return (secret, account)
     }
 
-    static func address(_ key: String) throws -> String {
-        guard let a = defaults.string(forKey: key) else { throw WalletError("No wallet imported.") }
-        return a
+    static func address(_ chain: String) throws -> String {
+        if let a = defaults.string(forKey: chain) { return a }
+        if let missing = Wallets.active?.missing(chain) { throw WalletError(missing) }
+        throw WalletError("No wallet imported.")
     }
 
     static func refused(_ verdict: Verdict) -> SignerReply {

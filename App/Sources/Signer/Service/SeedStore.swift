@@ -22,6 +22,8 @@ enum SeedStore {
     }
 
     static let sealedAccount = "sealed", legacyAccount = "default"
+    /// Wallet «1» keeps the item it had before there were several wallets; the others get their own.
+    static func account(_ id: String) -> String { id == SignerWallet.firstID ? sealedAccount : "wallet-\(id)" }
     static let algorithm = SecKeyAlgorithm.eciesEncryptionCofactorVariableIVX963SHA256AESGCM
 
     /// Each sealing makes its own Enclave key; the sealed item names it (kSecAttrGeneric), so a new wallet is
@@ -36,8 +38,8 @@ enum SeedStore {
     }
 
     /// The sealed seed and the tag of the key that opens it.
-    private static func sealed() -> (data: Data, tag: Data)? {
-        var q = item(sealedAccount)
+    private static func sealed(_ account: String) -> (data: Data, tag: Data)? {
+        var q = item(account)
         q[kSecReturnData as String] = true
         q[kSecReturnAttributes as String] = true
         var out: CFTypeRef?
@@ -46,7 +48,8 @@ enum SeedStore {
         return (data, tag)
     }
 
-    static var exists: Bool { present(sealedAccount) || present(legacyAccount) }
+    /// The one seed LALA held before several wallets, sealed or from before sealing: what wallet «1» migrates from.
+    static var firstPresent: Bool { present(sealedAccount) || present(legacyAccount) }
 
     private static func present(_ account: String) -> Bool {
         var q = item(account)
@@ -60,7 +63,8 @@ enum SeedStore {
 
     /// Seals the seed to a new Enclave key. Release builds always ask for Touch ID or the password to open it;
     /// Debug builds may skip that for the automated self-test with the public test phrase.
-    static func save(_ seed: Data, requirePresence: Bool) throws {
+    static func save(_ seed: Data, requirePresence: Bool, id: String) throws {
+        let account = account(id)
         #if DEBUG
         let presence = requirePresence
         #else
@@ -90,12 +94,12 @@ enum SeedStore {
             SecItemDelete(keyQuery(tag) as CFDictionary)
             throw fail("Couldn't seal the key")
         }
-        // Written over the old wallet in one step; only then is the old key removed.
-        let old = sealed()?.tag
+        // Written over the same wallet's old seal in one step; only then is the old key removed.
+        let old = sealed(account)?.tag
         let values: [String: Any] = [kSecValueData as String: ciphertext, kSecAttrGeneric as String: tag]
-        var status = SecItemUpdate(item(sealedAccount) as CFDictionary, values as CFDictionary)
+        var status = SecItemUpdate(item(account) as CFDictionary, values as CFDictionary)
         if status == errSecItemNotFound {
-            var q = item(sealedAccount).merging(values) { $1 }
+            var q = item(account).merging(values) { $1 }
             q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
             status = SecItemAdd(q as CFDictionary, nil)
         }
@@ -105,7 +109,7 @@ enum SeedStore {
         }
         endSession()
         if let old { SecItemDelete(keyQuery(old) as CFDictionary) }
-        SecItemDelete(item(legacyAccount) as CFDictionary)
+        if id == SignerWallet.firstID { SecItemDelete(item(legacyAccount) as CFDictionary) }
     }
 
     /// One Touch ID per trade, not per signature: a context that already authenticated opens the key again
@@ -119,7 +123,7 @@ enum SeedStore {
     }
     private static let lock = NSLock()
 
-    static func load(reason: String) throws -> Data {
+    static func load(reason: String, id: String) throws -> Data {
         let context: LAContext = lock.withLock {
             if let s = session, Date().timeIntervalSince(s.since) < TimeInterval(sessionLength) { return s.context }
             let fresh = LAContext()
@@ -128,7 +132,7 @@ enum SeedStore {
             return fresh
         }
         do {
-            if let sealed = sealed() {
+            if let sealed = sealed(account(id)) {
                 var q = keyQuery(sealed.tag)
                 q[kSecReturnRef as String] = true
                 q[kSecUseAuthenticationContext as String] = context
@@ -141,7 +145,7 @@ enum SeedStore {
                 }
                 return seed
             }
-            guard let seed = read(legacyAccount, context: context) else { throw WalletError("No wallet imported.") }
+            guard id == SignerWallet.firstID, let seed = read(legacyAccount, context: context) else { throw WalletError("No wallet imported.") }
             return seed
         } catch {
             lock.withLock { session = nil } // a cancelled or failed prompt must not be reused
@@ -173,11 +177,11 @@ enum SeedStore {
         lock.withLock { session = (context, Date()) }
     }
 
-    static func delete() {
+    static func delete(id: String) {
         endSession()
-        if let tag = sealed()?.tag { SecItemDelete(keyQuery(tag) as CFDictionary) }
-        SecItemDelete(item(sealedAccount) as CFDictionary)
-        SecItemDelete(item(legacyAccount) as CFDictionary)
+        if let tag = sealed(account(id))?.tag { SecItemDelete(keyQuery(tag) as CFDictionary) }
+        SecItemDelete(item(account(id)) as CFDictionary)
+        if id == SignerWallet.firstID { SecItemDelete(item(legacyAccount) as CFDictionary) }
     }
 
     /// The next load asks for Touch ID again.
@@ -192,14 +196,16 @@ enum SeedStore {
 /// Addresses outside the wallet that the user allowed money to go to, each confirmed in person once. Kept in the
 /// signer's own Keychain group, so the app — or anything posing as it — can't add one silently.
 enum RecipientStore {
-    static var base: [String: Any] {
+    /// Per wallet: an address approved for one wallet isn't approved for another.
+    static func query(_ id: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "app.lala.recipients",
-            kSecAttrAccount as String: "approved",
+            kSecAttrAccount as String: Wallets.scoped("approved", id),
             kSecUseDataProtectionKeychain as String: true,
         ]
     }
+    static var base: [String: Any] { query(Wallets.activeID) }
 
     static func all() -> Set<String> {
         var q = base
@@ -223,19 +229,21 @@ enum RecipientStore {
     /// EVM addresses compare without case; Solana's base58 is case-sensitive.
     static func key(_ address: String) -> String { address.hasPrefix("0x") ? address.lowercased() : address }
 
-    static func delete() { SecItemDelete(base as CFDictionary) }
+    static func delete(id: String) { SecItemDelete(query(id) as CFDictionary) }
 }
 
 /// The Hyperliquid agent key: data-protection Keychain, this device, no Touch ID — it cannot withdraw.
 enum AgentStore {
-    static var base: [String: Any] {
+    /// Per wallet: each wallet's Hyperliquid account approves its own trading key.
+    static func query(_ id: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: "app.lala.agent",
-            kSecAttrAccount as String: "hyperliquid",
+            kSecAttrAccount as String: Wallets.scoped("hyperliquid", id),
             kSecUseDataProtectionKeychain as String: true,
         ]
     }
+    static var base: [String: Any] { query(Wallets.activeID) }
 
     static func load() -> Data? {
         var q = base
@@ -253,5 +261,5 @@ enum AgentStore {
         guard status == errSecSuccess else { throw WalletError("Keychain didn't save the agent key: \(status)") }
     }
 
-    static func delete() { SecItemDelete(base as CFDictionary) }
+    static func delete(id: String) { SecItemDelete(query(id) as CFDictionary) }
 }

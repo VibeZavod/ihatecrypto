@@ -141,6 +141,7 @@ extension Workspace {
     /// Fresh quote, the bridge transaction and its simulation, and Jev's reading of all of it. Nothing is signed.
     func prepareExecution() async {
         guard let wallet = previewWallet else { return }
+        if let missing = missingTradingKey { executionError = missing; return }
         preparing = true
         executionError = nil
         txReview = nil
@@ -379,6 +380,7 @@ extension Workspace {
     static func canvasTitle(_ command: WalletCommand) -> String { command.summary.prefix(1).uppercased() + command.summary.dropFirst() }
 
     func manage(_ command: PositionCommand, coin: String) async {
+        if let missing = missingTradingKey { reply(missing); return }
         updateActivity { a in
             a.coin = coin
             if a.title == nil { a.title = "\(IntentParser.pretty(coin)): \(Self.describe(command))" }

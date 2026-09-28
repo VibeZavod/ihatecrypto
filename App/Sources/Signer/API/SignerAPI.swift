@@ -16,8 +16,17 @@ public enum SignerRequest: Codable, Sendable {
     /// A new 12-word phrase made inside the signer from system randomness and stored like an import. The reply
     /// carries the phrase once, for the user to write down; the signer doesn't keep it.
     case createWallet(requirePresence: Bool)
-    /// Removes the wallet; asks for Touch ID first.
+    /// Removes the active wallet; asks for Touch ID first.
     case forget
+    /// A single private key from another wallet (`ImportedKey`: a Solana key from Phantom, an EVM key from MetaMask),
+    /// stored like a phrase and added as a wallet that signs only on that key's chain.
+    case importPrivateKey(key: String)
+    /// The wallet every signature uses from now on; Touch ID first when one is already in use.
+    case setActiveWallet(id: String)
+    /// Removes one wallet with its trading key and approved addresses; Touch ID first.
+    case removeWallet(id: String)
+    /// The user's own name for a wallet («Main», «Trading»).
+    case renameWallet(id: String, label: String)
     /// Signs a Solana transaction after the guard checks it. `accounts`: the full account list the app resolved.
     /// `extraPrograms`: programs outside the built-in list that the user allowed for this one transaction
     /// (a dApp in the browser); the Touch ID prompt names them.
@@ -69,6 +78,44 @@ public enum SignerRequest: Codable, Sendable {
     case signNearDeleteAccount(beneficiary: String, recipients: [String], nonce: UInt64, blockHash: Data)
 }
 
+/// One wallet the signer holds, public parts only: its name, what it can sign for, its addresses.
+public struct SignerWallet: Codable, Sendable, Equatable, Identifiable {
+    public var id: String
+    public var label: String
+    /// "phrase": every chain from a recovery phrase; "solana" or "evm": one private key, that chain only.
+    public var kind: String
+    public var solana: String?
+    public var evm: String?
+    public var near: String?
+
+    public init(id: String, label: String, kind: String, solana: String?, evm: String?, near: String?) {
+        (self.id, self.label, self.kind, self.solana, self.evm, self.near) = (id, label, kind, solana, evm, near)
+    }
+
+    /// Wallet «1» is the one LALA held before several wallets: its Keychain items keep their old names.
+    public static let firstID = "1"
+
+    /// The registry the signer keeps. Before several wallets there was one sealed seed and its addresses in the
+    /// signer's defaults: that becomes wallet «1», «Main», active — nothing is re-sealed and no prompt appears.
+    public static func migrated(_ registry: [SignerWallet]?, seedPresent: Bool, solana: String?, evm: String?, near: String?) -> [SignerWallet] {
+        if let registry { return registry }
+        guard seedPresent, solana != nil || evm != nil else { return [] }
+        return [SignerWallet(id: firstID, label: "Main", kind: "phrase", solana: solana, evm: evm, near: near)]
+    }
+
+    /// «this wallet has no Solana key» when a key wallet is asked to sign on another chain.
+    public func missing(_ chain: String) -> String? {
+        let has = switch chain {
+        case "solana": solana != nil
+        case "evm": evm != nil
+        default: near != nil
+        }
+        guard !has else { return nil }
+        let name = ["solana": "Solana", "evm": "EVM (Hyperliquid, Base…)", "near": "NEAR"][chain] ?? chain
+        return "The wallet «\(label)» has no \(name) key: it holds only \(kind == "solana" ? "a Solana" : kind == "evm" ? "an EVM" : "a") key. Switch wallets (Settings → Key and signing) or import one that has it."
+    }
+}
+
 public enum SignerSession {
     /// 1, 5, 15 or 30 minutes; 1 minute until the user picks another.
     public static let choices = [60, 300, 900, 1800]
@@ -92,6 +139,9 @@ public struct SignerReply: Codable, Sendable {
     public var signatureBytes: Data?
     public var agentAddress: String?
     public var agentActive: Bool?
+    /// Every wallet the signer holds (public parts) and the id of the one in use.
+    public var wallets: [SignerWallet]?
+    public var activeWallet: String?
     /// Seconds one Touch ID confirmation keeps signing open.
     public var sessionLength: Int?
     public var action: MsgPack?
