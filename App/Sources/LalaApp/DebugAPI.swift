@@ -165,6 +165,9 @@ final class DebugAPI {
             ] as [String: Any],
             "positions": ws.positions.map { "\($0.size > 0 ? "long" : "short") \($0.coin) pnl \($0.unrealizedPnl)" },
             "wallet": ["solana": ws.solanaAddress, "evm": ws.hlAddress],
+            // For `screencapture -l <id>` from a terminal allowed to record the screen: the glass chrome doesn't
+            // render through cacheDisplay (/screenshot comes out blank since the redesign).
+            "windowID": NSApp.windows.first { $0.title == LalaApp.mainTitle }?.windowNumber ?? 0,
         ]
     }
 
