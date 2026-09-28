@@ -58,7 +58,7 @@ struct TokenBoard: View {
         .frame(width: 470, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.06), radius: 14, y: 8))
         .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.accent.opacity(0.4), lineWidth: 1.5))
-        .transition(.scale(scale: 0.94, anchor: .topLeading).combined(with: .opacity))
+        .transition(.opacity)
         .task(id: address) {
             market = try? await TokenMarket.info(address, chain: chain)
             if market == nil { error = "No pool trades this token on \(chainTitle)." }

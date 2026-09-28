@@ -142,7 +142,7 @@ struct PnLBoard: View {
             .frame(width: 470, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 20).fill(Brand.card))
             .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Brand.cardBorder))
-            .transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity))
+            .transition(.opacity)
         }
     }
 

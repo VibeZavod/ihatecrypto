@@ -448,7 +448,7 @@ struct EarlierBoards: View {
                     .contentShape(Capsule())
                 }
                 .buttonStyle(.plain)
-                .modifier(HoverLift(radius: 20, lift: 1.02))
+                .modifier(HoverLift(radius: 20))
                 .help(open.contains(i) ? "Hide its route" : "Show its route")
                 if !open.contains(i) {
                     EmptyView()
@@ -638,7 +638,7 @@ struct FixChoices: View {
             }
         }
         .frame(width: 470, alignment: .leading)
-        .transition(.scale(scale: 0.9).combined(with: .opacity))
+        .transition(.opacity)
     }
 
     private func card(badge: String, title: String, detail: String, recommended: Bool, action: @escaping () -> Void) -> some View {
@@ -659,7 +659,7 @@ struct FixChoices: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .modifier(HoverLift(radius: 20, lift: 1.02))
+        .modifier(HoverLift(radius: 20))
     }
 }
 
@@ -992,10 +992,7 @@ struct RunningBoard: View {
                         .font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.onAccent)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(Capsule().fill(Brand.accent))
-                        .opacity(pulse ? 1 : 0.6)
-                        .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
-                        .onAppear { pulse = true }
-                        .transition(.scale(scale: 0.9).combined(with: .opacity))
+                        .transition(.opacity)
                 }
                 TimelineView(.periodic(from: run.started, by: 1)) { t in
                     Label("\(run.lines.last ?? "Signing") · \(Int(t.date.timeIntervalSince(run.started))) s", systemImage: "bolt.fill")
@@ -1044,7 +1041,7 @@ struct WithdrawBoard: View {
                 }
             }
             .frame(width: 470, alignment: .leading)
-            .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+            .transition(.opacity)
         }
     }
 }

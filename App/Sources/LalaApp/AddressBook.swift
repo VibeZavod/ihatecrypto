@@ -219,7 +219,7 @@ struct FavoritesBoard: View {
             if items.isEmpty { empty }
             ForEach(items) { entry in
                 AddressCard(entry: entry, edit: { editing = $0 })
-                    .transition(.scale(scale: 0.94).combined(with: .opacity))
+                    .transition(.opacity)
             }
             Label("ihatecrypto only ever sends to your own wallets. Saved addresses are for copying and, later, for transfers you sign with Touch ID — never to an address from a chat, a site or a model.",
                   systemImage: "lock.shield")
@@ -650,7 +650,7 @@ struct PendingAddressBoard: View {
                     .font(.caption).foregroundStyle(.secondary).frame(width: 470, alignment: .leading)
                 PendingButtons(confirm: "Save")
             }
-            .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+            .transition(.opacity)
         }
     }
 }
@@ -769,7 +769,7 @@ struct TransferBoard: View {
                 PendingButtons()
             }
             .frame(width: 470, alignment: .leading)
-            .transition(.scale(scale: 0.92, anchor: .topLeading).combined(with: .opacity))
+            .transition(.opacity)
         }
     }
 }

@@ -40,7 +40,7 @@ struct ReceiveBoard: View {
         .frame(width: 470, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 26).fill(Brand.card).shadow(color: .black.opacity(0.08), radius: 18, y: 10))
         .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Brand.accent.opacity(0.5), lineWidth: 1.5))
-        .transition(.scale(scale: 0.94, anchor: .topLeading).combined(with: .opacity))
+        .transition(.opacity)
     }
 }
 

@@ -840,12 +840,12 @@ struct StudioCanvas: View {
             if let place = ws.detail {
                 PlaceDetailBoard(place: place)
                     .padding(.bottom, 10)
-                    .transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity))
+                    .transition(.opacity)
             }
             // The rail's buttons put their boards here too.
             if ws.showReceive { ReceiveBoard() }
-            if ws.showFavorites { FavoritesBoard().transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity)) }
-            if ws.showHistory { HistoryBoard().transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity)) }
+            if ws.showFavorites { FavoritesBoard().transition(.opacity) }
+            if ws.showHistory { HistoryBoard().transition(.opacity) }
             // Moves already done on this canvas stay above the current one.
             EarlierBoards()
             // A move waiting for its signature or running has its own title and status: no «Plan · waiting» over it.
@@ -893,7 +893,7 @@ struct StudioCanvas: View {
                 if nodes.contains(where: { $0.status == .blocked }), !assembling { FixChoices() }
                 if let choices = ws.takeChoices, !assembling {
                     TakeChoices(choices: choices, risk: ws.evaluation.sizing?.lossAtStopUSD)
-                        .transition(.scale(scale: 0.9).combined(with: .opacity))
+                        .transition(.opacity)
                 }
             }
         }
@@ -907,8 +907,6 @@ struct StudioCanvas: View {
         return StudioNodeView(node: n)
             .overlay { if current { RoundedRectangle(cornerRadius: 20).strokeBorder(cursorColor(index, n), lineWidth: 3) } }
             .opacity(visible ? 1 : 0)
-            .scaleEffect(visible ? 1 : 0.86)
-            .offset(y: visible ? 0 : 14)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("studio")) } action: { record(n.id, $0) }
     }
 
@@ -933,7 +931,7 @@ struct StudioCanvas: View {
                         .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Brand.cardBorder))
                     }
                     .buttonStyle(.plain)
-                    .modifier(HoverLift(radius: 10, lift: 1.02))
+                    .modifier(HoverLift(radius: 10))
                     .help("Puts “\(t.phrase)” into the chat")
                 }
             }
@@ -1362,7 +1360,7 @@ struct StudioPortfolio: View {
                     .padding(9)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Brand.hlChip))
                     .contentShape(Rectangle())
-                    .modifier(HoverLift(radius: 12, lift: 1.02))
+                    .modifier(HoverLift(radius: 12))
                     .onTapGesture { Task { await ws.chartCommand(.chart(coin: p.coin, range: .day)) } }
                     .help("Open the \(IntentParser.pretty(p.coin)) chart")
                 }
@@ -2259,7 +2257,7 @@ struct TakeChoices: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .modifier(HoverLift(radius: 20, lift: 1.02))
+                .modifier(HoverLift(radius: 20))
             }
             Text("The stop is the same in all three; only how the profit is taken changes.").font(.caption2).foregroundStyle(.secondary)
         }
@@ -2442,7 +2440,7 @@ struct YieldBubbles: View {
                         .frame(width: size, height: size)
                         .background(Circle().fill(fill(o.place)))
                         .overlay(Circle().strokeBorder(o.how == nil ? Brand.dots : .clear, style: StrokeStyle(lineWidth: 2, dash: [5, 4])))
-                        .modifier(HoverLift(radius: size / 2, lift: 1.05, enabled: o.how != nil))
+                        .modifier(HoverLift(radius: size / 2, enabled: o.how != nil))
                         .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.plain)
@@ -2600,7 +2598,7 @@ struct RailActions: View {
             }
         }
         .buttonStyle(.plain)
-        .modifier(HoverLift(radius: compact ? 20 : 19, lift: 1.03))
+        .modifier(HoverLift(radius: compact ? 20 : 19))
         .help(compact ? "\(title): \(help)" : help)
     }
 }

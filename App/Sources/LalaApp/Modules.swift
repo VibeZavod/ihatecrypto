@@ -158,7 +158,7 @@ struct ChartBoard: View {
         .frame(width: 470, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.06), radius: 14, y: 8))
         .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.cardBorder))
-        .transition(.scale(scale: 0.94, anchor: .topLeading).combined(with: .opacity))
+        .transition(.opacity)
     }
 
     private var levels: [Level] {
@@ -234,7 +234,7 @@ struct MoversBoard: View {
         .frame(width: 470, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.06), radius: 14, y: 8))
         .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.cardBorder))
-        .transition(.scale(scale: 0.94, anchor: .topLeading).combined(with: .opacity))
+        .transition(.opacity)
     }
 
     private func column(_ title: String, _ rows: [(coin: String, price: Decimal, change: Decimal)], up: Bool) -> some View {
@@ -257,7 +257,7 @@ struct MoversBoard: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .modifier(HoverLift(radius: 10, lift: 1.02))
+                .modifier(HoverLift(radius: 10))
             }
         }
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -296,7 +296,7 @@ struct PlaceDetailBoard: View {
         .frame(width: 470, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.06), radius: 14, y: 8))
         .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.accent.opacity(0.4), lineWidth: 1.5))
-        .transition(.scale(scale: 0.94, anchor: .topLeading).combined(with: .opacity))
+        .transition(.opacity)
     }
 
     private var logo: String { ["solana": "sol", "hyperliquid": "hype", "jupiter": "jup", "kamino": "kamino", "near": "near", "aave": "aave", "morpho": "morpho", "robinhood": "robinhood"][place] ?? "usdc" }
@@ -345,7 +345,7 @@ struct PlaceDetailBoard: View {
             }
             ForEach(ws.positions, id: \.coin) { p in
                 Button { Task { await ws.chartCommand(.chart(coin: p.coin, range: .day)) } } label: { PositionChip(position: p) }
-                    .buttonStyle(.plain).modifier(HoverLift(radius: 12, lift: 1.02)).help("Open the \(IntentParser.pretty(p.coin)) chart")
+                    .buttonStyle(.plain).modifier(HoverLift(radius: 12)).help("Open the \(IntentParser.pretty(p.coin)) chart")
             }
             if ws.positions.isEmpty { Text("No open positions.").font(.caption).foregroundStyle(.secondary) }
             Label(ws.agentActive ? "Trading key on: orders skip Touch ID, withdrawals still need it" : "Trading key paused: every order asks for Touch ID",
@@ -367,7 +367,7 @@ struct PlaceDetailBoard: View {
                     .padding(9).background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
                     .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).modifier(HoverLift(radius: 12, lift: 1.02)).help("\(s.symbol): chart and details")
+                .buttonStyle(.plain).modifier(HoverLift(radius: 12)).help("\(s.symbol): chart and details")
             }
             row("usdg", "USDG", "\(ws.robinhood.map { Fmt.num($0.usdg) } ?? "—")", "gas: \(ws.robinhood.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH")
             Text("Stock Tokens aren’t offered to US persons, or in Canada, the UK and Switzerland; they give economic exposure, not the shares.")
@@ -500,7 +500,6 @@ struct Openable: ViewModifier {
             .overlay {
                 if routeStep { ArrowCard(radius: 16, tip: 10).stroke(edge, lineWidth: width) } else { RoundedRectangle(cornerRadius: 16).strokeBorder(edge, lineWidth: width) }
             }
-            .scaleEffect(hover ? 1.015 : 1)
             .animation(.snappy(duration: 0.18), value: hover)
             .contentShape(Rectangle())
             .onHover { hover = $0 }
@@ -569,7 +568,6 @@ struct HoverIconStyle: ButtonStyle {
                 .foregroundStyle(lit ? AnyShapeStyle(Brand.accentInk) : AnyShapeStyle(.secondary))
                 .frame(minWidth: size, minHeight: size)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Brand.accent.opacity(configuration.isPressed ? 0.24 : lit ? 0.13 : 0)))
-                .scaleEffect(configuration.isPressed ? 0.92 : lit ? 1.08 : 1)
                 .animation(.snappy(duration: 0.16), value: lit)
                 .animation(.snappy(duration: 0.1), value: configuration.isPressed)
                 .contentShape(Rectangle())
@@ -584,12 +582,10 @@ extension ButtonStyle where Self == HoverIconStyle {
 }
 
 /// Logos and rows that open something: a soft wash and a lift under the pointer.
-/// Something clickable under the pointer: the hand cursor, a small lift and an accent edge (a filled card hides
-/// the background tint, so the edge is what shows it can be clicked).
+/// Something clickable under the pointer: the hand cursor and an accent edge (a filled card hides the background
+/// tint, so the edge is what shows it can be clicked). Cards never move: no lift, no scale — only the border (the user's rule).
 struct HoverLift: ViewModifier {
     var radius: CGFloat = 12
-    /// How much it grows: less for big cards.
-    var lift: CGFloat = 1.04
     var enabled = true
     @State private var hover = false
 
@@ -598,7 +594,6 @@ struct HoverLift: ViewModifier {
         content
             .background(RoundedRectangle(cornerRadius: radius).fill(Color.primary.opacity(on ? 0.07 : 0)))
             .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Brand.accent.opacity(on ? 0.7 : 0), lineWidth: 1.5))
-            .scaleEffect(on ? lift : 1)
             .animation(.snappy(duration: 0.16), value: on)
             .onHover { hover = $0 }
             .pointerStyle(enabled ? .link : .default)
