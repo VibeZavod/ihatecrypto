@@ -140,3 +140,28 @@ import WalletCore
     #expect(EVMCall.decode(try MorphoVault.redeem(shares: Data(count: 32), receiver: other, owner: me)).refusal(sender: me) != nil)
     #expect(EVMCall.decode(try MorphoVault.withdraw(assets: 1, receiver: me, owner: other)).refusal(sender: me) != nil)
 }
+
+@Test func simulationReadsOurBalanceChangesFromTheLogs() throws {
+    let me = "0xd8da6bf26964af9d7eed9e03e53415d37aa96045", pad = "0x000000000000000000000000"
+    let usdc = "0xaf88d065e77c8cc2239327c5edb3a432268e5831", weth = "0x4200000000000000000000000000000000000006"
+    func log(_ address: String, _ topics: [String], _ amount: UInt64 = 0) -> [String: Any] {
+        ["address": address, "topics": topics, "data": "0x" + ABI.uint(amount).hex]
+    }
+    let t = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+    let other = pad + "1111111111111111111111111111111111111111", mine = pad + me.dropFirst(2)
+    let logs: [[String: Any]] = [
+        log(EVMSimulation.native, [t, mine, other], 3_000),                       // coin out
+        log(usdc, [t, other, mine], 5_000_000), log(usdc, [t, mine, other], 1_000_000),
+        log(usdc, [t, other, other], 9),                                          // not ours
+        log(weth, ["0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c", mine], 7),
+        log("0x3333333333333333333333333333333333333333", [t, mine, other, pad + "0000000000000000000000000000000000000001"]),
+        log(usdc, ["0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c", mine], 99), // Deposit counts only from WETH9
+    ]
+    let ok = try EVMSimulation([["calls": [["status": "0x1", "logs": logs]]]], owner: "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
+    #expect(ok.revert == nil)
+    #expect(ok.changes == [EVMSimulation.native: -3_000, usdc: 4_000_000, weth: 7, "0x3333333333333333333333333333333333333333": -1])
+    #expect(ok.nfts == ["0x3333333333333333333333333333333333333333"])
+    let reverted = try EVMSimulation([["calls": [["status": "0x0", "logs": [], "error": ["message": "execution reverted: ERC20: transfer amount exceeds balance"]]]]], owner: me)
+    #expect(reverted.revert == "execution reverted: ERC20: transfer amount exceeds balance")
+    #expect(throws: (any Error).self) { try EVMSimulation(["nope"], owner: me) }
+}

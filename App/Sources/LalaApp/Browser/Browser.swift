@@ -43,6 +43,8 @@ struct EVMReview {
     let data: Data
     /// What it does, in words: «Allow 0xabc… to spend up to 5 USDC».
     let lines: [String]
+    /// Simulated change of each of our balances: «USDC (0xaf88…5831): +5».
+    let changes: [String]
     /// A foreign address money goes to, which the user must confirm; nil when none.
     let recipient: String?
     let gas: UInt64
@@ -66,6 +68,8 @@ final class Browser {
     /// EVM chain a site switched to (Arbitrum by default). Only reading goes to that chain's public RPC.
     private var evmChain: [String: UInt64] = [:]
     static let evmRPC: [UInt64: String] = [1: "https://ethereum-rpc.publicnode.com", 42161: "https://arb1.arbitrum.io/rpc", 8453: "https://mainnet.base.org"]
+    /// arb1 crashes on eth_simulateV1; publicnode runs it but refuses receipts without a token (2026-09-29).
+    static let evmSimulationRPC: [UInt64: String] = [42161: "https://arbitrum-one-rpc.publicnode.com"]
     static let readOnly: Set<String> = ["eth_call", "eth_blockNumber", "eth_getBalance", "eth_getCode", "eth_getTransactionCount", "eth_getTransactionReceipt",
                                         "eth_getTransactionByHash", "eth_estimateGas", "eth_gasPrice", "eth_feeHistory", "eth_getBlockByNumber",
                                         "eth_getLogs", "eth_maxPriorityFeePerGas", "eth_getStorageAt"]
@@ -213,7 +217,7 @@ final class Browser {
             let rpc = EVMRPC(url: url, chainId: chain)
             var review = await evmReview(to: to, value: value, data: data, from: address, rpc: rpc)
             if let ws = workspace, ws.jevScreening, let key = ws.openRouterKey {
-                review.jev = try? await JevReviewer.site(host: host(origin), title: title, programs: ["EVM \(chain): \(to)"], changes: review.lines, apiKey: key)
+                review.jev = try? await JevReviewer.site(host: host(origin), title: title, programs: ["EVM \(chain): \(to)"], changes: review.lines + review.changes, apiKey: key)
             }
             guard await ask(.evmTransaction(review), origin: origin, site: site), review.problems.isEmpty else {
                 if let refusal = review.problems.first { workspace?.reply("Site \(origin): EVM transaction declined — \(refusal)", note: "browser") }
@@ -255,14 +259,14 @@ final class Browser {
         return s == "0x" ? 0 : UInt64(s.dropFirst(2), radix: 16)
     }
 
-    /// Decodes, names the token, simulates with eth_call and estimates gas. Problems mean «do not sign».
+    /// Decodes, names the token, simulates the balance changes and estimates gas. Problems mean «do not sign».
     func evmReview(to: String, value: UInt64, data: Data, from: String, rpc: EVMRPC) async -> EVMReview {
         let call = EVMCall.decode(data)
         var problems = call.refusal(sender: from).map { [$0] } ?? []
         var lines: [String] = []
         var recipient: String?
         let native = rpc.chainId == 42161 || rpc.chainId == 1 || rpc.chainId == 8453 ? "ETH" : "coins"
-        func token() async -> (symbol: String, decimals: Int) {
+        func token(_ to: String) async -> (symbol: String, decimals: Int) {
             let symbol = (try? await rpc.call("eth_call", [["to": to, "data": "0x95d89b41"], "latest"]) as? String).flatMap { hex -> String? in
                 guard let d = Data(hex: hex), d.count >= 96 else { return nil }
                 let length = Int(d[d.startIndex + 63])
@@ -280,14 +284,14 @@ final class Browser {
             lines.append("Transfer \(Fmt.num(Decimal(value) / 1_000_000_000_000_000_000, maxFraction: 8)) \(native) to \(to).")
             if to.lowercased() != from.lowercased() { recipient = to }
         case .approve(let spender, let a), .increaseAllowance(let spender, let a):
-            let t = await token()
+            let t = await token(to)
             lines.append("Allow \(spender) to spend up to \(amount(a, t.decimals)) \(t.symbol).")
         case .transfer(let r, let a):
-            let t = await token()
+            let t = await token(to)
             lines.append("Transfer \(amount(a, t.decimals)) \(t.symbol) to \(r).")
             if r.lowercased() != from.lowercased() { recipient = r }
         case .transferFrom(let f, let r, let a):
-            let t = await token()
+            let t = await token(to)
             lines.append("Move \(amount(a, t.decimals)) \(t.symbol) from \(f) to \(r).")
         case .setApprovalForAll(let op, let on):
             lines.append("\(on ? "Rights to all NFTs" : "Revoke NFT rights") for \(op).")
@@ -300,12 +304,25 @@ final class Browser {
         case .contract(let selector):
             lines.append("Contract call \(to), function \(selector)\(value > 0 ? ", with \(Fmt.num(Decimal(value) / 1_000_000_000_000_000_000, maxFraction: 8)) \(native)" : "").")
         }
-        let tx: [String: Any] = ["from": from, "to": to, "value": "0x" + String(value, radix: 16), "data": "0x" + data.hex]
+        var changes: [String] = []
+        let simulator = Self.evmSimulationRPC[rpc.chainId].flatMap(URL.init(string:)).map { EVMRPC(url: $0, chainId: rpc.chainId) } ?? rpc
         do {
-            _ = try await rpc.call("eth_call", [tx, "latest"])
-            lines.append("Simulation (eth_call): the call succeeds.")
+            let sim = try await simulator.simulate(from: from, to: to, value: value, data: data)
+            if let revert = sim.revert { problems.append("Simulation: the call would revert — \(revert)") }
+            for (asset, delta) in sim.changes.sorted(by: { $0.key < $1.key }) {
+                if asset == EVMSimulation.native { changes.insert("\(native): \(signed(delta / 1_000_000_000_000_000_000))", at: 0); continue }
+                let t = await token(asset)
+                let name = "\(t.symbol)\(sim.nfts.contains(asset) ? " NFT" : "") (\(asset.prefix(6))…\(asset.suffix(4)))"
+                changes.append("\(name): \(signed(sim.nfts.contains(asset) ? delta : delta / Decimal(sign: .plus, exponent: t.decimals, significand: 1)))")
+            }
+            if sim.revert == nil, changes.isEmpty { changes.append("None of your balances change.") }
         } catch {
-            problems.append("Simulation: the call would revert — \(error.localizedDescription)")
+            // The node can't simulate: at least check that the call doesn't revert.
+            changes.append("Unavailable: \(error.localizedDescription)")
+            let tx: [String: Any] = ["from": from, "to": to, "value": "0x" + String(value, radix: 16), "data": "0x" + data.hex]
+            do { _ = try await rpc.call("eth_call", [tx, "latest"]) } catch {
+                problems.append("Simulation: the call would revert — \(error.localizedDescription)")
+            }
         }
         var gas: UInt64 = 0
         if problems.isEmpty {
@@ -318,7 +335,7 @@ final class Browser {
                 problems.append("Couldn't estimate gas: \(error.localizedDescription)")
             }
         }
-        return EVMReview(chain: rpc.chainId, to: to, value: value, data: data, lines: lines, recipient: recipient, gas: gas, problems: problems)
+        return EVMReview(chain: rpc.chainId, to: to, value: value, data: data, lines: lines, changes: changes, recipient: recipient, gas: gas, problems: problems)
     }
 
     private func ask(_ kind: SiteRequest.Kind, origin: String, site: SiteCheck.Verdict) async -> Bool {
@@ -531,6 +548,7 @@ struct ApprovalSheet: View {
             case .evmTransaction(let r):
                 Text("Network \(["1": "Ethereum", "42161": "Arbitrum", "8453": "Base"]["\(r.chain)"] ?? "\(r.chain)")").font(.callout.weight(.semibold))
                 section("What it does") { ForEach(r.lines, id: \.self) { Text("· " + $0) } }
+                section("What changes (simulation)") { ForEach(r.changes, id: \.self) { Text("· " + $0) } }
                 if let jev = r.jev {
                     Label(jev.text, systemImage: jev.concern ? "exclamationmark.triangle.fill" : "checkmark.seal")
                         .foregroundStyle(jev.concern ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
@@ -541,7 +559,7 @@ struct ApprovalSheet: View {
                 } else if let to = r.recipient {
                     Toggle("Send to \(to.prefix(10))…\(to.suffix(6))", isOn: $allowUnknown)
                 }
-                Text("eth_call doesn't show token balance changes — it only checks that the call succeeds. The signer decodes the calldata again.").font(.caption).foregroundStyle(.secondary)
+                Text("Changes are simulated on the latest block, before the network fee. A token names itself — check its address. The signer decodes the calldata again.").font(.caption).foregroundStyle(.secondary)
             case .typedData(let t):
                 Text("\(t.primaryType) for “\(t.domainName)”, chain \(t.chainId)").font(.callout.weight(.semibold))
                 ScrollView {

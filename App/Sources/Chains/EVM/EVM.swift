@@ -226,6 +226,12 @@ public struct EVMRPC: Sendable {
         return hash
     }
 
+    /// Runs the transaction on the latest block without sending it (eth_simulateV1): what `from` gains and loses.
+    public func simulate(from: String, to: String, value: UInt64, data: Data) async throws -> EVMSimulation {
+        let tx: [String: Any] = ["from": from, "to": to, "value": "0x" + String(value, radix: 16), "data": "0x" + data.hex]
+        return try EVMSimulation(try await call("eth_simulateV1", [["blockStateCalls": [["calls": [tx]]], "traceTransfers": true], "latest"]), owner: from)
+    }
+
     /// Waits for a receipt; true if the transaction succeeded.
     public func waitForReceipt(_ hash: String, timeout: TimeInterval = 120) async throws -> Bool {
         let deadline = Date().addingTimeInterval(timeout)
@@ -236,6 +242,51 @@ public struct EVMRPC: Sendable {
             try await Task.sleep(for: .seconds(1))
         }
         throw WalletError("No receipt after \(Int(timeout)) s: \(hash)")
+    }
+}
+
+/// One eth_simulateV1 result, read as one address's balance changes. With traceTransfers the node reports native
+/// coin moves as Transfer logs of 0xeeee…eeee, which no contract can emit. Token moves are their contracts' own Transfer
+/// logs (plus WETH9's Deposit/Withdrawal, which emit none) — a contract can log anything, so a token is shown by its address.
+public struct EVMSimulation: Equatable, Sendable {
+    public static let native = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
+    /// WETH9 on Ethereum and Base; Arbitrum's WETH logs a Transfer on wrap.
+    static let weth9: Set<String> = ["0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", "0x4200000000000000000000000000000000000006"]
+    static let transfer = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
+    static let deposit = "0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c"
+    static let withdrawal = "0x7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65"
+
+    /// Why the call reverts; nil when it succeeds.
+    public var revert: String?
+    /// Net change per asset contract (`native` for the coin), in raw units; an NFT collection counts items. No zeros.
+    public var changes: [String: Decimal] = [:]
+    /// ERC-721 collections among `changes`.
+    public var nfts: Set<String> = []
+
+    public init(_ result: Any, owner: String) throws {
+        guard let call = ((result as? [[String: Any]])?.first?["calls"] as? [[String: Any]])?.first else {
+            throw WalletError("eth_simulateV1: unexpected reply")
+        }
+        if call["status"] as? String != "0x1" {
+            revert = (call["error"] as? [String: Any])?["message"] as? String ?? "reverted"
+            return
+        }
+        let me = owner.lowercased().dropFirst(2)
+        for log in call["logs"] as? [[String: Any]] ?? [] {
+            guard let asset = (log["address"] as? String)?.lowercased(), let topics = log["topics"] as? [String], let event = topics.first else { continue }
+            let amount = Data(hex: log["data"] as? String ?? "0x").flatMap { ABI.decimal(in: $0, word: 0) } ?? 0
+            var from = "", to = "", n = amount
+            switch (event, topics.count) {
+            case (Self.transfer, 3): (from, to) = (topics[1], topics[2])
+            case (Self.transfer, 4): (from, to, n) = (topics[1], topics[2], 1); nfts.insert(asset)
+            case (Self.deposit, 2) where Self.weth9.contains(asset): to = topics[1]
+            case (Self.withdrawal, 2) where Self.weth9.contains(asset): from = topics[1]
+            default: continue
+            }
+            if from.lowercased().hasSuffix(me) { changes[asset, default: 0] -= n }
+            if to.lowercased().hasSuffix(me) { changes[asset, default: 0] += n }
+        }
+        changes = changes.filter { $0.value != 0 }
     }
 }
 
