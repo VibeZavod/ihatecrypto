@@ -712,9 +712,12 @@ extension Workspace {
         case .solanaTo(let place, let amount?): outRoute(to: place, amount: amount)
         case .buyStock(let symbol, let usdc?): stockRoute(symbol, usdc)
         default: ends(command).map { from, to in
-            MoveRoute(title: command.summary.prefix(1).uppercased() + command.summary.dropFirst(),
-                      footer: "One Solana signature, checked and simulated before it’s signed. Say “do it” or press Confirm; anything else cancels.",
-                      steps: [from, to])
+            let footer = if case .sellStock = command {
+                "Two Robinhood Chain transactions: an exact approve and the Uniswap swap, which may only pay this wallet. Say “do it” or press Confirm; anything else cancels."
+            } else {
+                "One Solana signature, checked and simulated before it’s signed. Say “do it” or press Confirm; anything else cancels."
+            }
+            return MoveRoute(title: readable(command.summary.prefix(1).uppercased() + command.summary.dropFirst()), footer: footer, steps: [from, to])
         }
         }
     }
@@ -793,7 +796,7 @@ extension Workspace {
             return (step("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC, .solana),
                     step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "BUY · JUPITER", a.symbol, "best route, simulated first", .jupiter))
         case .sellStock(let s, let x):
-            return (step("robinhood", "SELL · UNISWAP", "\(n(x)) \(s)", "Robinhood Chain", .robinhood),
+            return (step("robinhood", "SELL · UNISWAP", "\(n(x)) \(tokenLabel(s))", "Robinhood Chain", .robinhood),
                     step("usdc", "TO · USDG", "on Robinhood Chain", "then “move USDG from Robinhood to Solana”", .solana))
         case .sell(let a, let x):
             return (step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "SELL · JUPITER", "\(n(x)) \(a.symbol)", "", .jupiter),
@@ -804,6 +807,18 @@ extension Workspace {
     }
 
     /// A Robinhood Stock Token bought with USDC from Solana: bridge, then Uniswap on Robinhood Chain.
+    /// A token's name for people: the favorite's symbol for its contract, else the contract shortened.
+    func tokenLabel(_ symbolOrContract: String) -> String {
+        guard symbolOrContract.hasPrefix("0x") else { return symbolOrContract }
+        return favoriteTokens.first { $0.address.lowercased() == symbolOrContract.lowercased() }?.symbol
+            ?? "\(symbolOrContract.prefix(6))…\(symbolOrContract.suffix(4))"
+    }
+
+    /// Text for the canvas and the chat with every contract in it replaced by its token's name.
+    func readable(_ text: String) -> String {
+        text.replacing(/0x[0-9a-fA-F]{40}/) { tokenLabel(String($0.0)) }
+    }
+
     private func stockRoute(_ symbolOrContract: String, _ usdc: Decimal) -> MoveRoute {
         // A contract («купи 0x…»): its name and price from the favorites when it's there.
         let contract = symbolOrContract.hasPrefix("0x")
@@ -925,8 +940,8 @@ struct WithdrawBoard: View {
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
-                        Text(route.title).font(.system(size: 14, weight: .semibold))
-                        StatusChip(text: "waiting for the signature", tint: Brand.profit)
+                        Text(route.title).font(.system(size: 14, weight: .semibold)).lineLimit(2).truncationMode(.middle)
+                        StatusChip(text: "waiting for the signature", tint: Brand.profit).fixedSize()
                     }
                     RouteSteps(steps: route.steps)
                     Label(route.footer, systemImage: "signature").font(.caption).foregroundStyle(.secondary)
@@ -984,12 +999,15 @@ struct RouteStepView: View {
         VStack(alignment: .leading, spacing: 6) {
             if let logo = step.logo { TokenLogo(name: logo, size: 24) }
             Text(step.label).font(.system(size: 9, weight: .heavy)).tracking(0.4).opacity(0.75)
-            Text(step.title).font(.system(size: 13, weight: .bold)).monospacedDigit().fixedSize(horizontal: false, vertical: true)
+            Text(step.title).font(.system(size: 13, weight: .bold)).monospacedDigit().lineLimit(3).truncationMode(.middle)
+                .minimumScaleFactor(0.8).fixedSize(horizontal: false, vertical: true)
             ForEach(step.lines, id: \.self) { Text($0).font(.caption2).opacity(0.8).fixedSize(horizontal: false, vertical: true) }
         }
         .foregroundStyle(fill.dark ? Color.white : Color.primary)
         .padding(11)
         .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
+        // Its own height whatever the canvas proposes: the arrow grows with the text instead of cutting it.
+        .fixedSize(horizontal: false, vertical: true)
         .background(ArrowCard(radius: 16, tip: 10).fill(fill.color))
         .openable(logo: step.logo)
     }
@@ -1020,8 +1038,8 @@ extension Workspace {
             await move(command)
         default:
             pendingAction = .wallet(command)
-            pendingText = command.summary
-            reply("Understood: \(command.summary). It’s on the canvas — Sign it, or say anything else to cancel.", note: note)
+            pendingText = readable(command.summary)
+            reply("Understood: \(readable(command.summary)). It’s on the canvas — Sign it, or say anything else to cancel.", note: note)
         }
     }
 

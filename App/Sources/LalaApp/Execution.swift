@@ -233,11 +233,11 @@ extension Workspace {
         func finish(_ ok: Bool) {
             runningAction = nil
             guard movesMoney(command, confirmed: confirmed) else { return }
-            finishedAction = (confirmedRoute?.title ?? Self.canvasTitle(command), CanvasOutcome(at: Date(), ok: ok), confirmedRoute?.steps ?? [])
+            finishedAction = (confirmedRoute?.title ?? readable(Self.canvasTitle(command)), CanvasOutcome(at: Date(), ok: ok), confirmedRoute?.steps ?? [])
         }
         if movesMoney(command, confirmed: confirmed) {
             withAnimation(StudioView.spring) {
-                runningAction = (confirmedRoute?.title ?? Self.canvasTitle(command), confirmedRoute?.steps ?? [], [], Date())
+                runningAction = (confirmedRoute?.title ?? readable(Self.canvasTitle(command)), confirmedRoute?.steps ?? [], [], Date())
             }
         }
         switch command {
