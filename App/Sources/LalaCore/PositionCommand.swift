@@ -55,6 +55,11 @@ public struct SpotAsset: Equatable, Sendable {
 
     /// A token named by its mint only, until the app looks it up.
     public static func byMint(_ mint: String) -> SpotAsset { SpotAsset(symbol: "\(mint.prefix(4))…\(mint.suffix(4))", mint: mint, decimals: 0) }
+    /// A token named by its ticker only («BONK»): the app finds the Jupiter-verified token trading under it.
+    public static func bySymbol(_ symbol: String) -> SpotAsset {
+        let s = symbol.trimmingCharacters(in: CharacterSet(charactersIn: "$"))
+        return all.first { $0.symbol.uppercased() == s.uppercased() } ?? SpotAsset(symbol: s.uppercased(), mint: "", decimals: 0)
+    }
     public var resolved: Bool { decimals > 0 }
     /// One of the fixed verified coins (or USDC): the only ones bought while Safe search is on.
     public var verified: Bool { self == .usdc || Self.all.contains { $0.mint == mint } }
@@ -139,6 +144,11 @@ public enum WalletCommand: Equatable, Sendable {
     /// A Robinhood Stock Token (SPCX, TSLA…) bought on Robinhood Chain for USDC from Solana; `symbol` as the user named
     /// it, resolved against Robinhood's registry by the app. nil amount = ask.
     case buyStock(symbol: String, usdc: Decimal?)
+    /// A token on «base» or «arbitrum», by ticker (Uniswap's list) or contract, for USDC from Solana: Relay's swap or
+    /// Relay's bridge + Uniswap, whichever leaves more. nil = ask how much.
+    case buyOn(String, token: String, usdc: Decimal?)
+    /// Such a token back to USDC on Solana, the better way again; nil = all of it.
+    case sellOn(String, token: String, amount: Decimal?)
     /// Sell a Stock Token for USDG on Robinhood Chain; nil = all of it.
     case sellStock(symbol: String, amount: Decimal?)
     /// USDG on Robinhood Chain back to Solana as USDC; nil = everything.
@@ -175,6 +185,19 @@ public enum WalletCommand: Equatable, Sendable {
         if q.contains(/доходност|где\s+(?:лучше\s+)?держать|куда\s+(?:лучше\s+)?(?:положить|вложить|деть)|\bapy\b|ставк[иа]\s+(?:по\s+)?депозит|where\s+(?:to|should\s+i|can\s+i)\s+(?:keep|put|park|hold)|best\s+(?:rates?|yields?)|\byields?\b/) {
             let sol = q.contains(/\bsol\b|солан|\bсол\b|solana/), usd = q.contains(/usdc|стейбл|доллар|stable/)
             return .yields(sol && usd ? nil : sol ? "SOL" : usd ? "USDC" : q.contains(/usdt/) ? "USDT" : nil)
+        }
+        // A token on a named network: «buy AERO on base for 5 USDC», «sell all DEGEN on base», «buy BONK on solana for 5
+        // USDC», «купи ARB на арбитруме на 5$», «buy token 0x… on arbitrum for 3 USDC».
+        if let m = text.firstMatch(of: /(?i)\b(buy|купи\w*|sell|прода\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь)\s+)?(?:(?:the\s+)?tokens?\s+|токен\w*\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11})\s+(?:on|на|в)\s+(solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*)\b/),
+           !["usdc", "usdg", "tokens", "token"].contains(String(m.3).lowercased()) {
+            let token = String(m.3), place = String(m.4).lowercased()
+            let chain = place.hasPrefix("sol") || place.hasPrefix("сол") ? "solana" : place.hasPrefix("b") || place.hasPrefix("бейс") ? "base" : "arbitrum"
+            let count = m.2.flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
+            let sell = String(m.1).lowercased().hasPrefix("s") || String(m.1).lowercased().hasPrefix("прод")
+            if chain == "solana", !token.hasPrefix("0x") {
+                return sell ? .sell(.bySymbol(token), amount: count) : .buy(.bySymbol(token), usdc: amount)
+            }
+            if chain != "solana" { return sell ? .sellOn(chain, token: token, amount: count) : .buyOn(chain, token: token, usdc: amount) }
         }
         // Any token by its contract («купи 0x… токен на $2»): bought on Robinhood Chain, where LALA trades by contract.
         if let contract = text.firstMatch(of: /0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/).map({ String($0.0) }) {
@@ -343,6 +366,7 @@ extension WalletCommand {
         case .buy(let a, nil): "For how many USDC should I buy \(a.symbol)?"
         case .buyNear(nil): "For how many USDC should I buy NEAR?"
         case .buyStock(let s, nil): "For how many USDC should I buy \(s)?"
+        case .buyOn(let place, let t, nil): "For how many USDC should I buy \(t) on \(Self.placeName(place))?"
         case .stake(nil): "How much SOL to stake?"
         case .solanaTo(let place, nil): "How many USDC should I move from Solana to \(Self.placeName(place))?"
         default: nil
@@ -359,6 +383,7 @@ extension WalletCommand {
         case .buy(let a, _): .buy(a, usdc: amount)
         case .buyNear: .buyNear(usdc: amount)
         case .buyStock(let s, _): .buyStock(symbol: s, usdc: amount)
+        case .buyOn(let place, let t, _): .buyOn(place, token: t, usdc: amount)
         case .stake: .stake(amount)
         case .solanaTo(let place, _): .solanaTo(place, amount)
         default: self
@@ -408,6 +433,8 @@ extension WalletCommand {
         case .buyStock(let s, let u): return "buy \(s.hasPrefix("0x") ? "the token \(s)" : "\(s) stock tokens") for \(n(u)) USDC on Robinhood Chain"
         case .sellStock(let s, let x): return "sell \(n(x)) \(s.hasPrefix("0x") ? "of the token \(s)" : "\(s) stock tokens") on Robinhood Chain"
         case .robinhoodToSolana(let x): return "move \(n(x)) USDG from Robinhood Chain to Solana"
+        case .buyOn(let place, let t, let u): return "buy \(t.hasPrefix("0x") ? "the token \(t)" : t.uppercased()) on \(Self.placeName(place)) for \(n(u)) USDC"
+        case .sellOn(let place, let t, let x): return "sell \(n(x)) \(t.hasPrefix("0x") ? "of the token \(t)" : t.uppercased()) on \(Self.placeName(place)) for USDC on Solana"
         case .solanaTo(let place, let x): return "move \(n(x)) USDC from Solana to \(Self.placeName(place))"
         }
     }

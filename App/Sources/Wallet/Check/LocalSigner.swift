@@ -135,6 +135,8 @@ func moveMoney(_ text: String) async throws {
     case .sendTo, .sendNear, .closeNear, .sendSol: throw ExecutionError("Sending to a saved address works in the ihatecrypto app, where the address book is.")
     case .buyStock(let symbol, let usdc): print(try await executor.buyStock(symbol, usdc: usdc ?? 1))
     case .sellStock(let symbol, let amount): print(try await executor.sellStock(symbol, amount: amount))
+    case .buyOn(let place, let token, let usdc): print(try await executor.buyOn(place == "arbitrum" ? .arbitrum : .base, token, usdc: usdc ?? 1))
+    case .sellOn(let place, let token, let amount): print(try await executor.sellOn(place == "arbitrum" ? .arbitrum : .base, token, amount: amount))
     case .robinhoodToSolana(let amount): print(try await executor.evmToSolana(.robinhood, usdc: amount))
     case .solanaTo(let place, let amount):
         print(try await executor.solanaToEVM(place == "base" ? .base : place == "arbitrum" ? .arbitrum : .robinhood, usdc: amount ?? 1))

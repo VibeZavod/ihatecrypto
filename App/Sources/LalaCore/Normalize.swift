@@ -89,10 +89,14 @@ public enum ChatRouter {
     OPEN POSITION (add the asset when there are several, e.g. "close ETH"):
       move stop to breakeven | stop at <PRICE> | take at <PRICE> | trail N% | close | close half | close N% | cancel orders
     SPOT ON SOLANA (Jupiter): buy <SOL|BTC|ETH|JUP|JitoSOL> for N USDC | sell [N] <SOL|BTC|ETH|JUP>
+      any other Jupiter-verified token by its ticker: buy <TICKER> on solana for N USDC | sell [N] <TICKER> on solana   (BONK, WIF, USDT, JTO, PYTH, POPCAT, RENDER…)
       buy <SOL|BTC|ETH|JUP> for N USDC every <day|week|N days> | stop recurring buys
       buy NEAR for N USDC | sell [N] NEAR   (native NEAR on the NEAR account → USDC on Solana; no N = all of it)
     STOCK TOKENS ON ROBINHOOD CHAIN: buy <COMPANY or TICKER> stock for N USDC | sell <TICKER> stock | move USDG from Robinhood to Solana
     ANY TOKEN BY ITS CONTRACT (Robinhood Chain): buy token <0xCONTRACT> for N USDC | sell [N] tokens <0xCONTRACT>
+    TOKENS ON BASE AND ARBITRUM (Relay's swap or Relay's bridge + Uniswap, whichever leaves more; a sale comes back as USDC on Solana):
+      buy <TICKER> on <base|arbitrum> for N USDC | sell [N] <TICKER> on <base|arbitrum>   (tickers from Uniswap's list: AERO, DEGEN, VIRTUAL, cbBTC, WETH on Base; ARB, GMX, PENDLE, LINK, UNI on Arbitrum)
+      buy token <0xCONTRACT> on <base|arbitrum> for N USDC | sell [N] tokens <0xCONTRACT> on <base|arbitrum>
     ANY SOLANA TOKEN BY ITS MINT (Jupiter; only while Safe search is off): buy token <MINT> for N USDC | sell [N] tokens <MINT>
     EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault") | withdraw [N] <USDC|SOL> from the vault
       deposit N <USDC|SOL> to kamino | withdraw <USDC|SOL> from kamino | stake N SOL | unstake N JitoSOL
@@ -130,9 +134,11 @@ public enum ChatRouter {
     split it into two steps. Selling stock tokens or tokens by contract leaves USDG on Robinhood Chain; «move USDG from Robinhood \
     to Solana» brings it back. \
     Between two places that aren't Solana there is no direct move: it's two steps through Solana.
-    Buying and selling a token by its contract works on Robinhood Chain. On Solana ihatecrypto buys SOL, BTC, ETH, JUP and \
-    JitoSOL; any other Solana token by its mint only while Safe search is off (the context says which). Any token can be \
-    watched (it becomes a favorite with its price) and charted.
+    Buying and selling a token by its contract works on Robinhood Chain, Base and Arbitrum. On Solana ihatecrypto buys \
+    SOL, BTC, ETH, JUP and JitoSOL, and any Jupiter-verified token by its ticker (BONK, WIF, USDT…) — Safe search on or off; \
+    any other Solana token by its mint only while Safe search is off (the context says which). On Base and Arbitrum it \
+    buys the tokens on Uniswap's list by ticker and any other by contract, comparing Relay's swap with Relay + Uniswap. \
+    Any token can be watched (it becomes a favorite with its price) and charted.
 
     Work like an agent, not a menu of canned answers: figure out what they are after, look up what you don't know, then \
     answer with the facts, your own view and the ways to go on. Your hands are the lookups and the forms below and nothing \
@@ -255,7 +261,7 @@ public enum ChatRouter {
                          + "when asked for one, reply (chat) that it is off in Settings › Modules.")
         }
         lines.append(context.safeSearch
-            ? "Safe search: ON — on Solana only SOL, BTC, ETH, JUP and JitoSOL can be bought. For another token say it is off in Settings › General › Safe search, and offer to watch it."
+            ? "Safe search: ON — on Solana only Jupiter-verified tokens can be bought (by ticker: buy <TICKER> on solana). An unverified token by its mint needs Safe search off in Settings › General; offer to watch it instead."
             : "Safe search: OFF — any Solana token can be bought by its mint. Before offering it, look it up and say plainly what is risky about it.")
         lines.append("Now (local time): " + context.now)
         lines.append("Reply language: " + context.replyLanguage)

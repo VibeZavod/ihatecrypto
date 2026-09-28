@@ -68,15 +68,27 @@ extension Workspace {
 
     /// A Solana token to buy or sell by its mint: refused while Safe search is on; otherwise looked up on Jupiter (decimals,
     /// Token-2022) and its risks said before the card. nil = said why not.
-    func spotToken(_ mint: String, note: String?) async -> SpotAsset? {
-        guard !safeSearch else {
-            reply(say("Safe search is on, so on Solana ihatecrypto buys only verified coins: SOL, BTC, ETH, JUP and JitoSOL. To trade any token by its mint, turn Safe search off in Settings › General.",
-                      "Включён Safe search: на Solana ihatecrypto покупает только проверенные монеты — SOL, BTC, ETH, JUP и JitoSOL. Чтобы торговать любым токеном по mint-адресу, выключи Safe search в Settings › General."), note: note)
+    /// A Solana token named by ticker: the Jupiter-verified one trading under it, then the same checks as by mint.
+    func spotToken(_ asset: SpotAsset, note: String?) async -> SpotAsset? {
+        guard asset.mint.isEmpty else { return await spotToken(asset.mint, note: note) }
+        guard let mint = await TokenResearch.solanaMint(symbol: asset.symbol) else {
+            reply(say("Jupiter has no verified token called \(asset.symbol) on Solana, so nothing is bought by that name — namesakes are the usual fakes. Name it by its mint instead (with Safe search off).",
+                      "У Jupiter нет проверенного токена \(asset.symbol) на Solana, поэтому по имени ничего не покупаю — одноимённые токены обычно подделки. Назови его mint-адресом (с выключенным Safe search)."), note: note)
             return nil
         }
+        return await spotToken(mint, note: note)
+    }
+
+    func spotToken(_ mint: String, note: String?) async -> SpotAsset? {
         guard let t = await TokenResearch.solanaToken(mint) else {
             reply(say("Jupiter doesn’t know the token \(mint), so there’s no route to trade it — nothing moved.",
                       "Jupiter не знает токен \(mint), поэтому торговать им нельзя — ничего не ушло."), note: note)
+            return nil
+        }
+        // Safe search on: Jupiter-verified tokens only.
+        guard !safeSearch || t.verified else {
+            reply(say("Safe search is on, and Jupiter hasn’t verified \(t.name) (\(t.symbol)), so ihatecrypto won’t buy it. To trade an unverified token by its mint, turn Safe search off in Settings › General.",
+                      "Включён Safe search, а Jupiter не проверял \(t.name) (\(t.symbol)), поэтому ihatecrypto его не купит. Чтобы торговать непроверенным токеном по mint-адресу, выключи Safe search в Settings › General."), note: note)
             return nil
         }
         let warnings = t.warnings(russian: modulesRussian)

@@ -105,6 +105,11 @@ public enum ERC20 {
         Data([0x09, 0x5e, 0xa7, 0xb3]) + (try ABI.address(spender)) + ABI.uint(amount)
     }
 
+    /// The same for amounts past 64 bits (a thousand tokens of 18 decimals), in the token's smallest units.
+    public static func approve(spender: String, units: Decimal) throws -> Data {
+        Data([0x09, 0x5e, 0xa7, 0xb3]) + (try ABI.address(spender)) + (try ABI.word(units))
+    }
+
     /// allowance(address owner, address spender)
     public static func allowance(owner: String, spender: String) throws -> Data {
         Data([0xdd, 0x62, 0xed, 0x3e]) + (try ABI.address(owner)) + (try ABI.address(spender))
@@ -119,6 +124,20 @@ public enum ABI {
     }
 
     public static func uint(_ n: UInt64) -> Data { Data(count: 24) + withUnsafeBytes(of: n.bigEndian) { Data($0) } }
+
+    /// A whole, non-negative number as a 256-bit word. Decimal keeps 38 digits: exact for any token amount a wallet
+    /// holds (10²⁷ units is a billion tokens of 18 decimals).
+    public static func word(_ n: Decimal) throws -> Data {
+        var x = n, bytes = [UInt8]()
+        guard x >= 0, x == x.whole else { throw WalletError("Not a whole token amount: \(n)") }
+        while x > 0 {
+            let q = (x / 256).whole
+            bytes.insert(UInt8(truncating: NSDecimalNumber(decimal: x - q * 256)), at: 0)
+            x = q
+        }
+        guard bytes.count <= 32 else { throw WalletError("Amount too large for a word: \(n)") }
+        return Data(count: 32 - bytes.count) + bytes
+    }
 
     /// ERC-20 `string` return value (symbol(), name()).
     public static func string(_ data: Data) -> String? {
@@ -245,6 +264,15 @@ public struct EVMRPC: Sendable {
     }
 }
 
+extension Decimal {
+    /// Rounded down to a whole number.
+    public var whole: Decimal {
+        var x = self, out = Decimal()
+        NSDecimalRound(&out, &x, 0, .down)
+        return out
+    }
+}
+
 /// One eth_simulateV1 result, read as one address's balance changes. With traceTransfers the node reports native
 /// coin moves as Transfer logs of 0xeeee…eeee, which no contract can emit. Token moves are their contracts' own Transfer
 /// logs (plus WETH9's Deposit/Withdrawal, which emit none) — a contract can log anything, so a token is shown by its address.
@@ -322,6 +350,8 @@ public enum EVMCall: Equatable, Sendable {
         case "a22cb465": if let o = address(0), let b = word(1) { return .setApprovalForAll(operator: o, approved: b.last == 1) }
         case "d505accf", "8fcbaf0c": return .permit
         case "04e45aaf": if let r = address(3) { return .swap(recipient: r) }
+        // SwapRouter02.exactInput((bytes path, address recipient, uint256, uint256)): the tuple sits behind an offset.
+        case "b858183f": if let r = address(2) { return .swap(recipient: r) }
         case "6e553f65": if let r = address(1) { return .vault(receiver: r, owner: nil) }
         case "b460af94", "ba087652": if let r = address(1), let o = address(2) { return .vault(receiver: r, owner: o) }
         default: break

@@ -90,7 +90,9 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
     public var networks: [ModuleNetwork] {
         switch self {
         case .jupiter, .jupiterLend, .kamino, .jitoSOL, .relay: [.solana]
-        case .uniswap, .robinhoodStocks: [.robinhood]
+        // Uniswap works on Robinhood Chain, Base and Arbitrum: the network is checked per move.
+        case .uniswap: []
+        case .robinhoodStocks: [.robinhood]
         case .aave, .morpho: [.base]
         case .hlp, .hlPerps, .xyz: [.hyperliquid]
         case .oneClick: [.near]
@@ -121,6 +123,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
         case .hlPerps: "BTC, ETH, SOL and more"
         case .xyz: "Oil, metals, stocks"
         case .relay: "Solana ⇄ Base · Arbitrum · Robinhood"
+        case .uniswap: "Robinhood · Base · Arbitrum"
         case .oneClick: "NEAR ⇄ Solana"
         default: networks.map(\.name).joined(separator: " · ")
         }
@@ -213,8 +216,13 @@ public struct Modules: Equatable, Sendable {
         case .arbitrumToSolana: return r(.relay, via: [.arbitrum])
         case .robinhoodToSolana: return r(.relay, via: [.robinhood])
         case .solanaTo(let place, _): return r(.relay, via: ModuleNetwork(place: place).map { [$0] } ?? [])
-        case .buyStock(let symbol, _): return r(symbol.hasPrefix("0x") ? .uniswap : .robinhoodStocks) ?? r(.relay, via: [.robinhood])
-        case .sellStock(let symbol, _): return r(symbol.hasPrefix("0x") ? .uniswap : .robinhoodStocks)
+        case .buyStock(let symbol, _): return (symbol.hasPrefix("0x") ? r(.uniswap, via: [.robinhood]) : r(.robinhoodStocks)) ?? r(.relay, via: [.robinhood])
+        case .sellStock(let symbol, _): return symbol.hasPrefix("0x") ? r(.uniswap, via: [.robinhood]) : r(.robinhoodStocks)
+        // Base and Arbitrum: Relay is needed either way (its swap, or its bridge before Uniswap); with Uniswap off only
+        // Relay's swap is compared.
+        case .buyOn(let place, _, _), .sellOn(let place, _, _):
+            return isOn(.swaps) ? r(.relay, via: ModuleNetwork(place: place).map { [$0] } ?? [])
+                : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
         case .buyNear, .sellNear: return r(.oneClick)
         case .sendNear, .closeNear: return refusal(network: .near, ru: ru)
         case .sendSol: return refusal(network: .solana, ru: ru)

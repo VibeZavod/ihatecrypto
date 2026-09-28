@@ -163,3 +163,35 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(model.sent.count == 1)
     #expect(model.sent[0][1].text.contains("Already looked up for you — token B5AN"))
 }
+
+@Test func tokensByTickerOnSolanaBaseAndArbitrum() {
+    // Solana: a ticker is found among Jupiter's verified tokens when it runs; the fixed coins stay themselves.
+    #expect(WalletCommand.parse("buy BONK on solana for 5 USDC") == .buy(.bySymbol("BONK"), usdc: 5))
+    #expect(WalletCommand.parse("buy $WIF on solana for 2 USDC") == .buy(.bySymbol("WIF"), usdc: 2))
+    #expect(WalletCommand.parse("sell 1000 BONK on solana") == .sell(.bySymbol("BONK"), amount: 1000))
+    #expect(WalletCommand.parse("buy SOL on solana for 2 USDC") == .buy(SpotAsset.all[0], usdc: 2))
+    #expect(!SpotAsset.bySymbol("BONK").resolved && SpotAsset.bySymbol("jup") == SpotAsset.all[3])
+    // Base and Arbitrum: by ticker or by contract, both ways.
+    let aero = "0x940181a94A35A4569E4529A3CDfB74e38FD98631"
+    #expect(WalletCommand.parse("buy AERO on base for 5 USDC") == .buyOn("base", token: "AERO", usdc: 5))
+    #expect(WalletCommand.parse("купи ARB на арбитруме на 5$") == .buyOn("arbitrum", token: "ARB", usdc: 5))
+    #expect(WalletCommand.parse("sell all DEGEN on base") == .sellOn("base", token: "DEGEN", amount: nil))
+    #expect(WalletCommand.parse("sell 12.5 AERO on base") == .sellOn("base", token: "AERO", amount: Decimal(string: "12.5")!))
+    #expect(WalletCommand.parse("buy token \(aero) on base for 3 USDC") == .buyOn("base", token: aero, usdc: 3))
+    #expect(WalletCommand.parse("sell tokens \(aero) on base") == .sellOn("base", token: aero, amount: nil))
+    #expect(WalletCommand.parse("buy AERO on base")?.amountQuestion == "For how many USDC should I buy AERO on Base?")
+    // Not these: a contract without a network stays Robinhood's; moving USDC is a bridge.
+    #expect(WalletCommand.parse("buy token \(aero) for 3 USDC") == .buyStock(symbol: aero, usdc: 3))
+    #expect(WalletCommand.parse("move 2 USDC from Solana to Base") == .solanaTo("base", 2))
+    #expect(ChatRouter.forms.contains("buy <TICKER> on <base|arbitrum> for N USDC") && ChatRouter.forms.contains("buy <TICKER> on solana for N USDC"))
+}
+
+@Test func aTickerFindsJupitersVerifiedTokenNotItsNamesakes() throws {
+    let json = """
+    [{"id": "Fake1", "symbol": "WIF", "liquidity": 900000000, "tags": ["unknown"]},
+     {"id": "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm", "symbol": "$WIF", "isVerified": true, "liquidity": 6858079},
+     {"id": "Small", "symbol": "$WIF", "isVerified": true, "liquidity": 100}]
+    """
+    #expect(TokenResearch.solanaMint(Data(json.utf8), symbol: "WIF") == "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm")
+    #expect(TokenResearch.solanaMint(Data(json.utf8), symbol: "BONK") == nil)
+}

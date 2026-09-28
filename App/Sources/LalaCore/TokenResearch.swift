@@ -66,6 +66,22 @@ public enum TokenResearch {
         }
     }
 
+    /// The Jupiter-verified token trading under a ticker («BONK»; «WIF» finds «$WIF»), the most liquid when several do:
+    /// its mint. Unverified namesakes — the usual fakes — are never picked by name.
+    public static func solanaMint(symbol: String) async -> String? {
+        let query = symbol.trimmingCharacters(in: CharacterSet(charactersIn: "$")).addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? symbol
+        guard let data = try? await get("https://lite-api.jup.ag/tokens/v2/search?query=\(query)") else { return nil }
+        return solanaMint(data, symbol: symbol)
+    }
+
+    static func solanaMint(_ data: Data, symbol: String) -> String? {
+        func plain(_ s: String) -> String { s.uppercased().trimmingCharacters(in: CharacterSet(charactersIn: "$")) }
+        let tokens = (try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
+        return tokens.filter { t in
+            (t["isVerified"] as? Bool == true || (t["tags"] as? [String] ?? []).contains("verified")) && plain(t["symbol"] as? String ?? "") == plain(symbol)
+        }.max { (dec($0["liquidity"]) ?? 0) < (dec($1["liquidity"]) ?? 0) }?["id"] as? String
+    }
+
     public static func solanaToken(_ mint: String) async -> SolanaToken? {
         guard let data = try? await get("https://lite-api.jup.ag/tokens/v2/search?query=\(mint)") else { return nil }
         return solanaToken(data, mint: mint)

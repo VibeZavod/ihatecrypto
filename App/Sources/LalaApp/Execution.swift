@@ -313,6 +313,12 @@ extension Workspace {
                 else if favoriteTokens.contains(where: { $0.address.lowercased() == symbol.lowercased() }) { await loadRobinhood() }
                 else { await tokenCommand(.favorite(address: symbol, chain: "robinhood")); await loadRobinhood() }
             case .sellStock(let symbol, let amount): reply(try await e.sellStock(symbol, amount: amount), note: "Robinhood Chain · Uniswap")
+            case .buyOn(let place, let token, let usdc):
+                let net: EVMNetwork = place == "arbitrum" ? .arbitrum : .base
+                reply(try await e.buyOn(net, token, usdc: usdc ?? 0), note: "\(net.name) · Relay / Uniswap")
+            case .sellOn(let place, let token, let amount):
+                let net: EVMNetwork = place == "arbitrum" ? .arbitrum : .base
+                reply(try await e.sellOn(net, token, amount: amount), note: "\(net.name) · Relay / Uniswap")
             case .robinhoodToSolana(let amount): reply(try await e.evmToSolana(.robinhood, usdc: amount), note: "Relay · Robinhood → Solana")
             case .solanaTo(let place, let amount):
                 let net: EVMNetwork = place == "base" ? .base : place == "arbitrum" ? .arbitrum : .robinhood

@@ -513,8 +513,9 @@ public actor Executor {
 
     /// The bridge transaction and the balance lines its simulation gives. `decimals` are the destination's;
     /// `topupGasUSD` adds that much native coin for gas on an EVM destination.
+    /// `swap`: the destination is another token (Relay swaps on the way), so the cost is judged by USD in against USD out.
     func prepareBridge(_ amount: Bridge.Amount, to chain: UInt64 = Relay.Chain.hyperliquid, currency: String = Relay.Currency.hyperliquidUSDC,
-                       decimals: Int = 8, topupGasUSD: Decimal? = nil) async throws -> (step: BridgeStep, changes: [String]) {
+                       decimals: Int = 8, topupGasUSD: Decimal? = nil, swap: Bool = false) async throws -> (step: BridgeStep, changes: [String]) {
         let usdcMint = Relay.Currency.solanaUSDC
         let (units, exactOutput): (UInt64, Bool) = switch amount {
         case .arrive(let v): (NSDecimalNumber(decimal: (v * Decimal(sign: .plus, exponent: decimals, significand: 1)).rounded(0, .up)).uint64Value, true)
@@ -537,8 +538,10 @@ public actor Executor {
         }
         // Bridge costs are capped: over what arrives (and the gas asked for) at most 3%, never more than $1; small bridges
         // may cost up to $0.15, Relay's floor for delivering gas (measured 2026-09-26: ≈ $0.10 on a $2 bridge to Base).
-        guard spend - arriving - (topupGasUSD ?? 0) - opening <= min(max(arriving * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1) else {
-            throw ExecutionError("The Relay bridge wants \(Fmt.num(spend)) USDC for \(Fmt.num(arriving)): more than allowed.")
+        let worth = swap ? Decimal(string: quote.amountOutUSD) ?? 0 : arriving
+        guard spend - worth - (topupGasUSD ?? 0) - opening <= min(max(worth * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1) else {
+            throw ExecutionError(swap ? "Relay's swap gives \(Fmt.usd(worth)) worth for \(Fmt.num(spend)) USDC: more lost than allowed."
+                                      : "The Relay bridge wants \(Fmt.num(spend)) USDC for \(Fmt.num(arriving)): more than allowed.")
         }
         let have = try await rpc.tokenBalance(owner: wallet.solana, mint: usdcMint)
         guard have >= spendUnits else { throw ExecutionError("\(Fmt.num(Decimal(have) / 1_000_000)) USDC on Solana; the bridge needs \(Fmt.num(spend)).") }

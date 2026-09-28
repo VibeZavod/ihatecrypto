@@ -165,3 +165,28 @@ import WalletCore
     #expect(reverted.revert == "execution reverted: ERC20: transfer amount exceeds balance")
     #expect(throws: (any Error).self) { try EVMSimulation(["nope"], owner: me) }
 }
+
+@Test func bigTokenAmountsAndUniswapPaths() throws {
+    // 256-bit words: a thousand tokens of 18 decimals doesn't fit 64 bits.
+    #expect(try ABI.word(0).hex == String(repeating: "0", count: 64))
+    #expect(try ABI.word(255).hex.suffix(4) == "00ff")
+    #expect(try ABI.word(Decimal(string: "1600000000000000000000")!).hex == "000000000000000000000000000000000000000000000056bc75e2d631000000")
+    #expect(ABI.decimal(in: try ABI.word(Decimal(string: "1600000000000000000000")!), word: 0) == Decimal(string: "1600000000000000000000")!)
+    #expect(throws: (any Error).self) { try ABI.word(Decimal(string: "1.5")!) }
+    #expect(try ERC20.approve(spender: "0x2626664c2603336e57b271c5c0b26f421741e481", units: 5_000_000) == (try ERC20.approve(spender: "0x2626664c2603336e57b271c5c0b26f421741e481", amount: 5_000_000)))
+    // USDC → 0.05% → WETH → 0.3% → AERO on Base: 20 + 3 + 20 + 3 + 20 bytes.
+    let usdc = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", weth = "0x4200000000000000000000000000000000000006", aero = "0x940181a94a35a4569e4529a3cdfb74e38fd98631"
+    let path = try UniswapV3.path([usdc, weth, aero], fees: [500, 3000])
+    #expect(path.count == 66 && path.hex == usdc.dropFirst(2) + "0001f4" + weth.dropFirst(2) + "000bb8" + aero.dropFirst(2))
+    // exactInput pays whoever the tuple names: the signer's decoder finds that recipient behind the offset.
+    let me = "0x2df1c51e09aecf9cacb7bc98cb1742757f163df7", thief = "0x000000000000000000000000000000000000dead"
+    let mine = try UniswapV3.exactInput(path: path, recipient: me, amountIn: 5_000_000, amountOutMinimum: Decimal(string: "6000000000000000000")!)
+    #expect(mine.prefix(4).hex == "b858183f" && EVMCall.decode(mine) == .swap(recipient: me))
+    #expect(EVMCall.decode(mine).refusal(sender: me) == nil)
+    let theirs = try UniswapV3.exactInput(path: path, recipient: thief, amountIn: 5_000_000, amountOutMinimum: 1)
+    #expect(EVMCall.decode(theirs).refusal(sender: me) != nil)
+    // The quote call: selector, offset 0x40, amount, then the path's length and bytes padded to a word.
+    let quote = try UniswapV3.quoteExactInput(path: path, amountIn: 5_000_000)
+    #expect(quote.prefix(4).hex == "cdca1753" && quote.count == 4 + 32 * 3 + 96)
+    #expect(UniswapV3.on(8453)?.router == "0x2626664c2603336e57b271c5c0b26f421741e481" && UniswapV3.on(42161) != nil && UniswapV3.on(1) == nil)
+}

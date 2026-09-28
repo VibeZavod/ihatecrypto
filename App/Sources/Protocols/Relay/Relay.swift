@@ -46,6 +46,11 @@ public enum Relay {
         /// The relayer's own gas in USD. Delivering to a Hyperliquid account that doesn't exist yet makes this
         /// Hyperliquid's one-time opening fee (measured 2026-09-28: $1.20 against $0 for an existing account).
         public var relayerGasUSD = ""
+        /// What arrives in the destination's smallest units, and what goes in and comes out in USD: a swap into another
+        /// token is judged by value, not by count.
+        public var amountOut = ""
+        public var amountInUSD = ""
+        public var amountOutUSD = ""
     }
 
     public struct EVMStep: Sendable {
@@ -79,6 +84,15 @@ public enum Relay {
         return ((chain?["protocol"] as? [String: Any])?["v2"] as? [String: Any])?["depository"] as? String
     }
 
+    /// The approval proxy Relay publishes for a chain (contracts.approvalProxy in /chains): its swaps from an EVM token
+    /// take an exact approve to it and then call it.
+    public static func approvalProxy(chainId: UInt64) async throws -> String? {
+        let (data, _) = try await URLSession.shared.data(from: URL(string: base + "/chains")!)
+        let chains = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["chains"] as? [[String: Any]] ?? []
+        let chain = chains.first { ($0["id"] as? NSNumber)?.uint64Value == chainId }
+        return (chain?["contracts"] as? [String: Any])?["approvalProxy"] as? String
+    }
+
     /// Posts the signed nonce mapping that ties a Hyperliquid deposit to the order.
     public static func authorize(body: Data, signature: String) async throws {
         // Relay's SDK sends the step body as is and the signature as a query parameter.
@@ -92,15 +106,16 @@ public enum Relay {
 
     /// `exactOutput`: `amount` is what must arrive (destination units) instead of what is sent.
     /// `topupGasUSD`: also deliver that much of the destination's native coin for gas (EVM destinations).
+    /// `units`: the amount as a decimal string, for token amounts past 64 bits (it replaces `amount`).
     public static func quote(user: String, recipient: String, originChain: UInt64, destinationChain: UInt64,
                              originCurrency: String, destinationCurrency: String, amount: UInt64, exactOutput: Bool = false,
-                             topupGasUSD: Decimal? = nil) async throws -> Quote {
+                             topupGasUSD: Decimal? = nil, units: String? = nil) async throws -> Quote {
         var request = URLRequest(url: URL(string: base + "/quote/v2")!, timeoutInterval: 30)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         var body: [String: Any] = [
             "user": user, "recipient": recipient, "originChainId": originChain, "destinationChainId": destinationChain,
-            "originCurrency": originCurrency, "destinationCurrency": destinationCurrency, "amount": "\(amount)", "tradeType": exactOutput ? "EXACT_OUTPUT" : "EXACT_INPUT",
+            "originCurrency": originCurrency, "destinationCurrency": destinationCurrency, "amount": units ?? "\(amount)", "tradeType": exactOutput ? "EXACT_OUTPUT" : "EXACT_INPUT",
         ]
         if let usd = topupGasUSD {
             body["topupGas"] = true
@@ -170,6 +185,9 @@ public enum Relay {
         )
         quote.evm = evm
         quote.relayerGasUSD = ((j["fees"] as? [String: Any])?["relayerGas"] as? [String: Any])?["amountUsd"] as? String ?? ""
+        quote.amountOut = amounts("currencyOut")["amount"] as? String ?? ""
+        quote.amountInUSD = amounts("currencyIn")["amountUsd"] as? String ?? ""
+        quote.amountOutUSD = amounts("currencyOut")["amountUsd"] as? String ?? ""
         return quote
     }
 

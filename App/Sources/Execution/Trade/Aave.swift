@@ -194,11 +194,16 @@ extension Executor {
     /// An exact approve when the allowance is short, then a wait until the chain shows it: the next call's dry run
     /// on a node that hasn't seen the approve yet would revert.
     func approve(_ rpc: EVMRPC, token: String, spender: String, amount: UInt64, note: String) async throws {
-        func allowance() async throws -> UInt64 {
-            ABI.uint(in: try await rpc.read(token, try ERC20.allowance(owner: wallet.evm, spender: spender)), word: 0) ?? 0
+        try await approve(rpc, token: token, spender: spender, units: Decimal(amount), note: note)
+    }
+
+    /// The same for any amount (256-bit words): a thousand tokens of 18 decimals don't fit 64 bits.
+    func approve(_ rpc: EVMRPC, token: String, spender: String, units amount: Decimal, note: String) async throws {
+        func allowance() async throws -> Decimal {
+            ABI.decimal(in: try await rpc.read(token, try ERC20.allowance(owner: wallet.evm, spender: spender)), word: 0) ?? 0
         }
         guard try await allowance() < amount else { return }
-        _ = try await sendEVM(rpc, to: token, data: try ERC20.approve(spender: spender, amount: amount), note: note)
+        _ = try await sendEVM(rpc, to: token, data: try ERC20.approve(spender: spender, units: amount), note: note)
         for _ in 0..<15 {
             if try await allowance() >= amount { return }
             try await Task.sleep(for: .seconds(1))

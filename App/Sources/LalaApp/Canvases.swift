@@ -731,6 +731,8 @@ extension Workspace {
         case .robinhoodToSolana(let amount): backRoute(from: "robinhood", amount: amount)
         case .solanaTo(let place, let amount?): outRoute(to: place, amount: amount)
         case .buyStock(let symbol, let usdc?): stockRoute(symbol, usdc)
+        case .buyOn(let place, let token, let usdc?): swapRoute(place, token, usdc: usdc, sell: nil)
+        case .sellOn(let place, let token, let amount): swapRoute(place, token, usdc: nil, sell: amount)
         case .sellNear(let asked): sellNearRoute(asked)
         case .sendNear(let name, let asked): nearOutRoute(to: name, amount: asked, close: false)
         case .closeNear(let name): nearOutRoute(to: name, amount: nil, close: true)
@@ -930,6 +932,31 @@ extension Workspace {
                              : "Robinhood Stock Tokens give economic exposure, not the shares, and aren’t offered to US persons or in Canada, the UK and Switzerland.")
     }
 
+    /// A token on Base or Arbitrum, bought with USDC from Solana or sold back to it. The way (Relay's swap, or Relay's
+    /// bridge and Uniswap) is chosen when it runs, by what leaves more after gas.
+    private func swapRoute(_ place: String, _ token: String, usdc: Decimal?, sell: Decimal?) -> MoveRoute {
+        let name = ["base": "Base", "arbitrum": "Arbitrum"][place] ?? place
+        let fill: RouteFill = place == "base" ? .base : .arbitrum
+        let label = token.hasPrefix("0x") ? "\(token.prefix(6))…\(token.suffix(4))" : token.uppercased()
+        let logo = place == "arbitrum" ? "arb" : place
+        let way = step("relay", "RELAY OR RELAY + UNISWAP", "whichever leaves more", "both quoted right before signing, gas counted", .relay)
+        let footer = "Relay’s swap is one Solana signature; the other way bridges USDC over Relay and swaps on Uniswap with an exact approve, the swap paying only this wallet. "
+            + (token.hasPrefix("0x") ? "A token by its contract must trade on \(name) with $50k+ of liquidity. " : "The ticker is taken from Uniswap’s token list, its contract checked on-chain. ")
+            + "Say “do it” or press Confirm."
+        if let usdc {
+            return MoveRoute(title: "Buy \(label) · \(Fmt.num(usdc)) USDC on \(name)", footer: footer, steps: [
+                step("sol", "FROM · SOLANA", "\(Fmt.num(usdc)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana),
+                way,
+                step(logo, "TO · \(name.uppercased())", label, "at the best price found", fill),
+            ], warning: token.hasPrefix("0x") ? "A token by its contract is anyone’s coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose." : nil)
+        }
+        return MoveRoute(title: "Sell \(sell.map { Fmt.num($0) } ?? "all") \(label) on \(name) → Solana", footer: footer, steps: [
+            step(logo, "FROM · \(name.uppercased())", "\(sell.map { Fmt.num($0) } ?? "all") \(label)", "ETH for gas comes along when there’s none", fill),
+            way,
+            step("sol", "TO · SOLANA", "USDC", "your wallet", .solana),
+        ])
+    }
+
     /// Solana → Relay → our own address on Base, Arbitrum or Robinhood Chain.
     private func outRoute(to place: String, amount: Decimal) -> MoveRoute {
         let name = ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood Chain"][place] ?? place
@@ -1122,10 +1149,10 @@ extension Workspace {
         var command = command
         switch command {
         case .buy(let a, let u) where !a.resolved:
-            guard let token = await spotToken(a.mint, note: note) else { return }
+            guard let token = await spotToken(a, note: note) else { return }
             command = .buy(token, usdc: u)
         case .sell(let a, let x) where !a.resolved:
-            guard let token = await spotToken(a.mint, note: note) else { return }
+            guard let token = await spotToken(a, note: note) else { return }
             command = .sell(token, amount: x)
         default: break
         }

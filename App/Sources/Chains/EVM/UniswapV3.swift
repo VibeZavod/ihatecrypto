@@ -1,13 +1,31 @@
 import Foundation
 import WalletCore
 
-/// Uniswap v3 on Robinhood Chain — addresses from developers.uniswap.org (v3-robinhood-chain-deployments), 2026-09-27.
+/// Uniswap v3: Robinhood Chain from developers.uniswap.org (v3-robinhood-chain-deployments), 2026-09-27; Base and
+/// Arbitrum are the canonical deployments, checked on-chain 2026-09-29 (router and quoter report the v3 factory).
 public enum UniswapV3 {
     public static let robinhoodFactory = "0x1f7d7550b1b028f7571e69a784071f0205fd2efa"
     public static let robinhoodQuoter = "0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7"
     public static let robinhoodRouter = "0xcaf681a66d020601342297493863e78c959e5cb2"
     /// Pool fees to try, in hundredths of a basis point: 0.05%, 0.3%, 1%, 0.01%.
     public static let fees: [UInt64] = [500, 3000, 10000, 100]
+
+    /// QuoterV2, SwapRouter02 and wrapped ETH (the usual middle hop) on one chain.
+    public struct Deployment: Sendable {
+        public let quoter: String
+        public let router: String
+        public let weth: String
+    }
+
+    public static func on(_ chainId: UInt64) -> Deployment? {
+        switch chainId {
+        case 8453: Deployment(quoter: "0x3d4e44eb1374240ce5f1b871ab261cd16335b76a", router: "0x2626664c2603336e57b271c5c0b26f421741e481",
+                              weth: "0x4200000000000000000000000000000000000006")
+        case 42161: Deployment(quoter: "0x61ffe014ba17989e743c5f6cb21bf9697530b21e", router: "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45",
+                               weth: "0x82af49447d8a07e3bd95bd0d56f35241523fbab1")
+        default: nil
+        }
+    }
 
     /// getPool(address,address,uint24)
     public static func getPool(_ a: String, _ b: String, fee: UInt64) throws -> Data {
@@ -23,5 +41,30 @@ public enum UniswapV3 {
     public static func exactInputSingle(tokenIn: String, tokenOut: String, fee: UInt64, recipient: String, amountIn: UInt64, amountOutMinimum: UInt64) throws -> Data {
         Data([0x04, 0xe4, 0x5a, 0xaf]) + (try ABI.address(tokenIn)) + (try ABI.address(tokenOut)) + ABI.uint(fee) + (try ABI.address(recipient))
             + ABI.uint(amountIn) + ABI.uint(amountOutMinimum) + ABI.uint(0)
+    }
+
+    /// A route through pools: token, fee (3 bytes), token, fee, token… One pool is a path of two tokens.
+    public static func path(_ tokens: [String], fees: [UInt64]) throws -> Data {
+        guard tokens.count == fees.count + 1 else { throw WalletError("A Uniswap path needs one fee between each two tokens.") }
+        var out = Data()
+        for (i, token) in tokens.enumerated() {
+            guard let bytes = Data(hex: token), bytes.count == 20 else { throw WalletError("Invalid address: \(token)") }
+            out += bytes
+            if i < fees.count { out += withUnsafeBytes(of: UInt32(fees[i]).bigEndian) { Data($0.dropFirst()) } }
+        }
+        return out
+    }
+
+    private static func bytes(_ d: Data) -> Data { ABI.uint(UInt64(d.count)) + d + Data(count: (32 - d.count % 32) % 32) }
+
+    /// QuoterV2.quoteExactInput(bytes path, uint256 amountIn): word 0 of the answer is amountOut.
+    public static func quoteExactInput(path: Data, amountIn: Decimal) throws -> Data {
+        Data([0xcd, 0xca, 0x17, 0x53]) + ABI.uint(0x40) + (try ABI.word(amountIn)) + bytes(path)
+    }
+
+    /// SwapRouter02.exactInput((bytes path, address recipient, uint256 amountIn, uint256 amountOutMinimum)).
+    public static func exactInput(path: Data, recipient: String, amountIn: Decimal, amountOutMinimum: Decimal) throws -> Data {
+        Data([0xb8, 0x58, 0x18, 0x3f]) + ABI.uint(0x20) + ABI.uint(0x80) + (try ABI.address(recipient))
+            + (try ABI.word(amountIn)) + (try ABI.word(amountOutMinimum)) + bytes(path)
     }
 }
