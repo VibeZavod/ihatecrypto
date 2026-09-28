@@ -428,7 +428,7 @@ struct EarlierBoards: View {
         ForEach(Array(earlier.enumerated()), id: \.offset) { _, done in
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Text(done.title).font(.system(size: 14, weight: .semibold))
+                    Text(ws.readable(done.title)).font(.system(size: 14, weight: .semibold)).lineLimit(2).truncationMode(.middle)
                     StatusChip(text: done.outcome.ok ? "executed" : "failed", tint: done.outcome.ok ? Brand.profit : Brand.loss)
                 }
                 Label("\(done.outcome.ok ? "Executed" : "Failed") · \(Fmt.date(done.outcome.at))",
@@ -797,7 +797,7 @@ extension Workspace {
                     step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "BUY · JUPITER", a.symbol, "best route, simulated first", .jupiter))
         case .sellStock(let s, let x):
             return (step("robinhood", "SELL · UNISWAP", "\(n(x)) \(tokenLabel(s))", "Robinhood Chain", .robinhood),
-                    step("usdc", "TO · USDG", "on Robinhood Chain", "then “move USDG from Robinhood to Solana”", .solana))
+                    step("usdg", "TO · USDG", "on Robinhood Chain", "then “move USDG from Robinhood to Solana”", .solana))
         case .sell(let a, let x):
             return (step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "SELL · JUPITER", "\(n(x)) \(a.symbol)", "", .jupiter),
                     step("usdc", "TO · SOLANA", "USDC", "your wallet", .solana))
@@ -810,8 +810,12 @@ extension Workspace {
     /// A token's name for people: the favorite's symbol for its contract, else the contract shortened.
     func tokenLabel(_ symbolOrContract: String) -> String {
         guard symbolOrContract.hasPrefix("0x") else { return symbolOrContract }
-        return favoriteTokens.first { $0.address.lowercased() == symbolOrContract.lowercased() }?.symbol
-            ?? "\(symbolOrContract.prefix(6))…\(symbolOrContract.suffix(4))"
+        let short = "\(symbolOrContract.prefix(6))…\(symbolOrContract.suffix(4))"
+        return favoriteToken(symbolOrContract).map { "\($0.symbol) (\(short))" } ?? short
+    }
+
+    func favoriteToken(_ contract: String) -> FavoriteToken? {
+        favoriteTokens.first { $0.address.lowercased() == contract.lowercased() }
     }
 
     /// Text for the canvas and the chat with every contract in it replaced by its token's name.
@@ -974,6 +978,7 @@ struct RouteSteps: View {
 
 struct RouteStepView: View {
     enum State { case plain, done, now, next }
+    @Environment(Workspace.self) private var ws
     let step: ActivityBubble
     var state: State = .plain
     @SwiftUI.State private var pulse = false
@@ -997,9 +1002,14 @@ struct RouteStepView: View {
     @ViewBuilder private var card: some View {
         let fill = step.fill ?? .solana
         VStack(alignment: .leading, spacing: 6) {
-            if let logo = step.logo { TokenLogo(name: logo, size: 24) }
+            // A token by its contract shows its own icon and name (saved routes too), not the chain's logo and the address.
+            if let token = step.title.firstMatch(of: /0x[0-9a-fA-F]{40}/).flatMap({ ws.favoriteToken(String($0.0)) }) {
+                TokenIcon(token: token, size: 24)
+            } else if let logo = step.logo {
+                TokenLogo(name: logo, size: 24)
+            }
             Text(step.label).font(.system(size: 9, weight: .heavy)).tracking(0.4).opacity(0.75)
-            Text(step.title).font(.system(size: 13, weight: .bold)).monospacedDigit().lineLimit(3).truncationMode(.middle)
+            Text(ws.readable(step.title)).font(.system(size: 13, weight: .bold)).monospacedDigit().lineLimit(3).truncationMode(.middle)
                 .minimumScaleFactor(0.8).fixedSize(horizontal: false, vertical: true)
             ForEach(step.lines, id: \.self) { Text($0).font(.caption2).opacity(0.8).fixedSize(horizontal: false, vertical: true) }
         }
@@ -1009,7 +1019,7 @@ struct RouteStepView: View {
         // Its own height whatever the canvas proposes: the arrow grows with the text instead of cutting it.
         .fixedSize(horizontal: false, vertical: true)
         .background(ArrowCard(radius: 16, tip: 10).fill(fill.color))
-        .openable(logo: step.logo)
+        .openable(logo: step.logo, showsOpen: false)
     }
 }
 

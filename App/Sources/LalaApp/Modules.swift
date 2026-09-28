@@ -369,7 +369,7 @@ struct PlaceDetailBoard: View {
                 }
                 .buttonStyle(.plain).modifier(HoverLift(radius: 12, lift: 1.02)).help("\(s.symbol): chart and details")
             }
-            row("usdc", "USDG", "\(ws.robinhood.map { Fmt.num($0.usdg) } ?? "—")", "gas: \(ws.robinhood.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH")
+            row("usdg", "USDG", "\(ws.robinhood.map { Fmt.num($0.usdg) } ?? "—")", "gas: \(ws.robinhood.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH")
             Text("Stock Tokens aren’t offered to US persons, or in Canada, the UK and Switzerland; they give economic exposure, not the shares.")
                 .font(.caption2).foregroundStyle(.secondary)
         case "near":
@@ -475,8 +475,8 @@ struct PlaceDetailBoard: View {
 
 extension View {
     /// A route step whose logo names a place (Solana, Jupiter, Hyperliquid…) opens that place's details on click.
-    @ViewBuilder func openable(logo: String?) -> some View {
-        if let place = logo.flatMap(Openable.place(logo:)) { modifier(Openable(place: place)) } else { self }
+    @ViewBuilder func openable(logo: String?, showsOpen: Bool = true) -> some View {
+        if let place = logo.flatMap(Openable.place(logo:)) { modifier(Openable(place: place, showsOpen: showsOpen)) } else { self }
     }
 }
 
@@ -488,12 +488,14 @@ struct Openable: ViewModifier {
 
     @Environment(Workspace.self) private var ws
     let place: String
+    /// A portfolio card keeps an outline while its place is open; a route step doesn't (every Solana step would light up).
+    var showsOpen = true
     @State private var hover = false
 
     func body(content: Content) -> some View {
+        let open = showsOpen && ws.detail == place
         content
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent.opacity(ws.detail == place ? 1 : hover ? 0.6 : 0),
-                                                                     lineWidth: ws.detail == place ? 2 : 1.5))
+            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent.opacity(open ? 1 : hover ? 0.6 : 0), lineWidth: open ? 2 : 1.5))
             .scaleEffect(hover ? 1.015 : 1)
             .animation(.snappy(duration: 0.18), value: hover)
             .contentShape(Rectangle())

@@ -659,7 +659,7 @@ struct StudioCanvas: View {
             if hasRoute || ws.allocationPreview != nil || (ws.pendingAction == nil && ws.runningAction == nil) {
                 HStack(spacing: 8) {
                     Text(ws.allocationPreview.map { "Plan · spread \($0.asset) across the best rates" }
-                         ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : board?.title ?? "Plan"))
+                         ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : board.map { ws.readable($0.title) } ?? "Plan"))
                         .font(.system(size: 14, weight: .semibold))
                     StatusChip(text: statusText(nodes), tint: statusTint(nodes))
                     // An open position is on its market for good: nothing to pick until it closes.
