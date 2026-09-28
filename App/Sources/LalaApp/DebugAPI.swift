@@ -1,4 +1,5 @@
 import AppKit
+import LalaCore
 import Network
 import SignerAPI
 import SwiftUI
@@ -21,6 +22,11 @@ struct DebugBadge: View {
 ///     curl -s -H "Authorization: Bearer $T" 127.0.0.1:51789/state
 ///     curl -s -H "Authorization: Bearer $T" -d '{"text":"выведи всё из Aave"}' 127.0.0.1:51789/send
 ///     curl -s -H "Authorization: Bearer $T" 127.0.0.1:51789/screenshot -o lala.png
+///     curl -s -H "Authorization: Bearer $T" -X POST 127.0.0.1:51789/reset      # a fresh canvas for a test
+///     curl -s -H "Authorization: Bearer $T" -X POST 127.0.0.1:51789/cancel     # drop what waits for Confirm
+///     curl -s -H "Authorization: Bearer $T" -d '{"canvas":"<id>"}' 127.0.0.1:51789/restore   # delete test canvases, reopen
+///
+/// Tools/uitest.py runs scenarios through it (Tools/uitest-scenarios.json).
 ///
 /// Off unless Settings turns it on; 127.0.0.1 only; a token that changes every time it starts, in an owner-only
 /// file; anything a browser sends (an Origin header, another Host) is refused. It reads the state, types into the
@@ -33,6 +39,10 @@ final class DebugAPI {
     private var listener: NWListener?
     private var token = ""
     private weak var ws: Workspace?
+    /// Canvases a test made through /reset and /send: /restore deletes them, so tests leave no trace in the list.
+    private var testCanvases: Set<UUID> = []
+    /// /reset opened a fresh canvas: the first /send's canvas is a test canvas.
+    private var freshCanvas = false
 
     func start(_ ws: Workspace) {
         guard listener == nil, let port = NWEndpoint.Port(rawValue: Self.port) else { return }
@@ -97,12 +107,39 @@ final class DebugAPI {
             guard !ws.busy else { return (409, "text/plain", Data("busy\n".utf8)) }
             let before = ws.messages.count
             await SignerClient.$untrusted.withValue(true) { await ws.send(text) }
+            if freshCanvas, let id = ws.canvasID { testCanvases.insert(id); freshCanvas = false }
             return (200, "application/json", json(state(ws, since: before)))
+        case ("POST", "/reset"):
+            // A card waiting on the user's own canvas is never pushed aside by a test.
+            guard !ws.busy, !ws.executing else { return (409, "text/plain", Data("busy\n".utf8)) }
+            let testCanvas = ws.canvasID.map { testCanvases.contains($0) } ?? freshCanvas
+            guard testCanvas || (ws.pendingAction == nil && ws.pendingAllocation == nil) else {
+                return (409, "text/plain", Data("a move waits for Confirm on the user's canvas\n".utf8))
+            }
+            if let id = ws.canvasID, testCanvases.contains(id) { ws.deleteCanvas(id) } else { ws.newCanvas() }
+            freshCanvas = true
+            return (200, "application/json", json(state(ws, since: ws.messages.count)))
+        case ("POST", "/cancel"):
+            guard !ws.busy else { return (409, "text/plain", Data("busy\n".utf8)) }
+            let before = ws.messages.count
+            if ws.pendingAction != nil || ws.pendingAllocation != nil || ws.awaitingAmount != nil {
+                await SignerClient.$untrusted.withValue(true) { await ws.send("cancel") }
+            }
+            return (200, "application/json", json(state(ws, since: before)))
+        case ("POST", "/restore"):
+            guard !ws.busy, !ws.executing else { return (409, "text/plain", Data("busy\n".utf8)) }
+            let back = (((try? JSONSerialization.jsonObject(with: r.body)) as? [String: Any])?["canvas"] as? String).flatMap(UUID.init(uuidString:))
+            if let id = ws.canvasID, testCanvases.contains(id) { ws.newCanvas() }
+            for id in testCanvases { ws.deleteCanvas(id) }
+            testCanvases = []
+            freshCanvas = false
+            if let back, let canvas = ws.canvases.first(where: { $0.id == back }) { ws.openCanvas(canvas) }
+            return (200, "application/json", json(state(ws, since: ws.messages.count)))
         case ("GET", "/screenshot"):
             guard let png = screenshot() else { return (500, "text/plain", Data("no window\n".utf8)) }
             return (200, "image/png", png)
         default:
-            return (404, "text/plain", Data("GET /state · POST /send {\"text\":…} · GET /screenshot\n".utf8))
+            return (404, "text/plain", Data("GET /state · POST /send {\"text\":…} · GET /screenshot · POST /reset · POST /cancel · POST /restore {\"canvas\":…}\n".utf8))
         }
     }
 
@@ -111,6 +148,11 @@ final class DebugAPI {
         func num(_ d: Decimal?) -> Any { d.map { NSDecimalNumber(decimal: $0).stringValue } ?? NSNull() }
         return [
             "canvas": canvas?.displayTitle ?? "",
+            "canvasID": ws.canvasID?.uuidString ?? NSNull(),
+            "executing": ws.executing,
+            "model": ws.model,
+            "provider": ws.provider.info.name,
+            "boards": boards(ws, canvas),
             "outcome": canvas?.outcome.map { $0.ok ? "executed" : "failed" } ?? NSNull(),
             "pending": ws.pendingText ?? NSNull(),
             "busy": ws.busy,
@@ -126,13 +168,54 @@ final class DebugAPI {
         ]
     }
 
+    /// What the canvas shows, as data a test can assert on: the move waiting for Confirm (its route as drawn), the one
+    /// running and its step, finished ones, and the other boards.
+    private func boards(_ ws: Workspace, _ canvas: CanvasSession?) -> [String: Any] {
+        func steps(_ bubbles: [ActivityBubble]) -> [[String: Any]] {
+            bubbles.map { ["label": $0.label, "title": ws.readable($0.title), "lines": $0.lines] as [String: Any] }
+        }
+        var out: [String: Any] = [:]
+        switch ws.pendingAction {
+        case .wallet(let command)?:
+            let route = ws.route(command)
+            let drawn = route ?? ws.fallbackRoute(command)
+            out["pending"] = ["kind": "wallet", "command": String(describing: command), "title": drawn.title, "footer": drawn.footer,
+                              "steps": steps(drawn.steps), "drawnRoute": route != nil, "confirm": true] as [String: Any]
+        case .position(let command, let coin)?:
+            out["pending"] = ["kind": "position", "command": String(describing: command), "coin": coin, "confirm": true] as [String: Any]
+        case .transfer(let entry, let amount)?:
+            out["pending"] = ["kind": "transfer", "to": entry.name, "amount": NSDecimalNumber(decimal: amount).stringValue, "confirm": true] as [String: Any]
+        case .address(let entry)?:
+            out["pending"] = ["kind": "address", "name": entry.name, "confirm": true] as [String: Any]
+        case nil: break
+        }
+        if let run = ws.runningAction {
+            out["running"] = ["title": run.title, "steps": steps(run.steps), "current": RunningBoard.currentStep(run.steps, run.lines),
+                              "lines": run.lines] as [String: Any]
+        }
+        if let done = ws.finishedAction { out["finished"] = ["title": done.title, "ok": done.outcome.ok] as [String: Any] }
+        out["earlier"] = (canvas?.earlier ?? []).map { ["title": ws.readable($0.title), "ok": $0.outcome.ok] as [String: Any] }
+        if let y = ws.yieldOptions { out["yields"] = y.map { ["place": $0.place, "asset": $0.asset, "apy": NSDecimalNumber(decimal: $0.apy).doubleValue] as [String: Any] } }
+        if let c = ws.chart { out["chart"] = ["coin": c.coin, "range": c.range.rawValue, "candles": c.candles.count, "error": c.error ?? NSNull()] as [String: Any] }
+        if let d = ws.detail { out["detail"] = d }
+        if let a = ws.allocationPreview { out["allocation"] = ["asset": a.asset, "slices": a.slices.count] as [String: Any] }
+        if let t = ws.takeChoices { out["takeChoices"] = t.map(\.title) }
+        if let w = ws.awaitingAmount { out["awaitingAmount"] = String(describing: w) }
+        if ws.intent != TradeIntent() {
+            out["plan"] = ["asset": ws.intent.asset, "side": ws.intent.side == .long ? "long" : "short", "ready": ws.planIsReady] as [String: Any]
+        }
+        if ws.showReceive { out["receive"] = true }
+        if let saved = ws.savedBoard { out["saved"] = saved.displayTitle }
+        return out
+    }
+
     private func json(_ object: [String: Any]) -> Data {
         (try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])) ?? Data("{}".utf8)
     }
 
     /// The main window as it is drawn, without the rest of the screen.
     private func screenshot() -> Data? {
-        guard let view = NSApp.windows.first(where: { $0.isVisible && $0.title == "LALA" })?.contentView,
+        guard let view = NSApp.windows.first(where: { $0.isVisible && $0.title == LalaApp.mainTitle })?.contentView,
               let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
         view.cacheDisplay(in: view.bounds, to: rep)
         return rep.representation(using: .png, properties: [:])

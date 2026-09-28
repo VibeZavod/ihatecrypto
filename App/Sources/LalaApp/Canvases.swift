@@ -1148,6 +1148,7 @@ extension Workspace {
             reply(question + amountHint(command), note: note)
             return
         }
+        if let why = refusalBeforeCard(command) { reply(why, note: note); return }
         switch command {
         case .yields, .allocate, .schedule, .stopSchedules:
             // Read-only, or with a board and a step of their own.

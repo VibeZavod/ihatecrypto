@@ -1,0 +1,120 @@
+[
+  {
+    "name": "deposit into Jupiter → a drawn route waiting for Confirm",
+    "send": [
+      "положи 1 USDC в Jupiter"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "drawn_route": true,
+      "steps": [
+        "SOLANA",
+        "JUPITER"
+      ],
+      "title_contains": "Jupiter"
+    }
+  },
+  {
+    "name": "buy a favorite token by symbol → its contract, never an invented address",
+    "send": [
+      "купи AI на 2 бакса"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "command_contains": "buyStock",
+      "command_contains_2": "0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18",
+      "title_contains": "AI"
+    }
+  },
+  {
+    "name": "sell NEAR with enough of it → the NEAR Intents route",
+    "send": [
+      "продай весь NEAR"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "drawn_route": true,
+      "steps": [
+        "NEAR",
+        "NEAR INTENTS",
+        "SOLANA"
+      ]
+    },
+    "only_if": {
+      "balance": "near",
+      "at_least": 0.14
+    }
+  },
+  {
+    "name": "sell NEAR with too little of it → said at once, no card",
+    "send": [
+      "продай весь NEAR"
+    ],
+    "only_if": {
+      "balance": "near",
+      "below": 0.14
+    },
+    "expect": {
+      "no_pending": true,
+      "reply_contains": "nothing to sell"
+    }
+  },
+  {
+    "name": "chart for a week",
+    "send": [
+      "покажи график эфира за неделю"
+    ],
+    "expect": {
+      "chart": "ETH",
+      "chart_range": "week",
+      "no_pending": true
+    }
+  },
+  {
+    "name": "where to keep USDC → rate bubbles",
+    "send": [
+      "где держать USDC"
+    ],
+    "expect": {
+      "yields": true,
+      "no_pending": true
+    }
+  },
+  {
+    "name": "a greeting is conversation: a reply, no card",
+    "send": [
+      "привет"
+    ],
+    "expect": {
+      "no_pending": true,
+      "reply": true,
+      "no_boards": [
+        "chart",
+        "yields",
+        "allocation"
+      ]
+    }
+  },
+  {
+    "name": "an unknown address-book name is asked about, never guessed",
+    "send": [
+      "отправь 5 USDC на Nobody Zyx"
+    ],
+    "expect": {
+      "no_pending": true,
+      "reply": true
+    }
+  },
+  {
+    "name": "«do it» from the debug API is refused and the card stays",
+    "send": [
+      "положи 1 USDC в Jupiter",
+      "do it"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "reply_contains": "debug API",
+      "not_executing": true
+    }
+  }
+]

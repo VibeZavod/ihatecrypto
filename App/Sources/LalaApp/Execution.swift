@@ -351,6 +351,21 @@ extension Workspace {
         }
     }
 
+    /// A move that can't go through with what the wallet holds is said so at once, instead of a card whose Confirm
+    /// could only fail («Sell 0 NEAR»).
+    func refusalBeforeCard(_ command: WalletCommand) -> String? {
+        switch command {
+        case .sellNear(let asked):
+            // What a sale keeps on the account while it is sent: storage and prepaid gas (sellNearRoute, intentDepositOverhead).
+            let sellable = max(0, near - Decimal(string: "0.09")!)
+            let amount = asked ?? sellable
+            guard amount < Decimal(string: "0.05")! || amount > sellable else { return nil }
+            return "You have \(Fmt.num(near, maxFraction: 4)) NEAR. A sale needs at least 0.05 NEAR, and ≈ 0.09 NEAR stays on the account for storage and gas while it is sent, so \(sellable < Decimal(string: "0.05")! ? "there is nothing to sell now" : "at most \(Fmt.num(sellable, maxFraction: 4)) NEAR can be sold")."
+        default:
+            return nil
+        }
+    }
+
     /// «Buy the token 0x… for 2 USDC on Robinhood Chain»: the summary as a canvas title.
     static func canvasTitle(_ command: WalletCommand) -> String { command.summary.prefix(1).uppercased() + command.summary.dropFirst() }
 
