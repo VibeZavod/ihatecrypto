@@ -422,19 +422,33 @@ struct CanvasRow: View {
 /// The moves already carried out on the open canvas, oldest first, above what is on it now.
 struct EarlierBoards: View {
     @Environment(Workspace.self) private var ws
+    /// Finished moves are one line each, so the current one stays in view; a click shows a move's route again.
+    @State private var open: Set<Int> = []
 
     var body: some View {
         let earlier = ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []
-        ForEach(Array(earlier.enumerated()), id: \.offset) { _, done in
+        ForEach(Array(earlier.enumerated()), id: \.offset) { i, done in
             VStack(alignment: .leading, spacing: 10) {
-                HStack(spacing: 8) {
-                    Text(ws.readable(done.title)).font(.system(size: 14, weight: .semibold)).lineLimit(2).truncationMode(.middle)
-                    StatusChip(text: done.outcome.ok ? "executed" : "failed", tint: done.outcome.ok ? Brand.profit : Brand.loss)
+                Button { withAnimation(.snappy) { if open.contains(i) { open.remove(i) } else { open.insert(i) } } } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: done.outcome.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                            .foregroundStyle(done.outcome.ok ? Brand.profit : Brand.loss)
+                        Text(ws.readable(done.title)).font(.system(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.middle)
+                        Text(Fmt.date(done.outcome.at)).font(.caption).foregroundStyle(.secondary)
+                        Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary)
+                            .rotationEffect(.degrees(open.contains(i) ? 90 : 0))
+                    }
+                    .padding(.horizontal, 10).padding(.vertical, 7)
+                    .background(Capsule().fill(Brand.card))
+                    .overlay(Capsule().strokeBorder(Brand.cardBorder))
+                    .contentShape(Capsule())
                 }
-                Label("\(done.outcome.ok ? "Executed" : "Failed") · \(Fmt.date(done.outcome.at))",
-                      systemImage: done.outcome.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
-                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(done.outcome.ok ? Brand.profit : Brand.loss)
-                if done.bubbles.allSatisfy({ $0.kind == "step" }) {
+                .buttonStyle(.plain)
+                .modifier(HoverLift(radius: 20, lift: 1.02))
+                .help(open.contains(i) ? "Hide its route" : "Show its route")
+                if !open.contains(i) {
+                    EmptyView()
+                } else if done.bubbles.allSatisfy({ $0.kind == "step" }) {
                     RouteSteps(steps: done.bubbles).frame(width: 470, alignment: .leading)
                 } else {
                     LazyVGrid(columns: [GridItem(.fixed(220), alignment: .top), GridItem(.fixed(220), alignment: .top)], alignment: .leading, spacing: 14) {
@@ -774,12 +788,14 @@ extension Workspace {
             return (step(s == "SOL" ? "sol" : "usdc", "FROM · SOLANA", "\(n(x)) \(s)", s == "SOL" ? solSOL : solUSDC, .solana),
                     step("jup", "INTO · JUPITER LEND", "\(n(x)) \(s)", "earns the vault rate · withdraw any time", .jupiter))
         case .lendWithdraw(let s, let x):
+            let x = x ?? (s == "USDC" && lendTotal > 0 ? lendTotal : nil)
             return (step("jup", "FROM · JUPITER LEND", "\(n(x)) \(s)", lendTotal > 0 ? "in the vault: \(Fmt.num(lendTotal)) USDC" : "", .jupiter),
                     step(s == "SOL" ? "sol" : "usdc", "TO · SOLANA", "\(n(x)) \(s)", "your wallet", .solana))
         case .kamino(true, let s, let x):
             return (step(s == "SOL" ? "sol" : "usdc", "FROM · SOLANA", "\(n(x)) \(s)", s == "SOL" ? solSOL : solUSDC, .solana),
                     step("kamino", "INTO · KAMINO LEND", "\(n(x)) \(s)", "first deposit pays ≈ 0.03 SOL rent", .kamino))
         case .kamino(false, let s, let x):
+            let x = x ?? (s == "USDC" && kamino > 0 ? kamino : nil)
             return (step("kamino", "FROM · KAMINO LEND", "\(n(x)) \(s)", "", .kamino),
                     step(s == "SOL" ? "sol" : "usdc", "TO · SOLANA", "\(n(x)) \(s)", "your wallet", .solana))
         case .stake(let x):
@@ -796,8 +812,19 @@ extension Workspace {
             return (step("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC, .solana),
                     step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "BUY · JUPITER", a.symbol, "best route, simulated first", .jupiter))
         case .sellStock(let s, let x):
-            return (step("robinhood", "SELL · UNISWAP", "\(n(x)) \(tokenLabel(s))", "Robinhood Chain", .robinhood),
-                    step("usdg", "TO · USDG", "on Robinhood Chain", "then “move USDG from Robinhood to Solana”", .solana))
+            // In dollars: what is held (or asked) at the last price, and about as much USDG back.
+            let stock = robinhood?.stocks.first { $0.symbol.uppercased() == s.uppercased() || $0.address.lowercased() == s.lowercased() }
+            let token = favoriteToken(s)
+            let held = stock?.amount ?? token.flatMap { tokenBalances[$0.id] }
+            let price = stock?.price ?? token.flatMap { tokenInfo[$0.id]?.priceUSD }
+            let amount = x ?? held
+            let usd = amount.flatMap { a in price.map { a * $0 } }
+            let name = s.hasPrefix("0x") ? (token?.symbol ?? tokenLabel(s)) : s.uppercased()
+            return (step(stock != nil || !s.hasPrefix("0x") ? "stock:\(name)" : "robinhood", "SELL · UNISWAP",
+                         usd.map { "≈ \(Fmt.usd($0)) of \(name)" } ?? "\(n(x)) \(tokenLabel(s))",
+                         amount.map { "\(Fmt.num($0, maxFraction: 6)) \(name) · Robinhood Chain" } ?? "Robinhood Chain", .robinhood),
+                    step("usdg", "TO · USDG", usd.map { "≈ \(Fmt.num($0.rounded(2, .plain))) USDG" } ?? "USDG",
+                         "on Robinhood Chain · then “move USDG from Robinhood to Solana”", .solana))
         case .sell(let a, let x):
             return (step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "SELL · JUPITER", "\(n(x)) \(a.symbol)", "", .jupiter),
                     step("usdc", "TO · SOLANA", "USDC", "your wallet", .solana))
@@ -1005,6 +1032,9 @@ struct RouteStepView: View {
             // A token by its contract shows its own icon and name (saved routes too), not the chain's logo and the address.
             if let token = step.title.firstMatch(of: /0x[0-9a-fA-F]{40}/).flatMap({ ws.favoriteToken(String($0.0)) }) {
                 TokenIcon(token: token, size: 24)
+            } else if let logo = step.logo, logo.hasPrefix("stock:") {
+                let symbol = String(logo.dropFirst(6))
+                StockLogo(symbol: symbol, url: ws.robinhood?.stocks.first { $0.symbol == symbol }?.logo, size: 24)
             } else if let logo = step.logo {
                 TokenLogo(name: logo, size: 24)
             }
