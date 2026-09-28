@@ -64,7 +64,7 @@ final class Workspace {
     }
     var preparing = false
     var executing = false {
-        didSet { if oldValue, !executing { lastOwnMove = Date(); endSigningSession() } }
+        didSet { if oldValue, !executing { lastOwnMove = Date(); endSigningSession(); continueTask() } }
     }
 
     /// One Touch ID covers one move: once it's done the next signature asks again, unless the user chose 5–30 minutes.
@@ -196,6 +196,12 @@ final class Workspace {
     var schedules: [Schedule] = (UserDefaults.standard.data(forKey: Workspace.scoped("schedules")).flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) }) ?? [] {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(schedules), forKey: Workspace.scoped("schedules", activeWalletID)) }
     }
+    /// Commands scheduled for later or on repeat («in 1 week: rebalance USDC»), per wallet; `watch` runs them (Tasks.swift).
+    var tasks: [ScheduledTask] = (UserDefaults.standard.data(forKey: Workspace.scoped("tasks")).flatMap { try? JSONDecoder().decode([ScheduledTask].self, from: $0) }) ?? [] {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(tasks), forKey: Workspace.scoped("tasks", activeWalletID)) }
+    }
+    /// A running task's steps after one that waits for Confirm, and the canvas it runs on: they go when that move is done.
+    var taskQueue: (canvas: UUID?, steps: [String], since: Date)?
     /// Exit rules the app keeps for open positions (breakeven after the partial take, trailing), by coin.
     var exitRules: [String: ExitRules] = (UserDefaults.standard.data(forKey: Workspace.scoped("exitRules")).flatMap { try? JSONDecoder().decode([String: ExitRules].self, from: $0) }) ?? [:] {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(exitRules), forKey: Workspace.scoped("exitRules", activeWalletID)) }
@@ -451,6 +457,8 @@ final class Workspace {
 
         // «делай» / «do it» right after a plan that waits for it carries it out; anything else drops it.
         let confirms = text.lowercased().contains(/^(?:делай|да|давай|подтверждаю|раскладывай|го|do\s+it|go|yes|confirm|sign)\b/)
+        // Anything but a confirmation takes over from a scheduled task that waited for one.
+        if !confirms { taskQueue = nil }
         let declines = text.lowercased().wholeMatch(of: /\s*(?:no|nope|cancel|stop|нет|не\s+надо|отмена|отмени\w*|стоп|nein|abbrechen|non|annuler|cancelar|não|nao|nie|anuluj)[.!\s]*/) != nil
         if let pending = pendingAllocation {
             pendingAllocation = nil
@@ -559,6 +567,8 @@ final class Workspace {
             return
         }
         // No model connected: the local parsers read the message as typed.
+        if ScheduledTask.cancelsAll(text) { cancelTasks(); return }
+        if let task = ScheduledTask.parse(text) { schedule(task); return }
         if let command = TokenCommand.parse(text) {
             await tokenCommand(command)
             return
@@ -745,9 +755,11 @@ final class Workspace {
     }
 
     /// Runs the model's English command through the parsers. False when it is not a command they know.
-    private func runCanonical(_ canonical: String, userText text: String, before: TradeIntent) async -> Bool {
+    func runCanonical(_ canonical: String, userText text: String, before: TradeIntent) async -> Bool {
         updateActivity { $0.understood = canonical }
         let note = "understood as “\(canonical)” · \(model)"
+        if ScheduledTask.cancelsAll(canonical) { cancelTasks(note: note); return true }
+        if let task = ScheduledTask.parse(canonical) { schedule(task, note: note); return true }
         switch canonical.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! ")) {
         case "new canvas":
             messages.removeLast()

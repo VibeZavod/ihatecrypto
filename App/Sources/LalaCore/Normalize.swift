@@ -27,6 +27,14 @@ public enum ChatRouter {
         public var replyLanguage = "English"
         /// Networks, kinds and protocols switched off in Settings › Modules (`Modules.offSummary`); empty when none.
         public var off = ""
+        /// «2026-09-29 10:30, Tuesday»: the local time, so «в пятницу в 9» becomes a date. Gregorian whatever the Mac's calendar.
+        public var now: String = {
+            let f = DateFormatter()
+            f.calendar = Calendar(identifier: .gregorian)
+            f.locale = Locale(identifier: "en_US_POSIX")
+            f.dateFormat = "yyyy-MM-dd HH:mm, EEEE"
+            return f.string(from: Date())
+        }()
         public init() {}
     }
 
@@ -58,6 +66,10 @@ public enum ChatRouter {
     MARKET: chart <ASSET> [week|month] | what's moving | alert me when <ASSET> is above|below <PRICE> | cancel alerts
     P/L: profit and loss [today|week|month|all] [for <ASSET>]   (how much they made or lost, on trading and on the whole portfolio)
     APP: new canvas | clear the plan | lock
+    LATER OR ON REPEAT (COMMAND is one form above, or several joined by " then "; the time is the user's local time):
+      in N <minutes|hours|days|weeks|months>: COMMAND | at HH:MM: COMMAND | tomorrow [at HH:MM]: COMMAND | on YYYY-MM-DD [at HH:MM]: COMMAND
+      every <hour|day|week|month|N hours|N days|N weeks|N months> [at HH:MM]: COMMAND | every <monday…sunday> [at HH:MM]: COMMAND | cancel scheduled tasks
+      («через неделю переложи депозиты в лучшие ставки» = in 1 week: rebalance USDC; «каждый день в 9 продавай SOL и клади USDC в vault» = every day at 09:00: sell SOL then lend USDC. Recurring BUYS keep their own form above. A step no form can do makes the whole request "clarify": say which step ihatecrypto can't do yet.)
     """
 
     static let system = """
@@ -106,6 +118,7 @@ public enum ChatRouter {
             lines.append("Switched off in Settings › Modules: \(context.off). Never offer or build a move that uses them; "
                          + "when asked for one, reply (chat) that it is off in Settings › Modules.")
         }
+        lines.append("Now (local time): " + context.now)
         lines.append("Reply language: " + context.replyLanguage)
         lines.append("Message: " + text)
         let reply = try await client.complete(LLMRequest(model: model, messages: [

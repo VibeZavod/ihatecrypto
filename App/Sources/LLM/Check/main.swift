@@ -46,7 +46,9 @@ if prompt == "--route" {
             if case .command(let c) = route {
                 let parsed = WalletCommand.parse(c) != nil || TokenCommand.parse(c) != nil || PositionCommand.parse(c) != nil
                     || ChartCommand.parse(c) != nil || AlertCommand.parse(c) != nil || AddressBookCommand.parse(c) != nil
+                    || PnLCommand.parse(c) != nil || ScheduledTask.parse(c) != nil || ScheduledTask.cancelsAll(c)
                     || IntentParser.apply(c, to: TradeIntent(), markets: ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]) != nil
+                if let task = ScheduledTask.parse(c) { line += "  [\(task.when)]" }
                 let safe = ChatRouter.addressesAllowed(c, userText: message, known: ["0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18"])
                 line += parsed ? "  ✓ parses" : "  ✗ NO PARSER"
                 if !safe { line += "  ✗ FOREIGN ADDRESS" }

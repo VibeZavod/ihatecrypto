@@ -481,6 +481,7 @@ extension Workspace {
             checkAlerts()
             await guardPositions()
             await runSchedules()
+            await runDueTask()
         }
     }
 

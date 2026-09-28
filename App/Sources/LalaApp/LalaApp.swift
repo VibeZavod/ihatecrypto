@@ -24,6 +24,11 @@ struct LalaApp: App {
     #endif
 
     init() {
+        // One copy only: a second one (Keep running racing a relaunch, a test build) would run stops and tasks twice.
+        if NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "app.lala.mac")
+            .contains(where: { $0.processIdentifier != getpid() && !$0.isTerminated }) {
+            exit(0)
+        }
         if selfTest {
             Task { exit(await SignerSelfTest.run() ? 0 : 1) }
         } else {
@@ -407,6 +412,8 @@ struct MarketPicker: View {
 struct SettingsView: View {
     @Environment(Workspace.self) private var ws
     @State private var confirmForget = false
+    @State private var alwaysRunning = KeepRunning.isOn
+    @State private var alwaysRunningError: String?
     /// The open tab; the chat's networks menu opens Settings straight on «modules».
     static let tabKey = "settingsTab"
     @AppStorage(SettingsView.tabKey) private var tab = Tab.general
@@ -609,6 +616,13 @@ struct SettingsView: View {
     /// What keeps running with the window closed.
     @ViewBuilder private var keepRunning: some View {
         Section("Background") {
+            Toggle("Keep ihatecrypto always running", isOn: Binding(get: { alwaysRunning }, set: { on in
+                do { try KeepRunning.set(on); alwaysRunningError = nil } catch { alwaysRunningError = error.localizedDescription }
+                alwaysRunning = KeepRunning.isOn
+            }))
+            Text("Starts at login and comes back within a minute after Quit or a crash, in the menu bar with the window closed, so scheduled tasks, stops and alerts keep running. To quit for good, turn this off first. While the Mac sleeps nothing runs: a task that came due runs when it wakes.")
+                .font(.ui(10)).foregroundStyle(.secondary)
+            if let alwaysRunningError { Text(alwaysRunningError).font(.ui(10)).foregroundStyle(Brand.loss) }
             Toggle("Open ihatecrypto at login", isOn: Binding(
                 get: { SMAppService.mainApp.status == .enabled },
                 set: { on in try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }))

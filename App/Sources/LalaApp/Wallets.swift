@@ -41,6 +41,8 @@ extension Workspace {
         tokenBalances = [:]
         updatedAt = nil
         schedules = UserDefaults.standard.data(forKey: Self.scoped("schedules", id)).flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) } ?? []
+        tasks = UserDefaults.standard.data(forKey: Self.scoped("tasks", id)).flatMap { try? JSONDecoder().decode([ScheduledTask].self, from: $0) } ?? []
+        taskQueue = nil
         exitRules = UserDefaults.standard.data(forKey: Self.scoped("exitRules", id)).flatMap { try? JSONDecoder().decode([String: ExitRules].self, from: $0) } ?? [:]
         equityHistory = LocalStore.load(Self.scoped("equity", id) + ".json") ?? []
     }
