@@ -1,3 +1,4 @@
+import os
 import AppKit
 import LalaCore
 import SwiftUI
@@ -29,6 +30,9 @@ enum Notice: String, CaseIterable {
         case .confirm: "A move or a trade waits for your Confirm"
         }
     }
+
+    /// `log show --predicate 'subsystem == "app.lala.mac"'`: what macOS answered about notifications.
+    static let log = Logger(subsystem: "app.lala.mac", category: "notifications")
 
     var isOn: Bool { UserDefaults.standard.object(forKey: "notice.\(rawValue)") as? Bool ?? true }
 }
@@ -63,9 +67,14 @@ private struct NoticeToggle: View {
     var body: some View { Toggle(kind.title, isOn: $on) }
 }
 
-/// A click on a notification brings the main window back, even when only the menu bar item was left.
+/// A click on a notification brings the main window back, even when only the menu bar item was left. Shown while
+/// ihatecrypto is in front too: without `willPresent` macOS drops the banner of the frontmost app.
 final class NoticeDelegate: NSObject, UNUserNotificationCenterDelegate {
     static let shared = NoticeDelegate()
+
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .list, .sound]
+    }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
         await MainActor.run {

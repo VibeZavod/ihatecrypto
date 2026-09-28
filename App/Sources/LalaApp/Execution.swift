@@ -584,7 +584,8 @@ extension Workspace {
         guard kind.isOn, Bundle.main.bundleIdentifier != nil else { return }
         let center = UNUserNotificationCenter.current()
         center.delegate = NoticeDelegate.shared
-        center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
+        center.requestAuthorization(options: [.alert, .sound]) { granted, error in
+            Notice.log.notice("notify \(kind.rawValue, privacy: .public): granted=\(granted) error=\(String(describing: error), privacy: .public)")
             guard granted else { return }
             let content = UNMutableNotificationContent()
             content.title = title
