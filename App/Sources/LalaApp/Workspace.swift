@@ -40,7 +40,7 @@ final class Workspace {
     var quote: BridgeQuote?
     var quoteError: String?
     var updatedAt: Date?
-    /// Whether the signing process holds a key; nil outside LALA.app, where there is no signer.
+    /// Whether the signing process holds a key; nil outside ihatecrypto.app, where there is no signer.
     var signerHasWallet: Bool?
     /// The wallet whose key the signing process holds; only then can a plan be executed.
     var signerWallet: TradeWallet?
@@ -59,7 +59,9 @@ final class Workspace {
     var sessionLength = SignerSession.standard
 
     // Execution
-    var prepared: Executor.Prepared?
+    var prepared: Executor.Prepared? {
+        didSet { if prepared != nil, oldValue == nil { remindToConfirm(say("The trade is ready to sign.", "Сделка готова к подписи.")) } }
+    }
     var preparing = false
     var executing = false {
         didSet { if oldValue, !executing { lastOwnMove = Date() } }
@@ -80,9 +82,23 @@ final class Workspace {
     var executed: TradeIntent?
     /// Regular purchases, carried out while the app is open.
     /// An allocation plan shown and waiting for «делай».
-    var pendingAllocation: WalletCommand?
+    var pendingAllocation: WalletCommand? {
+        didSet { if pendingAllocation != nil, oldValue == nil { remindToConfirm() } }
+    }
     /// A command the model read from another language: it waits for «do it», so a wrong reading moves nothing.
-    var pendingAction: PendingAction?
+    var pendingAction: PendingAction? {
+        didSet { if pendingAction != nil, oldValue == nil { remindToConfirm() } }
+    }
+
+    /// A card waits for Confirm while the window isn't in front (the model took a few seconds and the user looked
+    /// away): a notification says so. Read on the next turn of the run loop, when the card's text is set.
+    func remindToConfirm(_ what: String? = nil) {
+        Task { @MainActor in
+            guard !NSApp.isActive else { return }
+            notify(.confirm, say("Waiting for your Confirm", "Ждёт твоего Confirm"),
+                   what ?? pendingText ?? say("A move is on the canvas.", "Действие на холсте."), record: false)
+        }
+    }
     /// The last money move carried out on this canvas: whether and when it went through, and its route as confirmed.
     /// The canvas keeps them in place of the «waiting for the signature» they replace.
     var finishedAction: (title: String, outcome: CanvasOutcome, route: [ActivityBubble])?
@@ -970,7 +986,7 @@ func isEVMAddress(_ s: String) -> Bool { s.wholeMatch(of: /0x[0-9a-fA-F]{40}/) !
 
 /// Credentials per provider, as JSON, in the login Keychain of this Mac only.
 nonisolated enum Keychain {
-    /// LALA.app keeps its own model logins: an item made by the development build would make the
+    /// ihatecrypto.app keeps its own model logins: an item made by the development build would make the
     /// signed app ask for the login password.
     static let service = Bundle.main.bundleIdentifier.map { $0 + ".llm" } ?? "app.lala.llm"
 

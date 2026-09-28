@@ -15,7 +15,7 @@ extension Workspace {
 
 /// What a notification is about; each kind can be turned off in Settings.
 enum Notice: String, CaseIterable {
-    case incoming, positions, orders, alerts, moves, hlp, signature
+    case incoming, positions, orders, alerts, moves, hlp, signature, confirm
 
     var title: String {
         switch self {
@@ -26,6 +26,7 @@ enum Notice: String, CaseIterable {
         case .moves: "A confirmed move finished or failed"
         case .hlp: "The HLP deposit unlocked"
         case .signature: "A scheduled buy waits for Touch ID"
+        case .confirm: "A move or a trade waits for your Confirm"
         }
     }
 
