@@ -771,7 +771,7 @@ struct StudioCanvas: View {
             PendingAddressBoard()
             TransferBoard()
             if nodes.isEmpty {
-                if ws.yieldOptions == nil, ws.allocationPreview == nil {
+                if ws.yieldOptions == nil, ws.allocationPreview == nil, ws.rebalancePlan == nil {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
                     if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil,
                               (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty { placeholder }

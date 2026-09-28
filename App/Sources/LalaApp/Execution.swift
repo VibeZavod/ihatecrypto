@@ -324,6 +324,7 @@ extension Workspace {
                 // Like «spread»: the plan first, the moves only after «do it».
                 let (_, ready, plan) = try await e.rebalance(maxShare: share ?? 50, execute: confirmed)
                 pendingAllocation = ready ? command : nil
+                if canvasID == nil { saveCanvas() }   // a new canvas gets its id on its first save: the card belongs to it
                 rebalancePlan = confirmed ? nil : (canvasID, plan, share ?? 50)
                 if !confirmed {
                     reply(ready ? "The moves are on the canvas with their math. Sign them, or ask for another limit, e.g. “rebalance, max \(share.map { $0 == 70 ? 50 : 70 } ?? 70)% per protocol”."

@@ -109,7 +109,7 @@ func moveMoney(_ text: String) async throws {
     print("Command: \(command)")
     // Read-only commands and the allocation plan run without --yes; the plan executes only with it.
     switch command {
-    case .yields, .allocate: break
+    case .yields, .allocate, .rebalance: break
     default: guard send else { print("Add --yes."); return }
     }
     let signer = try LocalSigner()
