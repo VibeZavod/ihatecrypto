@@ -118,6 +118,17 @@
     }
   },
   {
+    "name": "P/L for the week → the P/L board and an answer in dollars",
+    "send": [
+      "какой у меня P/L за неделю"
+    ],
+    "expect": {
+      "pnl_period": "week",
+      "reply_contains": "$",
+      "no_pending": true
+    }
+  },
+  {
     "name": "Russian in → Russian out: the model's chat reply",
     "send": [
       "привет, что ты умеешь?"
@@ -145,6 +156,17 @@
     "expect": {
       "no_pending": true,
       "reply_cyrillic": false
+    }
+  },
+  {
+    "name": "P/L on one market → the board for oil, all time",
+    "send": [
+      "сколько я заработал на нефти"
+    ],
+    "expect": {
+      "pnl_period": "all",
+      "reply_contains": "$",
+      "no_pending": true
     }
   }
 ]

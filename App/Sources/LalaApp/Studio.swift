@@ -821,6 +821,7 @@ struct StudioCanvas: View {
             let positions = nodes.isEmpty ? ws.positions.filter { $0.coin == ws.chart?.coin || (ws.managesPosition && $0.coin == ws.intent.asset) } : []
             ForEach(positions, id: \.coin) { PositionBoard(position: $0) }
             if let chart = ws.chart { ChartBoard(state: chart) }
+            PnLBoard()
             if ws.showMovers { MoversBoard() }
             if let yields = ws.yieldOptions, !yields.isEmpty {
                 YieldBubbles(options: yields)

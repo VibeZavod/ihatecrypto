@@ -196,6 +196,12 @@ final class DebugAPI {
         if let done = ws.finishedAction { out["finished"] = ["title": done.title, "ok": done.outcome.ok] as [String: Any] }
         out["earlier"] = (canvas?.earlier ?? []).map { ["title": ws.readable($0.title), "ok": $0.outcome.ok] as [String: Any] }
         if let y = ws.yieldOptions { out["yields"] = y.map { ["place": $0.place, "asset": $0.asset, "apy": NSDecimalNumber(decimal: $0.apy).doubleValue] as [String: Any] } }
+        let pnl = PnLBoardState.shared
+        if let command = pnl.command, pnl.canvas == ws.canvasID, let r = pnl.reports[pnl.period] {
+            out["pnl"] = ["period": pnl.period.rawValue, "coin": command.coin ?? NSNull(), "trading": NSDecimalNumber(decimal: r.trading).stringValue,
+                          "unrealized": NSDecimalNumber(decimal: r.unrealized).stringValue,
+                          "change": r.change.map { NSDecimalNumber(decimal: $0).stringValue } ?? NSNull()] as [String: Any]
+        }
         if let c = ws.chart { out["chart"] = ["coin": c.coin, "range": c.range.rawValue, "candles": c.candles.count, "error": c.error ?? NSNull()] as [String: Any] }
         if let d = ws.detail { out["detail"] = d }
         if let a = ws.allocationPreview { out["allocation"] = ["asset": a.asset, "slices": a.slices.count] as [String: Any] }

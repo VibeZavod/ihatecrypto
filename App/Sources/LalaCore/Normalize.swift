@@ -54,6 +54,7 @@ public enum ChatRouter {
     ADDRESSES AND WATCHLIST: save <ADDRESS> as <NAME> [on solana|base|arbitrum|ethereum|hyperliquid|near] | add <NAME> to favorites | remove <NAME> from favorites
       watch token <0xCONTRACT> [on robinhood|base|arbitrum|ethereum|solana] | remove token <SYMBOL> from favorites
     MARKET: chart <ASSET> [week|month] | what's moving | alert me when <ASSET> is above|below <PRICE> | cancel alerts
+    P/L: profit and loss [today|week|month|all] [for <ASSET>]   (how much they made or lost, on trading and on the whole portfolio)
     APP: new canvas | clear the plan | lock
     """
 

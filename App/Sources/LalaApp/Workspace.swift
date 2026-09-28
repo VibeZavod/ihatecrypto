@@ -540,6 +540,7 @@ final class Workspace {
             await chartCommand(command)
             return
         }
+        if let command = PnLCommand.parse(text, markets: Set(markets.keys)) { await showPnL(command); return }
         if case .sendTo(let name, let amount)? = WalletCommand.parse(text) {
             prepareTransfer(amount, to: name)
             return
@@ -727,6 +728,7 @@ final class Workspace {
             await chartCommand(command, note: note)
             return true
         }
+        if let command = PnLCommand.parse(canonical, markets: Set(markets.keys)) { await showPnL(command, note: note); return true }
         if TakeStyle.asksForChoice(canonical), intent != TradeIntent() {
             takeChoices = TakeStyle.allCases
             reply("Three ways to take profit are on the canvas. The stop stays the same; pick one.", note: note)

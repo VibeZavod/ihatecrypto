@@ -126,7 +126,7 @@ extension Workspace {
         busy = true
         defer { busy = false }
         let stories = (try? await TradeHistory.fills(user: hlAddress)).map(TradeHistory.stories) ?? []
-        var facts = answerFacts(stories)
+        var facts = answerFacts(stories) + (await pnlFacts())
         // The market the question names (and those of open positions): price, the day's move, funding.
         let named = IntentParser.namedAsset(question, markets: Set(markets.keys))
         // The trade the question is about: the market it names, else the plan's.

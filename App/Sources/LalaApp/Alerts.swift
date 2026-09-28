@@ -70,6 +70,8 @@ struct AlertsCard: View {
 struct EquityPoint: Codable, Equatable {
     let at: Date
     let usd: Decimal
+    /// The wallet it was measured for (P/L); nil in points kept before wallets were told apart.
+    var wallet: String? = nil
 }
 
 extension Workspace {
@@ -78,7 +80,7 @@ extension Workspace {
         guard solana != nil, hl != nil, let e = equity, e > 0 else { return }
         if let last = equityHistory.last, Date().timeIntervalSince(last.at) < 600 { return }
         let cutoff = Date().addingTimeInterval(-30 * 86_400)
-        equityHistory = equityHistory.filter { $0.at > cutoff } + [EquityPoint(at: Date(), usd: e)]
+        equityHistory = equityHistory.filter { $0.at > cutoff } + [EquityPoint(at: Date(), usd: e, wallet: pnlWallet)]
     }
 
     /// The last `days` of history plus the value now.

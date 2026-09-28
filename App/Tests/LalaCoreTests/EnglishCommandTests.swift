@@ -76,6 +76,7 @@ import Testing
     #expect(PositionCommand.parse("close half") == .close(Decimal(string: "0.5")!))
     #expect(IntentParser.apply("short oil risk $1 by the book", to: TradeIntent(), markets: markets)?.asset == "xyz:CL")
     #expect(ChatRouter.forms.contains("buy token <0xCONTRACT> for N USDC"))
+    #expect(PnLCommand.parse("profit and loss week for oil", markets: markets) == PnLCommand(period: .week, coin: "xyz:CL"))
     // Native NEAR and SOL to saved addresses, and closing the NEAR account.
     #expect(WalletCommand.parse("send 0.05 NEAR to Bybit") == .sendNear(name: "Bybit", amount: Decimal(string: "0.05")!))
     #expect(WalletCommand.parse("send all NEAR to Bybit") == .sendNear(name: "Bybit", amount: nil))

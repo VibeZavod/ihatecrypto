@@ -63,6 +63,8 @@ def check(expect, state, replies):
             why.append(f"chart range {text(b.get('chart'))}, expected {want}")
         elif key == "yields" and not b.get("yields"):
             why.append("no rate bubbles")
+        elif key == "pnl_period" and (b.get("pnl") or {}).get("period") != want:
+            why.append(f"P/L board {text(b.get('pnl'))}, expected period {want}")
         elif key == "reply" and not replies:
             why.append("no reply")
         elif key == "reply_contains" and not any(want.lower() in r.lower() for r in replies):

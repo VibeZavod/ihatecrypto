@@ -714,6 +714,7 @@ extension Workspace {
             let text = try await executor(wallet).sendUSDC(amount, to: destination, label: entry.name)
             if let i = addressBook.firstIndex(where: { $0.id == entry.id }) { addressBook[i].lastSent = Date() }
             finishedAction = (title, CanvasOutcome(at: Date(), ok: true), [bubble])
+            recordFlow(-amount, "sent to \(entry.name)")
             reply(text, note: "transfer")
         } catch {
             finishedAction = (title, CanvasOutcome(at: Date(), ok: false), [bubble])

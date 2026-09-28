@@ -161,6 +161,7 @@ extension Workspace {
     /// Money that came in from outside since the last refresh — not during or right after LALA's own moves.
     func announceIncoming(before: (usdc: Decimal?, sol: Decimal?, base: Decimal?)) {
         guard !executing, !preparing, Date().timeIntervalSince(lastOwnMove) > 120 else { return }
+        recordIncomingFlows(before: before)
         var lines: [String] = []
         let on = say("on", "на"), now = say("now", "сейчас")
         if let old = before.usdc, let new = solana?.usdc, new - old >= Decimal(string: "0.01")! { lines.append("+\(Fmt.num(new - old)) USDC \(on) Solana (\(now) \(Fmt.num(new)))") }

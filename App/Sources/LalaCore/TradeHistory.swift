@@ -127,6 +127,21 @@ public enum TradeHistory {
         try JSONDecoder().decode([Fill].self, from: try await info(["type": "userFills", "user": user, "aggregateByTime": true]))
     }
 
+    /// Funding paid (−) or received (+) on positions, HIP-3 markets included (userFunding).
+    public static func funding(user: String) async throws -> [PnL.Funding] {
+        funding(try await info(["type": "userFunding", "user": user, "startTime": 0]))
+    }
+
+    public static func funding(_ json: Data) -> [PnL.Funding] {
+        guard let rows = try? JSONSerialization.jsonObject(with: json) as? [[String: Any]] else { return [] }
+        return rows.compactMap { row in
+            guard let delta = row["delta"] as? [String: Any], let coin = delta["coin"] as? String,
+                  let usdc = (delta["usdc"] as? String).flatMap({ Decimal(string: $0) }),
+                  let ms = row["time"] as? Double ?? (row["time"] as? Int).map(Double.init) else { return nil }
+            return PnL.Funding(time: Date(timeIntervalSince1970: ms / 1000), coin: coin, usdc: usdc)
+        }
+    }
+
     public static func transfers(user: String) async throws -> [Transfer] {
         transfers(try await info(["type": "userNonFundingLedgerUpdates", "user": user, "startTime": 0]), user: user)
     }
