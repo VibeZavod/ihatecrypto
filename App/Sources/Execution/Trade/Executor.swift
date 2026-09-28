@@ -335,7 +335,7 @@ public actor Executor {
 
     /// sendAsset to our own address between perp balances — "" is the main one, "xyz" a HIP-3 exchange — then wait
     /// for the credit.
-    func moveMargin(from source: String, to dex: String, usdc: Decimal) async throws {
+    public func moveMargin(from source: String, to dex: String, usdc: Decimal) async throws {
         func free() async throws -> Decimal {
             dex.isEmpty ? try await Hyperliquid.balance(user: wallet.evm).withdrawable : try await Hyperliquid.dexBalance(user: wallet.evm, dex: dex).withdrawable
         }

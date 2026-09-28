@@ -44,7 +44,8 @@ extension Executor {
     /// usdSend from the perp balance, signed by the main key (the trading key can't move money out); the guard and the
     /// signer accept only this destination.
     private func sendHyperliquidUSDC(_ amount: Decimal, to destination: String, label: String) async throws -> String {
-        let usdc = amount.rounded(2, .down)
+        // To the micro-dollar, not the cent: «send all» leaves nothing behind.
+        let usdc = amount.rounded(6, .down)
         let free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
         guard usdc > 0, usdc <= free else { throw ExecutionError("\(Fmt.usd(free)) free on Hyperliquid; can't send \(Fmt.num(usdc)).") }
         let to = destination.lowercased()

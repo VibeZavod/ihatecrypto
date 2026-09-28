@@ -397,6 +397,11 @@ func sweepHyperliquid(to destination: String) async throws {
         return
     }
     if vault.equity > 0 { print(try await executor.hlp(deposit: false, amount: nil)) }
+    // Margin left on a HIP-3 exchange (xyz) joins the main balance first, so nothing stays behind.
+    for dex in Hyperliquid.hip3Dexes {
+        let idle = (try await Hyperliquid.dexBalance(user: signer.wallet.evm, dex: dex).withdrawable).rounded(6, .down)
+        if idle > 0 { try await executor.moveMargin(from: dex, to: "", usdc: idle) }
+    }
     let free = try await Hyperliquid.balance(user: signer.wallet.evm).withdrawable
     print(try await executor.sendUSDC(free, to: .hyperliquid(destination), label: "the new wallet"))
 }
