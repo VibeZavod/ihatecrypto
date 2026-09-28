@@ -44,18 +44,18 @@ struct AlertsCard: View {
     var body: some View {
         if !ws.alerts.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                Label("Price alerts", systemImage: "bell.badge").font(.caption.weight(.semibold))
+                Label("Price alerts", systemImage: "bell.badge").font(.ui(10, .semibold))
                 ForEach(ws.alerts) { a in
                     HStack(spacing: 6) {
                         AssetBadge(coin: a.coin, size: 18)
                         Text("\(IntentParser.pretty(a.coin).components(separatedBy: " (").first ?? a.coin) \(a.above ? "≥" : "≤") \(Fmt.price(a.price))")
-                            .font(.caption.weight(.semibold)).lineLimit(1)
+                            .font(.ui(10, .semibold)).lineLimit(1)
                         Spacer(minLength: 4)
                         if let mark = ws.markets[a.coin]?.markPx {
-                            Text("\(Fmt.num(((a.price - mark) / mark * 100).rounded(1, .plain)))%").font(.caption2).monospacedDigit().foregroundStyle(.secondary)
+                            Text("\(Fmt.num(((a.price - mark) / mark * 100).rounded(1, .plain)))%").font(.ui(10)).monospacedDigit().foregroundStyle(.secondary)
                         }
                         Button { withAnimation(.snappy) { ws.alerts.removeAll { $0.id == a.id } } } label: { Image(systemName: "xmark") }
-                            .buttonStyle(.hoverIcon).font(.caption2).help("Remove the alert")
+                            .buttonStyle(.hoverIcon).font(.ui(10)).help("Remove the alert")
                     }
                 }
             }

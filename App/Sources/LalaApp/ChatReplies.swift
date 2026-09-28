@@ -81,7 +81,7 @@ struct MessageRow: View {
                     .padding(.horizontal, 14).padding(.vertical, 9)
                     .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.quaternary.opacity(0.8)))
             }
-            .font(.system(size: 14))
+            .font(.ui(14))
         } else {
             Reply(message: message)
         }
@@ -116,7 +116,7 @@ struct Reply: View {
                 ChecklistCard(list: list)
             } else if let emoji {
                 HStack(alignment: .top, spacing: 10) {
-                    Text(emoji).font(.system(size: 15))
+                    Text(emoji).font(.ui(15))
                         .frame(width: 30, height: 30)
                         .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(.quaternary.opacity(0.7)))
                     styled(text).padding(.top, 5)
@@ -125,7 +125,7 @@ struct Reply: View {
                 styled(text)
             }
         }
-        .font(.system(size: 14))
+        .font(.ui(14))
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 
@@ -143,7 +143,7 @@ struct Reply: View {
             if note == "incoming" { Image(systemName: "arrow.down.circle.fill") }
             Text(label.uppercased()).tracking(0.6)
         }
-        .font(.system(size: 10, weight: .semibold))
+        .font(.ui(10, .semibold))
         .foregroundStyle(note == "incoming" ? AnyShapeStyle(Brand.profit) : AnyShapeStyle(.tertiary))
     }
 }
@@ -178,7 +178,7 @@ struct ChecklistCard: View {
             VStack(alignment: .leading, spacing: 7) {
                 ForEach(Array(list.items.enumerated()), id: \.offset) { _, item in
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
-                        icon(item.mark).font(.system(size: 12, weight: .semibold)).frame(width: 14)
+                        icon(item.mark).font(.ui(12, .semibold)).frame(width: 14)
                         text(item.text)
                     }
                 }
@@ -215,7 +215,7 @@ struct StepsCard: View {
                 Image(systemName: "bolt.fill")
                 Text(running ? "EXECUTING" : "EXECUTED · \(steps.count) \(steps.count == 1 ? "STEP" : "STEPS")").tracking(0.6)
             }
-            .font(.system(size: 10, weight: .semibold)).foregroundStyle(.tertiary)
+            .font(.ui(10, .semibold)).foregroundStyle(.tertiary)
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(steps.indices, id: \.self) { i in
                     step(steps[i].text, last: i == steps.count - 1)
@@ -249,9 +249,9 @@ struct StepsCard: View {
                 if !last { Capsule().fill(.quaternary).frame(width: 2).frame(maxHeight: .infinity) }
             }
             VStack(alignment: .leading, spacing: 2) {
-                Text(ChatText.styled(head)).font(.system(size: 13)).fixedSize(horizontal: false, vertical: true)
+                Text(ChatText.styled(head)).font(.ui(13)).fixedSize(horizontal: false, vertical: true)
                 if let rest, !rest.isEmpty {
-                    Text(ChatText.styled(rest, emphasis: false)).font(.system(size: 11)).foregroundStyle(.secondary)
+                    Text(ChatText.styled(rest, emphasis: false)).font(.ui(11)).foregroundStyle(.secondary)
                         .lineLimit(2).fixedSize(horizontal: false, vertical: true).help(rest)
                 }
             }

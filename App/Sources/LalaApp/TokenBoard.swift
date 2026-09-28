@@ -90,9 +90,9 @@ struct TokenBoard: View {
                 AssetBadge(coin: symbol, size: 38, dark: true)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(name).font(.system(size: 16, weight: .bold)).lineLimit(1).help(fullName)
+                Text(name).font(.ui(16, .bold)).lineLimit(1).help(fullName)
                 Text([symbol, chainTitle, market.map { "\($0.dex) · \($0.quote) pool" }].compactMap { $0 }.joined(separator: " · "))
-                    .font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
             Button { withAnimation(StudioView.spring) { ws.detail = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
@@ -105,12 +105,12 @@ struct TokenBoard: View {
         let now = shown?.close ?? market?.priceUSD ?? points.last?.close ?? holding?.price
         let change = rangeChange
         return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(now.map(tokenPrice) ?? "—").font(.system(size: 28, weight: .heavy)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.5).layoutPriority(1)
+            Text(now.map(tokenPrice) ?? "—").font(.ui(28, .heavy)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.5).layoutPriority(1)
             if let shown {
                 Text(shown.time.formatted(Date.FormatStyle(locale: Locale(identifier: "en_US")).day().month(.abbreviated).hour().minute()))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
             } else if let change {
-                Text("\(signedPct(change)) · \(range.title)").font(.caption.weight(.bold)).foregroundStyle(change < 0 ? Brand.loss : Brand.profit).lineLimit(1)
+                Text("\(signedPct(change)) · \(range.title)").font(.ui(10, .bold)).foregroundStyle(change < 0 ? Brand.loss : Brand.profit).lineLimit(1)
             }
             Spacer()
             Picker("", selection: $range) {
@@ -150,7 +150,7 @@ struct TokenBoard: View {
             .chartXSelection(value: $selected)
             .frame(height: 190)
         } else if let error {
-            Label(error, systemImage: "chart.xyaxis.line").font(.caption).foregroundStyle(.secondary)
+            Label(error, systemImage: "chart.xyaxis.line").font(.ui(10)).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 120)
         } else {
             ProgressView().frame(maxWidth: .infinity, minHeight: 190)
@@ -170,7 +170,7 @@ struct TokenBoard: View {
                             Text(title).foregroundStyle(.secondary)
                             Text(signedPct(c)).foregroundStyle(c < 0 ? Brand.loss : Brand.profit)
                         }
-                        .font(.system(size: 11, weight: .semibold)).monospacedDigit()
+                        .font(.ui(11, .semibold)).monospacedDigit()
                         .padding(.horizontal, 8).padding(.vertical, 4)
                         .background(Capsule().fill(Color.primary.opacity(0.05)))
                     }
@@ -193,8 +193,8 @@ struct TokenBoard: View {
 
     private func stat(_ title: String, _ value: String?) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title.uppercased()).font(.system(size: 9.5, weight: .semibold)).tracking(0.5).foregroundStyle(.secondary)
-            Text(value ?? "—").font(.system(size: 14, weight: .bold)).monospacedDigit()
+            Text(title.uppercased()).font(.ui(9.5, .semibold)).tracking(0.5).foregroundStyle(.secondary)
+            Text(value ?? "—").font(.ui(14, .bold)).monospacedDigit()
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(10)
@@ -205,11 +205,11 @@ struct TokenBoard: View {
         HStack(spacing: 10) {
             Image(systemName: "wallet.pass.fill").foregroundStyle(Brand.accentInk)
             VStack(alignment: .leading, spacing: 1) {
-                Text("You hold \(Fmt.num(h.amount, maxFraction: 6)) \(h.symbol)").font(.system(size: 13, weight: .semibold))
-                Text(isStock ? "valued at Robinhood’s bid \(h.price.map(tokenPrice) ?? "—")" : "valued at the pool price").font(.caption2).foregroundStyle(.secondary)
+                Text("You hold \(Fmt.num(h.amount, maxFraction: 6)) \(h.symbol)").font(.ui(13, .semibold))
+                Text(isStock ? "valued at Robinhood’s bid \(h.price.map(tokenPrice) ?? "—")" : "valued at the pool price").font(.ui(10)).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(Fmt.usd(h.usd)).font(.system(size: 15, weight: .bold)).monospacedDigit()
+            Text(Fmt.usd(h.usd)).font(.ui(15, .bold)).monospacedDigit()
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 12).fill(Brand.accent.opacity(0.08)))
@@ -232,7 +232,7 @@ struct TokenBoard: View {
             if let pair = market?.pairURL { Link("DexScreener", destination: pair) }
             if chain == "robinhood", let url = URL(string: "https://robinhoodchain.blockscout.com/token/\(address)") { Link("Explorer", destination: url) }
         }
-        .buttonStyle(.borderless).font(.caption).tint(Brand.accent).foregroundStyle(Brand.accentInk)
+        .buttonStyle(.borderless).font(.ui(10)).tint(Brand.accent).foregroundStyle(Brand.accentInk)
     }
 
     private var actions: some View {
@@ -241,14 +241,14 @@ struct TokenBoard: View {
         return HStack(spacing: 6) {
             ForEach([("Buy \(symbol)", buy), ("Sell", sell)], id: \.0) { title, phrase in
                 Button { ws.draft = phrase } label: {
-                    Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(title == "Sell" ? Brand.loss : Brand.accentInk)
+                    Text(title).font(.ui(12, .semibold)).foregroundStyle(title == "Sell" ? Brand.loss : Brand.accentInk)
                         .padding(.horizontal, 12).padding(.vertical, 6)
                         .background(Capsule().fill((title == "Sell" ? Brand.loss : Brand.accent).opacity(0.1)))
                 }
                 .buttonStyle(.plain).pointerStyle(.link).help("Puts “\(phrase)” into the chat")
             }
             Spacer(minLength: 8)
-            Text("DexScreener · GeckoTerminal").font(.caption2).foregroundStyle(.tertiary).lineLimit(1).minimumScaleFactor(0.8)
+            Text("DexScreener · GeckoTerminal").font(.ui(10)).foregroundStyle(.tertiary).lineLimit(1).minimumScaleFactor(0.8)
         }
     }
 

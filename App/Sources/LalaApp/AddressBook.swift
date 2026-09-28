@@ -68,7 +68,7 @@ struct AddressIconView: View {
         case .symbol(let name)?: symbol(name)
         case .emoji(let e)?:
             Circle().fill(Brand.accent.opacity(0.1)).frame(width: size, height: size)
-                .overlay(Text(e).font(.system(size: size * 0.56)))
+                .overlay(Text(e).font(.ui(size * 0.56)))
         case .image(let file)?:
             if let image = AddressIcons.image(file) {
                 Image(nsImage: image).resizable().scaledToFill().frame(width: size, height: size).clipShape(Circle())
@@ -96,7 +96,7 @@ struct AddressIconView: View {
 
     private var letter: some View {
         Circle().fill(Brand.accent.opacity(0.12)).frame(width: size, height: size)
-            .overlay(Text(entry.name.prefix(1).uppercased()).font(.system(size: size * 0.45, weight: .bold)).foregroundStyle(Brand.accentInk))
+            .overlay(Text(entry.name.prefix(1).uppercased()).font(.ui(size * 0.45, .bold)).foregroundStyle(Brand.accentInk))
     }
 }
 
@@ -183,7 +183,7 @@ struct FavoritesBoard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "star.fill").foregroundStyle(Color(hex: 0xF5B301)).font(.system(size: 16, weight: .semibold))
-                Text("Favorites").font(.system(size: 16, weight: .bold))
+                Text("Favorites").font(.ui(16, .bold))
                 Spacer()
                 Button { withAnimation(StudioView.spring) { ws.showFavorites = false } } label: { Image(systemName: "xmark") }
                     .buttonStyle(.hoverIcon).help("Close")
@@ -211,7 +211,7 @@ struct FavoritesBoard: View {
                     section("YOUR WALLETS · SEND MONEY HERE TO TOP UP")
                     Spacer()
                     Button { withAnimation(StudioView.spring) { ws.showReceive = true } } label: { Label("QR", systemImage: "qrcode") }
-                        .buttonStyle(.borderless).font(.caption)
+                        .buttonStyle(.borderless).font(.ui(10))
                 }
                 ForEach(own) { AddressCard(entry: $0, readOnly: true) }
             }
@@ -223,7 +223,7 @@ struct FavoritesBoard: View {
             }
             Label("ihatecrypto only ever sends to your own wallets. Saved addresses are for copying and, later, for transfers you sign with Touch ID — never to an address from a chat, a site or a model.",
                   systemImage: "lock.shield")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.ui(10)).foregroundStyle(.secondary)
         }
         .animation(.snappy, value: items)
         .frame(width: 470, alignment: .leading)
@@ -232,7 +232,7 @@ struct FavoritesBoard: View {
     }
 
     private func section(_ title: String) -> some View {
-        Text(title).font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary).padding(.top, 4)
+        Text(title).font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary).padding(.top, 4)
     }
 
     private var filtered: [SavedAddress] {
@@ -256,7 +256,7 @@ struct FavoritesBoard: View {
             Text(!search.isEmpty ? "Nothing matches “\(search)”."
                  : tab == "favorites" && !ws.addressBook.isEmpty ? "No favorites yet — star an address in All to keep it here."
                  : "Save an exchange’s deposit address, another wallet or a friend’s — with a name, so you never paste a wrong one.")
-                .font(.callout).foregroundStyle(.secondary)
+                .font(.ui(12)).foregroundStyle(.secondary)
             if ws.addressBook.isEmpty {
                 Button { adding = true } label: { Label("Add the first address", systemImage: "plus") }.buttonStyle(.borderless)
             }
@@ -284,9 +284,9 @@ struct AddressCard: View {
                     TokenLogo(name: entry.network.logo, size: 17).offset(x: 3, y: 3)
                 }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(entry.name).font(.system(size: 14, weight: .bold)).lineLimit(1)
+                    Text(entry.name).font(.ui(14, .bold)).lineLimit(1)
                     Text([entry.label, entry.network.title, entry.source == "chat" ? "from chat" : nil].compactMap { $0 }.joined(separator: " · "))
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.ui(10)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if !readOnly {
@@ -312,9 +312,9 @@ struct AddressCard: View {
             Text(entry.address).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(.secondary)
                 .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
             if !entry.memo.isEmpty {
-                Label("Memo / tag: \(entry.memo)", systemImage: "number").font(.caption.weight(.semibold)).foregroundStyle(Brand.jevInk)
+                Label("Memo / tag: \(entry.memo)", systemImage: "number").font(.ui(10, .semibold)).foregroundStyle(Brand.jevInk)
             }
-            if !entry.note.isEmpty { Text(entry.note).font(.caption).foregroundStyle(.secondary) }
+            if !entry.note.isEmpty { Text(entry.note).font(.ui(10)).foregroundStyle(.secondary) }
             HStack(spacing: 14) {
                 Button(action: copy) { Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") }
                 Spacer()
@@ -325,7 +325,7 @@ struct AddressCard: View {
                     Button("Delete", role: .destructive) { confirmDelete = true }.foregroundStyle(Brand.loss)
                 }
             }
-            .buttonStyle(.borderless).font(.caption)
+            .buttonStyle(.borderless).font(.ui(10))
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 20).fill(Brand.card))
@@ -408,8 +408,8 @@ struct AddressEditor: View {
                 .help("Choose a picture")
                 .popover(isPresented: $picking, arrowEdge: .bottom) { IconPicker(icon: $icon, name: name) }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(entry == nil ? "Add an address" : "Edit “\(entry?.name ?? "")”").font(.title3.bold())
-                    Text("Tap the picture to choose a logo, an emoji or your own image.").font(.caption).foregroundStyle(.secondary)
+                    Text(entry == nil ? "Add an address" : "Edit “\(entry?.name ?? "")”").font(.ui(15, .bold))
+                    Text("Tap the picture to choose a logo, an emoji or your own image.").font(.ui(10)).foregroundStyle(.secondary)
                 }
             }
             Form {
@@ -418,7 +418,7 @@ struct AddressEditor: View {
                     TextField("Category", text: $category, prompt: Text("optional"))
                     ForEach(Self.categories, id: \.self) { c in
                         Button(c) { category = category == c ? "" : c }
-                            .buttonStyle(.plain).font(.caption)
+                            .buttonStyle(.plain).font(.ui(10))
                             .padding(.horizontal, 7).padding(.vertical, 3)
                             .background(Capsule().fill(category == c ? Brand.accent.opacity(0.18) : Color.primary.opacity(0.06)))
                     }
@@ -472,7 +472,7 @@ struct AddressEditor: View {
                 }
             }
         }
-        .font(.caption)
+        .font(.ui(10))
         .fixedSize(horizontal: false, vertical: true)
     }
 
@@ -517,9 +517,9 @@ struct IconPicker: View {
                 ForEach(Self.symbols, id: \.self) { s in pick(.symbol(s)) { Image(systemName: s).font(.system(size: 15)).frame(width: 26, height: 26) } }
             }
             section("EMOJI") {
-                ForEach(Self.emoji, id: \.self) { e in pick(.emoji(e)) { Text(e).font(.system(size: 20)).frame(width: 26, height: 26) } }
+                ForEach(Self.emoji, id: \.self) { e in pick(.emoji(e)) { Text(e).font(.ui(20)).frame(width: 26, height: 26) } }
             }
-            Text("PICTURE").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            Text("PICTURE").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
             HStack {
                 Button("Choose image…", action: choose)
                 Button("Paste image") {
@@ -541,8 +541,8 @@ struct IconPicker: View {
                 }
                 .disabled(fetching || !domain.contains("."))
             }
-            if let error { Text(error).font(.caption).foregroundStyle(Brand.loss) }
-            Text("The site’s icon comes through Google’s favicon service; nothing else is sent.").font(.caption2).foregroundStyle(.tertiary)
+            if let error { Text(error).font(.ui(10)).foregroundStyle(Brand.loss) }
+            Text("The site’s icon comes through Google’s favicon service; nothing else is sent.").font(.ui(10)).foregroundStyle(.tertiary)
         }
         .padding(16)
         .frame(width: 380)
@@ -550,7 +550,7 @@ struct IconPicker: View {
 
     private func section<Content: View>(_ title: String, @ViewBuilder _ items: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            Text(title).font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(32), spacing: 6), count: 9), alignment: .leading, spacing: 6) { items() }
         }
     }
@@ -641,13 +641,13 @@ struct PendingAddressBoard: View {
         if case .address(let entry)? = ws.pendingAction {
             VStack(alignment: .leading, spacing: 10) {
                 HStack(spacing: 8) {
-                    Text("Save to Addresses").font(.system(size: 14, weight: .semibold))
+                    Text("Save to Addresses").font(.ui(14, .semibold))
                     StatusChip(text: "waiting for your confirmation", tint: Brand.profit)
                 }
                 AddressCard(entry: entry, readOnly: true).frame(width: 320)
                 Label("Taken from your own message and checked for \(entry.network.title). Compare the start and the end with the source before you confirm.",
                       systemImage: "checkmark.shield")
-                    .font(.caption).foregroundStyle(.secondary).frame(width: 470, alignment: .leading)
+                    .font(.ui(10)).foregroundStyle(.secondary).frame(width: 470, alignment: .leading)
                 PendingButtons(confirm: "Save")
             }
             .transition(.opacity)
@@ -737,23 +737,23 @@ struct TransferBoard: View {
             let ends = AddressCheck.ends(entry.address)
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Text("Send · \(Fmt.num(amount)) USDC to \(entry.name)").font(.system(size: 14, weight: .semibold))
+                    Text("Send · \(Fmt.num(amount)) USDC to \(entry.name)").font(.ui(14, .semibold))
                     StatusChip(text: "waiting for the signature", tint: Brand.profit)
                 }
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 6) {
                         TokenLogo(name: entry.network.logo, size: 24)
-                        Text("FROM · \(entry.network.title.uppercased())").font(.system(size: 9, weight: .heavy)).tracking(0.4).opacity(0.75)
-                        Text(from.map { "\(Fmt.num($0)) → \(Fmt.num(max(0, $0 - amount))) USDC" } ?? "—").font(.system(size: 13, weight: .bold)).monospacedDigit()
-                        Text(hyper ? "perp balance · no bridge, no gas" : !solana && (from ?? 0) < amount ? "the rest comes from Solana first" : "your wallet").font(.caption2).opacity(0.8)
+                        Text("FROM · \(entry.network.title.uppercased())").font(.ui(9, .heavy)).tracking(0.4).opacity(0.75)
+                        Text(from.map { "\(Fmt.num($0)) → \(Fmt.num(max(0, $0 - amount))) USDC" } ?? "—").font(.ui(13, .bold)).monospacedDigit()
+                        Text(hyper ? "perp balance · no bridge, no gas" : !solana && (from ?? 0) < amount ? "the rest comes from Solana first" : "your wallet").font(.ui(10)).opacity(0.8)
                     }
                     .padding(11)
                     .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
                     .background(ArrowCard(radius: 16, tip: 10).fill(solana ? Brand.solanaTint : hyper ? Brand.hlChip.opacity(0.35) : Color(light: 0xEAF0FF, dark: 0x14213F)))
                     VStack(alignment: .leading, spacing: 6) {
                         AddressIconView(entry: entry, size: 30)
-                        Text("TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")").font(.system(size: 9, weight: .heavy)).tracking(0.4).opacity(0.75)
-                        Text(entry.name).font(.system(size: 13, weight: .bold)).lineLimit(1)
+                        Text("TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")").font(.ui(9, .heavy)).tracking(0.4).opacity(0.75)
+                        Text(entry.name).font(.ui(13, .bold)).lineLimit(1)
                         Text("\(ends.start) … \(ends.end)").font(.system(size: 11, weight: .semibold, design: .monospaced))
                     }
                     .padding(11)
@@ -763,11 +763,11 @@ struct TransferBoard: View {
                 }
                 if entry.lastSent == nil {
                     Label("First transfer to this address. Sending a small test amount first is the safe habit.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption).foregroundStyle(Brand.jevInk)
+                        .font(.ui(10)).foregroundStyle(Brand.jevInk)
                 }
                 Label("Only this saved address may receive the money: the guard and the signer check it, the simulation must show exactly \(Fmt.num(amount)) USDC leaving. Say “do it” or press Confirm.",
                       systemImage: "checkmark.shield")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
                 PendingButtons()
             }
             .frame(width: 470, alignment: .leading)

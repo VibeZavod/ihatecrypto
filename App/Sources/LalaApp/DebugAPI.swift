@@ -10,7 +10,7 @@ struct DebugBadge: View {
 
     var body: some View {
         if on {
-            Label("Debug API", systemImage: "ladybug.fill").font(.system(size: 11, weight: .semibold)).foregroundStyle(.orange)
+            Label("Debug API", systemImage: "ladybug.fill").font(.ui(11, .semibold)).foregroundStyle(.orange)
                 .help("The local debug API is on: Settings → Debugging")
         }
     }

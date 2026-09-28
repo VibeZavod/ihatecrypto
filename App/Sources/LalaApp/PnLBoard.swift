@@ -92,7 +92,7 @@ struct PnLBoard: View {
         if let command = state.command, state.canvas == ws.canvasID, let r = state.reports[state.period] {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 8) {
-                    Text("P/L" + (command.coin.map { " · \(IntentParser.pretty($0))" } ?? "")).font(.system(size: 15, weight: .bold))
+                    Text("P/L" + (command.coin.map { " · \(IntentParser.pretty($0))" } ?? "")).font(.ui(15, .bold))
                     Spacer(minLength: 4)
                     Picker("Period", selection: Binding(get: { state.period }, set: { p in withAnimation(.snappy) { state.period = p } })) {
                         ForEach(PnL.Period.allCases, id: \.self) { Text($0.title).tag($0) }
@@ -102,11 +102,11 @@ struct PnLBoard: View {
                         .buttonStyle(.hoverIcon).help("Close").accessibilityLabel("Close P/L")
                 }
                 VStack(alignment: .leading, spacing: 3) {
-                    Text("Trading · \(r.period.title)").font(.caption).foregroundStyle(.secondary)
-                    Text(signed(r.trading)).font(.system(size: 30, weight: .heavy)).monospacedDigit()
+                    Text("Trading · \(r.period.title)").font(.ui(10)).foregroundStyle(.secondary)
+                    Text(signed(r.trading)).font(.ui(30, .heavy)).monospacedDigit()
                         .foregroundStyle(r.trading < 0 ? Brand.loss : Brand.profit)
                     Text("realized after fees \(signed(r.realized)) · funding \(signed(r.funding)) · \(r.closedTrades) closed, \(r.wins) in profit")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.ui(10)).foregroundStyle(.secondary)
                 }
                 line("Open positions now", r.unrealized, detail: "not realized yet")
                 if command.coin == nil {
@@ -115,19 +115,19 @@ struct PnLBoard: View {
                              detail: r.flows == 0 ? "prices, yield and trading together" : "without \(signed(r.flows)) you moved in or out")
                     } else {
                         Text("No portfolio history for this period yet: it builds up every ten minutes while the app is open.")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.ui(10)).foregroundStyle(.secondary)
                     }
                 }
                 if !r.byAsset.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("BY MARKET").font(.system(size: 10, weight: .heavy)).tracking(0.6).foregroundStyle(.secondary)
+                        Text("BY MARKET").font(.ui(10, .heavy)).tracking(0.6).foregroundStyle(.secondary)
                         ForEach(r.byAsset.prefix(6), id: \.coin) { a in
                             HStack(spacing: 8) {
                                 AssetBadge(coin: a.coin, size: 22, dark: false)
-                                Text(IntentParser.pretty(a.coin)).font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                                Text("\(a.closedTrades) closed").font(.caption).foregroundStyle(.secondary)
+                                Text(IntentParser.pretty(a.coin)).font(.ui(13, .semibold)).lineLimit(1)
+                                Text("\(a.closedTrades) closed").font(.ui(10)).foregroundStyle(.secondary)
                                 Spacer(minLength: 4)
-                                Text(signed(a.realized)).font(.system(size: 13, weight: .bold)).monospacedDigit()
+                                Text(signed(a.realized)).font(.ui(13, .bold)).monospacedDigit()
                                     .foregroundStyle(a.realized < 0 ? Brand.loss : Brand.profit)
                             }
                         }
@@ -136,7 +136,7 @@ struct PnLBoard: View {
                 if let best = r.best, best.realized > 0 { trade("Best", best) }
                 if let worst = r.worst, worst.realized < 0 { trade("Worst", worst) }
                 Text("Trading comes from Hyperliquid itself. Lending yield isn't counted separately: it's inside the portfolio change. Money that arrived while the app was closed can look like gain.")
-                    .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             .padding(16)
             .frame(width: 470, alignment: .leading)
@@ -149,20 +149,20 @@ struct PnLBoard: View {
     private func line(_ title: String, _ value: Decimal, detail: String) -> some View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 1) {
-                Text(title).font(.system(size: 13, weight: .semibold))
-                Text(detail).font(.caption).foregroundStyle(.secondary)
+                Text(title).font(.ui(13, .semibold))
+                Text(detail).font(.ui(10)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
-            Text(signed(value)).font(.system(size: 15, weight: .bold)).monospacedDigit().foregroundStyle(value < 0 ? Brand.loss : Brand.profit)
+            Text(signed(value)).font(.ui(15, .bold)).monospacedDigit().foregroundStyle(value < 0 ? Brand.loss : Brand.profit)
         }
     }
 
     private func trade(_ label: String, _ t: PnL.TradeLine) -> some View {
         HStack(spacing: 8) {
-            Text(label.uppercased()).font(.system(size: 10, weight: .heavy)).tracking(0.6).foregroundStyle(.secondary).frame(width: 46, alignment: .leading)
-            Text("\(t.long ? "Long" : "Short") \(IntentParser.pretty(t.coin)) · \(Fmt.date(t.closed))").font(.caption).lineLimit(1)
+            Text(label.uppercased()).font(.ui(10, .heavy)).tracking(0.6).foregroundStyle(.secondary).frame(width: 46, alignment: .leading)
+            Text("\(t.long ? "Long" : "Short") \(IntentParser.pretty(t.coin)) · \(Fmt.date(t.closed))").font(.ui(10)).lineLimit(1)
             Spacer(minLength: 4)
-            Text(signed(t.realized)).font(.system(size: 13, weight: .bold)).monospacedDigit().foregroundStyle(t.realized < 0 ? Brand.loss : Brand.profit)
+            Text(signed(t.realized)).font(.ui(13, .bold)).monospacedDigit().foregroundStyle(t.realized < 0 ? Brand.loss : Brand.profit)
         }
     }
 }

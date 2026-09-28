@@ -95,11 +95,11 @@ struct ChartBoard: View {
             HStack(spacing: 10) {
                 AssetBadge(coin: state.coin, size: 32, dark: true)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(IntentParser.pretty(state.coin)).font(.system(size: 15, weight: .bold))
+                    Text(IntentParser.pretty(state.coin)).font(.ui(15, .bold))
                     HStack(spacing: 6) {
-                        Text(state.candles.last.map { Fmt.price($0.close) } ?? "—").font(.system(size: 13, weight: .semibold)).monospacedDigit()
+                        Text(state.candles.last.map { Fmt.price($0.close) } ?? "—").font(.ui(13, .semibold)).monospacedDigit()
                         if let first = closes.first, let last = closes.last, first > 0 {
-                            Text(signedPct(Decimal((last - first) / first * 100))).font(.caption.weight(.bold))
+                            Text(signedPct(Decimal((last - first) / first * 100))).font(.ui(10, .bold))
                                 .foregroundStyle(up ? Brand.profit : Brand.loss)
                         }
                     }
@@ -113,14 +113,14 @@ struct ChartBoard: View {
             }
             HStack(spacing: 8) {
                 if let at = state.at {
-                    Label("As of \(Fmt.date(at))", systemImage: "clock").font(.caption).foregroundStyle(.secondary)
+                    Label("As of \(Fmt.date(at))", systemImage: "clock").font(.ui(10)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button {
                     refreshing = true
                     Task { await ws.openChart(state.coin, range: state.range); refreshing = false }
                 } label: {
-                    Label(refreshing ? "Updating…" : "Refresh", systemImage: "arrow.clockwise").font(.caption.weight(.semibold))
+                    Label(refreshing ? "Updating…" : "Refresh", systemImage: "arrow.clockwise").font(.ui(10, .semibold))
                 }
                 .buttonStyle(.borderless).disabled(refreshing).help("Load fresh candles from Hyperliquid")
             }
@@ -138,7 +138,7 @@ struct ChartBoard: View {
                             .foregroundStyle(l.color)
                             .lineStyle(StrokeStyle(lineWidth: 1.2, dash: l.dashed ? [4, 3] : []))
                             .annotation(position: .top, alignment: .leading) {
-                                Text("\(l.label) \(Fmt.price(Decimal(l.price)))").font(.system(size: 9.5, weight: .bold)).foregroundStyle(l.color)
+                                Text("\(l.label) \(Fmt.price(Decimal(l.price)))").font(.ui(9.5, .bold)).foregroundStyle(l.color)
                             }
                     }
                 }
@@ -147,12 +147,12 @@ struct ChartBoard: View {
                 .chartOverlay { proxy in ChartHover(proxy: proxy, points: state.candles.map { ($0.time, NSDecimalNumber(decimal: $0.close).doubleValue) }) }
                 .frame(height: 210)
             } else if let error = state.error {
-                Text("The chart didn’t load: \(error)").font(.caption).foregroundStyle(Brand.loss)
+                Text("The chart didn’t load: \(error)").font(.ui(10)).foregroundStyle(Brand.loss)
             } else {
                 ProgressView().frame(maxWidth: .infinity, minHeight: 120)
             }
             Text("Hyperliquid candles · \(state.range.interval)\(levels.isEmpty ? "" : " · lines: your position, its orders and alerts")")
-                .font(.caption2).foregroundStyle(.tertiary)
+                .font(.ui(10)).foregroundStyle(.tertiary)
         }
         .padding(16)
         .frame(width: 470, alignment: .leading)
@@ -199,7 +199,7 @@ struct ChartHover: View {
                     Rectangle().fill(Color.secondary.opacity(0.6)).frame(width: 1, height: plot.height).position(x: plot.minX + x, y: plot.midY)
                     Circle().fill(Color.primary).frame(width: 7, height: 7).position(x: plot.minX + x, y: plot.minY + y)
                     Text("\(Fmt.price(Decimal(points[i].price))) · \(Fmt.date(points[i].time))")
-                        .font(.system(size: 11, weight: .semibold)).monospacedDigit().fixedSize()
+                        .font(.ui(11, .semibold)).monospacedDigit().fixedSize()
                         .padding(.horizontal, 7).padding(.vertical, 3)
                         .background(Capsule().fill(Brand.card).shadow(color: .black.opacity(0.15), radius: 3, y: 1))
                         .position(x: min(max(plot.minX + x, plot.minX + 80), plot.maxX - 80), y: max(plot.minY + 10, plot.minY + y - 18))
@@ -219,7 +219,7 @@ struct MoversBoard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Image(systemName: "flame.fill").foregroundStyle(.orange)
-                Text("Movers · 24 h").font(.system(size: 15, weight: .bold))
+                Text("Movers · 24 h").font(.ui(15, .bold))
                 Spacer()
                 Button { withAnimation(StudioView.spring) { ws.showMovers = false } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
             }
@@ -228,7 +228,7 @@ struct MoversBoard: View {
                 column("DOWN", Array(list.suffix(6).reversed()), up: false)
             }
             Text("Hyperliquid markets with over $1M traded today: crypto, stocks, commodities. Tap one for its chart.")
-                .font(.caption2).foregroundStyle(.tertiary)
+                .font(.ui(10)).foregroundStyle(.tertiary)
         }
         .padding(16)
         .frame(width: 470, alignment: .leading)
@@ -239,17 +239,17 @@ struct MoversBoard: View {
 
     private func column(_ title: String, _ rows: [(coin: String, price: Decimal, change: Decimal)], up: Bool) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.system(size: 9.5, weight: .heavy)).tracking(0.6).foregroundStyle(up ? Brand.profit : Brand.loss)
+            Text(title).font(.ui(9.5, .heavy)).tracking(0.6).foregroundStyle(up ? Brand.profit : Brand.loss)
             ForEach(rows, id: \.coin) { r in
                 Button { Task { await ws.chartCommand(.chart(coin: r.coin, range: .day)) } } label: {
                     HStack(spacing: 8) {
                         AssetBadge(coin: r.coin, size: 24, dark: true)
                         VStack(alignment: .leading, spacing: 0) {
-                            Text(IntentParser.pretty(r.coin).components(separatedBy: " (").first ?? r.coin).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
-                            Text(Fmt.price(r.price)).font(.system(size: 10.5)).monospacedDigit().foregroundStyle(.secondary)
+                            Text(IntentParser.pretty(r.coin).components(separatedBy: " (").first ?? r.coin).font(.ui(12.5, .semibold)).lineLimit(1)
+                            Text(Fmt.price(r.price)).font(.ui(10.5)).monospacedDigit().foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 4)
-                        Text(signedPct(r.change)).font(.system(size: 12, weight: .bold)).monospacedDigit()
+                        Text(signedPct(r.change)).font(.ui(12, .bold)).monospacedDigit()
                             .foregroundStyle(r.change < 0 ? Brand.loss : Brand.profit)
                     }
                     .padding(.horizontal, 8).padding(.vertical, 6)
@@ -280,15 +280,15 @@ struct PlaceDetailBoard: View {
             HStack(spacing: 10) {
                 TokenLogo(name: logo, size: 34)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text(title).font(.system(size: 16, weight: .bold))
-                    Text(subtitle).font(.caption).foregroundStyle(.secondary)
+                    Text(title).font(.ui(16, .bold))
+                    Text(subtitle).font(.ui(10)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button { withAnimation(StudioView.spring) { ws.detail = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
             }
             content
             if let link {
-                Link(destination: link) { Label("Open in the explorer", systemImage: "arrow.up.right.square") }.font(.caption)
+                Link(destination: link) { Label("Open in the explorer", systemImage: "arrow.up.right.square") }.font(.ui(10))
             }
             actions
         }
@@ -347,9 +347,9 @@ struct PlaceDetailBoard: View {
                 Button { Task { await ws.chartCommand(.chart(coin: p.coin, range: .day)) } } label: { PositionChip(position: p) }
                     .buttonStyle(.plain).modifier(HoverLift(radius: 12)).help("Open the \(IntentParser.pretty(p.coin)) chart")
             }
-            if ws.positions.isEmpty { Text("No open positions.").font(.caption).foregroundStyle(.secondary) }
+            if ws.positions.isEmpty { Text("No open positions.").font(.ui(10)).foregroundStyle(.secondary) }
             Label(ws.agentActive ? "Trading key on: orders skip Touch ID, withdrawals still need it" : "Trading key paused: every order asks for Touch ID",
-                  systemImage: ws.agentActive ? "key.horizontal.fill" : "lock").font(.caption).foregroundStyle(.secondary)
+                  systemImage: ws.agentActive ? "key.horizontal.fill" : "lock").font(.ui(10)).foregroundStyle(.secondary)
         case "robinhood":
             if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }
             ForEach(ws.robinhood?.stocks ?? []) { s in
@@ -357,11 +357,11 @@ struct PlaceDetailBoard: View {
                     HStack(spacing: 10) {
                         StockLogo(symbol: s.symbol, url: s.logo, size: 24)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text("\(s.symbol) · \(s.name)").font(.system(size: 13, weight: .semibold)).lineLimit(1)
-                            Text("\(Fmt.num(s.amount, maxFraction: 6)) tokens · \(s.price.map { Fmt.usd($0) } ?? "—")").font(.caption2).foregroundStyle(.secondary)
+                            Text("\(s.symbol) · \(s.name)").font(.ui(13, .semibold)).lineLimit(1)
+                            Text("\(Fmt.num(s.amount, maxFraction: 6)) tokens · \(s.price.map { Fmt.usd($0) } ?? "—")").font(.ui(10)).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(Fmt.usd(s.usd)).font(.system(size: 13, weight: .bold)).monospacedDigit()
+                        Text(Fmt.usd(s.usd)).font(.ui(13, .bold)).monospacedDigit()
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary)
                     }
                     .padding(9).background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
@@ -371,29 +371,29 @@ struct PlaceDetailBoard: View {
             }
             row("usdg", "USDG", "\(ws.robinhood.map { Fmt.num($0.usdg) } ?? "—")", "gas: \(ws.robinhood.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH")
             Text("Stock Tokens aren’t offered to US persons, or in Canada, the UK and Switzerland; they give economic exposure, not the shares.")
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.ui(10)).foregroundStyle(.secondary)
         case "near":
             if let a = ws.nearAddress { addressRow(a) }
             row("near", "NEAR", Fmt.num(ws.near, maxFraction: 6), ws.markets["NEAR"].map { "≈ \(Fmt.usd(ws.nearUSD)) at \(Fmt.price($0.markPx))" } ?? "")
             Text("The account is yours from the same phrase (m/44'/397'/0'). Selling NEAR back to USDC isn’t in ihatecrypto yet.")
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.ui(10)).foregroundStyle(.secondary)
         case "morpho":
             if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }
             row("morpho", "In the vault", "\(ws.base.map { Fmt.num($0.morpho) } ?? "—") USDC",
                 ws.morphoAPY.map { "≈ \(Fmt.num($0))% a year after the vault’s fee" } ?? "earning")
             row("base", "Idle on Base", "\(ws.base.map { Fmt.num($0.usdc) } ?? "—") USDC", "gas: \(ws.base.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH")
             Text("Your USDC is lent by Gauntlet’s curated Morpho markets; the vault shares are only ever credited to this wallet.")
-                .font(.caption2).foregroundStyle(.secondary)
+                .font(.ui(10)).foregroundStyle(.secondary)
         case "kamino":
             row("kamino", "USDC", Fmt.usd(ws.kamino), "earning · withdraw any time")
             if let rate = ws.yieldOptions?.first(where: { $0.place.contains("Kamino") && $0.asset == "USDC" })?.apy {
-                Text("USDC rate now ≈ \(Fmt.num(rate.rounded(2, .plain)))% a year.").font(.caption).foregroundStyle(.secondary)
+                Text("USDC rate now ≈ \(Fmt.num(rate.rounded(2, .plain)))% a year.").font(.ui(10)).foregroundStyle(.secondary)
             }
         case "jupiter":
             ForEach(ws.lend, id: \.vault) { v in row("jup", v.vault, "\(Fmt.num(v.usdc)) USDC", "earning · withdraw any time") }
-            if ws.lend.isEmpty { Text("Nothing in Jupiter Lend yet.").font(.caption).foregroundStyle(.secondary) }
+            if ws.lend.isEmpty { Text("Nothing in Jupiter Lend yet.").font(.ui(10)).foregroundStyle(.secondary) }
             if let rate = ws.yieldOptions?.first(where: { $0.place.contains("Jupiter") && $0.asset == "USDC" })?.apy {
-                Text("USDC rate now ≈ \(Fmt.num(rate.rounded(2, .plain)))% a year.").font(.caption).foregroundStyle(.secondary)
+                Text("USDC rate now ≈ \(Fmt.num(rate.rounded(2, .plain)))% a year.").font(.ui(10)).foregroundStyle(.secondary)
             }
         default:
             if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }
@@ -435,7 +435,7 @@ struct PlaceDetailBoard: View {
                 Button {
                     if p.1 == "top up" { withAnimation(StudioView.spring) { ws.showReceive = true } } else { ws.draft = p.1 }
                 } label: {
-                    Label(p.0, systemImage: Self.icon(p.0)).font(.system(size: 12, weight: .semibold)).foregroundStyle(Brand.accentInk)
+                    Label(p.0, systemImage: Self.icon(p.0)).font(.ui(12, .semibold)).foregroundStyle(Brand.accentInk)
                         .padding(.horizontal, 10).padding(.vertical, 6).background(Capsule().fill(Brand.accent.opacity(0.1)))
                 }
                 .buttonStyle(.plain)
@@ -448,11 +448,11 @@ struct PlaceDetailBoard: View {
         HStack(spacing: 10) {
             TokenLogo(name: logo, size: 24)
             VStack(alignment: .leading, spacing: 1) {
-                Text(name).font(.system(size: 13, weight: .semibold))
-                if !detail.isEmpty { Text(detail).font(.caption2).foregroundStyle(.secondary) }
+                Text(name).font(.ui(13, .semibold))
+                if !detail.isEmpty { Text(detail).font(.ui(10)).foregroundStyle(.secondary) }
             }
             Spacer()
-            Text(value).font(.system(size: 13, weight: .bold)).monospacedDigit()
+            Text(value).font(.ui(13, .bold)).monospacedDigit()
         }
         .padding(9)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
@@ -467,7 +467,7 @@ struct PlaceDetailBoard: View {
                 NSPasteboard.general.clearContents()
                 NSPasteboard.general.setString(address, forType: .string)
             } label: { Label("Copy", systemImage: "doc.on.doc") }
-            .buttonStyle(.borderless).font(.caption)
+            .buttonStyle(.borderless).font(.ui(10))
         }
         .help(address)
     }
@@ -538,9 +538,9 @@ struct PortfolioRing: View {
                     ForEach(slices, id: \.name) { s in
                         HStack(spacing: 6) {
                             Circle().fill(Self.colors[s.name] ?? .gray).frame(width: 7, height: 7)
-                            Text(s.name).font(.system(size: 11))
+                            Text(s.name).font(.ui(11))
                             Spacer(minLength: 4)
-                            Text("\(Fmt.num(s.share.rounded(0, .plain)))%").font(.system(size: 11, weight: .semibold)).monospacedDigit()
+                            Text("\(Fmt.num(s.share.rounded(0, .plain)))%").font(.ui(11, .semibold)).monospacedDigit()
                         }
                     }
                 }

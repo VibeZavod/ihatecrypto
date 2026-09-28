@@ -95,8 +95,8 @@ struct RobinhoodCard: View {
                 HStack(spacing: 10) {
                     TokenLogo(name: "robinhood", size: 34)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Robinhood Chain").font(.system(size: 14, weight: .semibold))
-                        Text("stock tokens · \(Fmt.usd(ws.robinhoodTotal))").font(.caption).foregroundStyle(Color(hex: 0x5A7A00))
+                        Text("Robinhood Chain").font(.ui(14, .semibold))
+                        Text("stock tokens · \(Fmt.usd(ws.robinhoodTotal))").font(.ui(10)).foregroundStyle(Color(hex: 0x5A7A00))
                     }
                 }
                 ForEach(r.stocks) { s in
@@ -104,11 +104,11 @@ struct RobinhoodCard: View {
                         HStack(spacing: 8) {
                             StockLogo(symbol: s.symbol, url: s.logo, size: 22)
                             VStack(alignment: .leading, spacing: 0) {
-                                Text(s.symbol).font(.system(size: 12.5, weight: .bold))
-                                Text("\(Fmt.num(s.amount, maxFraction: 6)) · \(s.price.map { Fmt.usd($0) } ?? "—")").font(.caption2).foregroundStyle(.secondary)
+                                Text(s.symbol).font(.ui(12.5, .bold))
+                                Text("\(Fmt.num(s.amount, maxFraction: 6)) · \(s.price.map { Fmt.usd($0) } ?? "—")").font(.ui(10)).foregroundStyle(.secondary)
                             }
                             Spacer()
-                            Text(Fmt.usd(s.usd)).font(.system(size: 12.5, weight: .bold)).monospacedDigit()
+                            Text(Fmt.usd(s.usd)).font(.ui(12.5, .bold)).monospacedDigit()
                         }
                         .contentShape(Rectangle())
                     }
@@ -118,11 +118,11 @@ struct RobinhoodCard: View {
                     HStack(spacing: 8) {
                         TokenLogo(name: "usdg", size: 22)
                         VStack(alignment: .leading, spacing: 0) {
-                            Text("USDG").font(.system(size: 12.5, weight: .bold))
-                            Text("\(Fmt.num(r.usdg)) · $1.00").font(.caption2).foregroundStyle(.secondary)
+                            Text("USDG").font(.ui(12.5, .bold))
+                            Text("\(Fmt.num(r.usdg)) · $1.00").font(.ui(10)).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(Fmt.usd(r.usdg)).font(.system(size: 12.5, weight: .bold)).monospacedDigit()
+                        Text(Fmt.usd(r.usdg)).font(.ui(12.5, .bold)).monospacedDigit()
                     }
                 }
             }

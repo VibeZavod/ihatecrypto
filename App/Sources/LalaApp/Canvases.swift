@@ -234,14 +234,14 @@ struct CanvasList: View {
                 Spacer()
                 // The whole pill is the button and lights up under the pointer, not only its glyphs.
                 Button { withAnimation(StudioView.spring) { ws.newCanvas() }; close?() } label: {
-                    Label("New", systemImage: "square.and.pencil").font(.caption.weight(.semibold)).padding(.horizontal, 8)
+                    Label("New", systemImage: "square.and.pencil").font(.ui(10, .semibold)).padding(.horizontal, 8)
                 }
                 .buttonStyle(.hoverIcon).help(ws.busy ? "ihatecrypto is still answering" : "New canvas").disabled(ws.busy)
                 .padding(.trailing, -8)   // the word lines up with the rows' right edge; only the hover wash goes past it
             }
             let items = ws.canvases.sorted { $0.updated > $1.updated }
             if items.isEmpty {
-                Text("Each conversation gets its own canvas and is kept here.").font(.caption).foregroundStyle(.tertiary)
+                Text("Each conversation gets its own canvas and is kept here.").font(.ui(10)).foregroundStyle(.tertiary)
             }
             ScrollView { rows(items) }.scrollIndicators(.never)
         }
@@ -293,9 +293,9 @@ struct FolderRow: View {
                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(folded ? 0 : 90))
                 Image(systemName: folded ? "folder" : "folder.fill").font(.system(size: 12)).foregroundStyle(Brand.accentInk)
-                Text(name).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
+                Text(name).font(.ui(12.5, .semibold)).lineLimit(1)
                 Spacer(minLength: 0)
-                Text("\(count)").font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
+                Text("\(count)").font(.ui(10)).foregroundStyle(.tertiary).monospacedDigit()
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
             .contentShape(Rectangle())
@@ -366,7 +366,7 @@ struct CanvasRow: View {
             VStack(alignment: .leading, spacing: 1) {
                 if renaming {
                     TextField("Name", text: $draft)
-                        .textFieldStyle(.plain).font(.system(size: 12.5, weight: .semibold))
+                        .textFieldStyle(.plain).font(.ui(12.5, .semibold))
                         .focused($nameFocused)
                         .onSubmit(commitRename)
                         .onExitCommand { renaming = false }
@@ -437,8 +437,8 @@ struct EarlierBoards: View {
                     HStack(spacing: 8) {
                         Image(systemName: done.outcome.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
                             .foregroundStyle(done.outcome.ok ? Brand.profit : Brand.loss)
-                        Text(ws.readable(done.title)).font(.system(size: 13, weight: .semibold)).lineLimit(1).truncationMode(.middle)
-                        Text(Fmt.date(done.outcome.at)).font(.caption).foregroundStyle(.secondary)
+                        Text(ws.readable(done.title)).font(.ui(13, .semibold)).lineLimit(1).truncationMode(.middle)
+                        Text(Fmt.date(done.outcome.at)).font(.ui(10)).foregroundStyle(.secondary)
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary)
                             .rotationEffect(.degrees(open.contains(i) ? 90 : 0))
                     }
@@ -474,15 +474,15 @@ struct SavedBoard: View {
         VStack(alignment: .leading, spacing: 12) {
             if let o = canvas.outcome {
                 Label("\(o.ok ? "Executed" : "Failed") · \(Fmt.date(o.at))", systemImage: o.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
-                    .font(.system(size: 13, weight: .semibold)).foregroundStyle(o.ok ? Brand.profit : Brand.loss)
+                    .font(.ui(13, .semibold)).foregroundStyle(o.ok ? Brand.profit : Brand.loss)
             } else {
                 HStack(spacing: 10) {
                     Label("As it was · \(Fmt.date(canvas.boardAt ?? canvas.updated))", systemImage: "clock.arrow.circlepath")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.ui(10)).foregroundStyle(.secondary)
                     // The same request again, through the chat: live numbers, and a money move still waits for Confirm.
                     if let request = canvas.messages.last(where: \.fromUser)?.text {
                         Button { Task { await ws.send(request) } } label: {
-                            Label("Refresh", systemImage: "arrow.clockwise").font(.caption.weight(.semibold))
+                            Label("Refresh", systemImage: "arrow.clockwise").font(.ui(10, .semibold))
                         }
                         .buttonStyle(.bordered).controlSize(.small).disabled(ws.busy)
                         .help("Asks “\(request)” again for fresh numbers")
@@ -517,11 +517,11 @@ struct MenuRow: View {
             HStack(spacing: 10) {
                 if let icon { Image(systemName: icon).frame(width: 18).foregroundStyle(tint == .primary ? .secondary : tint) }
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(title).font(.system(size: 13, weight: .semibold)).foregroundStyle(tint)
-                    if let detail { Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(2) }
+                    Text(title).font(.ui(13, .semibold)).foregroundStyle(tint)
+                    if let detail { Text(detail).font(.ui(10)).foregroundStyle(.secondary).lineLimit(2) }
                 }
                 Spacer(minLength: 8)
-                if let shortcut { Text(shortcut).font(.caption).foregroundStyle(.secondary) }
+                if let shortcut { Text(shortcut).font(.ui(10)).foregroundStyle(.secondary) }
                 if checked { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Brand.accentInk) }
             }
             .padding(.horizontal, 10).padding(.vertical, detail == nil ? 8 : 7)
@@ -550,7 +550,7 @@ struct ScheduleBoard: View {
                 TokenLogo(name: "usdc", size: 26)
                 Image(systemName: "arrow.right").font(.caption.weight(.bold)).foregroundStyle(.secondary)
                 AssetBadge(coin: schedule.symbol, size: 26)
-                Text("\(Fmt.usd(schedule.usdc)) → \(schedule.symbol) every \(period)").font(.system(size: 15, weight: .bold))
+                Text("\(Fmt.usd(schedule.usdc)) → \(schedule.symbol) every \(period)").font(.ui(15, .bold))
                 Spacer()
                 StatusChip(text: short == nil ? "running" : "runs short", tint: short == nil ? Brand.profit : Brand.jevInk)
             }
@@ -568,19 +568,19 @@ struct ScheduleBoard: View {
                         Text(run.left.map { enough ? "Solana left \(Fmt.num($0)) USDC" : "not enough" } ?? "—")
                             .foregroundStyle(enough ? AnyShapeStyle(.secondary) : AnyShapeStyle(Brand.loss))
                     }
-                    .font(.system(size: 12.5))
+                    .font(.ui(12.5))
                     .padding(.vertical, 7)
                     if i < runs.count - 1 { Divider() }
                 }
             }
             if let short {
                 Label("On \(Fmt.date(short.date)) there won’t be enough USDC on Solana. Top up Solana or lower the amount.", systemImage: "exclamationmark.triangle.fill")
-                    .font(.caption).foregroundStyle(Brand.jevInk)
+                    .font(.ui(10)).foregroundStyle(Brand.jevInk)
                     .padding(10).frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Brand.jevInk.opacity(0.1)))
             }
             HStack {
-                Text("Runs while ihatecrypto is open or in the menu bar.").font(.caption).foregroundStyle(.secondary)
+                Text("Runs while ihatecrypto is open or in the menu bar.").font(.ui(10)).foregroundStyle(.secondary)
                 Spacer()
                 Button("Stop") { Task { await ws.send("stop recurring buys") } }.buttonStyle(.borderless).foregroundStyle(Brand.loss)
             }
@@ -595,8 +595,8 @@ struct ScheduleBoard: View {
 
     private func fact(_ label: String, _ text: String) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.system(size: 9.5, weight: .heavy)).tracking(0.5).foregroundStyle(.secondary)
-            Text(text).font(.system(size: 12.5, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+            Text(label).font(.ui(9.5, .heavy)).tracking(0.5).foregroundStyle(.secondary)
+            Text(text).font(.ui(12.5, .semibold)).fixedSize(horizontal: false, vertical: true)
         }
         .padding(10).frame(maxWidth: .infinity, alignment: .topLeading)
         .background(RoundedRectangle(cornerRadius: 14).fill(Brand.solanaTint))
@@ -625,7 +625,7 @@ struct FixChoices: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("CHOOSE AN OPTION").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            Text("CHOOSE AN OPTION").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
             HStack(alignment: .top, spacing: 12) {
                 if let fit = ws.fittingRisk {
                     card(badge: "Recommended", title: "Risk \(Fmt.usd(fit.risk))",
@@ -644,12 +644,12 @@ struct FixChoices: View {
     private func card(badge: String, title: String, detail: String, recommended: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
-                Text(badge.uppercased()).font(.system(size: 9.5, weight: .heavy)).tracking(0.5)
+                Text(badge.uppercased()).font(.ui(9.5, .heavy)).tracking(0.5)
                     .foregroundStyle(recommended ? Brand.onAccent : .secondary)
                     .padding(.horizontal, 7).padding(.vertical, 3)
                     .background(Capsule().fill(recommended ? Brand.accent : Color.primary.opacity(0.07)))
-                Text(title).font(.system(size: 17, weight: .heavy))
-                Text(detail).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Text(title).font(.ui(17, .heavy))
+                Text(detail).font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
             .padding(14)
             .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
@@ -672,7 +672,7 @@ struct PendingButtons: View {
     var body: some View {
         HStack(spacing: 8) {
             Button { Task { await ws.send("do it") } } label: {
-                Label(confirm, systemImage: "touchid").font(.system(size: 13, weight: .semibold)).padding(.horizontal, 6)
+                Label(confirm, systemImage: "touchid").font(.ui(13, .semibold)).padding(.horizontal, 6)
             }
             .buttonStyle(.borderedProminent).controlSize(.large)
             Button("Cancel") { Task { await ws.send("cancel") } }
@@ -980,7 +980,7 @@ struct RunningBoard: View {
         if let run = ws.runningAction {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Text(run.title).font(.system(size: 14, weight: .semibold))
+                    Text(run.title).font(.ui(14, .semibold))
                     StatusChip(text: "in progress", tint: Brand.accentInk)
                     ProgressView().controlSize(.small)
                 }
@@ -989,14 +989,14 @@ struct RunningBoard: View {
                 }
                 if SignerActivity.shared.waiting > 0 {
                     Label("Touch ID — confirm on the sensor, or with your Mac password, if it asks", systemImage: "touchid")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.onAccent)
+                        .font(.ui(13, .semibold)).foregroundStyle(Brand.onAccent)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(Capsule().fill(Brand.accent))
                         .transition(.opacity)
                 }
                 TimelineView(.periodic(from: run.started, by: 1)) { t in
                     Label("\(run.lines.last ?? "Signing") · \(Int(t.date.timeIntervalSince(run.started))) s", systemImage: "bolt.fill")
-                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                        .font(.ui(10)).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
             .frame(width: 470, alignment: .leading)
@@ -1029,15 +1029,15 @@ struct WithdrawBoard: View {
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
-                        Text(route.title).font(.system(size: 14, weight: .semibold)).lineLimit(2).truncationMode(.middle)
+                        Text(route.title).font(.ui(14, .semibold)).lineLimit(2).truncationMode(.middle)
                         StatusChip(text: "waiting for the signature", tint: Brand.profit).fixedSize()
                     }
                     RouteSteps(steps: route.steps)
-                    Label(route.footer, systemImage: "signature").font(.caption).foregroundStyle(.secondary)
+                    Label(route.footer, systemImage: "signature").font(.ui(10)).foregroundStyle(.secondary)
                     PendingButtons()
                 }
                 if let warning = route.warning {
-                    Label(warning, systemImage: "exclamationmark.triangle").font(.caption).foregroundStyle(Brand.jevInk)
+                    Label(warning, systemImage: "exclamationmark.triangle").font(.ui(10)).foregroundStyle(Brand.jevInk)
                 }
             }
             .frame(width: 470, alignment: .leading)
@@ -1096,10 +1096,10 @@ struct RouteStepView: View {
             } else if let logo = step.logo {
                 TokenLogo(name: logo, size: 24)
             }
-            Text(step.label).font(.system(size: 9, weight: .heavy)).tracking(0.4).opacity(0.75)
-            Text(ws.readable(step.title)).font(.system(size: 13, weight: .bold)).monospacedDigit().lineLimit(3).truncationMode(.middle)
+            Text(step.label).font(.ui(9, .heavy)).tracking(0.4).opacity(0.75)
+            Text(ws.readable(step.title)).font(.ui(13, .bold)).monospacedDigit().lineLimit(3).truncationMode(.middle)
                 .minimumScaleFactor(0.8).fixedSize(horizontal: false, vertical: true)
-            ForEach(step.lines, id: \.self) { Text($0).font(.caption2).opacity(0.8).fixedSize(horizontal: false, vertical: true) }
+            ForEach(step.lines, id: \.self) { Text($0).font(.ui(10)).opacity(0.8).fixedSize(horizontal: false, vertical: true) }
         }
         .foregroundStyle(fill.dark ? Color.white : Color.primary)
         .padding(11)

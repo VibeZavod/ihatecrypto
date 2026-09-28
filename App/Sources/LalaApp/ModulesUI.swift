@@ -66,36 +66,44 @@ struct NetworksChip: View {
     }
 
     private var menu: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text("NETWORKS").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
-                .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 4)
-            ForEach(ModuleNetwork.allCases, id: \.self) { n in
-                Toggle(isOn: binding(n)) {
-                    HStack(spacing: 10) {
-                        TokenLogo(name: n.logo, size: 28).clipShape(Circle())
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text(n.name).font(.system(size: 13, weight: .semibold))
-                            Text(ModuleProtocol.allCases.filter { $0.networks.contains(n) }.map(\.name).joined(separator: " · "))
-                                .font(.caption).foregroundStyle(.secondary).lineLimit(2)
-                        }
-                    }
-                }
-                .toggleStyle(.switch).controlSize(.small)
-                .padding(.horizontal, 10).padding(.vertical, 5)
+        let m = Modules(stored: stored)
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack {
+                Text("NETWORKS").font(.ui(10, .semibold)).tracking(1.2)
+                Spacer()
+                Text("\(ModuleNetwork.allCases.filter(m.isOn).count) of \(ModuleNetwork.allCases.count) on").font(.ui(11, .semibold))
             }
-            Divider().padding(.vertical, 4)
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16).padding(.top, 4).padding(.bottom, 6)
+            ForEach(ModuleNetwork.allCases, id: \.self) { n in
+                // Switches in one column on the right: a Toggle's own label puts each one right after its text.
+                HStack(spacing: 12) {
+                    TokenLogo(name: n.logo, size: 28).clipShape(Circle())
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(n.name).font(.ui(13, .bold))
+                        Text(n.uses.replacingOccurrences(of: " · ", with: "\u{00A0}· ")).font(.ui(11)).foregroundStyle(.secondary).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 12)
+                    Toggle(n.name, isOn: binding(n)).toggleStyle(AccentSwitch())
+                }
+                .padding(.horizontal, 16).padding(.vertical, 10)
+            }
+            Divider().padding(.horizontal, 8).padding(.vertical, 6)
             Text("Off: the assistant won’t plan moves there. Money on that network still shows on the canvas.")
-                .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 10)
-            Button("DeFi, perps and protocols: Settings › Modules") {
+                .font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 16).padding(.bottom, 6)
+            Button {
                 open = false
                 UserDefaults.standard.set("modules", forKey: SettingsView.tabKey)
                 openSettings()
+            } label: {
+                Text("DeFi, perps, protocols: Settings › Modules").font(.ui(11, .semibold)).underline()
+                    .foregroundStyle(Color(nsColor: .linkColor))
             }
-            .buttonStyle(.borderless).font(.caption.weight(.semibold))
-            .padding(.horizontal, 10).padding(.bottom, 6)
+            .buttonStyle(.plain).pointerStyle(.link)
+            .padding(.horizontal, 16).padding(.bottom, 4)
         }
-        .padding(8)
+        .padding(.vertical, 12)
         .frame(width: 340)
     }
 
@@ -105,6 +113,23 @@ struct NetworksChip: View {
             m.set(n, on)
             stored = m.stored
         })
+    }
+}
+
+/// The networks menu's switch, drawn: the accent when on and 36 pt wide (macOS 26's switch is 54 pt and keeps the
+/// system color whatever the tint).
+struct AccentSwitch: ToggleStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        Button { configuration.isOn.toggle() } label: {
+            Capsule().fill(configuration.isOn ? Brand.accent : Color.primary.opacity(0.14))
+                .frame(width: 36, height: 22)
+                .overlay(alignment: configuration.isOn ? .trailing : .leading) {
+                    Circle().fill(.white).shadow(color: .black.opacity(0.2), radius: 1, y: 0.5).padding(2)
+                }
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain)
+        .accessibilityRepresentation { Toggle(isOn: configuration.$isOn) { configuration.label } }
     }
 }
 
@@ -144,7 +169,7 @@ struct ModulesSettings: View {
                         soonCard
                     }
                     Text("New modules always arrive switched off. Turn one on when you want the assistant to use it.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.ui(10)).foregroundStyle(.secondary)
                 }
             }
             .padding(28)
@@ -153,7 +178,7 @@ struct ModulesSettings: View {
     }
 
     private func caption(_ text: String) -> some View {
-        Text(text).font(.system(size: 11, weight: .bold)).tracking(1.3).foregroundStyle(.secondary)
+        Text(text).font(.ui(11, .bold)).tracking(1.3).foregroundStyle(.secondary)
     }
 
     private func networkChip(_ n: ModuleNetwork, on: Bool) -> some View {
@@ -182,7 +207,7 @@ struct ModulesSettings: View {
                     .background(RoundedRectangle(cornerRadius: 10).fill(on ? Brand.accent.opacity(0.16) : Color.primary.opacity(0.06)))
                 VStack(alignment: .leading, spacing: 1) {
                     Text(k.name).font(.ui(15, .semibold))
-                    Text(k.line).font(.caption).foregroundStyle(.secondary)
+                    Text(k.line).font(.ui(10)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 4)
                 Toggle(k.name, isOn: Binding(get: { on }, set: { v in update { $0.set(k, v) } }))
@@ -195,7 +220,7 @@ struct ModulesSettings: View {
                     TokenLogo(name: p.logo, size: 26).clipShape(Circle())
                     VStack(alignment: .leading, spacing: 1) {
                         Text(p.name).font(.ui(13, .semibold))
-                        Text(offNetwork.map { "\($0.name) is off" } ?? p.place).font(.caption)
+                        Text(offNetwork.map { "\($0.name) is off" } ?? p.place).font(.ui(10))
                             .foregroundStyle(offNetwork == nil ? Color.secondary : Brand.accentInk).lineLimit(2)
                     }
                     Spacer(minLength: 4)
@@ -218,13 +243,13 @@ struct ModulesSettings: View {
                     .frame(width: 34, height: 34).background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Predictions").font(.ui(15, .semibold))
-                    Text("Yes / no markets on real events").font(.caption).foregroundStyle(.secondary)
+                    Text("Yes / no markets on real events").font(.ui(10)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 4)
                 Text("Soon").font(.ui(12, .semibold)).foregroundStyle(.secondary)
                     .padding(.horizontal, 10).padding(.vertical, 4).background(Capsule().fill(Color.primary.opacity(0.06)))
             }
-            Text("Comes in a later update. It will appear here switched off.").font(.caption).foregroundStyle(.secondary)
+            Text("Comes in a later update. It will appear here switched off.").font(.ui(10)).foregroundStyle(.secondary)
         }
         .padding(14)
         .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.primary.opacity(0.18), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))

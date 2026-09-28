@@ -24,7 +24,19 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         self = n
     }
 
-    /// The logo's name for TokenLogo (Arbitrum's is drawn).
+    /// The line under the network in the chat's menu: what the assistant does there.
+    public var uses: String {
+        switch self {
+        case .solana: "Jupiter swaps · Jupiter Lend · Kamino · JitoSOL"
+        case .hyperliquid: "Perps · oil and stocks (xyz) · HLP vault"
+        case .base: "Aave · Morpho · USDC"
+        case .near: "NEAR Intents swaps · 1Click"
+        case .arbitrum: "USDC in and out · Relay"
+        case .robinhood: "Stock tokens · USDG · Uniswap"
+        }
+    }
+
+    /// The logo's name for TokenLogo.
     public var logo: String {
         switch self {
         case .solana: "sol"

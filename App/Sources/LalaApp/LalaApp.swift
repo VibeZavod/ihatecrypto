@@ -78,23 +78,24 @@ struct LalaApp: App {
                 ContentView()
                     .environment(workspace)
                     .environment(\.locale, Locale(identifier: "en_US"))
+                    .font(.ui(13))
             }
         }
         .defaultSize(width: 1320, height: 860)
         .windowStyle(.hiddenTitleBar)
 
         Window("Browser", id: "browser") {
-            BrowserView().environment(workspace)
+            BrowserView().environment(workspace).font(.ui(13))
         }
         .defaultSize(width: 1200, height: 860)
 
         Window("Import wallet", id: "import") {
-            ImportWalletView().environment(workspace)
+            ImportWalletView().environment(workspace).font(.ui(13))
         }
         .windowResizability(.contentSize)
 
         Settings {
-            SettingsView().environment(workspace)
+            SettingsView().environment(workspace).font(.ui(13))
         }
     }
 }
@@ -116,7 +117,7 @@ struct LalaApp: App {
         item.button?.image = Self.coinTemplate()
         item.button?.target = self
         item.button?.action = #selector(toggle(_:))
-        let hosting = NSHostingController(rootView: MenuBarContent().environment(ws))
+        let hosting = NSHostingController(rootView: MenuBarContent().environment(ws).font(.ui(13)))
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting
         popover.behavior = .transient
@@ -177,26 +178,26 @@ struct MenuBarContent: View {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("ihatecrypto").font(.brand(15))
                     Text(ws.positions.isEmpty && ws.schedules.isEmpty ? "Nothing running" : "Window closed — ihatecrypto keeps working")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.ui(10)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 14, weight: .heavy)).monospacedDigit()
+                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.ui(14, .heavy)).monospacedDigit()
                     if !ws.positions.isEmpty {
-                        Text("\(signed(ws.positionsPnl)) in positions").font(.caption.weight(.semibold))
+                        Text("\(signed(ws.positionsPnl)) in positions").font(.ui(10, .semibold))
                             .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
                     }
                 }
             }
             ForEach(ws.positions, id: \.coin) { PositionChip(position: $0) }
             ForEach(ws.exitRules.keys.sorted(), id: \.self) { coin in
-                Label("ihatecrypto manages the stop: \(IntentParser.pretty(coin))", systemImage: "shield.lefthalf.filled").font(.caption)
+                Label("ihatecrypto manages the stop: \(IntentParser.pretty(coin))", systemImage: "shield.lefthalf.filled").font(.ui(10))
             }
             ForEach(ws.schedules, id: \.symbol) { s in
-                Label("Buy \(s.symbol) for \(Fmt.usd(s.usdc)) · \(Fmt.date(s.next))", systemImage: "arrow.triangle.2.circlepath").font(.caption)
+                Label("Buy \(s.symbol) for \(Fmt.usd(s.usdc)) · \(Fmt.date(s.next))", systemImage: "arrow.triangle.2.circlepath").font(.ui(10))
             }
             ForEach(ws.alerts) { a in
-                Label("\(IntentParser.pretty(a.coin)) \(a.above ? "above" : "below") \(Fmt.price(a.price))", systemImage: "bell").font(.caption)
+                Label("\(IntentParser.pretty(a.coin)) \(a.above ? "above" : "below") \(Fmt.price(a.price))", systemImage: "bell").font(.ui(10))
             }
             Divider()
             HStack {
@@ -210,7 +211,7 @@ struct MenuBarContent: View {
                 Button("Quit") { NSApp.terminate(nil) }.keyboardShortcut("q")
             }
             Text("Quit stops the guardian and scheduled buys; the stop and take-profit on the exchange stay.")
-                .font(.caption2).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
         .frame(width: 300)
@@ -385,7 +386,7 @@ struct MarketPicker: View {
             }
         } label: {
             HStack(spacing: 3) {
-                Text(IntentParser.pretty(ws.intent.asset)).font(.system(size: 12))
+                Text(IntentParser.pretty(ws.intent.asset)).font(.ui(12))
                 Image(systemName: "chevron.down").font(.system(size: 9, weight: .semibold))
             }
             .foregroundStyle(.secondary)
@@ -421,7 +422,7 @@ struct SettingsView: View {
                 TextField("Solana", text: $ws.solanaAddress)
                 TextField("Hyperliquid (0x…)", text: $ws.hlAddress)
                 Text("Addresses only, for reading balances. Don't enter a seed phrase or keys here.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
             }
             ModelSection()
             Section("Risk management") {
@@ -432,7 +433,7 @@ struct SettingsView: View {
                 LabeledContent("Reward/risk at least", value: Fmt.num(ws.policy.minRewardRisk))
                 LabeledContent("Leverage up to", value: "\(Fmt.num(ws.policy.maxLeverage))×")
                 Text("A trade that would lose more at its stop is not executed. “By the book” uses \(Fmt.pct(ws.policy.defaultRiskPct)) of capital, a \(Fmt.num(ws.policy.defaultRewardRisk))R take-profit and a \(Fmt.num(ws.policy.atrStopMultiple)) ATR (4h) stop. Crypto only.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
             }
             ChatAndNoticeSettings()
             Section("Debugging") {
@@ -443,7 +444,7 @@ struct SettingsView: View {
                         if on { DebugAPI.shared.start(ws) } else { DebugAPI.shared.stop() }
                     }))
                 Text("127.0.0.1:\(String(DebugAPI.port)) with a token that changes every start (Application Support/LALA/debug-token). It reads the state, types into the chat and takes a picture of the window. It never signs: money moves still wait for Confirm and Touch ID here.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
             }
             Section("Key and signing") {
                 // Several wallets: the one that signs (the signer asks for Touch ID to switch); the list is in the key window.
@@ -463,13 +464,13 @@ struct SettingsView: View {
                         await ws.loadSigner()
                     }
                 })) {
-                    ForEach(SignerSession.choices, id: \.self) { Text("\($0 / 60) min").tag($0) }
+                    ForEach(SignerSession.choices, id: \.self) { Text($0 == SignerSession.standard ? "One move" : "\($0 / 60) min").tag($0) }
                 } label: {
                     Label("Touch ID stays valid for", systemImage: "touchid")
                 }
                 .disabled(ws.signerWallet == nil)
-                Text("After one Touch ID, signatures in this time need no new one; each still passes the guard and Jev. Locking the screen or sleep ends it. A longer time asks for Touch ID.")
-                    .font(.caption).foregroundStyle(.secondary)
+                Text("One move: one Touch ID covers that move's signatures (at most a minute) and ends when it's done. With 5–30 min, signatures in that time need no new one. Each still passes the guard and Jev; locking the screen or sleep ends it. A longer time asks for Touch ID.")
+                    .font(.ui(10)).foregroundStyle(.secondary)
                 Label(ws.agentActive ? "Hyperliquid trading key on: orders only, can't withdraw" : "Hyperliquid trading key off: every order asks for Touch ID",
                       systemImage: ws.agentActive ? "checkmark.circle.fill" : "circle")
                 if ws.signerWallet != nil {
@@ -488,7 +489,7 @@ struct SettingsView: View {
                     get: { SMAppService.mainApp.status == .enabled },
                     set: { on in try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }))
                 Text("With the window closed, ihatecrypto stays in the menu bar: it manages stops (trailing, breakeven) and scheduled purchases. After “Quit” they stop; the stop and take-profit on the exchange keep working.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
             }
             Section("Incoming text protection") {
                 Toggle("Second check by Jev (OpenRouter)", isOn: $ws.jevScreening)
@@ -496,7 +497,7 @@ struct SettingsView: View {
                 Text(ws.openRouterKey == nil
                      ? "Sign in to OpenRouter above. Without Jev, local rules still apply."
                      : "On by default. Before a message reaches the model, rules and Jev's classifier check it for commands aimed at the assistant and requests to send money to an address. Jev can only stop a message, never approve a signature. The message text goes to OpenRouter.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
@@ -523,17 +524,17 @@ struct ModelSection: View {
                 }
             }
             Text(info.unavailable ?? info.note)
-                .font(.caption)
+                .font(.ui(10))
                 .foregroundStyle(info.unavailable == nil ? Color.secondary : Color.orange)
             if info.unavailable == nil { connection(info) }
             Text("The model gets only the plan's parameters and the message text — no addresses or balances.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.ui(10)).foregroundStyle(.secondary)
         }
     }
 
     @ViewBuilder
     private func connection(_ info: ProviderInfo) -> some View {
-        Text(connectionText).font(.callout)
+        Text(connectionText).font(.ui(12))
         if info.takesKey {
             HStack {
                 SecureField("API key", text: $key)
@@ -566,7 +567,7 @@ struct ModelSection: View {
             if ws.llmBusy { ProgressView().controlSize(.small) }
         }
         if let status = ws.llmStatus {
-            Text(status).font(.caption).textSelection(.enabled)
+            Text(status).font(.ui(10)).textSelection(.enabled)
         }
     }
 

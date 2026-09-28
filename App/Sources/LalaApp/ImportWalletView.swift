@@ -46,10 +46,10 @@ struct ImportWalletView: View {
                 Text(store
                      ? "The phrase goes only to the separate signer, which has no network access. It keeps the key sealed by this Mac's Secure Enclave and signs only what passes the guard, after Touch ID or your password. It is added next to your other wallets; adding one when there is a wallet already asks for Touch ID."
                      : "The phrase isn't saved or sent anywhere. The app takes only the public addresses from it to show balances. Try the test phrase first.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
                 Button(store ? "Save and show addresses" : "Show addresses", action: derive).disabled(phrase.isEmpty)
-                if let stored { Text(stored).font(.caption).foregroundStyle(.green) }
-                if let error { Text(error).font(.caption).foregroundStyle(.red) }
+                if let stored { Text(stored).font(.ui(10)).foregroundStyle(.green) }
+                if let error { Text(error).font(.ui(10)).foregroundStyle(.red) }
             }
             if SignerClient.isAvailable { keyImport }
             if !accounts.isEmpty {
@@ -60,7 +60,7 @@ struct ImportWalletView: View {
                             Text("EVM · Hyperliquid  m/44'/60'/0'/0/i").foregroundStyle(.secondary)
                             Text("Solana  m/44'/501'/i'/0'").foregroundStyle(.secondary)
                         }
-                        .font(.caption)
+                        .font(.ui(10))
                         ForEach(accounts.indices, id: \.self) { i in
                             GridRow {
                                 Text("\(i)").foregroundStyle(.secondary)
@@ -102,7 +102,7 @@ struct ImportWalletView: View {
         Section("New wallet") {
             if let words = newPhrase {
                 Text("Write these 12 words on paper, in order. They are the only way back to this wallet if the Mac is lost or wiped; ihatecrypto won't show them again.")
-                    .font(.callout)
+                    .font(.ui(12))
                 Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
                     ForEach(0..<3, id: \.self) { row in
                         GridRow {
@@ -119,19 +119,19 @@ struct ImportWalletView: View {
                 .textSelection(.disabled)
                 .padding(.vertical, 4)
                 Text("Never type them into a website, a chat or a photo. Anyone with these words owns the money.")
-                    .font(.caption).foregroundStyle(.orange)
+                    .font(.ui(10)).foregroundStyle(.orange)
                 HStack(spacing: 10) {
                     Button("I wrote them down") { newPhrase = nil; wipeCopied() }.buttonStyle(.borderedProminent)
                     Button(copiedChange == nil ? "Copy all 12 words" : "Copied", systemImage: "doc.on.doc") { copy(words) }
                 }
                 if copiedChange != nil {
                     Text("Paste them into your password manager now. The clipboard is wiped in 60 s or when you press «I wrote them down»; the words don't go to your other devices or to clipboard history apps.")
-                        .font(.caption).foregroundStyle(.secondary)
+                        .font(.ui(10)).foregroundStyle(.secondary)
                 }
             } else {
                 Text("ihatecrypto makes a new 12-word recovery phrase inside the signer, from this Mac's random number generator, and keeps the key sealed by the Secure Enclave. Every signature asks for Touch ID or your password."
                      + (ws.signerWallet == nil ? "" : " It is added next to your other wallets and signs until you switch back."))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
                 HStack {
                     Button("Create a new wallet", action: createWallet).disabled(creating)
                     if creating { ProgressView().controlSize(.small) }
@@ -151,13 +151,13 @@ struct ImportWalletView: View {
                         if renaming == w.id {
                             TextField("Name", text: $draftName).onSubmit { rename(w) }.frame(maxWidth: 220)
                         } else {
-                            Text(w.label).font(.body.weight(.semibold))
+                            Text(w.label).font(.ui(13, .semibold))
                         }
-                        Text(Workspace.describe(w)).font(.caption).foregroundStyle(.secondary).textSelection(.enabled)
+                        Text(Workspace.describe(w)).font(.ui(10)).foregroundStyle(.secondary).textSelection(.enabled)
                     }
                     Spacer()
                     if w.id == ws.activeWalletID {
-                        Text("signs now").font(.caption).foregroundStyle(.green)
+                        Text("signs now").font(.ui(10)).foregroundStyle(.green)
                     } else {
                         Button("Use this one") { Task { await ws.switchWallet(w) } }
                     }
@@ -168,7 +168,7 @@ struct ImportWalletView: View {
                 }
             }
             Text("One wallet signs at a time; switching or removing one asks for Touch ID. Each keeps its own trading key and approved addresses. In the chat: «переключись на кошелёк \(ws.wallets.first?.label ?? "Main")».")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.ui(10)).foregroundStyle(.secondary)
         }
         .confirmationDialog("Remove «\(removing?.label ?? "")»?", isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } })) {
             Button("Remove the wallet", role: .destructive) {
@@ -209,13 +209,13 @@ struct ImportWalletView: View {
                 LabeledContent(key.chain, value: (try? key.address()) ?? "?")
                     .font(.system(.caption, design: .monospaced)).textSelection(.enabled)
                 Text("Compare it with \(key.chain == "Solana" ? "Phantom" : "MetaMask") before saving. This wallet signs only on \(key.chain); for the other chains, switch wallets.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
                 Button("Save as a wallet", action: importKey).buttonStyle(.borderedProminent)
             case .failure(let e)?:
-                Text(e.localizedDescription).font(.caption).foregroundStyle(.red)
+                Text(e.localizedDescription).font(.ui(10)).foregroundStyle(.red)
             case nil:
                 Text("The key goes only to the separate signer, which seals it with this Mac's Secure Enclave like a phrase and never shows it again.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
             }
         }
     }

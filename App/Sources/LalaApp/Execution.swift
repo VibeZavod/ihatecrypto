@@ -610,17 +610,17 @@ struct ConfirmSheet: View {
         VStack(alignment: .leading, spacing: 18) {
             HStack(alignment: .top) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(title).font(.system(size: 22, weight: .heavy))
+                    Text(title).font(.ui(22, .heavy))
                     if let p = ws.prepared {
                         TimelineView(.periodic(from: .now, by: 1)) { context in
                             Text("numbers refreshed \(Int(context.date.timeIntervalSince(p.preparedAt))) s ago · after 45 s they are recalculated")
-                                .font(.caption).foregroundStyle(.secondary)
+                                .font(.ui(10)).foregroundStyle(.secondary)
                         }
                     }
                 }
                 Spacer()
                 if ws.prepared != nil {
-                    Text(concern ? "check the warning" : "all checks passed").font(.caption.weight(.semibold))
+                    Text(concern ? "check the warning" : "all checks passed").font(.ui(10, .semibold))
                         .foregroundStyle(concern ? Color.orange : Brand.profit)
                         .padding(.horizontal, 10).padding(.vertical, 5)
                         .background(Capsule().fill((concern ? Color.orange : Brand.profit).opacity(0.12)))
@@ -629,13 +629,13 @@ struct ConfirmSheet: View {
             if let p = ws.prepared {
                 VStack(alignment: .leading, spacing: 8) {
                     Text("WHAT WILL BE SIGNED · \(p.steps.count) \(p.steps.count == 1 ? "ACTION" : "ACTIONS")")
-                        .font(.system(size: 11, weight: .semibold)).tracking(0.8).foregroundStyle(.secondary)
+                        .font(.ui(11, .semibold)).tracking(0.8).foregroundStyle(.secondary)
                     ForEach(Array(p.steps.enumerated()), id: \.offset) { n, step in
                         HStack(spacing: 12) {
                             icon(for: step, asset: p.market.name)
                             Text(step).fixedSize(horizontal: false, vertical: true)
                             Spacer(minLength: 0)
-                            Text("\(n + 1)").font(.caption.weight(.bold)).foregroundStyle(.secondary).monospacedDigit()
+                            Text("\(n + 1)").font(.ui(10, .bold)).foregroundStyle(.secondary).monospacedDigit()
                         }
                         .padding(10)
                         .background(RoundedRectangle(cornerRadius: 14).fill(.fill.quaternary))
@@ -664,7 +664,7 @@ struct ConfirmSheet: View {
                     .background(RoundedRectangle(cornerRadius: 12).fill(Brand.blockedTint))
                 if failed {
                     Text("The plan may be out of date. Try again recalculates it from now — prices, balances and a new bridge quote — and prepares it again; nothing is signed.")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 0)
@@ -672,14 +672,14 @@ struct ConfirmSheet: View {
                 Text(ws.signerWallet == nil
                      ? "Signing is available in the app once the key is in secure storage. This is a preview only."
                      : "A separate process signs; the model and websites never see the key.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
                 Spacer()
                 Button(ws.signerWallet == nil ? "Close" : "Cancel") { ws.prepared = nil; ws.executionError = nil }
                     .keyboardShortcut(.cancelAction)
                     .controlSize(.large)
                 if failed {
                     Button { Task { await ws.rerunPlan() } } label: {
-                        Label("Try again", systemImage: "arrow.clockwise").font(.system(size: 14, weight: .bold)).padding(.horizontal, 6)
+                        Label("Try again", systemImage: "arrow.clockwise").font(.ui(14, .bold)).padding(.horizontal, 6)
                     }
                     .keyboardShortcut(.defaultAction)
                     .buttonStyle(.borderedProminent)
@@ -687,7 +687,7 @@ struct ConfirmSheet: View {
                     .controlSize(.large)
                 } else if ws.signerWallet != nil {
                     Button { Task { await ws.confirmExecution() } } label: {
-                        Label("Sign · Touch ID", systemImage: "touchid").font(.system(size: 14, weight: .bold))
+                        Label("Sign · Touch ID", systemImage: "touchid").font(.ui(14, .bold))
                             .padding(.horizontal, 6)
                     }
                     .keyboardShortcut(.defaultAction)
@@ -698,7 +698,7 @@ struct ConfirmSheet: View {
                 }
             }
         }
-        .font(.system(size: 13))
+        .font(.ui(13))
         .padding(26)
         .frame(width: 680)
         // A failed preparation is a short note, not a tall empty sheet.
@@ -726,7 +726,7 @@ struct ConfirmSheet: View {
 
     private func box(_ title: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 7) {
-            Text(title).font(.system(size: 11, weight: .semibold)).tracking(0.8).foregroundStyle(.secondary)
+            Text(title).font(.ui(11, .semibold)).tracking(0.8).foregroundStyle(.secondary)
             content()
         }
         .padding(14)

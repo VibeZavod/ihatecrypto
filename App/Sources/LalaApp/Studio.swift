@@ -97,7 +97,7 @@ struct TokenLogo: View {
     var body: some View {
         if let (color, sign) = Self.drawn[name] {
             Circle().fill(Color(hex: color)).frame(width: size, height: size)
-                .overlay(Text(sign).font(.system(size: size * 0.55, weight: .bold)).foregroundStyle(.white))
+                .overlay(Text(sign).font(.ui(size * 0.55, .bold)).foregroundStyle(.white))
         } else if name == "hype" {
             RoundedRectangle(cornerRadius: size * 0.3).fill(Brand.hl).frame(width: size, height: size)
                 .overlay(logo(size: size * 0.72))
@@ -112,13 +112,12 @@ struct TokenLogo: View {
                 .frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: size * 0.28))
         } else {
             Circle().fill(.quaternary).frame(width: size, height: size)
-                .overlay(Text(name.prefix(1).uppercased()).font(.system(size: size * 0.45, weight: .bold)))
+                .overlay(Text(name.prefix(1).uppercased()).font(.ui(size * 0.45, .bold)))
         }
     }
 
     /// Chains without a bundled image: their color and sign.
-    /// Chains without a bundled image (Base, Aave and Robinhood have theirs in Logos/).
-    static let drawn: [String: (UInt32, String)] = ["eth": (0x627EEA, "Ξ"), "arb": (0x28A0F0, "A")]
+    static let drawn: [String: (UInt32, String)] = ["eth": (0x627EEA, "Ξ")]
     private static var cache: [String: NSImage] = [:]
     static func image(_ name: String) -> NSImage? {
         if let hit = cache[name] { return hit }
@@ -487,7 +486,7 @@ struct RailMore: View {
         if total > StudioRail.railLimit {
             Button { withAnimation(.snappy) { expanded.toggle() } } label: {
                 Label(expanded ? "Show less" : "Show \(total - StudioRail.railLimit) more", systemImage: expanded ? "chevron.up" : "chevron.down")
-                    .font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                    .font(.ui(10, .semibold)).foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 8).padding(.vertical, 4)
                     .contentShape(Rectangle())
             }
@@ -677,12 +676,12 @@ struct PositionChip: View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 AssetBadge(coin: position.coin, size: 22)
-                Text("\(position.size > 0 ? "Long" : "Short") \(IntentParser.pretty(position.coin))").font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                Text("\(position.size > 0 ? "Long" : "Short") \(IntentParser.pretty(position.coin))").font(.ui(13, .semibold)).lineLimit(1)
                 Spacer()
-                Text(signed(position.unrealizedPnl)).font(.system(size: 13, weight: .bold)).monospacedDigit()
+                Text(signed(position.unrealizedPnl)).font(.ui(13, .bold)).monospacedDigit()
                     .foregroundStyle(position.unrealizedPnl < 0 ? Color(hex: 0xFF9C8F) : Brand.hlMint)
             }
-            Text(ws.positionSummary(position)).font(.caption2).foregroundStyle(Brand.hlSoft).lineLimit(2)
+            Text(ws.positionSummary(position)).font(.ui(10)).foregroundStyle(Brand.hlSoft).lineLimit(2)
         }
         .foregroundStyle(.white)
         .padding(10)
@@ -700,9 +699,9 @@ struct ClosedTrades: View {
         let total = stories.reduce(Decimal(0)) { $0 + $1.realized }
         VStack(alignment: .leading, spacing: 4) {
             HStack {
-                Text("Closed · 7 days").font(.caption).foregroundStyle(.secondary)
+                Text("Closed · 7 days").font(.ui(10)).foregroundStyle(.secondary)
                 Spacer()
-                Text(signed(total)).font(.caption.weight(.semibold)).monospacedDigit().foregroundStyle(total < 0 ? Brand.loss : Brand.profit)
+                Text(signed(total)).font(.ui(10, .semibold)).monospacedDigit().foregroundStyle(total < 0 ? Brand.loss : Brand.profit)
             }
             ForEach(all ? stories : Array(stories.prefix(StudioRail.railLimit))) { s in
                 Button {
@@ -712,11 +711,11 @@ struct ClosedTrades: View {
                     HStack(spacing: 8) {
                         AssetBadge(coin: s.coin, size: 20)
                         VStack(alignment: .leading, spacing: 0) {
-                            Text("\(s.long ? "Long" : "Short") \(IntentParser.pretty(s.coin))").font(.system(size: 12, weight: .semibold)).lineLimit(1)
-                            Text(s.closed.map(Fmt.date) ?? "").font(.caption2).foregroundStyle(.secondary)
+                            Text("\(s.long ? "Long" : "Short") \(IntentParser.pretty(s.coin))").font(.ui(12, .semibold)).lineLimit(1)
+                            Text(s.closed.map(Fmt.date) ?? "").font(.ui(10)).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(signed(s.realized)).font(.system(size: 12, weight: .bold)).monospacedDigit()
+                        Text(signed(s.realized)).font(.ui(12, .bold)).monospacedDigit()
                             .foregroundStyle(s.realized < 0 ? Brand.loss : Brand.profit)
                     }
                     .padding(.vertical, 3).contentShape(Rectangle())
@@ -774,9 +773,9 @@ struct ProfileMenu: View {
             HStack(spacing: 12) {
                 avatar
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Profile").font(.system(size: 14, weight: .bold))
+                    Text("Profile").font(.ui(14, .bold))
                     Text("\(signedIn) · wallet \(ws.signerWallet == nil ? "not on this Mac yet" : "on this Mac")")
-                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                        .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
             .padding(10)
@@ -882,7 +881,7 @@ struct StudioCanvas: View {
                 HStack(spacing: 8) {
                     Text(ws.allocationPreview.map { "Plan · spread \($0.asset) across the best rates" }
                          ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : board.map { ws.readable($0.title) } ?? "Plan"))
-                        .font(.system(size: 14, weight: .semibold))
+                        .font(.ui(14, .semibold))
                     StatusChip(text: statusText(nodes), tint: statusTint(nodes))
                     // An open position is on its market for good: nothing to pick until it closes.
                     if hasRoute, !ws.managesPosition { MarketPicker() }
@@ -942,9 +941,9 @@ struct StudioCanvas: View {
     private var placeholder: some View {
         VStack(spacing: 12) {
             LalaLogo(size: 40).opacity(0.5)
-            Text("The assistant builds the plan here").font(.system(size: 17, weight: .bold))
+            Text("The assistant builds the plan here").font(.ui(17, .bold))
             Text("next to your portfolio: where the money comes from, where it goes, the checks and the result in dollars.")
-                .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 320)
+                .font(.ui(12)).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 320)
             LazyVGrid(columns: [GridItem(.fixed(200)), GridItem(.fixed(200))], spacing: 8) {
                 ForEach(TemplatesPanel.templates.prefix(6), id: \.title) { t in
                     Button { ws.draft = t.phrase } label: {
@@ -952,7 +951,7 @@ struct StudioCanvas: View {
                             HStack(spacing: 2) {
                                 ForEach(t.colors.indices, id: \.self) { RoundedRectangle(cornerRadius: 2).fill(Color(hex: t.colors[$0])).frame(width: 9, height: 9) }
                             }
-                            Text(t.title).font(.system(size: 12, weight: .semibold)).lineLimit(1)
+                            Text(t.title).font(.ui(12, .semibold)).lineLimit(1)
                             Spacer(minLength: 0)
                         }
                         .padding(.horizontal, 10).padding(.vertical, 8)
@@ -1268,7 +1267,7 @@ struct StatusChip: View {
     let tint: Color
 
     var body: some View {
-        Text(text).font(.caption).foregroundStyle(tint)
+        Text(text).font(.ui(10)).foregroundStyle(tint)
             .padding(.horizontal, 9).padding(.vertical, 4)
             .background(Capsule().fill(tint.opacity(0.12)))
     }
@@ -1282,7 +1281,7 @@ struct StudioCursor: View {
         ZStack(alignment: .topLeading) {
             Image(systemName: "cursorarrow").font(.system(size: 22, weight: .bold)).foregroundStyle(color)
                 .shadow(color: .white, radius: 0.5)
-            Text(label).font(.system(size: 11, weight: .heavy)).foregroundStyle(color == Brand.jevCursor || color == Brand.accent ? Brand.onAccent : .white)
+            Text(label).font(.ui(11, .heavy)).foregroundStyle(color == Brand.jevCursor || color == Brand.accent ? Brand.onAccent : .white)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(UnevenRoundedRectangle(topLeadingRadius: 3, bottomLeadingRadius: 10, bottomTrailingRadius: 10, topTrailingRadius: 10).fill(color))
                 .offset(x: 16, y: 18)
@@ -1313,7 +1312,7 @@ struct StudioPortfolio: View {
     /// Before the first balances arrive: the card's shape, shimmering.
     private var loading: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("PORTFOLIO").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            Text("PORTFOLIO").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
             Skeleton(width: 110, height: 22, radius: 7)
             Skeleton(height: 30, radius: 8)
             HStack(spacing: 12) {
@@ -1328,18 +1327,18 @@ struct StudioPortfolio: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("PORTFOLIO").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
-                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 20, weight: .heavy)).monospacedDigit()
+                    Text("PORTFOLIO").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
+                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.ui(20, .heavy)).monospacedDigit()
                     let series = ws.equitySeries()
                     if series.count > 2, let first = series.first, let last = series.last {
                         Text("\(signed(last.usd - first.usd)) · \(Int((last.at.timeIntervalSince(first.at) / 86_400).rounded(.up))) d")
-                            .font(.caption2.weight(.semibold)).monospacedDigit()
+                            .font(.ui(10, .semibold)).monospacedDigit()
                             .foregroundStyle(last.usd >= first.usd ? Brand.profit : Brand.loss)
                     }
                 }
                 Spacer()
                 if !ws.positions.isEmpty {
-                    Text(signed(ws.positionsPnl)).font(.caption.weight(.bold))
+                    Text(signed(ws.positionsPnl)).font(.ui(10, .bold))
                         .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
                         .padding(.horizontal, 9).padding(.vertical, 4)
                         .background(Capsule().fill((ws.positionsPnl < 0 ? Brand.loss : Brand.profit).opacity(0.12)))
@@ -1352,13 +1351,13 @@ struct StudioPortfolio: View {
             HStack(spacing: 10) {
                 TokenLogo(name: "sol", size: 34)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("Solana").font(.system(size: 14, weight: .semibold))
-                    Text(ws.solana.map { "\(Fmt.num($0.sol, maxFraction: 4)) SOL" } ?? "no address").font(.caption).foregroundStyle(Brand.solanaInk)
+                    Text("Solana").font(.ui(14, .semibold))
+                    Text(ws.solana.map { "\(Fmt.num($0.sol, maxFraction: 4)) SOL" } ?? "no address").font(.ui(10)).foregroundStyle(Brand.solanaInk)
                 }
                 Spacer()
                 HStack(spacing: 4) {
                     TokenLogo(name: "usdc", size: 15)
-                    Text(ws.solana.map { Fmt.num($0.usdc) } ?? "—").font(.system(size: 13, weight: .bold)).monospacedDigit()
+                    Text(ws.solana.map { Fmt.num($0.usdc) } ?? "—").font(.ui(13, .bold)).monospacedDigit()
                 }
             }
             .padding(11)
@@ -1370,22 +1369,22 @@ struct StudioPortfolio: View {
                 HStack(spacing: 10) {
                     TokenLogo(name: "hype", size: 34)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Hyperliquid").font(.system(size: 14, weight: .semibold))
-                        Text(ws.hlMargin.map { "\(Fmt.usd($0)) · margin" + (ws.hlp.equity > 0 ? " · HLP \(Fmt.usd(ws.hlp.equity))" : "") } ?? "no address").font(.caption).foregroundStyle(Brand.hlMint)
+                        Text("Hyperliquid").font(.ui(14, .semibold))
+                        Text(ws.hlMargin.map { "\(Fmt.usd($0)) · margin" + (ws.hlp.equity > 0 ? " · HLP \(Fmt.usd(ws.hlp.equity))" : "") } ?? "no address").font(.ui(10)).foregroundStyle(Brand.hlMint)
                     }
                 }
                 ForEach(ws.positions, id: \.coin) { p in
                     VStack(alignment: .leading, spacing: 4) {
                         HStack {
-                            Text("\(p.size > 0 ? "Long" : "Short") \(IntentParser.pretty(p.coin))").font(.system(size: 13, weight: .semibold)).lineLimit(1)
+                            Text("\(p.size > 0 ? "Long" : "Short") \(IntentParser.pretty(p.coin))").font(.ui(13, .semibold)).lineLimit(1)
                             Spacer()
-                            Text(signed(p.unrealizedPnl)).font(.system(size: 13, weight: .bold)).monospacedDigit()
+                            Text(signed(p.unrealizedPnl)).font(.ui(13, .bold)).monospacedDigit()
                                 .foregroundStyle(p.unrealizedPnl < 0 ? Color(hex: 0xFF9C8F) : Brand.hlMint)
                         }
-                        Text(ws.positionSummary(p)).font(.caption2).foregroundStyle(Brand.hlSoft).lineLimit(2)
+                        Text(ws.positionSummary(p)).font(.ui(10)).foregroundStyle(Brand.hlSoft).lineLimit(2)
                         if let rules = ws.exitRules[p.coin] {
                             Label(rules.duties.joined(separator: " "), systemImage: "shield.lefthalf.filled")
-                                .font(.caption2).foregroundStyle(Brand.hlMint).lineLimit(2)
+                                .font(.ui(10)).foregroundStyle(Brand.hlMint).lineLimit(2)
                         }
                     }
                     .padding(9)
@@ -1397,7 +1396,7 @@ struct StudioPortfolio: View {
                 }
                 if let o = ws.pendingEntry {
                     Text("Limit waiting: \(o.side == "B" ? "long" : "short") \(IntentParser.pretty(o.coin)) at \(o.limitPx.map(Fmt.price) ?? "?")")
-                        .font(.caption).foregroundStyle(Brand.hlSoft)
+                        .font(.ui(10)).foregroundStyle(Brand.hlSoft)
                 }
             }
             .foregroundStyle(.white)
@@ -1410,13 +1409,13 @@ struct StudioPortfolio: View {
                 HStack(spacing: 10) {
                     TokenLogo(name: "jup", size: 34)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Jupiter Lend").font(.system(size: 14, weight: .semibold))
-                        Text("earning").font(.caption).foregroundStyle(Brand.jupiterInk)
+                        Text("Jupiter Lend").font(.ui(14, .semibold))
+                        Text("earning").font(.ui(10)).foregroundStyle(Brand.jupiterInk)
                     }
                     Spacer()
                     HStack(spacing: 4) {
                         TokenLogo(name: "usdc", size: 15)
-                        Text(Fmt.num(ws.lendTotal)).font(.system(size: 13, weight: .bold)).monospacedDigit()
+                        Text(Fmt.num(ws.lendTotal)).font(.ui(13, .bold)).monospacedDigit()
                     }
                 }
                 .padding(11)
@@ -1431,14 +1430,14 @@ struct StudioPortfolio: View {
                         TokenLogo(name: "base", size: 15).offset(x: 3, y: 3)
                     }
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("Aave · Base").font(.system(size: 14, weight: .semibold))
+                        Text("Aave · Base").font(.ui(14, .semibold))
                         Text(b.aave > 0 ? "earning" + (ws.aaveAPY.map { " \(Fmt.num($0.rounded(2, .plain)))%" } ?? "") : "\(Fmt.num(b.usdc)) USDC idle on Base")
-                            .font(.caption).foregroundStyle(Color(hex: 0x0052FF))
+                            .font(.ui(10)).foregroundStyle(Color(hex: 0x0052FF))
                     }
                     Spacer()
                     HStack(spacing: 4) {
                         TokenLogo(name: "usdc", size: 15)
-                        Text(Fmt.num(b.aave > 0 ? b.aave : b.usdc)).font(.system(size: 13, weight: .bold)).monospacedDigit()
+                        Text(Fmt.num(b.aave > 0 ? b.aave : b.usdc)).font(.ui(13, .bold)).monospacedDigit()
                     }
                 }
                 .padding(11)
@@ -1461,9 +1460,9 @@ struct StudioPortfolio: View {
 
             if !ws.schedules.isEmpty {
                 VStack(alignment: .leading, spacing: 4) {
-                    Label("Recurring buys", systemImage: "arrow.triangle.2.circlepath").font(.caption.weight(.semibold))
+                    Label("Recurring buys", systemImage: "arrow.triangle.2.circlepath").font(.ui(10, .semibold))
                     ForEach(ws.schedules, id: \.symbol) { s in
-                        Text("\(s.symbol) for \(Fmt.usd(s.usdc)) · \(Fmt.date(s.next))").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                        Text("\(s.symbol) for \(Fmt.usd(s.usdc)) · \(Fmt.date(s.next))").font(.ui(10)).foregroundStyle(.secondary).monospacedDigit()
                     }
                 }
                 .padding(11)
@@ -1480,11 +1479,11 @@ extension StudioPortfolio {
         HStack(spacing: 10) {
             TokenLogo(name: id, size: 34)
             VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.system(size: 14, weight: .semibold))
-                Text(line).font(.caption).foregroundStyle(ink).lineLimit(1)
+                Text(name).font(.ui(14, .semibold))
+                Text(line).font(.ui(10)).foregroundStyle(ink).lineLimit(1)
             }
             Spacer()
-            Text(amount).font(.system(size: 13, weight: .bold)).monospacedDigit().lineLimit(1).fixedSize()
+            Text(amount).font(.ui(13, .bold)).monospacedDigit().lineLimit(1).fixedSize()
         }
         .padding(11)
         .background(RoundedRectangle(cornerRadius: 16).fill(tint))
@@ -1571,7 +1570,7 @@ struct StudioNodeView: View {
                 Spacer(minLength: 0)
                 if let n = node.signature {
                     HStack(spacing: 3) { Image(systemName: "signature"); Text("\(n)") }
-                        .font(.system(size: 10, weight: .bold))
+                        .font(.ui(10, .bold))
                         .padding(.horizontal, 6).padding(.vertical, 3)
                         .background(Capsule().strokeBorder(labelColor.opacity(0.6)))
                         .foregroundStyle(labelColor)
@@ -1584,12 +1583,12 @@ struct StudioNodeView: View {
             if node.kind != .outcome {
                 HStack(spacing: 7) {
                     header
-                    if node.label != "Source" { Text(node.label).font(.caption).foregroundStyle(labelColor).lineLimit(1) }
+                    if node.label != "Source" { Text(node.label).font(.ui(10)).foregroundStyle(labelColor).lineLimit(1) }
                 }
             }
-            Text(node.title).font(.system(size: node.kind == .outcome ? 15 : 15, weight: .bold)).lineLimit(3)
+            Text(node.title).font(.ui(node.kind == .outcome ? 15 : 15, .bold)).lineLimit(3)
             ForEach(node.lines.indices, id: \.self) { i in
-                Text(node.lines[i]).font(.caption).foregroundStyle(lineColor).lineLimit(3).monospacedDigit()
+                Text(node.lines[i]).font(.ui(10)).foregroundStyle(lineColor).lineLimit(3).monospacedDigit()
             }
         }
         .foregroundStyle(textColor)
@@ -1628,7 +1627,7 @@ struct StudioNodeView: View {
         let dark = [.bridge, .position, .outcome].contains(node.kind) && node.status != .blocked
         return HStack(spacing: 4) {
             Image(systemName: icon).font(.system(size: 9, weight: .bold))
-            Text(verb).font(.system(size: 9.5, weight: .heavy)).tracking(0.5)
+            Text(verb).font(.ui(9.5, .heavy)).tracking(0.5)
         }
         .padding(.horizontal, 7).padding(.vertical, 4)
         .foregroundStyle(dark ? .white : labelColor)
@@ -1727,7 +1726,7 @@ struct FloatingChat: View {
                 LalaLogo(size: 30, mood: mood, animated: true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Assistant").font(.ui(14, .semibold))
-                    Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(status).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
                 Button { withAnimation(StudioView.spring) { ws.newCanvas() } } label: { headerIcon("square.and.pencil") }
@@ -1749,8 +1748,8 @@ struct FloatingChat: View {
                         ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing, thinking: ws.thinking)
                         if ws.messages.count <= 1 {
                             Text("Your portfolio is on the canvas. Tell me what to do with your money — in any language — and I’ll build the plan next to it. Nothing moves without your signature.")
-                                .font(.system(size: 14)).foregroundStyle(.secondary)
-                            Text("You can say:").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
+                                .font(.ui(14)).foregroundStyle(.secondary)
+                            Text("You can say:").font(.ui(10)).foregroundStyle(.secondary).padding(.top, 4)
                             ForEach(["long ETH risk $0.25 by the book", "where to keep USDC", "buy SOL for 2 USDC every week", "withdraw 1 USDC to Solana"], id: \.self) { phrase in
                                 Button { ws.draft = phrase } label: {
                                     Text(phrase).font(.ui(13, .medium)).foregroundStyle(.primary)
@@ -1773,7 +1772,7 @@ struct FloatingChat: View {
             if let a = ws.assembly {
                 HStack(spacing: 8) {
                     ProgressView(value: Double(a.shown), total: Double(a.total)).progressViewStyle(.linear).frame(width: 70)
-                    Text("Building on the canvas · \(a.shown) of \(a.total)").font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                    Text("Building on the canvas · \(a.shown) of \(a.total)").font(.ui(10)).foregroundStyle(.secondary).monospacedDigit()
                 }
                 .padding(.horizontal, 14).padding(.bottom, 4)
                 .transition(.opacity)
@@ -1836,7 +1835,7 @@ private struct ChatActions: View {
                     ForEach([("move stop to breakeven", "shield.lefthalf.filled"), ("trail 2%", "arrow.up.forward"),
                              ("close half", "circle.lefthalf.filled"), ("close", "xmark.circle")], id: \.0) { phrase, icon in
                         Button { Task { await ws.send(phrase) } } label: { Label(phrase, systemImage: icon) }
-                            .buttonStyle(.plain).font(.system(size: 12))
+                            .buttonStyle(.plain).font(.ui(12))
                             .padding(.horizontal, 10).padding(.vertical, 6)
                             .background(Capsule().fill(Brand.glassFill))
                             .overlay(Capsule().strokeBorder(Brand.glassRim))
@@ -1849,7 +1848,7 @@ private struct ChatActions: View {
             VStack(alignment: .leading, spacing: 6) {
                 if let r = ws.planReview {
                     Label(r.text, systemImage: r.concern ? "exclamationmark.triangle.fill" : "checkmark.seal")
-                        .font(.caption).foregroundStyle(r.concern ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary)).lineLimit(2)
+                        .font(.ui(10)).foregroundStyle(r.concern ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary)).lineLimit(2)
                 }
                 HStack {
                     if ws.executing || ws.preparing { ProgressView().controlSize(.small) }
@@ -1863,7 +1862,7 @@ private struct ChatActions: View {
                 if !ws.planIsReady, !ws.preparing, !ws.executing {
                     HStack(spacing: 8) {
                         Label(ws.missingDetails.map { "Execute needs \($0)." } ?? "A rule on the canvas stops this plan.", systemImage: "lock.fill")
-                            .font(.caption.weight(.semibold)).foregroundStyle(.orange)
+                            .font(.ui(10, .semibold)).foregroundStyle(.orange)
                         Spacer(minLength: 4)
                         if ws.missingDetails != nil {
                             Button { Task { await ws.send("by the book") } } label: {
@@ -1877,7 +1876,7 @@ private struct ChatActions: View {
                     }
                 }
                 Text("Edit it in words: “take like the pros”, “risk $0.20”, “entry on a 1% pullback”.")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
             }
             .padding(.bottom, 4)
         }
@@ -1906,7 +1905,7 @@ private struct ChatComposer: View {
                     Circle().fill(Brand.accent).frame(width: 8, height: 8)
                         .background(Circle().fill(Brand.accent.opacity(0.25)).frame(width: 16, height: 16))
                     Text("Listening").font(.ui(12, .semibold))
-                    Text(voice.onDevice ? "· recognized on this Mac" : "· recognized by Apple").font(.caption).foregroundStyle(.secondary)
+                    Text(voice.onDevice ? "· recognized on this Mac" : "· recognized by Apple").font(.ui(10)).foregroundStyle(.secondary)
                 }
                 .frame(height: 30).padding(.horizontal, 6)
             } else {
@@ -1916,7 +1915,7 @@ private struct ChatComposer: View {
                 }
             }
             if case .failed(let why) = voice.state {
-                Label(why, systemImage: "mic.slash").font(.caption).foregroundStyle(.orange).lineLimit(3)
+                Label(why, systemImage: "mic.slash").font(.ui(10)).foregroundStyle(.orange).lineLimit(3)
             }
             if voice.listening { listening(voice) } else { field }
         }
@@ -2068,14 +2067,14 @@ struct ChatModelMenu: View {
             ForEach(ModelCompany.all.filter(\.local)) { company($0) }
             Divider().padding(.vertical, 4)
             HStack {
-                Label("The model never sees your wallet key.", systemImage: "lock.shield").font(.caption).foregroundStyle(.secondary)
+                Label("The model never sees your wallet key.", systemImage: "lock.shield").font(.ui(10)).foregroundStyle(.secondary)
                 Spacer()
                 Button("Sign-ins…") {
                     open = false
                     UserDefaults.standard.set("general", forKey: SettingsView.tabKey)
                     openSettings()
                 }
-                .buttonStyle(.borderless).font(.caption)
+                .buttonStyle(.borderless).font(.ui(10))
             }
             .padding(.horizontal, 10).padding(.bottom, 4)
         }
@@ -2084,7 +2083,7 @@ struct ChatModelMenu: View {
     }
 
     private func caption(_ text: String) -> some View {
-        Text(text).font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
+        Text(text).font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
             .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 4)
     }
 
@@ -2185,7 +2184,7 @@ struct ModelCompanyLogo: View {
                 Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
             }
         } else {
-            Text(company.name.prefix(1)).font(.system(size: size * 0.5, weight: .bold)).foregroundStyle(.white)
+            Text(company.name.prefix(1)).font(.ui(size * 0.5, .bold)).foregroundStyle(.white)
         }
     }
 }
@@ -2204,8 +2203,8 @@ private struct CompanyRow: View {
             HStack(spacing: 10) {
                 ModelCompanyLogo(company: company)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(company.name).font(.system(size: 13, weight: .semibold))
-                    Text(detail).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    Text(company.name).font(.ui(13, .semibold))
+                    Text(detail).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer(minLength: 8)
                 if let disclosure {
@@ -2273,21 +2272,21 @@ struct TemplatesPanel: View {
         let t = Self.templates.first { $0.title == title } ?? Self.templates[0]
         let steps = Self.steps[title] ?? []
         return VStack(alignment: .leading, spacing: 6) {
-            Text("PREVIEW · \(title.uppercased())").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
-            Text("this is how the scheme will look").font(.caption).foregroundStyle(.tertiary)
+            Text("PREVIEW · \(title.uppercased())").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            Text("this is how the scheme will look").font(.ui(10)).foregroundStyle(.tertiary)
             ForEach(steps.indices, id: \.self) { i in
                 if i > 0 { Image(systemName: "arrow.down").font(.system(size: 9, weight: .bold)).foregroundStyle(.tertiary).padding(.leading, 14) }
                 HStack(spacing: 8) {
                     RoundedRectangle(cornerRadius: 3).fill(Color(hex: t.colors[i % t.colors.count])).frame(width: 6, height: 30)
                     VStack(alignment: .leading, spacing: 1) {
-                        Text(steps[i].0.uppercased()).font(.system(size: 9, weight: .heavy)).tracking(0.4).foregroundStyle(.secondary)
-                        Text(steps[i].1).font(.system(size: 12, weight: .semibold)).fixedSize(horizontal: false, vertical: true)
+                        Text(steps[i].0.uppercased()).font(.ui(9, .heavy)).tracking(0.4).foregroundStyle(.secondary)
+                        Text(steps[i].1).font(.ui(12, .semibold)).fixedSize(horizontal: false, vertical: true)
                     }
                 }
                 .padding(8).frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 12).fill(.fill.quaternary))
             }
-            Text("Say just the asset and direction — ihatecrypto fills the rest from the rules.").font(.caption2).foregroundStyle(.secondary).padding(.top, 4)
+            Text("Say just the asset and direction — ihatecrypto fills the rest from the rules.").font(.ui(10)).foregroundStyle(.secondary).padding(.top, 4)
         }
         .frame(width: 230, alignment: .topLeading)
         .animation(.snappy, value: hovered)
@@ -2295,7 +2294,7 @@ struct TemplatesPanel: View {
 
     private var list: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text("Plan templates").font(.headline)
+            Text("Plan templates").font(.ui(13, .bold))
             LazyVGrid(columns: [GridItem(.fixed(150)), GridItem(.fixed(150))], spacing: 8) {
                 ForEach(Self.templates, id: \.title) { t in
                     Button { pick(t.phrase) } label: {
@@ -2306,8 +2305,8 @@ struct TemplatesPanel: View {
                                     RoundedRectangle(cornerRadius: 3).fill(Color(hex: t.colors[i])).frame(width: 16, height: 11)
                                 }
                             }
-                            Text(t.title).font(.system(size: 13, weight: .semibold))
-                            Text("«\(t.phrase)»").font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                            Text(t.title).font(.ui(13, .semibold))
+                            Text("«\(t.phrase)»").font(.ui(10)).foregroundStyle(.secondary).lineLimit(2)
                         }
                         .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
                         .padding(10)
@@ -2360,7 +2359,7 @@ struct TakeChoices: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text("PICK HOW TO TAKE PROFIT").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            Text("PICK HOW TO TAKE PROFIT").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
             ForEach(choices, id: \.self) { style in
                 Button { Task { await ws.chooseTake(style) } } label: {
                     HStack(spacing: 14) {
@@ -2368,18 +2367,18 @@ struct TakeChoices: View {
                             .background(RoundedRectangle(cornerRadius: 12).fill(.fill.quaternary))
                         VStack(alignment: .leading, spacing: 3) {
                             HStack(spacing: 6) {
-                                Text(style.title).font(.system(size: 15, weight: .heavy))
+                                Text(style.title).font(.ui(15, .heavy))
                                 if style == .partial {
-                                    Text("Recommended").font(.system(size: 10, weight: .bold)).foregroundStyle(Brand.onAccent)
+                                    Text("Recommended").font(.ui(10, .bold)).foregroundStyle(Brand.onAccent)
                                         .padding(.horizontal, 7).padding(.vertical, 2)
                                         .background(Capsule().fill(Brand.accent))
                                 }
                             }
-                            Text(style.detail).font(.caption).foregroundStyle(.secondary)
-                            Text(style.note).font(.caption2).foregroundStyle(.secondary)
+                            Text(style.detail).font(.ui(10)).foregroundStyle(.secondary)
+                            Text(style.note).font(.ui(10)).foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 0)
-                        Text(risk.map(style.payoff) ?? "").font(.system(size: 16, weight: .heavy)).foregroundStyle(Brand.profit)
+                        Text(risk.map(style.payoff) ?? "").font(.ui(16, .heavy)).foregroundStyle(Brand.profit)
                     }
                     .padding(12)
                     .background(RoundedRectangle(cornerRadius: 20).fill(Brand.card))
@@ -2389,7 +2388,7 @@ struct TakeChoices: View {
                 .buttonStyle(.plain)
                 .modifier(HoverLift(radius: 20))
             }
-            Text("The stop is the same in all three; only how the profit is taken changes.").font(.caption2).foregroundStyle(.secondary)
+            Text("The stop is the same in all three; only how the profit is taken changes.").font(.ui(10)).foregroundStyle(.secondary)
         }
     }
 }
@@ -2453,7 +2452,7 @@ struct PositionBoard: View {
                         default: confirmClose = item.2
                         }
                     } label: { Label(item.1, systemImage: item.3) }
-                    .buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
+                    .buttonStyle(.plain).font(.ui(12, .semibold))
                     .padding(.horizontal, 10).padding(.vertical, 7)
                     .background(RoundedRectangle(cornerRadius: 9).fill(item.0 == "breakeven" ? Brand.accent : Color.white.opacity(0.12)))
                     .foregroundStyle(item.0 == "close" ? Color(hex: 0xFF9C8F) : item.0 == "breakeven" ? Brand.onAccent : .white)
@@ -2465,18 +2464,18 @@ struct PositionBoard: View {
                 HStack(spacing: 12) {
                     AssetBadge(coin: position.coin, size: 40, dark: true)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(long ? "Long" : "Short") \(IntentParser.pretty(position.coin))").font(.system(size: 17, weight: .heavy))
+                        Text("\(long ? "Long" : "Short") \(IntentParser.pretty(position.coin))").font(.ui(17, .heavy))
                         Text("\(Fmt.num(abs(position.size), maxFraction: 6)) at \(Fmt.price(position.entry))\(mark.map { " · now \(Fmt.price($0))" } ?? "")")
-                            .font(.caption).foregroundStyle(.secondary)
+                            .font(.ui(10)).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text(signed(position.unrealizedPnl)).font(.system(size: 22, weight: .heavy)).monospacedDigit()
+                    Text(signed(position.unrealizedPnl)).font(.ui(22, .heavy)).monospacedDigit()
                         .foregroundStyle(position.unrealizedPnl < 0 ? Brand.loss : Brand.profit)
                 }
                 PriceRuler(entry: position.entry, mark: mark, stop: stop, takes: takes)
                 if let rules = ws.exitRules[position.coin] {
                     Label(rules.movedToBreakeven ? "Guardian: stop already at breakeven" : rules.breakevenAfterPartial ? "Guardian: stop to breakeven after the first half" : "Guardian is watching",
-                          systemImage: "shield.lefthalf.filled").font(.caption).foregroundStyle(.secondary)
+                          systemImage: "shield.lefthalf.filled").font(.ui(10)).foregroundStyle(.secondary)
                 }
             }
             .padding(16)
@@ -2524,7 +2523,7 @@ struct PriceRuler: View {
                                     + (stop.map { [("stop \(Fmt.price($0))", x($0, w), Brand.loss)] } ?? [])
                                     + takes.map { ("take \(Fmt.price($0))", x($0, w), Brand.profit) }, width: w)
                 ForEach(labels.indices, id: \.self) { i in
-                    Text(labels[i].text).font(.system(size: 10, weight: .semibold)).foregroundStyle(labels[i].color).fixedSize()
+                    Text(labels[i].text).font(.ui(10, .semibold)).foregroundStyle(labels[i].color).fixedSize()
                         .offset(x: labels[i].x, y: 30 + CGFloat(labels[i].row) * 14)
                 }
             }
@@ -2536,7 +2535,9 @@ struct PriceRuler: View {
     /// either end of the bar: a label near an edge is pushed inside, so nothing leaves the card.
     private func placed(_ items: [(text: String, x: CGFloat, color: Color)], width w: CGFloat) -> [(text: String, x: CGFloat, color: Color, row: Int)] {
         var ends: [CGFloat] = []
-        let font = NSFont.systemFont(ofSize: 10, weight: .semibold)
+        // The labels' own face (`Font.ui(10, .semibold)`), so the measured width is the drawn one.
+        let font = BrandFonts.ready ? NSFont(descriptor: NSFontDescriptor(fontAttributes: [.family: "Onest", .traits: [NSFontDescriptor.TraitKey.weight: NSFont.Weight.semibold]]), size: 10) ?? .systemFont(ofSize: 10, weight: .semibold)
+            : .systemFont(ofSize: 10, weight: .semibold)
         return items.sorted { $0.x < $1.x }.map { item in
             let width = ceil((item.text as NSString).size(withAttributes: [.font: font]).width)
             let start = min(max(0, item.x - width / 2), max(0, w - width))
@@ -2555,16 +2556,16 @@ struct YieldBubbles: View {
     var body: some View {
         let top = options.map(\.apy).max() ?? 1
         VStack(alignment: .leading, spacing: 10) {
-            Text("RATES NOW · TAP TO PUT THE PHRASE IN THE CHAT").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            Text("RATES NOW · TAP TO PUT THE PHRASE IN THE CHAT").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], alignment: .leading, spacing: 10) {
                 ForEach(Array(options.prefix(8).enumerated()), id: \.offset) { _, o in
                     let size = 96 + 70 * CGFloat(NSDecimalNumber(decimal: o.apy / max(top, 0.0001)).doubleValue)
                     Button { if let how = o.how { ws.draft = how } } label: {
                         VStack(spacing: 3) {
                             TokenLogo(name: logo(o.place), size: 26)
-                            Text("\(Fmt.num(o.apy.rounded(2, .plain)))%").font(.system(size: size > 140 ? 24 : 19, weight: .heavy)).monospacedDigit()
-                            Text(o.place).font(.system(size: 11, weight: .semibold)).lineLimit(1)
-                            Text(o.asset).font(.system(size: 10)).opacity(0.8)
+                            Text("\(Fmt.num(o.apy.rounded(2, .plain)))%").font(.ui(size > 140 ? 24 : 19, .heavy)).monospacedDigit()
+                            Text(o.place).font(.ui(11, .semibold)).lineLimit(1)
+                            Text(o.asset).font(.ui(10)).opacity(0.8)
                         }
                         .foregroundStyle(ink(o.place))
                         .frame(width: size, height: size)
@@ -2577,7 +2578,7 @@ struct YieldBubbles: View {
                     .help(o.note)
                 }
             }
-            Text("Tip: don’t keep everything in one protocol — say “spread USDC across the best rates”.").font(.caption2).foregroundStyle(.secondary)
+            Text("Tip: don’t keep everything in one protocol — say “spread USDC across the best rates”.").font(.ui(10)).foregroundStyle(.secondary)
         }
         .padding(16)
         .background(RoundedRectangle(cornerRadius: 22).fill(Brand.card))
@@ -2612,11 +2613,11 @@ struct AllocationBoard: View {
             HStack(spacing: 10) {
                 TokenLogo(name: unit == "SOL" ? "sol" : "usdc", size: 30)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("TAKE FROM · SOLANA").font(.system(size: 9.5, weight: .heavy)).tracking(0.5).foregroundStyle(Brand.solanaInk)
-                    Text("\(amount(preview.free)) free").font(.system(size: 16, weight: .bold))
+                    Text("TAKE FROM · SOLANA").font(.ui(9.5, .heavy)).tracking(0.5).foregroundStyle(Brand.solanaInk)
+                    Text("\(amount(preview.free)) free").font(.ui(16, .bold))
                 }
                 Spacer()
-                Text("max \(Fmt.pct(preview.maxShare)) per protocol").font(.caption).foregroundStyle(Brand.solanaInk)
+                Text("max \(Fmt.pct(preview.maxShare)) per protocol").font(.ui(10)).foregroundStyle(Brand.solanaInk)
             }
             .padding(14)
             .background(RoundedRectangle(cornerRadius: 20).fill(Brand.solanaTint))
@@ -2625,12 +2626,12 @@ struct AllocationBoard: View {
                 HStack(spacing: 12) {
                     TokenLogo(name: logo(slice.place), size: 34)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("DEPOSIT").font(.system(size: 9.5, weight: .heavy)).tracking(0.5).opacity(0.8)
-                        Text(slice.place).font(.system(size: 15, weight: .bold))
-                        Text(amount(slice.amount)).font(.caption).opacity(0.85)
+                        Text("DEPOSIT").font(.ui(9.5, .heavy)).tracking(0.5).opacity(0.8)
+                        Text(slice.place).font(.ui(15, .bold))
+                        Text(amount(slice.amount)).font(.ui(10)).opacity(0.85)
                     }
                     Spacer()
-                    Text("\(Fmt.num(slice.apy.rounded(2, .plain)))%").font(.system(size: 22, weight: .heavy)).monospacedDigit()
+                    Text("\(Fmt.num(slice.apy.rounded(2, .plain)))%").font(.ui(22, .heavy)).monospacedDigit()
                 }
                 .foregroundStyle(ink(slice.place))
                 .padding(14)
@@ -2640,8 +2641,8 @@ struct AllocationBoard: View {
                 HStack(alignment: .top, spacing: 12) {
                     TokenLogo(name: logo(s.place), size: 26).opacity(0.6)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("\(s.place) · \(Fmt.num(s.apy.rounded(2, .plain)))% — skipped").font(.system(size: 13, weight: .semibold))
-                        Text(s.reason).font(.caption).foregroundStyle(.secondary)
+                        Text("\(s.place) · \(Fmt.num(s.apy.rounded(2, .plain)))% — skipped").font(.ui(13, .semibold))
+                        Text(s.reason).font(.ui(10)).foregroundStyle(.secondary)
                     }
                 }
                 .padding(12)
@@ -2649,9 +2650,9 @@ struct AllocationBoard: View {
                 .background(RoundedRectangle(cornerRadius: 30).strokeBorder(Brand.dots, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
             }
             HStack {
-                Text("≈ \(amount(preview.yearly)) a year\(preview.yearlyUSD.map { " (≈ \(Fmt.usd($0)))" } ?? "")").font(.system(size: 16, weight: .bold))
+                Text("≈ \(amount(preview.yearly)) a year\(preview.yearlyUSD.map { " (≈ \(Fmt.usd($0)))" } ?? "")").font(.ui(16, .bold))
                 Spacer()
-                if preview.leftover > 0 { Text("stays free: \(amount(preview.leftover))").font(.caption).foregroundStyle(Color(hex: 0xB9C1DC)) }
+                if preview.leftover > 0 { Text("stays free: \(amount(preview.leftover))").font(.ui(10)).foregroundStyle(Color(hex: 0xB9C1DC)) }
             }
             .foregroundStyle(.white)
             .padding(14)

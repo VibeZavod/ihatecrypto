@@ -12,7 +12,7 @@ struct ReceiveBoard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "arrow.down.circle.fill").foregroundStyle(Brand.accentInk).font(.system(size: 18))
-                Text("Top up ihatecrypto").font(.system(size: 16, weight: .bold))
+                Text("Top up ihatecrypto").font(.ui(16, .bold))
                 Spacer()
                 Button { withAnimation(StudioView.spring) { ws.showReceive = false } } label: { Image(systemName: "xmark") }
                     .buttonStyle(.hoverIcon).help("Close")
@@ -33,7 +33,7 @@ struct ReceiveBoard: View {
                 Label("Hyperliquid uses the same 0x address, but money gets there through ihatecrypto (it bridges from Solana). Never send to Hyperliquid’s old bridge contract.",
                       systemImage: "info.circle").foregroundStyle(.secondary)
             }
-            .font(.caption)
+            .font(.ui(10))
             BalanceFreshness()
         }
         .padding(18)
@@ -64,9 +64,9 @@ struct ReceiveCard: View {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 6) {
                     TokenLogo(name: logo, size: 20)
-                    Text(network).font(.system(size: 14, weight: .bold))
+                    Text(network).font(.ui(14, .bold))
                     if let badge {
-                        Text(badge.uppercased()).font(.system(size: 9, weight: .heavy)).foregroundStyle(Brand.onAccent)
+                        Text(badge.uppercased()).font(.ui(9, .heavy)).foregroundStyle(Brand.onAccent)
                             .padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(Brand.accent))
                     }
                 }
@@ -79,7 +79,7 @@ struct ReceiveCard: View {
                 .font(.system(size: 13, design: .monospaced))
                 Text(address).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(what).font(.caption).fixedSize(horizontal: false, vertical: true)
+                Text(what).font(.ui(10)).fixedSize(horizontal: false, vertical: true)
                 Button {
                     NSPasteboard.general.clearContents()
                     NSPasteboard.general.setString(address, forType: .string)
@@ -87,7 +87,7 @@ struct ReceiveCard: View {
                     Task { try? await Task.sleep(for: .seconds(1.5)); withAnimation { copied = false } }
                 } label: {
                     Label(copied ? "Copied" : "Copy address", systemImage: copied ? "checkmark" : "doc.on.doc")
-                        .font(.system(size: 12, weight: .semibold))
+                        .font(.ui(12, .semibold))
                 }
                 .buttonStyle(.borderedProminent).controlSize(.small)
             }
@@ -122,12 +122,12 @@ struct BalanceFreshness: View {
             if shown {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(refreshing ? "Updating…" : freshness(now: context.date))
-                        .font(.caption).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+                        .font(.ui(10)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
                 }
                 .transition(.move(edge: .leading).combined(with: .opacity))
             }
         }
-        .font(.caption)
+        .font(.ui(10))
         .animation(.spring(duration: 0.35), value: shown)
         .onHover { selfHover = $0 }
         .help("ihatecrypto reads balances straight from Solana, Hyperliquid and Base: every 30 s, every 10 s while it guards a position or watches an alert, and right after each action. Click to refresh now.")

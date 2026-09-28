@@ -31,7 +31,7 @@ struct HistoryView: View {
                 if loading { ProgressView().controlSize(.small) }
                 Button { Task { await load() } } label: { Image(systemName: "arrow.clockwise") }.buttonStyle(.hoverIcon).help("Refresh")
             }
-            if let loadError { Text(loadError).font(.caption).foregroundStyle(Brand.loss).padding(.horizontal, 28) }
+            if let loadError { Text(loadError).font(.ui(10)).foregroundStyle(Brand.loss).padding(.horizontal, 28) }
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 16) {
                     switch tab {
@@ -60,7 +60,7 @@ struct HistoryView: View {
         ForEach(Array(items)) { ActivityCard(activity: $0) }
         if !earlier.isEmpty {
             Label("Earlier — from the signature journal. The chat of that time wasn’t kept; from now on every request is.", systemImage: "clock.arrow.circlepath")
-                .font(.caption).foregroundStyle(.secondary).padding(.top, 6)
+                .font(.ui(10)).foregroundStyle(.secondary).padding(.top, 6)
             ForEach(earlier) { ActivityCard(activity: $0) }
         }
     }
@@ -96,11 +96,11 @@ struct HistoryView: View {
         if rows.isEmpty, !loading { empty("Nothing yet.") }
         ForEach(rows) { r in
             HStack(alignment: .firstTextBaseline, spacing: 12) {
-                Text(Fmt.date(r.at)).font(.caption).monospacedDigit().foregroundStyle(.secondary).frame(width: 118, alignment: .leading)
+                Text(Fmt.date(r.at)).font(.ui(10)).monospacedDigit().foregroundStyle(.secondary).frame(width: 118, alignment: .leading)
                 Image(systemName: r.icon).foregroundStyle(r.tint).frame(width: 18)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(r.text).font(.system(size: 13))
-                    if let d = r.detail { Text(ChatText.styled(d)).font(.caption).foregroundStyle(.secondary) }
+                    Text(r.text).font(.ui(13))
+                    if let d = r.detail { Text(ChatText.styled(d)).font(.ui(10)).foregroundStyle(.secondary) }
                 }
                 Spacer(minLength: 0)
                 if let link = r.link { Link(destination: link) { Image(systemName: "arrow.up.right.square") }.help(link.absoluteString) }
@@ -142,7 +142,7 @@ struct HistoryView: View {
     }
 
     private func empty(_ text: String) -> some View {
-        Text(text).font(.callout).foregroundStyle(.secondary)
+        Text(text).font(.ui(12)).foregroundStyle(.secondary)
             .padding(20).frame(maxWidth: .infinity, alignment: .leading)
             .background(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.dots, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
     }
@@ -223,7 +223,7 @@ struct HistoryBoard: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "clock.arrow.circlepath").foregroundStyle(Brand.accentInk).font(.system(size: 16, weight: .semibold))
-                Text("History · latest").font(.system(size: 16, weight: .bold))
+                Text("History · latest").font(.ui(16, .bold))
                 Spacer()
                 Button { withAnimation(StudioView.spring) { ws.showHistory = false } } label: { Image(systemName: "xmark") }
                     .buttonStyle(.hoverIcon).help("Close")
@@ -236,13 +236,13 @@ struct HistoryBoard: View {
             }
             if items.isEmpty {
                 Text("Nothing yet. Every request from now on is kept here with the bubbles it had on the canvas.")
-                    .font(.callout).foregroundStyle(.secondary)
+                    .font(.ui(12)).foregroundStyle(.secondary)
             }
             ForEach(Array(items)) { ActivityCard(activity: $0) }
             Button { withAnimation(.snappy) { mode = "history" } } label: {
                 Label("All history: positions, transfers, signatures", systemImage: "list.bullet.rectangle")
             }
-            .buttonStyle(.borderless).font(.caption.weight(.semibold))
+            .buttonStyle(.borderless).font(.ui(10, .semibold))
         }
         .frame(width: 470, alignment: .leading)
     }
@@ -257,17 +257,17 @@ struct ActivityCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: icon).foregroundStyle(Brand.accentInk)
-                Text(activity.title ?? (activity.kind == .request ? "Request" : "ihatecrypto")).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                Text(activity.title ?? (activity.kind == .request ? "Request" : "ihatecrypto")).font(.ui(14, .semibold)).lineLimit(1)
                 Spacer()
-                Text(Fmt.date(activity.at)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
+                Text(Fmt.date(activity.at)).font(.ui(10)).foregroundStyle(.secondary).monospacedDigit()
             }
             if let q = activity.request {
-                Text(q).font(.system(size: 13)).foregroundStyle(Brand.onAccent)
+                Text(q).font(.ui(13)).foregroundStyle(Brand.onAccent)
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(UnevenRoundedRectangle(topLeadingRadius: 14, bottomLeadingRadius: 14, bottomTrailingRadius: 4, topTrailingRadius: 14).fill(Brand.accent))
             }
             if let u = activity.understood {
-                Label("understood as “\(u)”", systemImage: "character.bubble").font(.caption).foregroundStyle(.secondary)
+                Label("understood as “\(u)”", systemImage: "character.bubble").font(.ui(10)).foregroundStyle(.secondary)
             }
             if !activity.bubbles.isEmpty {
                 Flow {
@@ -276,11 +276,11 @@ struct ActivityCard: View {
             }
             let lines = expanded ? activity.lines : Array(activity.lines.suffix(2))
             ForEach(lines.indices, id: \.self) { i in
-                Text(ChatText.styled(lines[i])).font(.caption).foregroundStyle(.secondary).lineLimit(expanded ? nil : 3).textSelection(.enabled)
+                Text(ChatText.styled(lines[i])).font(.ui(10)).foregroundStyle(.secondary).lineLimit(expanded ? nil : 3).textSelection(.enabled)
             }
             if activity.lines.count > 2 {
                 Button(expanded ? "Less" : "All \(activity.lines.count) lines") { withAnimation { expanded.toggle() } }
-                    .buttonStyle(.borderless).font(.caption)
+                    .buttonStyle(.borderless).font(.ui(10))
             }
         }
         .padding(16)
@@ -332,10 +332,10 @@ struct HistoryBubble: View {
             HStack(spacing: 7) {
                 if let logo = bubble.logo { TokenLogo(name: logo, size: 20) }
                 if !bubble.asset.isEmpty { AssetBadge(coin: bubble.asset, size: 20, dark: true) }
-                Text(bubble.label.uppercased()).font(.system(size: 9.5, weight: .heavy)).tracking(0.5).opacity(0.8)
+                Text(bubble.label.uppercased()).font(.ui(9.5, .heavy)).tracking(0.5).opacity(0.8)
             }
-            Text(bubble.title).font(.system(size: 14, weight: .bold)).lineLimit(3)
-            ForEach(bubble.lines.prefix(2), id: \.self) { Text(ChatText.styled($0)).font(.caption).opacity(0.8).lineLimit(3) }
+            Text(bubble.title).font(.ui(14, .bold)).lineLimit(3)
+            ForEach(bubble.lines.prefix(2), id: \.self) { Text(ChatText.styled($0)).font(.ui(10)).opacity(0.8).lineLimit(3) }
         }
         .foregroundStyle(dark ? Color.white : Color.primary)
         .padding(12)
@@ -374,14 +374,14 @@ struct StoryCard: View {
             HStack(spacing: 10) {
                 AssetBadge(coin: story.coin, size: 34, dark: true)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(story.long ? "Long" : "Short") \(IntentParser.pretty(story.coin))").font(.system(size: 16, weight: .heavy)).lineLimit(2)
-                    Text(span).font(.caption).foregroundStyle(.secondary)
+                    Text("\(story.long ? "Long" : "Short") \(IntentParser.pretty(story.coin))").font(.ui(16, .heavy)).lineLimit(2)
+                    Text(span).font(.ui(10)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 if story.isOpen {
                     StatusChip(text: "open", tint: Brand.accentInk)
                 } else {
-                    Text(signed(story.realized)).font(.system(size: 18, weight: .heavy)).monospacedDigit()
+                    Text(signed(story.realized)).font(.ui(18, .heavy)).monospacedDigit()
                         .foregroundStyle(story.realized < 0 ? Brand.loss : Brand.profit)
                 }
             }
@@ -395,7 +395,7 @@ struct StoryCard: View {
             }
             if !story.isOpen {
                 Text("Realized \(signed(story.realized)) after \(Fmt.usd(story.fees)) in fees · peak size \(Fmt.num(story.peakSize, maxFraction: 6))")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
             }
         }
         .padding(16)
@@ -450,7 +450,7 @@ struct PageHeader<Controls: View>: View {
         .padding(.horizontal, 28).padding(.top, 22).padding(.bottom, 14)
     }
 
-    private var name: some View { Text(title).font(.system(size: 22, weight: .heavy)).lineLimit(1).fixedSize() }
+    private var name: some View { Text(title).font(.ui(22, .heavy)).lineLimit(1).fixedSize() }
 
     private var back: some View {
         Button(action: close) { Image(systemName: "xmark") }.buttonStyle(.hoverIcon).help("Back to the canvas")

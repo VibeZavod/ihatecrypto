@@ -108,6 +108,10 @@ final class Browser {
             throw SiteError("The ihatecrypto wallet isn't in secure storage: save the key via “Addresses from phrase…”.")
         }
         let site = SiteCheck.check(host: host)
+        // A site's signature is a move of its own: its Touch ID doesn't carry over to the next request.
+        let signs = ["signMessage", "signTransaction", "signAndSendTransaction"].contains(method)
+            || (method == "eth" && ["personal_sign", "eth_signTypedData_v4", "eth_sendTransaction"].contains(params["method"] as? String ?? ""))
+        defer { if signs { workspace?.endSigningSession() } }
         switch method {
         case "eth":
             return try await ethereum(params["method"] as? String ?? "", params["params"] as? String ?? "[]", origin: origin, site: site)
@@ -483,11 +487,11 @@ struct BrowserView: View {
                     .background(RoundedRectangle(cornerRadius: 8).fill(.fill.tertiary))
                     .onSubmit { browser.open(typed) }
                 Text(ws.signerWallet.map { "wallet \($0.solana.prefix(4))…\($0.solana.suffix(4))" } ?? "no key")
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary)
             }
             .padding(10)
             if let error = browser.loadError {
-                Text(error).font(.caption).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.bottom, 6)
+                Text(error).font(.ui(10)).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.bottom, 6)
             }
             WebViewHost(webView: browser.webView)
         }
@@ -530,7 +534,7 @@ struct ApprovalSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
-            Text(heading).font(.system(size: 20, weight: .semibold))
+            Text(heading).font(.ui(20, .semibold))
             Text(request.origin).font(.system(.body, design: .monospaced))
             switch request.site {
             case .known: Label("Known site", systemImage: "checkmark.seal").foregroundStyle(.green)
@@ -546,7 +550,7 @@ struct ApprovalSheet: View {
             case .connectEVM:
                 Text("The site will see your EVM address (also your Hyperliquid address). ihatecrypto never signs token spending permissions (Permit).")
             case .evmTransaction(let r):
-                Text("Network \(["1": "Ethereum", "42161": "Arbitrum", "8453": "Base"]["\(r.chain)"] ?? "\(r.chain)")").font(.callout.weight(.semibold))
+                Text("Network \(["1": "Ethereum", "42161": "Arbitrum", "8453": "Base"]["\(r.chain)"] ?? "\(r.chain)")").font(.ui(12, .semibold))
                 section("What it does") { ForEach(r.lines, id: \.self) { Text("· " + $0) } }
                 section("What changes (simulation)") { ForEach(r.changes, id: \.self) { Text("· " + $0) } }
                 if let jev = r.jev {
@@ -559,9 +563,9 @@ struct ApprovalSheet: View {
                 } else if let to = r.recipient {
                     Toggle("Send to \(to.prefix(10))…\(to.suffix(6))", isOn: $allowUnknown)
                 }
-                Text("Changes are simulated on the latest block, before the network fee. A token names itself — check its address. The signer decodes the calldata again.").font(.caption).foregroundStyle(.secondary)
+                Text("Changes are simulated on the latest block, before the network fee. A token names itself — check its address. The signer decodes the calldata again.").font(.ui(10)).foregroundStyle(.secondary)
             case .typedData(let t):
-                Text("\(t.primaryType) for “\(t.domainName)”, chain \(t.chainId)").font(.callout.weight(.semibold))
+                Text("\(t.primaryType) for “\(t.domainName)”, chain \(t.chainId)").font(.ui(12, .semibold))
                 ScrollView {
                     VStack(alignment: .leading, spacing: 2) {
                         ForEach(t.fields.indices, id: \.self) { i in
@@ -569,11 +573,11 @@ struct ApprovalSheet: View {
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.frame(maxHeight: 160)
-                Text("The signer computes the hash to sign from this same data. It rejects nested structures and token permissions.").font(.caption).foregroundStyle(.secondary)
+                Text("The signer computes the hash to sign from this same data. It rejects nested structures and token permissions.").font(.ui(10)).foregroundStyle(.secondary)
             case .message(let text):
-                Text("Text to sign").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                Text("Text to sign").font(.ui(10, .semibold)).foregroundStyle(.secondary)
                 ScrollView { Text(text).font(.system(.callout, design: .monospaced)).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 140)
-                Text("Signing text doesn't move money. The signer rejects the “text” if it's a hidden transaction.").font(.caption).foregroundStyle(.secondary)
+                Text("Signing text doesn't move money. The signer rejects the “text” if it's a hidden transaction.").font(.ui(10)).foregroundStyle(.secondary)
             case .transaction(let r, let send):
                 section("What changes (simulation)") { ForEach(r.changes, id: \.self) { Text("· " + $0) } }
                 section("Programs") { ForEach(r.programNames, id: \.self) { Text("· " + $0) } }
@@ -590,7 +594,7 @@ struct ApprovalSheet: View {
                 } else if !r.unknownPrograms.isEmpty {
                     Toggle("Allow \(r.unknownPrograms.count == 1 ? "an unknown program" : "unknown programs") for this transaction", isOn: $allowUnknown)
                 }
-                Text(send ? "After signing, ihatecrypto sends the transaction to the network." : "The site gets the signed transaction and sends it itself.").font(.caption).foregroundStyle(.secondary)
+                Text(send ? "After signing, ihatecrypto sends the transaction to the network." : "The site gets the signed transaction and sends it itself.").font(.ui(10)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
             HStack {
@@ -599,7 +603,7 @@ struct ApprovalSheet: View {
                 Button(approveTitle) { decide(true) }.keyboardShortcut(.defaultAction).disabled(!canApprove)
             }
         }
-        .font(.system(size: 13))
+        .font(.ui(13))
         .padding(24)
         .frame(width: 560)
         .frame(minHeight: 320)
@@ -634,7 +638,7 @@ struct ApprovalSheet: View {
 
     private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+            Text(title).font(.ui(10, .semibold)).foregroundStyle(.secondary)
             content()
         }
     }

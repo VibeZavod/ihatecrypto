@@ -96,7 +96,7 @@ struct TokenIcon: View {
                 image.resizable().scaledToFill().frame(width: size, height: size).clipShape(Circle())
             } placeholder: {
                 Circle().fill(Brand.accent.opacity(0.14)).frame(width: size, height: size)
-                    .overlay(Text(token.symbol.prefix(2)).font(.system(size: size * 0.36, weight: .bold)).foregroundStyle(Brand.accentInk))
+                    .overlay(Text(token.symbol.prefix(2)).font(.ui(size * 0.36, .bold)).foregroundStyle(Brand.accentInk))
             }
             TokenLogo(name: token.chainLogo, size: size * 0.42).offset(x: 3, y: 3)
         }
@@ -115,24 +115,24 @@ struct FavoriteTokenCard: View {
             HStack(spacing: 10) {
                 TokenIcon(token: token, size: 38)
                 VStack(alignment: .leading, spacing: 2) {
-                    Text("\(token.name)").font(.system(size: 14, weight: .bold)).lineLimit(1)
-                    Text("\(token.symbol) · \(token.chainTitle)").font(.caption).foregroundStyle(.secondary)
+                    Text("\(token.name)").font(.ui(14, .bold)).lineLimit(1)
+                    Text("\(token.symbol) · \(token.chainTitle)").font(.ui(10)).foregroundStyle(.secondary)
                 }
                 Spacer()
                 Button { withAnimation(.snappy) { ws.favoriteTokens.removeAll { $0.id == token.id } } } label: { Image(systemName: "star.fill") }
                     .buttonStyle(.hoverIcon).foregroundStyle(Color(hex: 0xF5B301)).help("Remove from favorites")
             }
             HStack(alignment: .firstTextBaseline) {
-                Text(info?.priceUSD.map(tokenPrice) ?? "—").font(.system(size: 20, weight: .heavy)).monospacedDigit()
+                Text(info?.priceUSD.map(tokenPrice) ?? "—").font(.ui(20, .heavy)).monospacedDigit()
                 if let c = info?.change24h {
-                    Text(signedPct(c)).font(.caption.weight(.bold)).foregroundStyle(c < 0 ? Brand.loss : Brand.profit)
+                    Text(signedPct(c)).font(.ui(10, .bold)).foregroundStyle(c < 0 ? Brand.loss : Brand.profit)
                 }
                 Spacer()
-                if let l = info?.liquidityUSD { Text("liquidity \(Fmt.usd((l / 1_000_000).rounded(1, .plain)))M").font(.caption2).foregroundStyle(.secondary) }
+                if let l = info?.liquidityUSD { Text("liquidity \(Fmt.usd((l / 1_000_000).rounded(1, .plain)))M").font(.ui(10)).foregroundStyle(.secondary) }
             }
             if let held = ws.tokenBalances[token.id], held > 0 {
                 Label("You hold \(Fmt.num(held, maxFraction: 4)) \(token.symbol)\(info?.priceUSD.map { " ≈ \(Fmt.usd($0 * held))" } ?? "")", systemImage: "wallet.pass")
-                    .font(.caption.weight(.semibold))
+                    .font(.ui(10, .semibold))
             }
             HStack(spacing: 14) {
                 Button {
@@ -144,7 +144,7 @@ struct FavoriteTokenCard: View {
                 if let pair = info?.pairURL { Link(destination: pair) { Label("Chart", systemImage: "chart.xyaxis.line") } }
                 if let e = token.explorer { Link(destination: e) { Label("Explorer", systemImage: "arrow.up.right.square") } }
             }
-            .buttonStyle(.borderless).font(.caption)
+            .buttonStyle(.borderless).font(.ui(10))
         }
         .padding(14)
         .background(RoundedRectangle(cornerRadius: 20).fill(Brand.card))
@@ -164,12 +164,12 @@ struct AddTokenButton: View {
             .buttonStyle(.bordered)
             .popover(isPresented: $open, arrowEdge: .bottom) {
                 VStack(alignment: .leading, spacing: 10) {
-                    Text("Watch a token").font(.headline)
+                    Text("Watch a token").font(.ui(13, .bold))
                     HStack {
                         TextField("contract address (0x… or Solana mint)", text: $address).font(.system(.body, design: .monospaced)).frame(width: 320)
                         Button("Paste") { address = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
                     }
-                    Text("ihatecrypto looks it up on DexScreener: the chain it trades on, price, icon.").font(.caption).foregroundStyle(.secondary)
+                    Text("ihatecrypto looks it up on DexScreener: the chain it trades on, price, icon.").font(.ui(10)).foregroundStyle(.secondary)
                     HStack {
                         Spacer()
                         if busy { ProgressView().controlSize(.small) }

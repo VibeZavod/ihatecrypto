@@ -46,7 +46,7 @@ struct ChatAndNoticeSettings: View {
             }
             ForEach(Notice.allCases, id: \.self) { NoticeToggle(kind: $0) }
             Text("Notifications show while ihatecrypto is in the background or in the menu bar; a click brings its window back.")
-                .font(.caption).foregroundStyle(.secondary)
+                .font(.ui(10)).foregroundStyle(.secondary)
         }
     }
 }
