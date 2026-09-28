@@ -362,7 +362,8 @@ extension Executor {
         let context = try await Near.txContext(account: account)
         let micro: UInt128 = 1_000_000_000_000_000_000   // 10⁻⁶ NEAR: amounts are whole micro-NEAR
         let storage = UInt128(context.storageBytes) * 10_000_000_000_000_000_000   // 10¹⁹ yocto a byte
-        let balance = UInt128(context.balance) ?? 0, keep = storage + NearTransaction.intentDepositOverhead
+        let balance = UInt128(context.balance) ?? 0
+        let keep = storage + NearTransaction.intentDepositOverhead(gasPrice: UInt128(context.gasPrice) ?? 100_000_000)
         let free = balance > keep ? (balance - keep) / micro * micro : 0
         let yocto = requested.flatMap { UInt128(NSDecimalNumber(decimal: ($0 * 1_000_000).rounded(0, .down)).stringValue) }.map { $0 * micro } ?? free
         guard yocto >= 50_000 * micro else { throw ExecutionError("Sell NEAR from 0.05: below that 1Click's fee eats too much.") }

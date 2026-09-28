@@ -28,10 +28,14 @@ public enum NearTransaction {
         ]
     }
 
-    /// Besides the amount, what `intentDeposit` needs on the account at most: the two storage deposits and up to
-    /// 0.015 NEAR of prepaid gas (75 Tgas at twice the floor gas price). Unused gas and a registered account's
-    /// storage deposit come back.
-    public static let intentDepositOverhead: UInt128 = 2 * wrapStorage + 15_000_000_000_000_000_000_000
+    /// Besides the amount, what `intentDeposit` needs on the account when it is sent: the two storage deposits and
+    /// the 75 Tgas of prepaid gas at NEAR's pessimistic price — measured 10.44× the block's gas price for this
+    /// transaction (2026-09-28: 0.0783 NEAR at 10⁸ yocto a gas), so 11× here. Unused gas and a registered account's
+    /// storage deposit come back afterwards.
+    // ponytail: a measured multiplier; if NEAR changes its inflation rule, read the cost from a failed send instead.
+    public static func intentDepositOverhead(gasPrice: UInt128) -> UInt128 {
+        2 * wrapStorage + 1 + UInt128(75 * tgas) * gasPrice * 11
+    }
 
     public static func serialize(signer: String, publicKey: Data, nonce: UInt64, receiver: String, blockHash: Data, actions: [Action]) -> Data {
         var out = string(signer)

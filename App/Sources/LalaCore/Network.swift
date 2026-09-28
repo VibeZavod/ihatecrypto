@@ -180,7 +180,7 @@ public enum Near {
 
     /// What a new transaction from `account` needs: the next nonce of its key, a recent final block hash, and the
     /// account's native balance and storage (yoctoNEAR, bytes). The key is the implicit account's own.
-    public static func txContext(account: String) async throws -> (nonce: UInt64, blockHash: Data, balance: String, storageBytes: UInt64) {
+    public static func txContext(account: String) async throws -> (nonce: UInt64, blockHash: Data, balance: String, storageBytes: UInt64, gasPrice: String) {
         func call(_ method: String, _ params: [String: Any]) async throws -> [String: Any] {
             let data = try await HTTP.post(rpc, json: ["jsonrpc": "2.0", "id": 1, "method": method, "params": params])
             let j = try JSONSerialization.jsonObject(with: data) as? [String: Any]
@@ -196,7 +196,8 @@ public enum Near {
               let balance = view["amount"] as? String, let storage = (view["storage_usage"] as? NSNumber)?.uint64Value else {
             throw NetError(message: "NEAR RPC: no nonce, block hash or balance.")
         }
-        return (nonce + 1, try Base58.decode(hash), balance, storage)
+        let gasPrice = (block["header"] as? [String: Any])?["gas_price"] as? String ?? "100000000"
+        return (nonce + 1, try Base58.decode(hash), balance, storage, gasPrice)
     }
 
     /// Broadcasts a borsh SignedTransaction and waits until it has executed; throws with NEAR's reason on failure.

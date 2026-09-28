@@ -748,14 +748,15 @@ extension Workspace {
                   footer: "Checked and simulated before it’s signed. Say “do it” or press Confirm; anything else cancels.", steps: [])
     }
 
-    /// Native NEAR → USDC on Solana through NEAR Intents (1Click); «all» keeps ≈ 0.02 NEAR for storage and the fee.
+    /// Native NEAR → USDC on Solana through NEAR Intents (1Click); «all» keeps ≈ 0.09 NEAR: storage, and prepaid gas
+    /// at NEAR's pessimistic price (NearTransaction.intentDepositOverhead), most of which comes back after the sale.
     private func sellNearRoute(_ asked: Decimal?) -> MoveRoute {
-        let amount = asked ?? max(0, near - Decimal(string: "0.02")!)
+        let amount = asked ?? max(0, near - Decimal(string: "0.09")!)
         let usd = markets["NEAR"].map { amount * $0.markPx }
         return MoveRoute(title: "Sell \(Fmt.num(amount, maxFraction: 4)) NEAR for USDC on Solana",
                          footer: "One NEAR transaction: exactly this NEAR, wrapped and sent to the 1Click deposit address the quote names, checked before signing. USDC arrives on your own Solana address in ≈ 30–40 s. Say “do it” or press Confirm.",
                          steps: [
-            step("near", "FROM · NEAR", "\(Fmt.num(amount, maxFraction: 4)) NEAR", usd.map { "≈ \(Fmt.usd($0)) · ≈ 0.02 NEAR stays for storage" } ?? "", .near),
+            step("near", "FROM · NEAR", "\(Fmt.num(amount, maxFraction: 4)) NEAR", usd.map { "≈ \(Fmt.usd($0)) · ≈ 0.09 NEAR stays for storage and gas, most of it back after" } ?? "", .near),
             step("near", "SWAP · NEAR INTENTS", "1Click", "≈ 30–40 s · the quote is checked", .relay),
             step("sol", "TO · SOLANA", usd.map { "≈ \(Fmt.num($0.rounded(2, .plain))) USDC" } ?? "USDC",
                  "your own address ✓", .solana),
