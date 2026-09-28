@@ -117,7 +117,8 @@ public struct SignerWallet: Codable, Sendable, Equatable, Identifiable {
 }
 
 public enum SignerSession {
-    /// 1, 5, 15 or 30 minutes; 1 minute until the user picks another.
+    /// 1, 5, 15 or 30 minutes; 1 minute until the user picks another. With that minute the app also ends the session
+    /// when the move is done (`endSession`), so one Touch ID covers one move.
     public static let choices = [60, 300, 900, 1800]
     public static let standard = 60
 }

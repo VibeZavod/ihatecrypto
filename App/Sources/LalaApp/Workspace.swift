@@ -64,7 +64,13 @@ final class Workspace {
     }
     var preparing = false
     var executing = false {
-        didSet { if oldValue, !executing { lastOwnMove = Date() } }
+        didSet { if oldValue, !executing { lastOwnMove = Date(); endSigningSession() } }
+    }
+
+    /// One Touch ID covers one move: once it's done the next signature asks again, unless the user chose 5–30 minutes.
+    func endSigningSession() {
+        guard sessionLength == SignerSession.standard, !executing, SignerClient.isAvailable else { return }
+        Task { _ = try? await SignerClient().send(.endSession) }
     }
     var executionError: String?
     /// A confirmed money move while it runs: its route stays on the canvas with the latest step, until the outcome.

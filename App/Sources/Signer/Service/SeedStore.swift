@@ -9,9 +9,16 @@ import WalletCore
 /// opening it takes the Enclave, which asks for Touch ID or the login password. Code that manages to read the
 /// Keychain item — a re-signed copy of the signer — gets bytes it cannot open without the user.
 /// A wallet saved before then sits unsealed under «default» until it is replaced.
-/// ponytail: the opened seed is ordinary Swift memory while signing; Swift can't promise to wipe it, so the guard
-/// against reading it is that no debugger can attach to a Release signer (no get-task-allow).
+/// After each signature the opened seed and the key derived from it are overwritten (`wipe`, see `Signer.withKey`).
+/// ponytail: copies made inside the derivation and the secp256k1 library aren't reachable from here, so the guard
+/// against reading them is still that no debugger can attach to a Release signer (no get-task-allow).
 enum SeedStore {
+    /// Overwrites key bytes in place before they're released; memset_s is never optimized away. Call it on the last
+    /// reference: a Data shared with another copy is duplicated first, and only the duplicate would be cleared.
+    static func wipe(_ data: inout Data) {
+        data.withUnsafeMutableBytes { b in if let p = b.baseAddress { _ = memset_s(p, b.count, 0, b.count) } }
+    }
+
     static func item(_ account: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
@@ -112,9 +119,10 @@ enum SeedStore {
         if id == SignerWallet.firstID { SecItemDelete(item(legacyAccount) as CFDictionary) }
     }
 
-    /// One Touch ID per trade, not per signature: a context that already authenticated opens the key again
-    /// without a prompt, for `sessionLength` (1 minute unless the user picked 5, 15 or 30). Every signature still
-    /// passes the guard; a locked screen or sleep ends the session.
+    /// One Touch ID per move, not per signature: a context that already authenticated opens the key again
+    /// without a prompt, for at most `sessionLength` (1 minute unless the user picked 5, 15 or 30). With the standard
+    /// minute the app ends it as soon as the move is done (`endSession`). Every signature still passes the guard;
+    /// a locked screen or sleep ends the session.
     nonisolated(unsafe) private static var session: (context: LAContext, since: Date)?
 
     static var sessionLength: Int {
@@ -140,9 +148,13 @@ enum SeedStore {
                 guard SecItemCopyMatching(q as CFDictionary, &ref) == errSecSuccess, let ref else { throw WalletError("The Secure Enclave key is missing.") }
                 var error: Unmanaged<CFError>?
                 // The Enclave asks for Touch ID or the password here, unless this context already did.
-                guard let seed = SecKeyCreateDecryptedData(ref as! SecKey, algorithm, sealed.data as CFData, &error) as Data? else {
+                guard let opened = SecKeyCreateDecryptedData(ref as! SecKey, algorithm, sealed.data as CFData, &error) else {
                     throw WalletError("Touch ID was cancelled or didn't match: nothing was signed.")
                 }
+                // Our own copy, which the caller wipes; the Security framework's buffer is cleared before it's released.
+                let bytes = CFDataGetBytePtr(opened), count = CFDataGetLength(opened)
+                let seed = Data(bytes: bytes!, count: count)
+                _ = memset_s(UnsafeMutableRawPointer(mutating: bytes!), count, 0, count)
                 return seed
             }
             guard id == SignerWallet.firstID, let seed = read(legacyAccount, context: context) else { throw WalletError("No wallet imported.") }
