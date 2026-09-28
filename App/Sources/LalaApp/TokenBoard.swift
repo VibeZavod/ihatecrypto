@@ -33,8 +33,8 @@ struct TokenBoard: View {
 
     private var holding: StockHolding? { ws.robinhood?.stocks.first { $0.address.lowercased() == address.lowercased() } }
     private var favorite: FavoriteToken? { ws.favoriteTokens.first { $0.chain == chain && $0.address.lowercased() == address.lowercased() } }
-    private var symbol: String { holding?.symbol ?? favorite?.symbol ?? "Token" }
-    private var fullName: String { holding?.name ?? favorite?.name ?? symbol }
+    private var symbol: String { holding?.symbol ?? favorite?.symbol ?? market?.symbol ?? "Token" }
+    private var fullName: String { holding?.name ?? favorite?.name ?? market?.name ?? symbol }
     /// «Space Exploration Technologies Corp. Class A Common Stock» → «Space Exploration Technologies».
     private var name: String {
         let cut = [" Corp", ", Inc", " Inc.", " Class ", " Common Stock", " Ltd"].compactMap { fullName.range(of: $0)?.lowerBound }.min()
@@ -87,7 +87,7 @@ struct TokenBoard: View {
             } else if let f = favorite {
                 TokenIcon(token: f, size: 38)
             } else {
-                AssetBadge(coin: symbol, size: 38, dark: true)
+                StockLogo(symbol: symbol, url: market?.imageURL, size: 38)
             }
             VStack(alignment: .leading, spacing: 1) {
                 Text(name).font(.ui(16, .bold)).lineLimit(1).help(fullName)
@@ -238,8 +238,11 @@ struct TokenBoard: View {
     private var actions: some View {
         let buy = isStock ? "buy \(symbol) stock for 2 USDC" : "buy token \(address) for 2 USDC"
         let sell = isStock ? "sell \(symbol) stock" : "sell token \(address)"
+        // Tokens by contract are bought on Robinhood Chain only; elsewhere they can be watched.
+        let phrases = chain == "robinhood" ? [("Buy \(symbol)", buy), ("Sell", sell)]
+            : favorite == nil ? [("Watch \(symbol)", "watch token \(address) on \(chain)")] : []
         return HStack(spacing: 6) {
-            ForEach([("Buy \(symbol)", buy), ("Sell", sell)], id: \.0) { title, phrase in
+            ForEach(phrases, id: \.0) { title, phrase in
                 Button { ws.draft = phrase } label: {
                     Text(title).font(.ui(12, .semibold)).foregroundStyle(title == "Sell" ? Brand.loss : Brand.accentInk)
                         .padding(.horizontal, 12).padding(.vertical, 6)

@@ -131,14 +131,7 @@ extension Workspace {
         let named = IntentParser.namedAsset(question, markets: Set(markets.keys))
         // The trade the question is about: the market it names, else the plan's.
         let asked = named ?? (intent != TradeIntent() ? intent.asset : nil)
-        for coin in Set([asked].compactMap { $0 } + positions.map(\.coin)) {
-            guard let m = markets[coin] else { continue }
-            var line = "Market \(IntentParser.pretty(coin)): mark \(Fmt.price(m.markPx))"
-            if let prev = m.prevDayPx, prev > 0 { line += ", 24h \(signedPct((m.markPx - prev) / prev * 100))" }
-            if let f = m.funding { line += ", funding \(Fmt.num((f * 100).rounded(4, .plain)))% an hour" }
-            if let atr = atr[coin] { line += ", 4h ATR \(Fmt.num(atr.rounded(2, .plain)))%" }
-            facts.append(line + ".")
-        }
+        facts += Set([asked].compactMap { $0 } + positions.map(\.coin)).compactMap(marketLine)
         // «Should I short oil now?»: that trade by the book and what LALA's rules say about entering it now.
         let q = question.lowercased()
         let side: Side? = q.contains(/short|шорт|прода|sell/) ? .short : q.contains(/\blong|лонг|купи|buy/) ? .long
@@ -177,7 +170,17 @@ extension Workspace {
         reply(localAnswer(question, stories: stories), note: "from your portfolio and history")
     }
 
-    private func answerFacts(_ stories: [TradeHistory.Story]) -> [String] {
+    /// «Market ETH: mark 2,512.3, 24h +1.2%, funding 0.0012% an hour, 4h ATR 1.8%.»
+    func marketLine(_ coin: String) -> String? {
+        guard let m = markets[coin] else { return nil }
+        var line = "Market \(IntentParser.pretty(coin)): mark \(Fmt.price(m.markPx))"
+        if let prev = m.prevDayPx, prev > 0 { line += ", 24h \(signedPct((m.markPx - prev) / prev * 100))" }
+        if let f = m.funding { line += ", funding \(Fmt.num((f * 100).rounded(4, .plain)))% an hour" }
+        if let atr = atr[coin] { line += ", 4h ATR \(Fmt.num(atr.rounded(2, .plain)))%" }
+        return line + "."
+    }
+
+    func answerFacts(_ stories: [TradeHistory.Story]) -> [String] {
         var facts: [String] = []
         if let s = solana { facts.append("Solana: \(Fmt.num(s.usdc)) USDC, \(Fmt.num(s.sol, maxFraction: 4)) SOL.") }
         if let e = equity { facts.append("Portfolio total: \(Fmt.usd(e)).") }

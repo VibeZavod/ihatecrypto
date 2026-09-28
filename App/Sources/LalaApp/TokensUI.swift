@@ -33,6 +33,13 @@ extension Workspace {
     /// «добавь в favorite вот этот токен на робингуде 0x…», «remove token AI from favorites».
     func tokenCommand(_ command: TokenCommand, note: String? = nil) async {
         switch command {
+        case .show(let address, let chain):
+            guard let info = await openTokenCard(address, chain: chain) else {
+                reply("DexScreener doesn’t know this token\(chain.map { " on \($0)" } ?? ""): no pool trades it, so there’s no chart.", note: note)
+                return
+            }
+            reply("\(info.name) (\(info.symbol)) is on the canvas: \(info.priceUSD.map(tokenPrice) ?? "no price")"
+                  + (info.change24h.map { ", \(signedPct($0)) today" } ?? "") + ".", note: note)
         case .unfavorite(let symbol):
             let before = favoriteTokens.count
             favoriteTokens.removeAll { $0.symbol.uppercased() == symbol }

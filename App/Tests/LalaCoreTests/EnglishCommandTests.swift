@@ -123,7 +123,7 @@ import Testing
     #expect(ChatRouter.addressesAllowed("long ETH risk $1", userText: "лонг эфир", known: []))
     #expect(try ChatRouter.decode(Data(#"{"route":"command","command":"lend 1 USDC"}"#.utf8)) == .command("lend 1 USDC"))
     #expect(try ChatRouter.decode(Data(#"{"route":"chat","reply":"Hi!"}"#.utf8)) == .chat("Hi!"))
-    #expect(try ChatRouter.decode(Data(#"{"route":"question"}"#.utf8)) == .question)
+    #expect(try ChatRouter.decode(Data(#"{"route":"question"}"#.utf8)) == .question)   // an older reply still reads
     #expect(throws: (any Error).self) { try ChatRouter.decode(Data(#"{"route":"command","command":""}"#.utf8)) }
 }
 

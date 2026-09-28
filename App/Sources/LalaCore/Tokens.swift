@@ -50,6 +50,8 @@ public enum TokenMarket {
         }
 
         public let pool: String
+        public let name: String
+        public let symbol: String
         /// «uniswap v4», «ramses».
         public let dex: String
         public let quote: String
@@ -97,8 +99,9 @@ public enum TokenMarket {
             if let url = (s["url"] as? String).flatMap(URL.init) { links.append(.init(label: type == "twitter" ? "X" : type.capitalized, url: url)) }
         }
         let labels = (p["labels"] as? [String] ?? []).joined(separator: " ")
+        let base = p["baseToken"] as? [String: Any]
         return Info(
-            pool: pool, dex: [p["dexId"] as? String ?? "?", labels].filter { !$0.isEmpty }.joined(separator: " "),
+            pool: pool, name: base?["name"] as? String ?? "?", symbol: base?["symbol"] as? String ?? "?", dex: [p["dexId"] as? String ?? "?", labels].filter { !$0.isEmpty }.joined(separator: " "),
             quote: (p["quoteToken"] as? [String: Any])?["symbol"] as? String ?? "?", priceUSD: dec(p["priceUsd"]),
             changes: ((p["priceChange"] as? [String: Any]) ?? [:]).compactMapValues { dec($0) },
             liquidityUSD: dec((p["liquidity"] as? [String: Any])?["usd"]), fdv: dec(p["fdv"]), marketCap: dec(p["marketCap"]),
@@ -131,25 +134,29 @@ public enum TokenMarket {
     }
 }
 
-/// «добавь в favorite вот этот токен на робингуде 0x…», «watch token 0x… on Base», «remove token AI from favorites».
+/// «добавь в favorite вот этот токен на робингуде 0x…», «watch token 0x… on Base», «remove token AI from favorites»,
+/// «chart token B5AN… on solana».
 public enum TokenCommand: Equatable, Sendable {
     /// `chain`: as the user named it (DexScreener's id), nil = wherever it trades most.
     case favorite(address: String, chain: String?)
     case unfavorite(symbol: String)
+    /// The token's card on the canvas: its chart, market and links.
+    case show(address: String, chain: String?)
 
     public static func parse(_ text: String) -> TokenCommand? {
         let q = text.lowercased()
         if let m = text.firstMatch(of: /(?i)(?:remove|unstar|убери|удали)\s+(?:the\s+)?(?:token|токен)\s+\$?([a-z0-9]{1,12})\s+(?:from|из)\s+(?:my\s+)?(?:favou?rites?|избранн\w*|watchlist)/) {
             return .unfavorite(symbol: String(m.1).uppercased())
         }
-        guard let address = AddressBookCommand.address(in: text),
-              q.contains(/\btoken|токен|\bcoin\b|монет|watch|следи|favou?rite|избранн|watchlist/),
-              // «save 0x… as Bybit» is an address for the book, not a token; «купи 0x… токен» is a trade.
-              !q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bsell\b|прода\w*/),
-              !q.contains(/\bas\s|\bcalled\b|\bnamed\b|\bкак\s|под\s+именем/) else { return nil }
+        guard let address = AddressBookCommand.address(in: text) else { return nil }
         let chain: String? = q.contains(/robinhood|робинхуд|робингуд/) ? "robinhood" : q.contains(/\bbase\b|бейс/) ? "base"
             : q.contains(/arbitrum|арбитрум/) ? "arbitrum" : q.contains(/ethereum|эфириум|\beth\s+mainnet/) ? "ethereum"
             : q.contains(/solana|солан/) || !address.hasPrefix("0x") ? "solana" : nil
+        if q.contains(/^\s*(?:chart|show)\s+token\b/) { return .show(address: address, chain: chain) }
+        guard q.contains(/\btoken|токен|\bcoin\b|монет|watch|следи|favou?rite|избранн|watchlist/),
+              // «save 0x… as Bybit» is an address for the book, not a token; «купи 0x… токен» is a trade.
+              !q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bsell\b|прода\w*/),
+              !q.contains(/\bas\s|\bcalled\b|\bnamed\b|\bкак\s|под\s+именем/) else { return nil }
         return .favorite(address: address, chain: chain)
     }
 }

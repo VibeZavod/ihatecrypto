@@ -1,0 +1,158 @@
+import Foundation
+import WalletCore
+
+/// What the chat's model learns about a token before it answers (the «token» lookup): by its contract or mint on any
+/// chain, or by its name or ticker. Solana tokens come from Jupiter's token list (holders, safety flags, organic
+/// volume), every chain from DexScreener (pools, links). Public APIs, no keys. Every address in a report is one an API
+/// returned, never the model's.
+public enum TokenResearch {
+    public static func report(_ query: String) async -> String {
+        let q = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let evm = q.firstMatch(of: /0x[0-9a-fA-F]{40}/).map({ String($0.0) }) {
+            return await dex(evm) ?? "DexScreener has no pool for \(evm) on any chain: nothing trades it, or it isn't a token."
+        }
+        if let raw = q.firstMatch(of: /[1-9A-HJ-NP-Za-km-z]{30,60}/).map({ String($0.0) }) {
+            for mint in repairs(raw) {
+                let note = mint == raw ? nil : "The pasted «\(raw)» is not a valid Solana address (\(raw.count) characters). Without "
+                    + (raw.hasPrefix("2F" + mint) ? "the «2F» in front — a link's %2F («/») copied along —" : "the extra characters")
+                    + " it is this token: \(mint)."
+                async let jupiter = jupiter(mint)
+                async let pools = dex(mint)
+                let facts = [note, await jupiter, await pools].compactMap { $0 }
+                if facts.count > (note == nil ? 0 : 1) { return facts.joined(separator: "\n") }
+            }
+            return valid(raw)
+                ? "Neither Jupiter nor DexScreener knows \(raw) as a token: it may be a wallet address, or a token with no pool yet."
+                : "«\(raw)» is not a valid Solana address, and no near fix of it is a known token. Ask for the address again, copied from the token's page."
+        }
+        return await search(q)
+    }
+
+    /// The address as pasted when it's a valid Solana one; else what it likely was: a link's «%2F» / «2F» dropped from the
+    /// front, or a character or two too many at either end.
+    public static func repairs(_ s: String) -> [String] {
+        if valid(s) { return [s] }
+        var out = ["%2F", "2F", "%3A", "3A"].filter(s.hasPrefix).map { String(s.dropFirst($0.count)) }
+        for head in 0...2 { for tail in 0...2 where head + tail > 0 { out.append(String(s.dropFirst(head).dropLast(tail))) } }
+        var seen = Set<String>()
+        return out.filter { valid($0) && seen.insert($0).inserted }
+    }
+
+    static func valid(_ address: String) -> Bool { (try? Base58.decode(address))?.count == 32 }
+
+    // MARK: Sources
+
+    static func jupiter(_ mint: String) async -> String? {
+        guard let data = try? await get("https://lite-api.jup.ag/tokens/v2/search?query=\(mint)") else { return nil }
+        return jupiterFacts(data, mint: mint)
+    }
+
+    /// Jupiter's entry for the mint, as lines.
+    static func jupiterFacts(_ data: Data, mint: String, now: Date = Date()) -> String? {
+        guard let t = (try? JSONSerialization.jsonObject(with: data) as? [[String: Any]])?.first(where: { $0["id"] as? String == mint }) else { return nil }
+        let audit = t["audit"] as? [String: Any] ?? [:]
+        let tags = t["tags"] as? [String] ?? []
+        let verified = t["isVerified"] as? Bool == true || tags.contains("verified")
+        var lines = ["Solana token \(t["name"] as? String ?? "?") (\(t["symbol"] as? String ?? "?")), mint \(mint), chain id solana. Jupiter: "
+                     + (verified ? "verified" : "not verified") + (tags.isEmpty ? "" : ", tags \(tags.joined(separator: ", "))") + "."]
+        lines.append("Price \(price(dec(t["usdPrice"]))), market cap \(usd(dec(t["mcap"]))), FDV \(usd(dec(t["fdv"]))), liquidity \(usd(dec(t["liquidity"])))"
+                     + ((t["holderCount"] as? NSNumber).map { ", \($0.intValue) holders" } ?? "") + ".")
+        let windows = [("5m", "stats5m"), ("1h", "stats1h"), ("6h", "stats6h"), ("24h", "stats24h")]
+        let changes = windows.compactMap { title, key in dec((t[key] as? [String: Any])?["priceChange"]).map { "\(title) \(pct($0))" } }
+        if !changes.isEmpty { lines.append("Price change: " + changes.joined(separator: ", ") + ".") }
+        if let day = t["stats24h"] as? [String: Any] {
+            let volume = (dec(day["buyVolume"]) ?? 0) + (dec(day["sellVolume"]) ?? 0)
+            let organic = (dec(day["buyOrganicVolume"]) ?? 0) + (dec(day["sellOrganicVolume"]) ?? 0)
+            lines.append("Last 24h: \(int(day["numBuys"])) buys, \(int(day["numSells"])) sells, \(int(day["numTraders"])) traders, volume \(usd(volume)), "
+                         + "of it organic (real users, not bots) \(usd(organic)); organic score \(t["organicScoreLabel"] as? String ?? "?").")
+        }
+        let created = (t["createdAt"] as? String).flatMap(date)
+        let graduated = (t["graduatedAt"] as? String).flatMap(date)
+        var origin = created.map { "Created \(age($0, now: now)) ago" } ?? "Creation date unknown"
+        if let pad = t["launchpad"] as? String { origin += " on the \(pad) launchpad" }
+        if let graduated { origin += "; graduated to an open pool \(age(graduated, now: now)) ago" }
+        lines.append(origin + ".")
+        var safety: [String] = []
+        if let off = audit["mintAuthorityDisabled"] as? Bool { safety.append(off ? "mint authority off (no one can print more)" : "MINT AUTHORITY ON: the creator can print more") }
+        if let off = audit["freezeAuthorityDisabled"] as? Bool { safety.append(off ? "freeze authority off" : "FREEZE AUTHORITY ON: the creator can freeze holders' tokens") }
+        if let top = dec(audit["topHoldersPercentage"]) { safety.append("top 10 holders own \(pct(top, sign: false))") }
+        if let dev = dec(audit["devBalancePercentage"]) { safety.append("the developer holds \(pct(dev, sign: false))") }
+        if !safety.isEmpty { lines.append("Safety: " + safety.joined(separator: ", ") + ".") }
+        return lines.joined(separator: "\n")
+    }
+
+    /// DexScreener: where it trades and its deepest pool.
+    static func dex(_ address: String) async -> String? {
+        guard let data = try? await get("https://api.dexscreener.com/latest/dex/tokens/\(address)") else { return nil }
+        return dexFacts(data, address: address)
+    }
+
+    static func dexFacts(_ data: Data, address: String, now: Date = Date()) -> String? {
+        let chains = TokenLookup.parse(data, address: address)
+        guard let top = chains.first, let m = TokenMarket.parse(data, address: address, chain: top.chain) else { return nil }
+        var lines = ["DexScreener: \(m.name) (\(m.symbol)), contract \(top.address), chain id \(top.chain)"
+                     + (chains.count > 1 ? "; also trades on " + chains.dropFirst().map(\.chain).joined(separator: ", ") : "") + "."]
+        lines.append("Deepest pool: \(m.dex) \(m.symbol)/\(m.quote), liquidity \(usd(m.liquidityUSD))" + (m.created.map { ", opened \(age($0, now: now)) ago" } ?? "")
+                     + "; price \(price(m.priceUSD)), market cap \(usd(m.marketCap ?? m.fdv)), volume 24h \(usd(m.volume24h))"
+                     + (m.buys24h.map { ", \($0) buys" } ?? "") + (m.sells24h.map { " and \($0) sells in 24h" } ?? "") + ".")
+        let changes = [("m5", "5m"), ("h1", "1h"), ("h6", "6h"), ("h24", "24h")].compactMap { key, title in m.changes[key].map { "\(title) \(pct($0))" } }
+        if !changes.isEmpty { lines.append("Price change: " + changes.joined(separator: ", ") + ".") }
+        if !m.links.isEmpty { lines.append("Links: " + m.links.map { "\($0.label) \($0.url.absoluteString)" }.joined(separator: ", ") + ".") }
+        return lines.joined(separator: "\n")
+    }
+
+    /// A name or ticker: the tokens called so, deepest pool first, and the deepest one in full (saves the model a round).
+    static func search(_ query: String) async -> String {
+        guard let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
+              let data = try? await get("https://api.dexscreener.com/latest/dex/search?q=\(q)") else { return "DexScreener didn't answer the search." }
+        guard let (list, top) = searchFacts(data, query: query) else { return "No token called «\(query)» trades anywhere DexScreener sees." }
+        async let jupiter = top.hasPrefix("0x") ? nil : jupiter(top)
+        async let pools = dex(top)
+        return ([list, "The deepest one in full:"] + [await jupiter, await pools].compactMap { $0 }).joined(separator: "\n")
+    }
+
+    /// The matches as lines, and the address of the deepest.
+    static func searchFacts(_ data: Data, query: String, now: Date = Date()) -> (text: String, top: String)? {
+        guard let pairs = (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["pairs"] as? [[String: Any]] else { return nil }
+        var best: [String: (liquidity: Decimal, address: String, line: String)] = [:]
+        for p in pairs {
+            guard let base = p["baseToken"] as? [String: Any], let address = base["address"] as? String, let chain = p["chainId"] as? String else { continue }
+            let liquidity = dec((p["liquidity"] as? [String: Any])?["usd"]) ?? 0
+            let key = chain + ":" + address
+            guard liquidity > (best[key]?.liquidity ?? -1) else { continue }
+            let opened = (p["pairCreatedAt"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue / 1000) }
+            let change = dec((p["priceChange"] as? [String: Any])?["h24"])
+            best[key] = (liquidity, address, "\(base["symbol"] as? String ?? "?") (\(base["name"] as? String ?? "?")) on chain id \(chain), contract \(address): "
+                         + "price \(price(dec(p["priceUsd"]))), liquidity \(usd(liquidity))" + (change.map { ", 24h \(pct($0))" } ?? "")
+                         + (opened.map { ", pool opened \(age($0, now: now)) ago" } ?? ""))
+        }
+        let ranked = best.values.sorted { $0.liquidity > $1.liquidity }
+        guard let top = ranked.first else { return nil }
+        return ("Tokens matching «\(query)», deepest pool first. Many tokens copy a famous name: the deep, old pool is usually the real one; "
+                + "a thin, fresh one is usually a copy.\n" + ranked.prefix(6).map(\.line).joined(separator: "\n"), top.address)
+    }
+
+    // MARK: Formatting
+
+    static func get(_ url: String) async throws -> Data {
+        var request = URLRequest(url: URL(string: url)!, timeoutInterval: 10)
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        return try await URLSession.shared.data(for: request).0
+    }
+
+    static func dec(_ v: Any?) -> Decimal? { (v as? String).flatMap { Decimal(string: $0) } ?? (v as? NSNumber).map { $0.decimalValue } }
+    static func int(_ v: Any?) -> Int { (v as? NSNumber)?.intValue ?? 0 }
+    static func usd(_ d: Decimal?) -> String {
+        d.map { $0.formatted(.currency(code: "USD").notation(.compactName).precision(.significantDigits(3)).locale(Locale(identifier: "en_US"))) } ?? "unknown"
+    }
+    static func price(_ d: Decimal?) -> String { d.map { "$" + String(format: "%.4g", NSDecimalNumber(decimal: $0).doubleValue) } ?? "unknown" }
+    static func pct(_ d: Decimal, sign: Bool = true) -> String {
+        (sign && d >= 0 ? "+" : "") + String(format: "%.1f", NSDecimalNumber(decimal: d).doubleValue) + "%"
+    }
+    static func date(_ iso: String) -> Date? { ISO8601DateFormatter().date(from: iso) }
+    /// «40 minutes», «5 hours», «23 days», «4 months».
+    static func age(_ date: Date, now: Date) -> String {
+        let s = max(0, now.timeIntervalSince(date))
+        return s < 7200 ? "\(Int(s / 60)) minutes" : s < 172_800 ? "\(Int(s / 3600)) hours" : s < 5_184_000 ? "\(Int(s / 86400)) days" : "\(Int(s / 2_592_000)) months"
+    }
+}

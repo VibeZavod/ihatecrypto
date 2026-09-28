@@ -168,5 +168,28 @@
       "reply_contains": "$",
       "no_pending": true
     }
+  },
+  {
+    "name": "a pasted token address with a link's «2F» → the agent repairs it, opens the token's card and offers ways to go on",
+    "send": [
+      "расскажи про этот токен 2FB5ANwoWkptDv1QszdPHXjCF2gTWdo27FGLffdfXzzoe6"
+    ],
+    "expect": {
+      "no_pending": true,
+      "detail_contains": "token:solana:B5ANwoWkptDv1QszdPHXjCF2gTWdo27FGLffdfXzzoe6",
+      "next_steps_at_least": 2,
+      "reply_cyrillic": true
+    }
+  },
+  {
+    "name": "a question about a trade → the agent looks at the market and answers with its view and cards",
+    "send": [
+      "стоит ли сейчас шортить нефть?"
+    ],
+    "expect": {
+      "no_pending": true,
+      "reply_cyrillic": true,
+      "next_steps_at_least": 2
+    }
   }
 ]

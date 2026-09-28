@@ -1,0 +1,221 @@
+import DeFiYields
+import EVMChain
+import Foundation
+import LalaCore
+import SwiftUI
+
+/// The ways to go on the model offered with an answer: cards on the canvas it was given on. A card runs its English
+/// command through the same parsers, checks and confirmations as a typed one.
+struct NextSteps {
+    let options: [ChatRouter.Option]
+    /// The message they answer: an address in a card must be in it, unless the card only shows something.
+    let userText: String
+    /// Addresses the lookups returned (a token found by name, a repaired mint).
+    let found: [String]
+    let canvas: UUID?
+
+    static func icon(_ command: String) -> String {
+        let c = command.lowercased()
+        return c.hasPrefix("chart") ? "chart.xyaxis.line" : c.hasPrefix("watch") ? "star" : c.hasPrefix("alert") ? "bell"
+            : c.hasPrefix("buy") ? "cart" : c.hasPrefix("sell") ? "arrow.down.circle" : c.hasPrefix("long") ? "arrow.up.right"
+            : c.hasPrefix("short") ? "arrow.down.right" : c.hasPrefix("withdraw") || c.hasPrefix("unstake") ? "arrow.uturn.backward"
+            : c.hasPrefix("move") || c.hasPrefix("send") ? "arrow.left.arrow.right" : c.hasPrefix("where") ? "percent"
+            : c.contains("lend") || c.hasPrefix("deposit") || c.hasPrefix("stake") || c.hasPrefix("spread") || c.hasPrefix("rebalance") ? "building.columns"
+            : c.hasPrefix("what") ? "flame" : c.hasPrefix("profit") ? "dollarsign.circle" : "arrow.right.circle"
+    }
+}
+
+extension Workspace {
+    /// A command that only opens something (a chart, a token's card, the rates) or watches a token: it may use an
+    /// address a lookup found. Anything that moves money needs the address in the user's own words.
+    static func displays(_ command: String) -> Bool {
+        switch TokenCommand.parse(command) {
+        case .show?, .favorite?: return true
+        default: break
+        }
+        if ChartCommand.parse(command) != nil || PnLCommand.parse(command) != nil { return true }
+        if case .yields? = WalletCommand.parse(command) { return true }
+        return false
+    }
+
+    /// One lookup the model asked for, answered from what this Mac knows and public market data.
+    func agentLookup(_ l: ChatRouter.Lookup) async -> String {
+        switch l.tool {
+        case "portfolio":
+            agentStep = say("Checking your portfolio", "Смотрю портфель")
+            let stories = (try? await TradeHistory.fills(user: hlAddress)).map(TradeHistory.stories) ?? []
+            return (answerFacts(stories) + (await pnlFacts())).joined(separator: "\n")
+        case "market":
+            guard let coin = IntentParser.namedAsset(l.arg, markets: Set(markets.keys)), markets[coin] != nil else {
+                return "No Hyperliquid market for «\(l.arg)». For a token by its contract or name use the token lookup."
+            }
+            agentStep = say("Looking at \(IntentParser.pretty(coin))", "Смотрю \(IntentParser.pretty(coin))")
+            if atr[coin] == nil, let v = try? await Hyperliquid.atrPct(coin: coin) { atr[coin] = v }
+            var facts = [marketLine(coin)].compactMap { $0 }
+            if let p = positions.first(where: { $0.coin == coin }) {
+                facts.append("Open: \(p.size > 0 ? "long" : "short"), \(positionSummary(p)), unrealized \(signed(p.unrealizedPnl)).")
+            }
+            for side in [Side.long, .short] {
+                guard let book = bookPlan(asset: coin, side: side) else { continue }
+                facts.append("By the book, a \(side == .long ? "long" : "short") now: \(book.line).")
+                facts += book.advice.map { "  rule check (\($0.level == .ok ? "ok" : $0.level == .warn ? "warning" : "blocked")): \($0.text)" }
+            }
+            if let candles = try? await Hyperliquid.candles(coin: coin, range: .week), let first = candles.first, let last = candles.last, first.close > 0 {
+                facts.append("Week: \(Fmt.price(first.close)) → \(Fmt.price(last.close)) (\(signedPct((last.close - first.close) / first.close * 100))), "
+                             + "low \(Fmt.price(candles.map(\.low).min() ?? 0)), high \(Fmt.price(candles.map(\.high).max() ?? 0)).")
+            }
+            return facts.joined(separator: "\n")
+        case "token":
+            agentStep = say("Looking the token up", "Ищу токен")
+            var text = await TokenResearch.report(l.arg)
+            for t in favoriteTokens where text.contains(t.address) {
+                text += "\nIt is among the user's favorites" + (tokenBalances[t.id].map { "; they hold \(Fmt.num($0, maxFraction: 4))" } ?? "") + "."
+            }
+            return text
+        case "rates":
+            agentStep = say("Comparing rates", "Сравниваю ставки")
+            let asset = l.arg.uppercased().contains("SOL") ? "SOL" : "USDC"
+            let options = await loadYields(asset)
+            let held = lend.filter { $0.usdc > 0 }.map { "Jupiter Lend \($0.vault) \(Fmt.num($0.usdc))" } + (kamino > 0 ? ["Kamino \(Fmt.usd(kamino))"] : [])
+                + (base.map { [$0.aave > 0 ? "Aave \(Fmt.num($0.aave)) USDC" : nil, $0.morpho > 0 ? "Morpho \(Fmt.num($0.morpho)) USDC" : nil].compactMap { $0 } } ?? [])
+            return (options.isEmpty ? ["The rate sources didn't answer."] : options.prefix(10).map { o in
+                "\(o.place) (\(o.asset)): \(Fmt.num(o.apy.rounded(2, .plain)))% a year" + (o.tvlUSD.map { ", \(Fmt.usd(($0 / 1_000_000).rounded(1, .plain)))M deposited" } ?? "")
+                    + (o.note.isEmpty ? "" : "; \(o.note)") + (o.how.map { "; form: \($0)" } ?? "; ihatecrypto can't deposit there")
+            }) .joined(separator: "\n")
+                + "\nFree on Solana: \(solana.map { "\(Fmt.num($0.usdc)) USDC, \(Fmt.num($0.sol, maxFraction: 4)) SOL" } ?? "unknown")."
+                + (held.isEmpty ? " Nothing in vaults now." : " Already in vaults: " + held.joined(separator: ", ") + ".")
+        case "movers":
+            let list = moverList()
+            func line(_ m: (coin: String, price: Decimal, change: Decimal)) -> String { "\(IntentParser.pretty(m.coin)) \(Fmt.price(m.price)) \(signedPct(m.change))" }
+            return list.isEmpty ? "Markets aren't loaded yet."
+                : "Up the most today: " + list.prefix(6).map(line).joined(separator: ", ") + ".\nDown the most: " + list.suffix(6).reversed().map(line).joined(separator: ", ") + "."
+        default:
+            return "There is no «\(l.tool)» lookup. Lookups: portfolio, market <ASSET>, token <ADDRESS or NAME>, rates <USDC|SOL>, movers."
+        }
+    }
+
+    /// The rates for the bubbles and the model: the vaults' own, and Aave on Base read from the pool.
+    func loadYields(_ asset: String?) async -> [Yields.Option] {
+        var options = await Yields.options(for: asset)
+        if asset != "SOL", aaveAPY == nil { aaveAPY = try? await AaveV3.verifyBase() }
+        if asset != "SOL", let apy = aaveAPY {
+            options.append(Yields.Option(asset: "USDC", place: "Aave · Base", apy: apy, tvlUSD: nil, how: "lend 2 USDC on Aave",
+                                         note: "on Base: bridged from Solana with a little ETH for gas"))
+            options.sort { $0.apy > $1.apy }
+        }
+        return options
+    }
+
+    /// Opens the block the model's answer points to. Only display commands, and only addresses the user wrote or a
+    /// lookup returned.
+    func show(_ reading: ChatRouter.Reading, userText: String) async {
+        guard let s = reading.show, Self.displays(s),
+              ChatRouter.addressesAllowed(s, userText: userText, known: favoriteTokens.map(\.address) + reading.found) else { return }
+        let markets = Set(markets.keys)
+        if case .show(let address, let chain)? = TokenCommand.parse(s) {
+            _ = await openTokenCard(address, chain: chain)
+        } else if case .chart(let coin, let range)? = ChartCommand.parse(s, markets: markets) {
+            await openChart(coin, range: range)
+        } else if case .movers? = ChartCommand.parse(s, markets: markets) {
+            withAnimation(StudioView.spring) { showMovers = true }
+            UserDefaults.standard.set("plan", forKey: "canvasMode")
+        } else if case .yields(let asset)? = WalletCommand.parse(s) {
+            yieldOptions = await loadYields(asset)
+        }
+    }
+
+    /// A token's card on the canvas, on the chain it trades on (the named one if it trades there). nil when no pool trades it.
+    func openTokenCard(_ address: String, chain: String?) async -> TokenLookup.Info? {
+        let infos = (try? await TokenLookup.lookup(address)) ?? []
+        guard let info = infos.first(where: { chain == nil || $0.chain == chain }) ?? infos.first else { return nil }
+        openToken(info.address, chain: info.chain)
+        return info
+    }
+
+    /// Puts the model's cards on the canvas: only commands ihatecrypto parses, with addresses it may use.
+    func offer(_ reading: ChatRouter.Reading, userText: String) {
+        let markets = Set(markets.keys)
+        let options = reading.options.filter { o in
+            o.command != reading.show && ChatRouter.parses(o.command, markets: markets)
+                && ChatRouter.addressesAllowed(o.command, userText: userText, known: favoriteTokens.map(\.address) + (Self.displays(o.command) ? reading.found : []))
+        }
+        guard !options.isEmpty else { return }
+        withAnimation(StudioView.spring) { nextSteps = NextSteps(options: options, userText: userText, found: reading.found, canvas: canvasID) }
+    }
+
+    /// A card picked on the canvas: said in the chat by its title and carried out like a typed command. Like any new
+    /// message it drops a card that waited for Confirm.
+    func pick(_ option: ChatRouter.Option) async {
+        guard !busy, let steps = nextSteps else { return }
+        nextSteps = nil
+        pendingAction = nil
+        pendingText = nil
+        pendingAllocation = nil
+        awaitingAmount = nil
+        taskQueue = nil
+        takeChoices = nil
+        yieldOptions = nil
+        allocationPreview = nil
+        rebalancePlan = nil
+        finishedAction = nil
+        messages.append(Message(fromUser: true, text: option.title))
+        thinking = true
+        defer { thinking = false }
+        beginActivity(.request, request: option.title)
+        defer { snapshotCanvas(); saveCanvas() }
+        if await !runCanonical(option.command, userText: steps.userText, before: intent) {
+            reply(say("ihatecrypto can’t do “\(option.command)” yet — nothing moved.", "ihatecrypto пока не умеет «\(option.command)» — ничего не ушло."))
+        }
+    }
+}
+
+/// The model's ways to go on, as cards: one marked Recommended, then «or write your own».
+struct NextStepsBoard: View {
+    @Environment(Workspace.self) private var ws
+    let steps: NextSteps
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text("WHAT NEXT").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            ForEach(Array(steps.options.enumerated()), id: \.offset) { _, option in
+                Button { Task { await ws.pick(option) } } label: { card(option) }
+                    .buttonStyle(.plain)
+                    .pointerStyle(.link)
+                    .modifier(HoverLift(radius: 18))
+                    .disabled(ws.busy)
+                    .help(option.command)
+            }
+            Text("Or write your own in the chat.").font(.ui(10)).foregroundStyle(.secondary)
+        }
+        .frame(width: 470, alignment: .leading)
+        .transition(.opacity)
+    }
+
+    private func card(_ o: ChatRouter.Option) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: NextSteps.icon(o.command))
+                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Brand.accentInk)
+                .frame(width: 32, height: 32)
+                .background(Circle().fill(Brand.accent.opacity(0.12)))
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(o.title).font(.ui(14, .heavy)).fixedSize(horizontal: false, vertical: true)
+                    if o.recommended {
+                        Text("Recommended").font(.ui(10, .bold)).foregroundStyle(Brand.onAccent).lineLimit(1).fixedSize()
+                            .padding(.horizontal, 7).padding(.vertical, 2)
+                            .background(Capsule().fill(Brand.accent))
+                    }
+                }
+                if !o.comment.isEmpty {
+                    Text(o.comment).font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 18).fill(Brand.card))
+        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(o.recommended ? Brand.accent : Brand.cardBorder, lineWidth: o.recommended ? 2 : 1))
+        .contentShape(Rectangle())
+    }
+}

@@ -9,6 +9,8 @@ struct ChatHistory: View, Equatable {
     var running = false
     /// LALA is working on the last message: dots under it until the first reply.
     var thinking = false
+    /// What the model is looking up right now.
+    var step: String?
 
     var body: some View {
         let items = ChatItem.group(messages)
@@ -20,7 +22,7 @@ struct ChatHistory: View, Equatable {
             case .steps(let steps): StepsCard(steps: steps, running: running && steps.last?.id == messages.last?.id)
             }
         }
-        if thinking, messages.last?.fromUser == true { ThinkingDots().transition(.opacity) }
+        if thinking, messages.last?.fromUser == true { ThinkingDots(label: step).transition(.opacity) }
         // Scroll here for the newest line: a step inside a card has no view of its own.
         Color.clear.frame(height: 0).id(Self.end)
     }
@@ -30,7 +32,16 @@ struct ChatHistory: View, Equatable {
 
 /// Three dots breathing in turn where LALA's reply will appear.
 struct ThinkingDots: View {
+    var label: String?
+
     var body: some View {
+        HStack(spacing: 8) {
+            dots
+            if let label { Text(label + "…").font(.ui(12)).foregroundStyle(.secondary).lineLimit(1) }
+        }
+    }
+
+    private var dots: some View {
         TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
             let t = context.date.timeIntervalSinceReferenceDate
             HStack(spacing: 5) {
@@ -135,7 +146,7 @@ struct Reply: View {
 
     /// «gpt-6-sol · from your portfolio and history» → ✦ GPT 6 SOL · FROM YOUR PORTFOLIO AND HISTORY; «incoming» in green.
     @ViewBuilder private func kicker(_ note: String) -> some View {
-        let fromModel = note.hasSuffix("from your portfolio and history")
+        let fromModel = note.hasSuffix("from your portfolio and history") || note.contains(" · looked at ")
         let parts = note.components(separatedBy: " · ")
         let label = fromModel && parts.count > 1 ? ([LLMCatalog.displayName(model: parts[0])] + parts.dropFirst()).joined(separator: " · ") : note
         HStack(spacing: 4) {

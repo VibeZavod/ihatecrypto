@@ -210,6 +210,7 @@ final class DebugAPI {
         }
         if let c = ws.chart { out["chart"] = ["coin": c.coin, "range": c.range.rawValue, "candles": c.candles.count, "error": c.error ?? NSNull()] as [String: Any] }
         if let d = ws.detail { out["detail"] = d }
+        if let n = ws.nextSteps { out["nextSteps"] = n.options.map { ["title": $0.title, "command": $0.command, "recommended": $0.recommended] as [String: Any] } }
         if let a = ws.allocationPreview { out["allocation"] = ["asset": a.asset, "slices": a.slices.count] as [String: Any] }
         if let t = ws.takeChoices { out["takeChoices"] = t.map(\.title) }
         if let w = ws.awaitingAmount { out["awaitingAmount"] = String(describing: w) }

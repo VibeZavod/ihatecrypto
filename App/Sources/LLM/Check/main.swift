@@ -38,21 +38,30 @@ if prompt == "--route" {
     // `LALA_ROUTE_RECENT="user: …|LALA: …"`: the chat before the message, to check follow-ups like «да».
     context.recent = env["LALA_ROUTE_RECENT"].map { $0.components(separatedBy: "|") } ?? []
     let client = try provider.client(credential, save: { _ in })
-    for message in args.dropFirst(2) {
+    let markets: Set<String> = ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]
+    // Real token lookups; the app's own data (portfolio, markets, rates) is what the context above says.
+    let balances = context.balances.joined(separator: "; ")
+    let lookup: @Sendable (ChatRouter.Lookup) async -> String = { l in
+        l.tool == "token" ? await TokenResearch.report(l.arg) : l.tool == "portfolio" ? "Balances: \(balances). No open positions." : "Not available in this check."
+    }
+    var message = ""
+    func verdict(_ c: String, found: [String] = []) -> String {
+        var line = ChatRouter.parses(c, markets: markets) ? "✓ parses" : "✗ NO PARSER"
+        if let task = ScheduledTask.parse(c) { line += "  [\(task.when)]" }
+        if !ChatRouter.addressesAllowed(c, userText: message, known: ["0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18"] + found) { line += "  ✗ FOREIGN ADDRESS" }
+        return line
+    }
+    for m in args.dropFirst(2) {
+        message = m
+        context.replyLanguage = m.contains(/[а-яА-ЯёЁ]/) ? "Russian" : "English"
         let started = Date()
         do {
-            let route = try await ChatRouter.route(message, context: context, client: client, model: model)
-            var line = "\(route)"
-            if case .command(let c) = route {
-                let parsed = WalletCommand.parse(c) != nil || TokenCommand.parse(c) != nil || PositionCommand.parse(c) != nil
-                    || ChartCommand.parse(c) != nil || AlertCommand.parse(c) != nil || AddressBookCommand.parse(c) != nil
-                    || PnLCommand.parse(c) != nil || ScheduledTask.parse(c) != nil || ScheduledTask.cancelsAll(c)
-                    || IntentParser.apply(c, to: TradeIntent(), markets: ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]) != nil
-                if let task = ScheduledTask.parse(c) { line += "  [\(task.when)]" }
-                let safe = ChatRouter.addressesAllowed(c, userText: message, known: ["0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18"])
-                line += parsed ? "  ✓ parses" : "  ✗ NO PARSER"
-                if !safe { line += "  ✗ FOREIGN ADDRESS" }
-            }
+            let reading = try await ChatRouter.route(message, context: context, client: client, model: model, lookup: lookup)
+            var line = "\(reading.route)"
+            if case .command(let c) = reading.route { line += "  " + verdict(c) }
+            for l in reading.lookups { line += "\n   lookup: \(l.tool) \(l.arg)" }
+            if let show = reading.show { line += "\n   show: \(show)  " + verdict(show, found: reading.found) }
+            for o in reading.options { line += "\n   \(o.recommended ? "★" : "·") \(o.title) — \(o.comment)\n       \(o.command)  " + verdict(o.command, found: reading.found) }
             print("«\(message)» \(String(format: "%.1f", Date().timeIntervalSince(started))) s\n   → \(line)")
         } catch {
             print("«\(message)» → error: \(error.localizedDescription)")

@@ -75,6 +75,10 @@ def check(expect, state, replies):
             present = [k for k in want if b.get(k)]
             if present:
                 why.append(f"unexpected boards: {present}")
+        elif key == "detail_contains" and want.lower() not in (b.get("detail") or "").lower():
+            why.append(f"canvas block {b.get('detail')}, expected «{want}»")
+        elif key == "next_steps_at_least" and len(b.get("nextSteps") or []) < want:
+            why.append(f"{len(b.get('nextSteps') or [])} cards to go on, expected at least {want}: {text(b.get('nextSteps'))[:200]}")
         elif key == "not_executing" and state.get("executing"):
             why.append("a move is executing")
     return why

@@ -196,6 +196,7 @@ extension Workspace {
     private func clearCanvas() {
         if let pendingAction, let canvasID { parkedPending[canvasID] = (pendingAction, pendingText, Date()) }
         takeChoices = nil
+        nextSteps = nil
         yieldOptions = nil
         allocationPreview = nil
         pendingAllocation = nil

@@ -194,6 +194,10 @@ final class Workspace {
     var yieldOptions: [Yields.Option]?
     /// Take-profit styles offered on the canvas after «take profit like the best investors»; nil when none.
     var takeChoices: [TakeStyle]?
+    /// The ways to go on the model offered with its last answer, as cards on the canvas (Agent.swift).
+    var nextSteps: NextSteps?
+    /// What the model is looking up right now («Looking at the token»), under the chat's thinking dots.
+    var agentStep: String?
     var schedules: [Schedule] = (UserDefaults.standard.data(forKey: Workspace.scoped("schedules")).flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) }) ?? [] {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(schedules), forKey: Workspace.scoped("schedules", activeWalletID)) }
     }
@@ -427,6 +431,9 @@ final class Workspace {
         thinking = true
         defer { thinking = false }
         finishedAction = nil
+        // The cards of the last answer go with any new message; the model still knows them («да», «второй»).
+        let offered = nextSteps?.options ?? []
+        nextSteps = nil
         // Every message starts an activity; whatever is on the canvas when it's handled is frozen into it.
         beginActivity(.request, request: text)
         defer { snapshotCanvas(); saveCanvas() }
@@ -564,7 +571,7 @@ final class Workspace {
         // the same parsers, checks, Jev and confirmations as a typed command. The local parsers below read the message
         // as typed when no model is connected or it can't be reached.
         if let client = llmClient() {
-            await routeWithModel(text, client: client, before: before)
+            await routeWithModel(text, client: client, before: before, offered: offered)
             return
         }
         // No model connected: the local parsers read the message as typed.
@@ -662,20 +669,31 @@ final class Workspace {
     /// The model's reading of the message (ChatRouter) — the only reading while a model is connected: keywords guess,
     /// and a wrong guess about money is worse than a question. The model is asked twice; if it still can't be reached,
     /// nothing is done and the chat says so.
-    private func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent) async {
+    private func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent, offered: [ChatRouter.Option] = []) async {
         busy = true
-        var route: ChatRouter.Route?
+        var reading: ChatRouter.Reading?
         var failure = ""
-        for _ in 0..<2 where route == nil {
+        let context = routerContext(offered: offered)
+        // The model's lookups run here, on this canvas's data; the chat shows which one is under way.
+        let lookup: @Sendable (ChatRouter.Lookup) async -> String = { [weak self] l in await self?.agentLookup(l) ?? "" }
+        for _ in 0..<2 where reading == nil {
             do {
-                route = try await ChatRouter.route(text, context: routerContext(), client: client, model: model)
+                reading = try await ChatRouter.route(text, context: context, client: client, model: model, lookup: lookup)
             } catch {
                 failure = error.localizedDescription
                 FileHandle.standardError.write(Data("LALA router: \(error)\n".utf8))
             }
         }
         busy = false
-        switch route {
+        agentStep = nil
+        if let reading, !reading.lookups.isEmpty {
+            updateActivity { $0.understood = "looked up " + reading.lookups.map { "\($0.tool) \($0.arg)" }.joined(separator: ", ") }
+        }
+        // The block the answer points to opens with it; the cards follow the reply.
+        if let reading { await show(reading, userText: text) }
+        defer { if let reading { offer(reading, userText: text) } }
+        let note = reading.map { $0.lookups.isEmpty ? model : "\(model) · looked at \(Set($0.lookups.map(\.tool)).sorted().joined(separator: ", "))" } ?? model
+        switch reading?.route {
         case nil:
             reply(say("I couldn’t reach \(model) (\(failure.prefix(140))), so I didn’t act on this — nothing moved. Send it again, or pick another model above.",
                       "Не достучался до \(model) (\(failure.prefix(140))), поэтому ничего не сделал — ничего не ушло. Отправь ещё раз или выбери другую модель сверху."), note: model)
@@ -689,9 +707,9 @@ final class Workspace {
                 await editPlanWithModel(text, client: client, before: before)
                 if let off = tradeRefusal { reply(off, note: model) }
             }
-        case .chat(let r)?, .clarify(let r)?: reply(r, note: model)
+        case .chat(let r)?, .clarify(let r)?: reply(r, note: note)
         case .command(let canonical)?:
-            guard ChatRouter.addressesAllowed(canonical, userText: text, known: favoriteTokens.map(\.address)) else {
+            guard ChatRouter.addressesAllowed(canonical, userText: text, known: favoriteTokens.map(\.address) + (Self.displays(canonical) ? reading?.found ?? [] : [])) else {
                 reply(say("I read that as “\(canonical)”, but its address is neither in your message nor among your favorites, so I won’t use it. Paste the address itself.",
                           "Я понял это как «\(canonical)», но этого адреса нет ни в твоём сообщении, ни в избранном, поэтому я его не использую. Вставь сам адрес."), note: model)
                 return
@@ -705,9 +723,10 @@ final class Workspace {
 
     /// What the model may know besides the message: the chat, the plan, positions, favorites, address book names and
     /// the main balances. Never keys or the user's own addresses.
-    private func routerContext() -> ChatRouter.Context {
+    private func routerContext(offered: [ChatRouter.Option] = []) -> ChatRouter.Context {
         var c = ChatRouter.Context()
         c.recent = Array(recentChat().dropLast())   // the last line is the message itself
+        c.offered = offered.map { "\($0.title) → \($0.command)\($0.recommended ? " (recommended)" : "")" }
         if intent != TradeIntent(), let json = try? JSONEncoder().encode(intent) { c.plan = String(decoding: json, as: UTF8.self) }
         c.positions = positions.map { "\($0.size > 0 ? "long" : "short") \(IntentParser.pretty($0.coin))" }
         c.favorites = favoriteTokens.map { "\($0.symbol) (\($0.name)) = \($0.address) on \($0.chainTitle)" }

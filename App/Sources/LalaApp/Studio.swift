@@ -894,6 +894,8 @@ struct StudioCanvas: View {
                     .padding(.bottom, 10)
                     .transition(.opacity)
             }
+            // The model's ways to go on, under the block its answer opened.
+            if let steps = ws.nextSteps, steps.canvas == ws.canvasID { NextStepsBoard(steps: steps).padding(.bottom, 10) }
             // The rail's buttons put their boards here too.
             if ws.showReceive { ReceiveBoard() }
             if ws.showFavorites { FavoritesBoard().transition(.opacity) }
@@ -933,7 +935,7 @@ struct StudioCanvas: View {
             if nodes.isEmpty {
                 if ws.yieldOptions == nil, ws.allocationPreview == nil, ws.rebalancePlan == nil {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
-                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil,
+                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, ws.nextSteps == nil, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil,
                               (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty { placeholder }
                 }
             } else {
@@ -1770,7 +1772,7 @@ struct FloatingChat: View {
             ScrollViewReader { proxy in
                 ScrollView {
                     LazyVStack(alignment: .leading, spacing: 14) {
-                        ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing, thinking: ws.thinking)
+                        ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing, thinking: ws.thinking, step: ws.agentStep)
                         if ws.messages.count <= 1 {
                             Text("Your portfolio is on the canvas. Tell me what to do with your money — in any language — and I’ll build the plan next to it. Nothing moves without your signature.")
                                 .font(.ui(14)).foregroundStyle(.secondary)
