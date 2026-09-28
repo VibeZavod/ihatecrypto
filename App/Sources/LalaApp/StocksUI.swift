@@ -115,7 +115,15 @@ struct RobinhoodCard: View {
                     .buttonStyle(.plain).help("\(s.symbol): chart and details")
                 }
                 if r.usdg > 0 {
-                    HStack { Text("USDG").font(.caption); Spacer(); Text(Fmt.num(r.usdg)).font(.caption.weight(.semibold)).monospacedDigit() }
+                    HStack(spacing: 8) {
+                        TokenLogo(name: "usdg", size: 22)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text("USDG").font(.system(size: 12.5, weight: .bold))
+                            Text("\(Fmt.num(r.usdg)) · $1.00").font(.caption2).foregroundStyle(.secondary)
+                        }
+                        Spacer()
+                        Text(Fmt.usd(r.usdg)).font(.system(size: 12.5, weight: .bold)).monospacedDigit()
+                    }
                 }
             }
             .padding(11)
