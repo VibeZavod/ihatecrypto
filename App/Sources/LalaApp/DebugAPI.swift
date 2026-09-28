@@ -41,10 +41,14 @@ final class DebugAPI {
         let file = LocalStore.url("debug-token")
         try? FileManager.default.removeItem(at: file)
         FileManager.default.createFile(atPath: file.path, contents: Data(token.utf8), attributes: [.posixPermissions: 0o600])
+        // The loopback interface only: nothing from the network can reach it.
         let parameters = NWParameters.tcp
-        parameters.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: port)
+        parameters.requiredInterfaceType = .loopback
         parameters.allowLocalEndpointReuse = true
         guard let listener = try? NWListener(using: parameters, on: port) else { return }
+        listener.stateUpdateHandler = { state in
+            if case .failed(let error) = state { FileHandle.standardError.write(Data("LALA debug API: \(error)\n".utf8)) }
+        }
         listener.newConnectionHandler = { connection in
             connection.start(queue: .main)
             Self.read(connection, Data())

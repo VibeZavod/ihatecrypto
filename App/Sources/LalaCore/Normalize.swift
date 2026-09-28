@@ -61,7 +61,10 @@ public enum ChatRouter {
     and the HLP vault); Jupiter Lend and Kamino on Solana; Base (Aave, Morpho, idle USDC); Arbitrum (idle USDC); Robinhood \
     Chain (USDG, stock tokens, tokens by contract); NEAR.
     How money moves: through Solana. Solana ⇄ Base, Arbitrum and Robinhood Chain over Relay; Hyperliquid → Solana; a trade \
-    plan brings USDC from Solana to Hyperliquid by itself; NEAR ⇄ Solana USDC through NEAR Intents (buy NEAR / sell NEAR); vaults are entered and left from Solana (Aave and Morpho from Base). \
+    plan brings USDC from Solana to Hyperliquid by itself; NEAR ⇄ Solana USDC through NEAR Intents (buy NEAR / sell NEAR); every vault is entered from Solana and left back to Solana \
+    in ONE command — Aave and Morpho too: «withdraw USDC from Aave» withdraws on Base and bridges to Solana by itself, so never \
+    split it into two steps. Selling stock tokens or tokens by contract leaves USDG on Robinhood Chain; «move USDG from Robinhood \
+    to Solana» brings it back. \
     Between two places that aren't Solana there is no direct move: it's two steps through Solana.
 
     Return only a JSON object: {"route": "command" | "question" | "plan" | "chat" | "clarify", "command": "...", "reply": "..."}
