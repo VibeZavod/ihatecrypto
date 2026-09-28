@@ -513,8 +513,8 @@ func signed(_ d: Decimal) -> String { d < 0 ? Fmt.usd(d) : "+" + Fmt.usd(d) }
 /// coin is the assistant's face in the chat, and its expression says what it's doing.
 struct LalaLogo: View {
     /// idle: the brand's eye-roll, still. The rest are the assistant's states from the brand board: waiting for Confirm,
-    /// building the route, done, error.
-    enum Mood { case idle, waiting, thinking, done, error }
+    /// building the route, done, error; and tuning (brows up, looking down at an open menu or Settings), listening.
+    enum Mood { case idle, waiting, thinking, done, error, tuning, listening }
     var size: CGFloat = 34
     var mood: Mood = .idle
     /// The chat's avatar moves: the eyes roll while it waits for Confirm, the ridge turns and the eyes look around while
@@ -528,7 +528,7 @@ struct LalaLogo: View {
 
     var body: some View {
         let live = animated && !reduceMotion
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !(live && (mood == .waiting || mood == .thinking)))) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !(live && [.waiting, .thinking, .listening].contains(mood)))) { timeline in
             let t = live ? timeline.date.timeIntervalSinceReferenceDate : 0
             Canvas { context, s in draw(&context, s, t: t) }
         }
@@ -590,6 +590,21 @@ struct LalaLogo: View {
             } else {
                 face.move(to: p(54, 98)); face.addQuadCurve(to: p(86, 96), control: p(70, 92))
             }
+        case .tuning, .listening:
+            // Tuning: brows up, the eyes down and to the left at the menu, a small «o». Listening: eyes ahead, the «o»
+            // opening and closing as if taking the words in.
+            let (dx, dy): (CGFloat, CGFloat) = mood == .tuning ? (-3, 6) : (0, 0)
+            for x in [50.0, 90.0] {
+                context.fill(circle(x, 62, 17), with: .color(.white))
+                context.stroke(circle(x, 62, 17), with: ink, lineWidth: 5 * k)
+                context.fill(circle(x + dx, 62 + dy, 8), with: ink)
+            }
+            if mood == .tuning {
+                face.move(to: p(34, 36)); face.addQuadCurve(to: p(62, 36), control: p(48, 28))
+                face.move(to: p(78, 36)); face.addQuadCurve(to: p(106, 36), control: p(92, 28))
+            }
+            let r = mood == .tuning ? 6 : 6 + 2.5 * abs(sin(t * 5))
+            context.stroke(circle(70, 97, r), with: ink, lineWidth: 7 * k)
         case .done:
             face.move(to: p(36, 64)); face.addQuadCurve(to: p(64, 64), control: p(50, 48))
             face.move(to: p(76, 64)); face.addQuadCurve(to: p(104, 64), control: p(90, 48))
@@ -1061,13 +1076,15 @@ struct CanvasViewport<Content: View>: View {
         let scale = base * k
         let live = CGSize(width: pan.width + drag.width, height: pan.height + drag.height)
         let moved = CanvasZoom.pan(keeping: (pinchAt.x, pinchAt.y), from: (live.width, live.height), by: k)
-        return ZStack(alignment: .topLeading) {
-            // The ground (color and dots) is StudioView's, under the rail too; this only takes the gestures.
-            Color.clear
-            content
-                .scaleEffect(scale, anchor: .topLeading)
-                .offset(CGSize(width: moved.x, height: moved.y))
-        }
+        // The ground (color and dots) is StudioView's, under the rail too; this only takes the gestures.
+        // The content hangs in an overlay so the viewport keeps the window's size: a board taller than the window
+        // (Favorites, History) no longer stretches it and pushes the zoom bar below the bottom edge.
+        return Color.clear
+            .overlay(alignment: .topLeading) {
+                content
+                    .scaleEffect(scale, anchor: .topLeading)
+                    .offset(CGSize(width: moved.x, height: moved.y))
+            }
         .clipped()
         .contentShape(Rectangle())
         .gesture(DragGesture(minimumDistance: 6)
@@ -1696,7 +1713,7 @@ struct FloatingChat: View {
                 LalaLogo(size: 30, mood: mood, animated: true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Assistant").font(.ui(14, .semibold))
-                    ChatModelMenu()
+                    Text(status).font(.caption).foregroundStyle(.secondary).lineLimit(1)
                 }
                 Spacer()
                 Button { withAnimation(StudioView.spring) { ws.newCanvas() } } label: { headerIcon("square.and.pencil") }
@@ -1761,13 +1778,29 @@ struct FloatingChat: View {
         Image(systemName: name).font(.system(size: 13, weight: .semibold))
     }
 
-    /// The coin's face in the header: working, waiting for the user, done, or something went wrong.
+    /// The coin's face in the header: working, waiting for the user, done, or something went wrong; listening, or
+    /// looking at a menu or Settings the person has open.
     private var mood: LalaLogo.Mood {
         if ws.executionError != nil { return .error }
         if ws.thinking || ws.executing || ws.preparing || ws.assembly != nil { return .thinking }
+        if ws.voice.listening { return .listening }
+        if ws.tuning != nil { return .tuning }
         if ws.pendingText != nil || ws.pendingAllocation != nil { return .waiting }
         if let outcome = (ws.savedBoard ?? ws.finishedCanvas)?.outcome { return outcome.ok ? .done : .error }
         return .idle
+    }
+
+    /// The line under «Assistant», in step with the face.
+    private var status: String {
+        switch mood {
+        case .error: "Something went wrong"
+        case .thinking: ws.executing ? "Carrying it out" : "Working on it"
+        case .listening: "Listening…"
+        case .tuning: ws.tuning ?? ""
+        case .waiting: "Waiting for your Confirm"
+        case .done: "Done"
+        case .idle: "Waiting for you"
+        }
     }
 }
 
@@ -1845,12 +1878,78 @@ private struct ChatActions: View {
     }
 }
 
-/// The chat's input. Its own view: a keystroke redraws the field and its buttons, not the conversation above it.
+/// The chat's input: the model and the networks above it, the field with the microphone. Its own view: a keystroke or
+/// the voice's wave redraws the field and its buttons, not the conversation above it.
 private struct ChatComposer: View {
     @Environment(Workspace.self) private var ws
     @State private var templatesOpen = false
 
     var body: some View {
+        let voice = ws.voice
+        VStack(alignment: .leading, spacing: 8) {
+            if voice.listening {
+                HStack(spacing: 8) {
+                    Circle().fill(Brand.accent).frame(width: 8, height: 8)
+                        .background(Circle().fill(Brand.accent.opacity(0.25)).frame(width: 16, height: 16))
+                    Text("Listening").font(.ui(12, .semibold))
+                    Text(voice.onDevice ? "· recognized on this Mac" : "· recognized by Apple").font(.caption).foregroundStyle(.secondary)
+                }
+                .frame(height: 30).padding(.horizontal, 6)
+            } else {
+                HStack(spacing: 6) {
+                    ChatModelMenu()
+                    NetworksChip()
+                }
+            }
+            if case .failed(let why) = voice.state {
+                Label(why, systemImage: "mic.slash").font(.caption).foregroundStyle(.orange).lineLimit(3)
+            }
+            if voice.listening { listening(voice) } else { field }
+        }
+        .padding(12)
+        // Whatever was heard goes into the field when listening ends (Done, or the recognizer stopping by itself);
+        // the person reads it and sends it.
+        .onChange(of: voice.listening) { was, now in
+            if was, !now, !voice.transcript.isEmpty {
+                ws.draft = [ws.draft, voice.transcript].filter { !$0.isEmpty }.joined(separator: " ")
+            }
+        }
+    }
+
+    private func listening(_ voice: VoiceInput) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text(voice.transcript.isEmpty ? "Say what to do…" : voice.transcript)
+                .font(.ui(14)).foregroundStyle(voice.transcript.isEmpty ? .secondary : .primary)
+                .lineLimit(5).frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 8) {
+                HStack(spacing: 3) {
+                    ForEach(Array(voice.levels.enumerated()), id: \.offset) { _, level in
+                        Capsule().fill(Brand.accent).frame(width: 3, height: 4 + 22 * level)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: 30, alignment: .leading)
+                .clipped()
+                TimelineView(.periodic(from: voice.startedAt, by: 1)) { context in
+                    let s = max(0, Int(context.date.timeIntervalSince(voice.startedAt)))
+                    Text(String(format: "%d:%02d", s / 60, s % 60)).font(.ui(12, .semibold)).monospacedDigit().foregroundStyle(.secondary)
+                }
+                Button { voice.cancel() } label: { circleIcon("xmark", fill: Color.primary.opacity(0.08), ink: .primary) }
+                    .buttonStyle(.plain).keyboardShortcut(.cancelAction).help("Cancel · Esc")
+                Button { Task { await voice.finish() } } label: { circleIcon("checkmark", fill: Brand.accent, ink: Brand.onAccent) }
+                    .buttonStyle(.plain).keyboardShortcut(.return, modifiers: []).help("Done: put the words in the field · Return")
+            }
+        }
+        .padding(.top, 10).padding(.bottom, 5).padding(.leading, 14).padding(.trailing, 5)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Brand.glassFill))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Brand.accent, lineWidth: 1.5))
+    }
+
+    private func circleIcon(_ name: String, fill: Color, ink: Color) -> some View {
+        Image(systemName: name).font(.system(size: 13, weight: .bold)).foregroundStyle(ink)
+            .frame(width: 34, height: 34).background(Circle().fill(fill)).contentShape(Circle())
+    }
+
+    private var field: some View {
         HStack(alignment: .bottom, spacing: 8) {
             Button { templatesOpen.toggle() } label: {
                 Image(systemName: "square.grid.2x2").font(.system(size: 14, weight: .semibold))
@@ -1869,6 +1968,12 @@ private struct ChatComposer: View {
                 .textFieldStyle(.plain).font(.ui(14)).lineLimit(1...5)
                 .padding(.vertical, 8)
                 .onSubmit(send)
+            Button { Task { await ws.voice.start(russian: ws.replyLanguage == "Russian") } } label: {
+                Image(systemName: "mic").font(.system(size: 14, weight: .semibold))
+                    .frame(width: 34, height: 34).contentShape(Circle())
+            }
+            .buttonStyle(.hoverIcon)
+            .help("Speak instead of typing")
             Button(action: send) {
                 Image(systemName: "arrow.up").font(.system(size: 13, weight: .bold))
                     .foregroundStyle(ws.draft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Brand.onAccent))
@@ -1884,7 +1989,6 @@ private struct ChatComposer: View {
         // A glass pill on the glass chat: white in light mode, faint in dark.
         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Brand.glassFill))
         .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Brand.glassRim))
-        .padding(12)
     }
 
     private func send() {
@@ -1895,7 +1999,7 @@ private struct ChatComposer: View {
     }
 }
 
-/// «[logo] GPT 6 SOL ▾»: the model for the chat, right under LALA AI. The choice is kept per canvas.
+/// «[logo] GPT 6 SOL ▾»: the model for the chat, a chip above its field. The choice is kept per canvas.
 /// The menu lists companies; one with several ways in (subscription, API key) always stands open, so the menu keeps
 /// its height: a popover that resizes moves itself, and the row under the pointer with it.
 struct ChatModelMenu: View {
@@ -1919,20 +2023,27 @@ struct ChatModelMenu: View {
             expanded = (twoWay.first { $0.ids.contains(ws.providerID) } ?? twoWay.first)?.name
             open = true
         } label: {
-            HStack(spacing: 4) {
-                if let c = ModelCompany.of(ws.providerID) { ModelCompanyLogo(company: c, size: 15) }
+            // A chip above the chat's field, next to the networks.
+            HStack(spacing: 6) {
+                if let c = ModelCompany.of(ws.providerID) { ModelCompanyLogo(company: c, size: 20).clipShape(Circle()) }
                 Text(ws.model.isEmpty ? ws.provider.info.name : LLMCatalog.displayName(model: ws.model)).lineLimit(1)
-                Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
+                    .font(.ui(12, .semibold))
+                Image(systemName: "chevron.down").font(.system(size: 8, weight: .bold)).foregroundStyle(.secondary)
             }
-            .font(.caption).foregroundStyle(Brand.accentInk)
-            .padding(.leading, 3).padding(.trailing, 6).padding(.vertical, 2)
-            .background(Capsule().fill(Brand.accent.opacity(open ? 0.12 : 0)))
+            .padding(.leading, 5).padding(.trailing, 9).frame(height: 30)
+            .background(Capsule().fill(open ? Brand.accent.opacity(0.14) : Brand.glassFill))
+            .overlay(Capsule().strokeBorder(Brand.glassRim))
+            .contentShape(Capsule())
         }
         .buttonStyle(.plain)
         .fixedSize()
         .help("\(ws.provider.info.name) · \(ws.model). The model for this canvas; it never sees your wallet key.")
-        .popover(isPresented: $open, arrowEdge: .bottom) { menu }
-        .onChange(of: open) { if !open { closedAt = .now } }
+        .popover(isPresented: $open, arrowEdge: .top) { menu }
+        .onChange(of: open) {
+            if !open { closedAt = .now }
+            // Closing doesn't clear what Settings, opened from this menu, has just set.
+            if open { ws.tuning = "Picking a model" } else if ws.tuning == "Picking a model" { ws.tuning = nil }
+        }
     }
 
     private var menu: some View {
@@ -1945,7 +2056,12 @@ struct ChatModelMenu: View {
             HStack {
                 Label("The model never sees your wallet key.", systemImage: "lock.shield").font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button("Sign-ins…") { open = false; openSettings() }.buttonStyle(.borderless).font(.caption)
+                Button("Sign-ins…") {
+                    open = false
+                    UserDefaults.standard.set("general", forKey: SettingsView.tabKey)
+                    openSettings()
+                }
+                .buttonStyle(.borderless).font(.caption)
             }
             .padding(.horizontal, 10).padding(.bottom, 4)
         }
@@ -1991,7 +2107,7 @@ struct ChatModelMenu: View {
         ws.providerID = info.id
         ws.saveCanvas()
         open = false
-        if !connected(info) { openSettings() }
+        if !connected(info) { UserDefaults.standard.set("general", forKey: SettingsView.tabKey); openSettings() }
     }
 
     private func connected(_ info: ProviderInfo) -> Bool { info.kind == .local || linked.contains(info.id) }

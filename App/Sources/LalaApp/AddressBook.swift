@@ -687,6 +687,7 @@ extension Workspace {
             reply("“\(entry.name)” needs a memo / tag, and ihatecrypto can’t add one to a Solana transfer yet — send it from the exchange’s app instead.", note: note)
             return
         }
+        if let off = transferRefusal(entry) { reply(off, note: note); return }
         pendingAction = .transfer(entry, amount)
         pendingText = "send \(Fmt.num(amount)) USDC to \(entry.name)"
         let ends = AddressCheck.ends(entry.address)
@@ -695,6 +696,7 @@ extension Workspace {
 
     func transfer(_ amount: Decimal, to entry: SavedAddress) async {
         guard let wallet = signerWallet else { reply("Transfers work in the app once the key is in secure storage."); return }
+        if let off = transferRefusal(entry) { reply(off); return }
         executing = true
         defer { executing = false }
         let title = "Send \(Fmt.num(amount)) USDC to \(entry.name)"

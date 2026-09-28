@@ -25,6 +25,8 @@ public enum ChatRouter {
         public var balances: [String] = []
         /// «Russian» or «English»: the language chat and clarify replies are written in (ChatLanguage).
         public var replyLanguage = "English"
+        /// Networks, kinds and protocols switched off in Settings › Modules (`Modules.offSummary`); empty when none.
+        public var off = ""
         public init() {}
     }
 
@@ -100,6 +102,10 @@ public enum ChatRouter {
         if !context.favorites.isEmpty { lines.append("Favorite tokens: " + context.favorites.joined(separator: "; ")) }
         if !context.addressBook.isEmpty { lines.append("Address book names: " + context.addressBook.joined(separator: ", ")) }
         if !context.balances.isEmpty { lines.append("Balances: " + context.balances.joined(separator: "; ")) }
+        if !context.off.isEmpty {
+            lines.append("Switched off in Settings › Modules: \(context.off). Never offer or build a move that uses them; "
+                         + "when asked for one, reply (chat) that it is off in Settings › Modules.")
+        }
         lines.append("Reply language: " + context.replyLanguage)
         lines.append("Message: " + text)
         let reply = try await client.complete(LLMRequest(model: model, messages: [

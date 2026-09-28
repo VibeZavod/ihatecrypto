@@ -85,7 +85,9 @@ extension Executor {
             places.append(.init(name: "HLP (Hyperliquid)", apy: a, amount: hlp.equity, exitCost: Decimal(string: "0.02")!, locked: locked,
                                 closed: "HLP takes deposits by its own command («deposit 5 USDC to HLP»): $5 minimum and a 4-day lock"))
         }
-        return places
+        // A vault switched off in Settings › Modules is left alone: nothing moves into it or out of it.
+        let modules = Modules.current
+        return places.filter { modules.refusal(vault: $0.name) == nil }
     }
 
     private func rebalanceWithdraw(_ place: String, _ amount: Decimal, from places: [Rebalance.Place]) async throws {

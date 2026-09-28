@@ -480,16 +480,18 @@ extension Executor {
         }
         let total = free + jupiter + kamino + jito + (aave?.supplied ?? 0)
         let kaminoRentUSD = Decimal(string: "0.0298")! * solPrice
+        // A vault switched off in Settings › Modules is skipped, with the reason in the notes.
+        let modules = Modules.current
         let places: [Allocation.Place] = options.compactMap { o in
             switch o.place {
-            case "Jupiter Lend": return .init(name: o.place, apy: o.apy, existing: jupiter)
-            case "JitoSOL staking": return .init(name: o.place, apy: o.apy, existing: jito)
+            case "Jupiter Lend": return .init(name: o.place, apy: o.apy, existing: jupiter, blocked: modules.refusal(vault: o.place))
+            case "JitoSOL staking": return .init(name: o.place, apy: o.apy, existing: jito, blocked: modules.refusal(vault: o.place))
             case "Kamino Lend":
                 // The first deposit's rent is a cost, not a refundable deposit: worth it only for a big enough slice.
                 let slice = min(free, total * maxShare / 100 - kamino) * (isSOL ? solPrice : 1)
                 let blocked = kamino == 0 && kaminoRentUSD > slice / 10
                     ? "the first deposit creates Kamino accounts for ≈ \(Fmt.usd(kaminoRentUSD)) of rent, more than 10% of the \(Fmt.usd(slice)) slice" : nil
-                return .init(name: o.place, apy: o.apy, existing: kamino, blocked: blocked)
+                return .init(name: o.place, apy: o.apy, existing: kamino, blocked: modules.refusal(vault: o.place) ?? blocked)
             case "HLP (Hyperliquid)":
                 return .init(name: o.place, apy: o.apy, blocked: "another network: bridge, $5 minimum and a 4-day lock — use a separate command, «deposit 5 USDC to HLP»")
             default: return nil
@@ -503,7 +505,8 @@ extension Executor {
             let slice = max(0, min(free, total * maxShare / 100 - aave.supplied))
             let yearly = slice * aave.apy / 100
             all.append(.init(name: "Aave · Base", apy: aave.apy, existing: aave.supplied,
-                             blocked: cost > yearly / 2 ? "on Base: the bridge and gas (≈ \(Fmt.usd(cost))) cost more than half a year of this slice's interest (≈ \(Fmt.usd(yearly)) a year)" : nil))
+                             blocked: modules.refusal(vault: "Aave · Base")
+                                ?? (cost > yearly / 2 ? "on Base: the bridge and gas (≈ \(Fmt.usd(cost))) cost more than half a year of this slice's interest (≈ \(Fmt.usd(yearly)) a year)" : nil)))
         }
         let plan = Allocation.plan(free: free, places: all, maxShare: maxShare, minSlice: isSOL ? Decimal(string: "0.003")! : Decimal(string: "0.5")!)
         func amount(_ d: Decimal) -> String { Fmt.num(d, maxFraction: isSOL ? 6 : 2) + " " + asset }

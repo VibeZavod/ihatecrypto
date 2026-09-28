@@ -166,6 +166,11 @@ final class Workspace {
     var currentActivity: UUID?
     /// What the user is typing in the studio chat; templates on the canvas fill it.
     var draft = ""
+    /// Speaking into the chat's field.
+    let voice = VoiceInput()
+    /// A menu or Settings the person has open ("Picking a model", "Choosing networks", "In Settings"): the coin raises
+    /// its brows and looks at it, and the chat's header says so.
+    var tuning: String?
     /// «Spread … across the best rates» waiting for a signature, drawn on the studio canvas.
     var allocationPreview: AllocationPreview?
     /// «Переложи в лучшие ставки» waiting for its signature: the plan, drawn on the canvas it was made on (RebalanceBoard).
@@ -650,7 +655,15 @@ final class Workspace {
             reply(say("I couldn’t reach \(model) (\(failure.prefix(140))), so I didn’t act on this — nothing moved. Send it again, or pick another model above.",
                       "Не достучался до \(model) (\(failure.prefix(140))), поэтому ничего не сделал — ничего не ушло. Отправь ещё раз или выбери другую модель сверху."), note: model)
         case .question?: await answer(text)
-        case .plan?: await editPlanWithModel(text, client: client, before: before)
+        case .plan?:
+            // With both perps and xyz markets off there's no trade to build; otherwise Execute checks the market.
+            if let off = Modules.current.refusal(trade: false, bridges: false, ru: modulesRussian),
+               Modules.current.refusal(trade: true, bridges: false) != nil {
+                reply(off, note: model)
+            } else {
+                await editPlanWithModel(text, client: client, before: before)
+                if let off = tradeRefusal { reply(off, note: model) }
+            }
         case .chat(let r)?, .clarify(let r)?: reply(r, note: model)
         case .command(let canonical)?:
             guard ChatRouter.addressesAllowed(canonical, userText: text, known: favoriteTokens.map(\.address)) else {
@@ -675,6 +688,7 @@ final class Workspace {
         c.favorites = favoriteTokens.map { "\($0.symbol) (\($0.name)) = \($0.address) on \($0.chainTitle)" }
         c.addressBook = addressBook.map(\.name)
         c.replyLanguage = replyLanguage
+        c.off = Modules.current.offSummary
         if let s = solana { c.balances.append("Solana \(Fmt.num(s.usdc)) USDC, \(Fmt.num(s.sol, maxFraction: 4)) SOL") }
         // Every place with money, so «выведи всё из Jupiter» needs no question about which asset is there.
         if let h = hl { c.balances.append("Hyperliquid trading balance \(Fmt.usd(h.accountValue)), withdrawable \(Fmt.usd(h.withdrawable))") }

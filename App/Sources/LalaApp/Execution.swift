@@ -142,6 +142,7 @@ extension Workspace {
     func prepareExecution() async {
         guard let wallet = previewWallet else { return }
         if let missing = missingTradingKey { executionError = missing; return }
+        if let off = tradeRefusal { executionError = off; return }
         preparing = true
         executionError = nil
         txReview = nil
@@ -228,6 +229,8 @@ extension Workspace {
             reply("Transfers work in the app once the key is in secure storage.")
             return
         }
+        // Again at Confirm: a card parked on a canvas may come back after its module was switched off.
+        if let off = moduleRefusal(command) { reply(off); return }
         if case .yields(let asset) = command {
             // Read-only: the rates are drawn on the canvas.
             yieldOptions = await Yields.options(for: asset)
@@ -486,6 +489,12 @@ extension Workspace {
         guard let wallet = signerWallet, !executing else { return }
         for index in schedules.indices where schedules[index].next <= Date() {
             guard let asset = schedules[index].asset else { continue }
+            // Jupiter or Solana switched off: this run is skipped, the schedule stays.
+            if let off = Modules.current.refusal(.jupiter, ru: modulesRussian) {
+                schedules[index].advance()
+                notify(.moves, say("Scheduled \(asset.symbol) buy skipped", "Регулярная покупка \(asset.symbol) пропущена"), off)
+                continue
+            }
             let usdc = schedules[index].usdc
             schedules[index].advance()
             executing = true

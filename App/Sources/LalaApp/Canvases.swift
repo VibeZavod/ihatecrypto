@@ -1119,6 +1119,7 @@ extension Workspace {
     func handleWallet(_ command: WalletCommand, note: String? = nil) async {
         updateActivity { $0.understood = command.summary }
         if let missing = missingKey(for: command) { reply(missing, note: note); return }   // a key wallet without this chain (Wallets.swift)
+        if let off = moduleRefusal(command) { reply(off, note: note); return }   // switched off in Settings › Modules
         if case .sendTo(let name, let amount) = command { prepareTransfer(amount, to: name, note: note); return }
         if case .receive = command {
             withAnimation(StudioView.spring) { showReceive = true }

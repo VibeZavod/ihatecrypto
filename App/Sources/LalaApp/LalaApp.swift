@@ -400,8 +400,21 @@ struct MarketPicker: View {
 struct SettingsView: View {
     @Environment(Workspace.self) private var ws
     @State private var confirmForget = false
+    /// The open tab; the chat's networks menu opens Settings straight on «modules».
+    static let tabKey = "settingsTab"
+    @AppStorage(SettingsView.tabKey) private var tab = "general"
 
     var body: some View {
+        TabView(selection: $tab) {
+            general.tabItem { Label("General", systemImage: "gearshape") }.tag("general")
+            ModulesSettings().tabItem { Label("Modules", systemImage: "square.grid.2x2") }.tag("modules")
+        }
+        // The chat's coin raises its brows and looks at Settings while they're open.
+        .onAppear { ws.tuning = "In Settings" }
+        .onDisappear { ws.tuning = nil }
+    }
+
+    @ViewBuilder private var general: some View {
         @Bindable var ws = ws
         Form {
             Section("Public addresses") {

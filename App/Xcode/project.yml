@@ -39,6 +39,10 @@ targets:
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.finance
+        # The chat's microphone: speech becomes text in the field, which the person reads and sends.
+        CODE_SIGN_ENTITLEMENTS: LALA.entitlements
+        INFOPLIST_KEY_NSMicrophoneUsageDescription: "After you click the chat's microphone, ihatecrypto listens and types what you say into the field. Nothing is sent until you send it."
+        INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "What you say in the chat becomes text in its field, recognized on this Mac when your language's model is installed."
   # Sandboxed, no network entitlement: it can only answer the app over XPC and read its own Keychain group.
   LalaSigner:
     type: xpc-service
