@@ -882,7 +882,7 @@ struct CanvasViewport<Content: View>: View {
         // Pinch with two fingers: in and out around the point between them.
         .simultaneousGesture(MagnifyGesture()
             .updating($pinch) { value, state, _ in state = value.magnification }
-            .onChanged { value in pinchAt = value.startLocation }
+            .onChanged { value in pinchAt = value.startLocation; CanvasSharpness.shared.hold() }
             .onEnded { value in zoomAbout(value.startLocation, by: value.magnification) })
         .onContinuousHover { phase in
             switch phase {
@@ -895,7 +895,8 @@ struct CanvasViewport<Content: View>: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasFit)) { _ in zoom = 1; pan = .zero }
         .onAppear(perform: watchScrolling)
-        .onDisappear { if let m = scrollMonitor { NSEvent.removeMonitor(m); scrollMonitor = nil } }
+        .onDisappear { if let m = scrollMonitor { NSEvent.removeMonitor(m); scrollMonitor = nil }; CanvasSharpness.shared.track(false) }
+        .onChange(of: scale >= CanvasSharpness.from, initial: true) { _, on in CanvasSharpness.shared.track(on) }
         .overlay(alignment: .bottomLeading) { zoomBar(scale).padding(18) }
     }
 
@@ -907,6 +908,7 @@ struct CanvasViewport<Content: View>: View {
         pan = CGSize(width: moved.x, height: moved.y)
         zoom = next
         pinchAt = .zero
+        CanvasSharpness.shared.hold()
     }
 
     /// Trackpad two-finger scrolling pans; ⌘ + scroll zooms (for a mouse wheel). Over the chat, scrolling stays the chat's.
@@ -949,6 +951,71 @@ struct CanvasViewport<Content: View>: View {
         .padding(.leading, 4).padding(.trailing, 10).padding(.vertical, 1)
         .background(RoundedRectangle(cornerRadius: 12).fill(Brand.card))
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Brand.cardBorder))
+    }
+}
+
+/// A zoomed-in canvas stays sharp. SwiftUI draws what a scaleEffect enlarges at the window's scale (2× on Retina) and
+/// Core Animation stretches that bitmap, so at 250 % the text was soft. Each drawing layer under the zoom gets
+/// 2 × zoom instead. SwiftUI puts the window's scale back on every layer it updates (a changed number, a hover),
+/// so this runs after each Core Animation commit while the canvas is zoomed in; the fixed layer is drawn again at
+/// once, before the next frame. SF Symbols come as ready bitmaps and stay as they are.
+@MainActor
+final class CanvasSharpness {
+    static let shared = CanvasSharpness()
+    /// Below it the stretch doesn't show, and hover lifts (1.02–1.08) aren't worth a redraw.
+    static let from: CGFloat = 1.25
+    private var observer: CFRunLoopObserver?
+    private var holdUntil: CFTimeInterval = 0
+    private var drawing: [ObjectIdentifier: Bool] = [:]
+
+    func track(_ zoomedIn: Bool) {
+        if zoomedIn, observer == nil {
+            // Right after Core Animation's own commit observer (order 2000000).
+            let o = CFRunLoopObserverCreateWithHandler(nil, CFRunLoopActivity.beforeWaiting.rawValue, true, 2_000_001) { _, _ in
+                MainActor.assumeIsolated { CanvasSharpness.shared.sharpen() }
+            }
+            CFRunLoopAddObserver(CFRunLoopGetMain(), o, .commonModes)
+            observer = o
+        } else if !zoomedIn, let o = observer {
+            CFRunLoopObserverInvalidate(o)
+            observer = nil
+        }
+    }
+
+    /// A pinch changes the scale every frame and SwiftUI resets every layer each time: sharpen once it stops,
+    /// not 120 times a second at a new size.
+    func hold() {
+        holdUntil = CACurrentMediaTime() + 0.2
+        // Wakes the run loop after the pause, so the observer runs even if nothing else happens.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {}
+    }
+
+    private func sharpen() {
+        guard CACurrentMediaTime() >= holdUntil else { return }
+        for window in NSApp.windows where window.isVisible {
+            if let layer = window.contentView?.layer { sharpen(layer, scale: 1, backing: window.backingScaleFactor) }
+        }
+    }
+
+    private func sharpen(_ layer: CALayer, scale: CGFloat, backing: CGFloat) {
+        let s = scale * hypot(layer.transform.m11, layer.transform.m12)
+        if s >= Self.from, draws(layer) {
+            // In quarter steps, at most 3×: a pixel of the screen or finer, without redrawing on every tiny change.
+            let target = backing * min(3, (s * 4).rounded(.up) / 4)
+            if layer.contentsScale != target { layer.contentsScale = target; layer.setNeedsDisplay() }
+        }
+        layer.sublayers?.forEach { sharpen($0, scale: s, backing: backing) }
+    }
+
+    /// Only layers that draw themselves: SwiftUI's text and shapes, Canvas, AppKit controls. A layer holding a
+    /// ready image (a logo, a symbol) would lose it on a redraw.
+    private func draws(_ layer: CALayer) -> Bool {
+        let type = ObjectIdentifier(Swift.type(of: layer))
+        if let known = drawing[type] { return known }
+        let name = NSStringFromClass(Swift.type(of: layer))
+        let draws = name.hasSuffix("DrawingLayer") || name == "NSViewBackingLayer"
+        drawing[type] = draws
+        return draws
     }
 }
 

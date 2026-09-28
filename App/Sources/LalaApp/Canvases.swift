@@ -1072,7 +1072,7 @@ struct RouteStepView: View {
         // Its own height whatever the canvas proposes: the arrow grows with the text instead of cutting it.
         .fixedSize(horizontal: false, vertical: true)
         .background(ArrowCard(radius: 16, tip: 10).fill(fill.color))
-        .openable(logo: step.logo, showsOpen: false)
+        .openable(logo: step.logo, routeStep: true)
     }
 }
 

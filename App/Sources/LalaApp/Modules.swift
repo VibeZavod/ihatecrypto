@@ -475,8 +475,8 @@ struct PlaceDetailBoard: View {
 
 extension View {
     /// A route step whose logo names a place (Solana, Jupiter, Hyperliquid…) opens that place's details on click.
-    @ViewBuilder func openable(logo: String?, showsOpen: Bool = true) -> some View {
-        if let place = logo.flatMap(Openable.place(logo:)) { modifier(Openable(place: place, showsOpen: showsOpen)) } else { self }
+    @ViewBuilder func openable(logo: String?, routeStep: Bool = false) -> some View {
+        if let place = logo.flatMap(Openable.place(logo:)) { modifier(Openable(place: place, routeStep: routeStep)) } else { self }
     }
 }
 
@@ -488,14 +488,18 @@ struct Openable: ViewModifier {
 
     @Environment(Workspace.self) private var ws
     let place: String
-    /// A portfolio card keeps an outline while its place is open; a route step doesn't (every Solana step would light up).
-    var showsOpen = true
+    /// A portfolio card keeps an outline while its place is open; a route step doesn't (every Solana step would light up),
+    /// and its outline is an arrow like the step.
+    var routeStep = false
     @State private var hover = false
 
     func body(content: Content) -> some View {
-        let open = showsOpen && ws.detail == place
+        let open = !routeStep && ws.detail == place
+        let edge = Brand.accent.opacity(open ? 1 : hover ? 0.6 : 0), width: CGFloat = open ? 2 : 1.5
         content
-            .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent.opacity(open ? 1 : hover ? 0.6 : 0), lineWidth: open ? 2 : 1.5))
+            .overlay {
+                if routeStep { ArrowCard(radius: 16, tip: 10).stroke(edge, lineWidth: width) } else { RoundedRectangle(cornerRadius: 16).strokeBorder(edge, lineWidth: width) }
+            }
             .scaleEffect(hover ? 1.015 : 1)
             .animation(.snappy(duration: 0.18), value: hover)
             .contentShape(Rectangle())
