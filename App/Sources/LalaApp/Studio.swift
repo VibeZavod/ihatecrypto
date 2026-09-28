@@ -655,13 +655,16 @@ struct StudioCanvas: View {
             if ws.showHistory { HistoryBoard().transition(.scale(scale: 0.96, anchor: .top).combined(with: .opacity)) }
             // Moves already done on this canvas stay above the current one.
             EarlierBoards()
-            HStack(spacing: 8) {
-                Text(ws.allocationPreview.map { "Plan · spread \($0.asset) across the best rates" }
-                     ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : board?.title ?? "Plan"))
-                    .font(.system(size: 14, weight: .semibold))
-                StatusChip(text: statusText(nodes), tint: statusTint(nodes))
-                // An open position is on its market for good: nothing to pick until it closes.
-                if hasRoute, !ws.managesPosition { MarketPicker() }
+            // A move waiting for its signature or running has its own title and status: no «Plan · waiting» over it.
+            if hasRoute || ws.allocationPreview != nil || (ws.pendingAction == nil && ws.runningAction == nil) {
+                HStack(spacing: 8) {
+                    Text(ws.allocationPreview.map { "Plan · spread \($0.asset) across the best rates" }
+                         ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : board?.title ?? "Plan"))
+                        .font(.system(size: 14, weight: .semibold))
+                    StatusChip(text: statusText(nodes), tint: statusTint(nodes))
+                    // An open position is on its market for good: nothing to pick until it closes.
+                    if hasRoute, !ws.managesPosition { MarketPicker() }
+                }
             }
             // Only this canvas's own position, or one the user tapped (a tap opens its chart), not every open one:
             // its board with the controls first, the chart under it.
@@ -676,6 +679,7 @@ struct StudioCanvas: View {
                 AllocationBoard(preview: allocation)
             }
             WithdrawBoard()
+            RunningBoard()
             PendingAddressBoard()
             TransferBoard()
             if nodes.isEmpty {

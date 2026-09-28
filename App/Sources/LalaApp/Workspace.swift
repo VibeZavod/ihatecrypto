@@ -59,6 +59,8 @@ final class Workspace {
         didSet { if oldValue, !executing { lastOwnMove = Date() } }
     }
     var executionError: String?
+    /// A confirmed money move while it runs: its route stays on the canvas with the latest step, until the outcome.
+    var runningAction: (title: String, steps: [ActivityBubble], line: String?, started: Date)?
     var planReview: JevReview?
     var txReview: JevReview?
     var jevNote: String?
@@ -395,7 +397,7 @@ final class Workspace {
         // A confirmation from the debug API would only fail at the signer and lose the card: keep it for the window.
         if SignerClient.untrusted, pendingAction != nil || pendingAllocation != nil,
            text.lowercased().contains(/^(?:делай|да|давай|подтверждаю|го|do\s+it|go|yes|confirm|sign)\b/) {
-            reply("Money moves are confirmed in LALA’s window only: press Confirm there.")
+            reply("That «do it» came from the debug API, which can’t confirm money moves. In the window, press Confirm on the card or type «do it» yourself.", note: "debug API")
             return
         }
 

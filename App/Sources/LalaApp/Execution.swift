@@ -70,7 +70,10 @@ extension Workspace {
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "LALA")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return Executor(wallet: wallet, signer: XPCTradeSigner(), journal: Journal(url: folder.appending(path: "journal.jsonl"))) { [weak self] text in
-            Task { @MainActor in self?.reply(text, note: "execution") }
+            Task { @MainActor in
+                self?.reply(text, note: "execution")
+                self?.runningAction?.line = text
+            }
         }
     }
 
@@ -214,15 +217,21 @@ extension Workspace {
         // The route as confirmed, before any balance moves: the canvas keeps it with the outcome and the time.
         let confirmedRoute = route(command)
         func finish(_ ok: Bool) {
+            runningAction = nil
             guard movesMoney(command, confirmed: confirmed) else { return }
             finishedAction = (confirmedRoute?.title ?? Self.canvasTitle(command), CanvasOutcome(at: Date(), ok: ok), confirmedRoute?.steps ?? [])
+        }
+        if movesMoney(command, confirmed: confirmed) {
+            withAnimation(StudioView.spring) {
+                runningAction = (confirmedRoute?.title ?? Self.canvasTitle(command), confirmedRoute?.steps ?? [], nil, Date())
+            }
         }
         switch command {
         case .schedule, .stopSchedules: break
         default:
             executing = true
         }
-        defer { executing = false }
+        defer { executing = false; runningAction = nil }
         do {
             let e = executor(wallet)
             switch command {

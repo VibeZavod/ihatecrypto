@@ -857,6 +857,37 @@ extension Workspace {
     }
 }
 
+/// A confirmed move while it runs: the route as it was confirmed, pulsing, and the step LALA is on. It turns into
+/// the executed (or failed) board when the move ends, so the canvas never goes blank in between.
+struct RunningBoard: View {
+    @Environment(Workspace.self) private var ws
+    @State private var pulse = false
+
+    var body: some View {
+        if let run = ws.runningAction {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text(run.title).font(.system(size: 14, weight: .semibold))
+                    StatusChip(text: "in progress", tint: Brand.accent)
+                    ProgressView().controlSize(.small)
+                }
+                if !run.steps.isEmpty {
+                    RouteSteps(steps: run.steps).frame(width: 470, alignment: .leading)
+                        .opacity(pulse ? 1 : 0.55)
+                        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
+                        .onAppear { pulse = true }
+                }
+                TimelineView(.periodic(from: run.started, by: 1)) { t in
+                    Label("\(run.line ?? "Signing — Touch ID if it asks") · \(Int(t.date.timeIntervalSince(run.started))) s", systemImage: "bolt.fill")
+                        .font(.caption).foregroundStyle(.secondary).lineLimit(2)
+                }
+            }
+            .frame(width: 470, alignment: .leading)
+            .transition(.opacity)
+        }
+    }
+}
+
 /// A move of money waiting for «do it», drawn as its route.
 struct WithdrawBoard: View {
     @Environment(Workspace.self) private var ws
