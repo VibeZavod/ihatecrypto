@@ -417,3 +417,47 @@ func closeNear(to beneficiary: String) async throws {
     let hash = try await Near.send(signed)
     print("Deleted the old NEAR account; its NEAR went to \(beneficiary.prefix(8))…: https://nearblocks.io/txns/\(hash)")
 }
+
+/// `sweep-evm <new EVM address> --yes`: the old test wallet's leftovers on Base, Robinhood Chain and Arbitrum — its
+/// USDC/USDG first (while there is ETH to pay for it), then its ETH — to that address on each chain. What a transfer
+/// doesn't burn of its gas stays behind, a few wei; Base's L1 data fee comes from its GasPriceOracle, with a margin.
+func sweepEVM(to destination: String) async throws {
+    let signer = try LocalSigner()
+    let me = signer.wallet.evm
+    guard destination.wholeMatch(of: /0x[0-9a-fA-F]{40}/) != nil, destination.lowercased() != me.lowercased() else {
+        throw WalletError("Not an EVM address to move to: \(destination)")
+    }
+    let executor = Executor(wallet: signer.wallet, signer: signer, journal: journal, rpc: rpc) { print("[\(stamp())] \($0)") }
+    for net in [EVMNetwork.base, .robinhood, .arbitrum] {
+        let chain = net.rpc
+        let stable = try await chain.tokenBalance(net.usdc, owner: me)
+        let wei = try await chain.balance(me)
+        print("\(net.name): \(stable) stable units, \(wei) wei")
+        guard send else { continue }
+        if stable > 0 {
+            let to: Executor.Destination = net.key == "base" ? .base(destination) : net.key == "arbitrum" ? .arbitrum(destination) : .robinhood(destination)
+            do { print(try await executor.sendUSDC(Decimal(stable) / 1_000_000, to: to, label: "the new wallet")) } catch { print("\(net.name) stablecoin stays: \(error)") }
+        }
+        let balance = try await chain.balance(me)
+        guard balance > 0 else { continue }
+        let (tip, maxFee) = try await chain.fees()
+        let gas = try await chain.estimateGas(from: me, to: destination, value: 1, data: Data())   // Arbitrum's includes its L1 part
+        var fee = gas * maxFee
+        if net.key == "base" {
+            // OP stack: the L1 data fee is charged on top; ask the oracle for this very transaction's size.
+            let sample = try EVMTransaction(chainId: chain.chainId, nonce: try await chain.nonce(me), maxPriorityFeePerGas: tip, maxFeePerGas: maxFee,
+                                            gasLimit: gas, to: destination, value: balance, data: Data()).signed(privateKey: signer.keys.evm).raw
+            var call = Data([0x49, 0x94, 0x8e, 0x0e])   // getL1Fee(bytes)
+            call += ABI.uint(32) + ABI.uint(UInt64(sample.count)) + sample + Data(count: (32 - sample.count % 32) % 32)
+            let l1 = ABI.uint(in: try await chain.read("0x420000000000000000000000000000000000000F", call), word: 0) ?? 0
+            fee += l1 + l1 / 2
+        }
+        guard balance > fee else { print("\(net.name): \(balance) wei is less than the fee (\(fee)); it stays."); continue }
+        let tx = EVMTransaction(chainId: chain.chainId, nonce: try await chain.nonce(me), maxPriorityFeePerGas: tip, maxFeePerGas: maxFee,
+                                gasLimit: gas, to: destination, value: balance - fee, data: Data())
+        let (raw, hash) = try tx.signed(privateKey: signer.keys.evm)
+        _ = try await chain.send(raw)
+        let ok = try await chain.waitForReceipt(hash)
+        print("\(net.name): sent \(balance - fee) wei → \(ok ? "confirmed" : "FAILED") \(net.explorer)/tx/\(hash); left \(try await chain.balance(me)) wei")
+    }
+}
