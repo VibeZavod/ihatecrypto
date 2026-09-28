@@ -342,6 +342,8 @@ struct StudioRail: View {
     @State private var edgeHover = false
     @State private var canvasesOpen = false
     @State private var balanceHover = false
+    /// The folded rail's coin was clicked: the balances are being read again.
+    @State private var refreshing = false
     /// The folded strip leaves room on both sides of the traffic lights.
     static let narrowWidth: CGFloat = 92, wideWidth: CGFloat = 280
 
@@ -448,20 +450,33 @@ struct StudioRail: View {
         VStack(spacing: 8) {
             // The traffic lights' row, which also drags the window.
             WindowDragArea().frame(height: Self.lightsRow)
-            LalaLogo(size: 34)
-            // The balance first, above the orange Top up button.
-            VStack(spacing: 1) {
-                if ws.updatedAt == nil {
-                    Skeleton(width: 44, height: 11)
-                } else {
-                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.ui(11, .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+            // The coin and the balance, above the orange Top up button: a click reads the balances again. The coin works
+            // on it and the number fades until it's done; nothing else moves.
+            Button {
+                refreshing = true
+                Task { await ws.refresh(); refreshing = false }
+            } label: {
+                VStack(spacing: 8) {
+                    LalaLogo(size: 34, mood: refreshing ? .thinking : .idle, animated: true)
+                    VStack(spacing: 1) {
+                        if ws.updatedAt == nil {
+                            Skeleton(width: 44, height: 11)
+                        } else {
+                            Text(ws.equity.map(Fmt.usd) ?? "—").font(.ui(11, .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                        }
+                        if !ws.positions.isEmpty {
+                            Text(signed(ws.positionsPnl)).font(.ui(10, .semibold))
+                                .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
+                        }
+                    }
+                    .opacity(refreshing ? 0.4 : 1)
+                    .animation(.easeOut(duration: 0.2), value: refreshing)
                 }
-                if !ws.positions.isEmpty {
-                    Text(signed(ws.positionsPnl)).font(.ui(10, .semibold))
-                        .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
-                }
+                .padding(.vertical, 6).frame(width: 76)
             }
-            .padding(.horizontal, 6)
+            .buttonStyle(LitBlock())
+            .disabled(refreshing)
+            .help(refreshing ? "Updating the balance…" : "Balance — click to update it")
             Divider().frame(width: 32)
             RailActions(compact: true)
             Divider().frame(width: 32)
@@ -2741,6 +2756,18 @@ struct RailActions: View {
             .modifier(HoverLift(radius: 19))
             .help(help)
         }
+    }
+}
+
+/// A block that can be clicked: under the pointer an accent edge and the hand cursor (HoverLift), pressed a fill.
+struct LitBlock: ButtonStyle {
+    var radius: CGFloat = 14
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .background(RoundedRectangle(cornerRadius: radius).fill(Brand.accent.opacity(configuration.isPressed ? 0.2 : 0)))
+            .contentShape(RoundedRectangle(cornerRadius: radius))
+            .modifier(HoverLift(radius: radius))
     }
 }
 
