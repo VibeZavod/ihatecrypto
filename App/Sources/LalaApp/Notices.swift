@@ -48,10 +48,71 @@ struct ChatAndNoticeSettings: View {
                 Text("English").tag(ChatLanguage.en.rawValue)
                 Text("Русский").tag(ChatLanguage.ru.rawValue)
             }
+            NoticePermission()
             ForEach(Notice.allCases, id: \.self) { NoticeToggle(kind: $0) }
             Text("Notifications show while ihatecrypto is in the background or in the menu bar; a click brings its window back.")
                 .font(.ui(10)).foregroundStyle(.secondary)
         }
+    }
+}
+
+/// What macOS allows, read when Settings opens and whenever ihatecrypto comes back to the front (from System Settings),
+/// and the way to change it. macOS shows its «Allow notifications?» prompt only to an app in front, so a click here is
+/// the sure way to get it; once asked, the switch lives in System Settings › Notifications › ihatecrypto.
+private struct NoticePermission: View {
+    @State private var status: UNAuthorizationStatus?
+    @State private var sent = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Label(label, systemImage: on ? "bell.badge.fill" : "bell.slash")
+                .foregroundStyle(on ? Brand.profit : Brand.jevInk).fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 8)
+            if status == .notDetermined {
+                Button("Allow notifications") { Task { await ask() } }.buttonStyle(.borderedProminent).tint(Brand.accent)
+            } else if on {
+                Button(sent ? "Sent" : "Send a test") { Task { await test() } }.disabled(sent)
+            }
+            Button("Notification Settings…") { Self.openSystemSettings() }
+        }
+        .task { await read() }
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in Task { await read() } }
+    }
+
+    private var on: Bool { status == .authorized || status == .provisional }
+
+    private var label: String {
+        switch status {
+        case .authorized?, .provisional?: "Notifications are on"
+        case .denied?: "macOS keeps ihatecrypto quiet: turn on «Allow notifications» in Notification Settings"
+        case .notDetermined?: "macOS hasn’t asked yet: nothing can show until you allow it"
+        default: "Checking…"
+        }
+    }
+
+    private func read() async { status = await UNUserNotificationCenter.current().notificationSettings().authorizationStatus }
+
+    private func ask() async {
+        NSApp.activate()
+        let granted = (try? await UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound])) ?? false
+        Notice.log.notice("asked from Settings: granted=\(granted)")
+        await read()
+    }
+
+    private func test() async {
+        let center = UNUserNotificationCenter.current()
+        center.delegate = NoticeDelegate.shared   // Settings are in front: without it macOS drops the banner
+        let content = UNMutableNotificationContent()
+        content.title = "ihatecrypto"
+        content.body = "Notifications work: scheduled tasks, stops, alerts and moves waiting for Confirm show up here."
+        try? await center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
+        sent = true
+    }
+
+    /// System Settings › Notifications, on ihatecrypto's page once macOS lists it there.
+    static func openSystemSettings() {
+        let id = Bundle.main.bundleIdentifier ?? "app.lala.mac"
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(id)")!)
     }
 }
 
