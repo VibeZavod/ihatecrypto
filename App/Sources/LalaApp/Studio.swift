@@ -1930,9 +1930,10 @@ private struct ChatComposer: View {
                     Circle().fill(Brand.accent).frame(width: 8, height: 8)
                         .background(Circle().fill(Brand.accent.opacity(0.25)).frame(width: 16, height: 16))
                     Text("Listening").font(.ui(12, .semibold))
-                    Text(voice.onDevice ? "· recognized on this Mac" : "· recognized by Apple").font(.ui(10)).foregroundStyle(.secondary)
+                    Text("· \(voice.language) · \(voice.onDevice ? "recognized on this Mac" : "recognized by Apple")").font(.ui(10)).foregroundStyle(.secondary)
                 }
                 .frame(height: 30).padding(.horizontal, 6)
+                .help("It listens in the keyboard's language: switch the layout before the microphone to speak another one.")
             } else {
                 HStack(spacing: 6) {
                     ChatModelMenu()
@@ -1956,13 +1957,21 @@ private struct ChatComposer: View {
 
     private func listening(_ voice: VoiceInput) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(voice.transcript.isEmpty ? "Say what to do…" : voice.transcript)
-                .font(.ui(14)).foregroundStyle(voice.transcript.isEmpty ? .secondary : .primary)
-                .lineLimit(5).frame(maxWidth: .infinity, alignment: .leading)
+            // What stopped changing in the ink, the recognizer's current guess in grey.
+            let heard = voice.transcript, settled = heard.index(heard.startIndex, offsetBy: min(voice.settled, heard.count))
+            Group {
+                if heard.isEmpty { Text("Say what to do…").foregroundStyle(.secondary) }
+                else { Text("\(Text(heard[..<settled]))\(Text(heard[settled...] + "…").foregroundStyle(.secondary))") }
+            }
+            .font(.ui(14)).lineLimit(5).frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 8) {
+                // The newest loudness on the left; older bars drift right and fade out.
                 HStack(spacing: 3) {
-                    ForEach(Array(voice.levels.enumerated()), id: \.offset) { _, level in
-                        Capsule().fill(Brand.accent).frame(width: 3, height: 4 + 22 * level)
+                    let bars = Array(voice.levels.reversed())
+                    ForEach(bars.indices, id: \.self) { i in
+                        Capsule().fill(Brand.accent)
+                            .frame(width: 3, height: 4 + 22 * bars[i])
+                            .opacity(i < bars.count / 2 ? 1 : 1 - 0.8 * Double(i - bars.count / 2) / Double(bars.count / 2))
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: 30, alignment: .leading)
@@ -2006,7 +2015,7 @@ private struct ChatComposer: View {
                 .textFieldStyle(.plain).font(.ui(14)).lineLimit(1...5)
                 .padding(.vertical, 8)
                 .onSubmit(send)
-            Button { Task { await ws.voice.start(russian: ws.replyLanguage == "Russian") } } label: {
+            Button { Task { await ws.voice.start() } } label: {
                 Image(systemName: "mic").font(.system(size: 14, weight: .semibold))
                     .frame(width: 34, height: 34).contentShape(Circle())
             }

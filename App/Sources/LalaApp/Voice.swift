@@ -1,9 +1,11 @@
 import AVFoundation
+import Carbon
 import Observation
 import Speech
 
 /// Speaking instead of typing: the words land in the chat's field as they are recognized, and the person sends them
 /// (nothing is ever sent by voice alone). Recognition stays on this Mac when the language's on-device model is there.
+/// Apple's recognizer can't tell the language by itself, so it listens in the keyboard's: a Russian layout, Russian.
 @Observable
 final class VoiceInput {
     enum State: Equatable { case idle, listening, failed(String) }
@@ -11,6 +13,10 @@ final class VoiceInput {
     private(set) var state = State.idle
     /// What's been heard so far.
     private(set) var transcript = ""
+    /// How much of `transcript` has stopped changing: the rest is the recognizer's current guess, shown grey.
+    private(set) var settled = 0
+    /// The language it listens in, in words: «Russian».
+    private(set) var language = ""
     /// The last few loudness readings, 0…1, for the wave in the field.
     private(set) var levels: [Double] = Array(repeating: 0, count: 28)
     /// Whether this take is recognized on the Mac (otherwise Apple's servers hear it).
@@ -23,18 +29,22 @@ final class VoiceInput {
 
     var listening: Bool { state == .listening }
 
-    func start(russian: Bool) async {
+    func start() async {
         guard state != .listening else { return }
         transcript = ""
+        settled = 0
         levels = Array(repeating: 0, count: levels.count)
         guard await Self.allowed() else {
             state = .failed("Allow the microphone and speech recognition for ihatecrypto in System Settings › Privacy & Security.")
             return
         }
-        guard let recognizer = SFSpeechRecognizer(locale: Locale(identifier: russian ? "ru-RU" : "en-US")), recognizer.isAvailable else {
-            state = .failed("Speech recognition isn't available right now.")
+        let keyboard = Self.keyboardLanguage()
+        let locale = Self.recognizerLocale(for: keyboard, among: SFSpeechRecognizer.supportedLocales())
+        guard let locale, let recognizer = SFSpeechRecognizer(locale: locale), recognizer.isAvailable else {
+            state = .failed("Speech recognition in \(Self.name(keyboard)) isn't available: switch the keyboard to another language and try again.")
             return
         }
+        language = Self.name(keyboard)
         let request = SFSpeechAudioBufferRecognitionRequest()
         request.shouldReportPartialResults = true
         onDevice = recognizer.supportsOnDeviceRecognition
@@ -86,7 +96,10 @@ final class VoiceInput {
     }
 
     private func heard(_ text: String?, final: Bool, error: String?) {
-        if let text { transcript = text }
+        if let text {
+            settled = final ? text.count : Self.settledLength(was: transcript, now: text)
+            transcript = text
+        }
         guard final else { return }
         task = nil
         // The recognizer stopped by itself (a minute's limit, silence, an error) while still listening.
@@ -98,6 +111,35 @@ final class VoiceInput {
     private func push(_ level: Double) {
         levels.removeFirst()
         levels.append(level)
+    }
+
+    /// The words the new guess keeps from the last one, as a length of `now`: those stopped changing.
+    static func settledLength(was: String, now: String) -> Int {
+        let a = was.split(separator: " "), b = now.split(separator: " ")
+        let same = zip(a, b).prefix { $0 == $1 }.count
+        // The last common word may still be growing («про» → «процентов»): only words with one after them count.
+        let words = same == b.count ? max(0, same - 1) : same
+        return b.prefix(words).map(\.count).reduce(0, +) + words
+    }
+
+    /// The current keyboard layout's language: «ru» for Russian – PC, «en» for ABC or U.S.
+    static func keyboardLanguage() -> String {
+        guard let source = TISCopyCurrentKeyboardInputSource()?.takeRetainedValue(),
+              let raw = TISGetInputSourceProperty(source, kTISPropertyInputSourceLanguages),
+              let languages = Unmanaged<CFArray>.fromOpaque(raw).takeUnretainedValue() as? [String],
+              let first = languages.first else { return "en" }
+        return Locale(identifier: first).language.languageCode?.identifier ?? "en"
+    }
+
+    /// The recognizer's locale for a language: the one of its usual country (ru → ru-RU, en → en-US), else any of it.
+    static func recognizerLocale(for language: String, among supported: Set<Locale>) -> Locale? {
+        let usual = Locale(identifier: Locale.Language(identifier: language).maximalIdentifier).region?.identifier
+        let same = supported.filter { $0.language.languageCode?.identifier == language }
+        return same.first { $0.region?.identifier == usual } ?? same.min { $0.identifier < $1.identifier }
+    }
+
+    static func name(_ language: String) -> String {
+        Locale(identifier: "en_US").localizedString(forLanguageCode: language) ?? language
     }
 
     private static func allowed() async -> Bool {
