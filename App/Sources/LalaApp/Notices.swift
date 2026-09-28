@@ -32,7 +32,7 @@ enum Notice: String, CaseIterable {
     }
 
     /// `log show --predicate 'subsystem == "app.lala.mac"'`: what macOS answered about notifications.
-    static let log = Logger(subsystem: "app.lala.mac", category: "notifications")
+    nonisolated static let log = Logger(subsystem: "app.lala.mac", category: "notifications")
 
     var isOn: Bool { UserDefaults.standard.object(forKey: "notice.\(rawValue)") as? Bool ?? true }
 }
