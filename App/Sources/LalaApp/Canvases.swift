@@ -654,7 +654,7 @@ struct PendingButtons: View {
     var body: some View {
         HStack(spacing: 8) {
             Button { Task { await ws.send("do it") } } label: {
-                Label(confirm, systemImage: "signature").font(.system(size: 13, weight: .semibold)).padding(.horizontal, 6)
+                Label(confirm, systemImage: "touchid").font(.system(size: 13, weight: .semibold)).padding(.horizontal, 6)
             }
             .buttonStyle(.borderedProminent).controlSize(.large)
             Button("Cancel") { Task { await ws.send("cancel") } }
@@ -879,19 +879,40 @@ struct RunningBoard: View {
                     ProgressView().controlSize(.small)
                 }
                 if !run.steps.isEmpty {
-                    RouteSteps(steps: run.steps).frame(width: 470, alignment: .leading)
-                        .opacity(pulse ? 1 : 0.55)
-                        .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: pulse)
+                    RouteSteps(steps: run.steps, current: Self.currentStep(run.steps, run.lines)).frame(width: 470, alignment: .leading)
+                }
+                if SignerActivity.shared.waiting > 0 {
+                    Label("Touch ID — confirm on the sensor, or with your Mac password, if it asks", systemImage: "touchid")
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                        .padding(.horizontal, 12).padding(.vertical, 8)
+                        .background(Capsule().fill(Brand.accent))
+                        .opacity(pulse ? 1 : 0.6)
+                        .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
                         .onAppear { pulse = true }
+                        .transition(.scale(scale: 0.9).combined(with: .opacity))
                 }
                 TimelineView(.periodic(from: run.started, by: 1)) { t in
-                    Label("\(run.line ?? "Signing — Touch ID if it asks") · \(Int(t.date.timeIntervalSince(run.started))) s", systemImage: "bolt.fill")
+                    Label("\(run.lines.last ?? "Signing") · \(Int(t.date.timeIntervalSince(run.started))) s", systemImage: "bolt.fill")
                         .font(.caption).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
             .frame(width: 470, alignment: .leading)
             .transition(.opacity)
+            .animation(.snappy, value: SignerActivity.shared.waiting > 0)
         }
+    }
+
+    /// The step the move is on: the furthest one whose place («Morpho», «Relay», «Solana») a report has named.
+    // ponytail: matches place names in the executor's lines; a line quoting the destination early lights it up early.
+    static func currentStep(_ steps: [ActivityBubble], _ lines: [String]) -> Int {
+        let said = lines.joined(separator: " ").lowercased()
+        var current = 0
+        for (i, step) in steps.enumerated() {
+            let place = step.label.components(separatedBy: "·").last?.trimmingCharacters(in: .whitespaces)
+                .split(separator: " ").first.map { $0.lowercased() } ?? ""
+            if !place.isEmpty, said.contains(place) { current = i }
+        }
+        return current
     }
 }
 
@@ -924,16 +945,41 @@ struct WithdrawBoard: View {
 /// A route's steps side by side, each an arrow in its place's color.
 struct RouteSteps: View {
     let steps: [ActivityBubble]
+    /// The step a running move is on: those before it are done, those after it wait. nil = a plain route.
+    var current: Int?
 
     var body: some View {
-        HStack(alignment: .top, spacing: 12) { ForEach(steps, id: \.self) { RouteStepView(step: $0) } }
+        HStack(alignment: .top, spacing: 12) {
+            ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
+                RouteStepView(step: step, state: current.map { i < $0 ? .done : i == $0 ? .now : .next } ?? .plain)
+            }
+        }
     }
 }
 
 struct RouteStepView: View {
+    enum State { case plain, done, now, next }
     let step: ActivityBubble
+    var state: State = .plain
+    @SwiftUI.State private var pulse = false
 
     var body: some View {
+        card
+            .opacity(state == .next ? 0.4 : 1)
+            .overlay(ArrowCard(radius: 16, tip: 10).stroke(Brand.accent, lineWidth: 3).opacity(state == .now ? (pulse ? 1 : 0.3) : 0))
+            .overlay(alignment: .topTrailing) {
+                switch state {
+                case .done: Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).foregroundStyle(.white, Brand.profit).padding(10)
+                case .now: ProgressView().controlSize(.small).padding(12)
+                default: EmptyView()
+                }
+            }
+            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
+            .animation(.snappy, value: state)
+            .onAppear { pulse = true }
+    }
+
+    @ViewBuilder private var card: some View {
         let fill = step.fill ?? .solana
         VStack(alignment: .leading, spacing: 6) {
             if let logo = step.logo { TokenLogo(name: logo, size: 24) }

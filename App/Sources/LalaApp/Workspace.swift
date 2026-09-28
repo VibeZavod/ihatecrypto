@@ -60,7 +60,7 @@ final class Workspace {
     }
     var executionError: String?
     /// A confirmed money move while it runs: its route stays on the canvas with the latest step, until the outcome.
-    var runningAction: (title: String, steps: [ActivityBubble], line: String?, started: Date)?
+    var runningAction: (title: String, steps: [ActivityBubble], lines: [String], started: Date)?
     var planReview: JevReview?
     var txReview: JevReview?
     var jevNote: String?

@@ -685,7 +685,8 @@ struct StudioCanvas: View {
             if nodes.isEmpty {
                 if ws.yieldOptions == nil, ws.allocationPreview == nil {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
-                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, ws.pendingAction == nil, ws.chart == nil { placeholder }
+                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil,
+                              (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty { placeholder }
                 }
             } else {
                 let left = nodes.filter { $0.column == 0 }, right = nodes.filter { $0.column == 1 }
