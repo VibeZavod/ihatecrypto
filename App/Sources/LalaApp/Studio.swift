@@ -278,7 +278,7 @@ extension Notification.Name {
     static let lalaEdgePulse = Notification.Name("lalaEdgePulse")
 }
 
-/// An orange wave around the whole window's edge, two beats: the answer to «Portfolio» when the portfolio is
+/// One quiet orange beat around the whole window's edge: the answer to «Portfolio» when the portfolio is
 /// already in place. Only the border moves; the boards stay still.
 struct EdgePulse: View {
     let trigger: Int
@@ -294,21 +294,17 @@ struct EdgePulse: View {
             .keyframeAnimator(initialValue: Wave(), trigger: trigger) { _, wave in
                 // The window's own corners; the outer half of each stroke falls outside it.
                 ZStack {
-                    ConcentricRectangle().stroke(Brand.accent, lineWidth: 5)
-                    ConcentricRectangle().stroke(Brand.accent, lineWidth: wave.spread * 2).blur(radius: wave.spread / 2)
+                    ConcentricRectangle().stroke(Brand.accent, lineWidth: 3)
+                    ConcentricRectangle().stroke(Brand.accent.opacity(0.4), lineWidth: wave.spread * 2).blur(radius: wave.spread / 2)
                 }
                 .opacity(wave.opacity)
             } keyframes: { _ in
                 KeyframeTrack(\.opacity) {
-                    CubicKeyframe(1, duration: 0.15)
-                    CubicKeyframe(0.3, duration: 0.3)
-                    CubicKeyframe(0.8, duration: 0.15)
-                    CubicKeyframe(0, duration: 0.7)
+                    CubicKeyframe(0.8, duration: 0.25)
+                    CubicKeyframe(0, duration: 0.75)
                 }
                 KeyframeTrack(\.spread) {
-                    CubicKeyframe(26, duration: 0.45)
-                    MoveKeyframe(4)
-                    CubicKeyframe(34, duration: 0.85)
+                    CubicKeyframe(10, duration: 1)
                 }
             }
             .ignoresSafeArea()
