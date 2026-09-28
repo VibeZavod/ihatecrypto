@@ -226,7 +226,8 @@ struct StudioView: View {
         .ignoresSafeArea(edges: .top)
         // One ground under the rail and the canvas, so the glass has the same dots behind it on both sides.
         .background { ZStack { Brand.canvas; DotGrid() }.ignoresSafeArea() }
-        .background(TrafficLights())
+        // Folded, the lights sit in the middle of the strip; open, at the rail's left beside its first row.
+        .background(TrafficLights(middle: railCollapsed ? 10 + StudioRail.narrowWidth / 2 : nil))
         // A window getting narrow folds the rail, and widening again brings back what it folded; by hand it still opens.
         .onGeometryChange(for: Bool.self) { $0.size.width < Self.crampedWidth } action: { cramped in
             withAnimation(Self.spring) {
@@ -269,11 +270,18 @@ struct StudioView: View {
 struct TrafficLights: NSViewRepresentable {
     /// The close button's middle, from the window's top-left.
     static let center = CGPoint(x: 30, y: 30)
+    /// The folded rail's middle (window x): the three lights center on it. nil: the close button at `center`.
+    var middle: CGFloat?
 
     func makeNSView(context: Context) -> NSView { Probe() }
-    func updateNSView(_ view: NSView, context: Context) {}
+    func updateNSView(_ view: NSView, context: Context) {
+        guard let probe = view as? Probe, probe.middle != middle else { return }
+        probe.middle = middle
+        probe.place(animated: true)
+    }
 
     final class Probe: NSView {
+        var middle: CGFloat?
         private var observers: [NSObjectProtocol] = []
 
         override func viewDidMoveToWindow() {
@@ -288,7 +296,7 @@ struct TrafficLights: NSViewRepresentable {
             DispatchQueue.main.async { self.place() }
         }
 
-        private func place() {
+        func place(animated: Bool = false) {
             guard let window, !window.styleMask.contains(.fullScreen),
                   let close = window.standardWindowButton(.closeButton),
                   let mini = window.standardWindowButton(.miniaturizeButton),
@@ -297,9 +305,14 @@ struct TrafficLights: NSViewRepresentable {
             let height = 2 * TrafficLights.center.y
             container.frame = CGRect(x: container.frame.minX, y: window.frame.height - height, width: container.frame.width, height: height)
             let step = mini.frame.minX - close.frame.minX
-            for (i, button) in [close, mini, zoom].enumerated() {
-                button.setFrameOrigin(CGPoint(x: TrafficLights.center.x - close.frame.width / 2 + CGFloat(i) * step,
-                                              y: (height - button.frame.height) / 2))
+            let first = middle.map { $0 - (2 * step + close.frame.width) / 2 } ?? TrafficLights.center.x - close.frame.width / 2
+            // Folding the rail slides them along with it.
+            NSAnimationContext.runAnimationGroup { context in
+                context.duration = animated ? 0.35 : 0
+                for (i, button) in [close, mini, zoom].enumerated() {
+                    let origin = CGPoint(x: first + CGFloat(i) * step, y: (height - button.frame.height) / 2)
+                    if animated { button.animator().setFrameOrigin(origin) } else { button.setFrameOrigin(origin) }
+                }
             }
         }
     }
@@ -323,7 +336,8 @@ struct StudioRail: View {
     @State private var edgeHover = false
     @State private var canvasesOpen = false
     @State private var balanceHover = false
-    static let narrowWidth: CGFloat = 76, wideWidth: CGFloat = 280
+    /// The folded strip leaves room on both sides of the traffic lights.
+    static let narrowWidth: CGFloat = 92, wideWidth: CGFloat = 280
 
     private var width: CGFloat { dragWidth ?? (collapsed ? Self.narrowWidth : Self.wideWidth) }
 
