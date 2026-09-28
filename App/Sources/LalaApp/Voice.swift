@@ -20,7 +20,9 @@ final class VoiceInput {
     /// The language it listens in, in words: «Russian».
     private(set) var language = ""
     /// The last few loudness readings, 0…1, for the wave in the field.
-    private(set) var levels: [Double] = Array(repeating: 0, count: 28)
+    private(set) var levels: [Double] = Array(repeating: 0, count: 48)
+    /// When the last reading came: the wave slides smoothly between readings instead of stepping.
+    private(set) var pushedAt = Date.now
     /// Whether this take is recognized on the Mac (otherwise Apple's servers hear it).
     private(set) var onDevice = true
     private(set) var startedAt = Date.now
@@ -116,6 +118,7 @@ final class VoiceInput {
     private func push(_ level: Double) {
         levels.removeFirst()
         levels.append(level)
+        pushedAt = .now
     }
 
     /// A take of several phrases. After a pause the recognizer either starts the next phrase from nothing or goes on

@@ -1928,6 +1928,56 @@ private struct ChatActions: View {
     }
 }
 
+/// The voice as particles: a column of glowing dots for each loudness reading, taller the louder, the newest on the
+/// left. The columns slide right between readings and fade out; the dots breathe a little, so silence is a live dotted
+/// line. Drawn in a Canvas, so only this redraws each frame, and only while listening.
+private struct ParticleWave: View {
+    /// Oldest first, 0…1.
+    let levels: [Double]
+    let pushedAt: Date
+    @Environment(\.accessibilityReduceMotion) private var still
+    /// About how often VoiceInput reads the loudness.
+    private static let reading = 0.064
+
+    var body: some View {
+        // The renderer runs off the main actor: the colour is read here.
+        let ink = Brand.accent, levels = levels, pushedAt = pushedAt, still = still
+        TimelineView(.animation(paused: still)) { timeline in
+            Canvas { context, size in
+                let t = timeline.date.timeIntervalSinceReferenceDate
+                let slide = still ? 0 : min(1, timeline.date.timeIntervalSince(pushedAt) / Self.reading)
+                let pitch: CGFloat = 6, gap: CGFloat = 3.4, mid = size.height / 2
+                let newest = Array(levels.reversed())
+                let columns = min(newest.count, Int(size.width / pitch))
+                func dots(_ ctx: GraphicsContext, glow: Bool) {
+                    for i in 0..<columns {
+                        let x = pitch * (CGFloat(i) + slide) + 3
+                        let fade = i < columns / 2 ? 1 : 1 - Double(i - columns / 2) / Double(columns - columns / 2)
+                        let n = Int((newest[i] * Double(mid - 3) / gap).rounded())
+                        for k in -n...n {
+                            let edge = n == 0 ? 0 : Double(abs(k)) / Double(n + 1)
+                            if glow, edge > 0.5 { continue }
+                            let wobble = still ? 0 : sin(t * 4 + Double(i) * 0.8 + Double(k) * 1.3) * 0.7
+                            let drift = still ? 0 : cos(t * 3 + Double(i) * 1.7 + Double(k) * 2.1) * 0.6
+                            let r = (glow ? 3 : 1.5) * (1 - 0.45 * edge)
+                            let y = mid + CGFloat(k) * gap + wobble, cx = x + drift
+                            ctx.fill(Path(ellipseIn: CGRect(x: cx - r, y: y - r, width: 2 * r, height: 2 * r)),
+                                     with: .color(ink.opacity((glow ? 0.35 : 1) * (1 - 0.75 * edge) * fade)))
+                        }
+                    }
+                }
+                // A soft glow under the louder middle of each column, then the sharp dots.
+                context.drawLayer { layer in
+                    layer.addFilter(.blur(radius: 2.5))
+                    dots(layer, glow: true)
+                }
+                dots(context, glow: false)
+            }
+        }
+        .accessibilityHidden(true)
+    }
+}
+
 /// The chat's input: the model and the networks above it, the field with the microphone. Its own view: a keystroke or
 /// the voice's wave redraws the field and its buttons, not the conversation above it.
 private struct ChatComposer: View {
@@ -1977,17 +2027,8 @@ private struct ChatComposer: View {
             }
             .font(.ui(14)).lineLimit(5).frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 8) {
-                // The newest loudness on the left; older bars drift right and fade out.
-                HStack(spacing: 3) {
-                    let bars = Array(voice.levels.reversed())
-                    ForEach(bars.indices, id: \.self) { i in
-                        Capsule().fill(Brand.accent)
-                            .frame(width: 3, height: 4 + 22 * bars[i])
-                            .opacity(i < bars.count / 2 ? 1 : 1 - 0.8 * Double(i - bars.count / 2) / Double(bars.count / 2))
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: 30, alignment: .leading)
-                .clipped()
+                ParticleWave(levels: voice.levels, pushedAt: voice.pushedAt)
+                    .frame(maxWidth: .infinity, maxHeight: 30)
                 TimelineView(.periodic(from: voice.startedAt, by: 1)) { context in
                     let s = max(0, Int(context.date.timeIntervalSince(voice.startedAt)))
                     Text(String(format: "%d:%02d", s / 60, s % 60)).font(.ui(12, .semibold)).monospacedDigit().foregroundStyle(.secondary)
