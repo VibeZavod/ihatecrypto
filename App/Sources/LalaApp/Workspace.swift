@@ -392,6 +392,13 @@ final class Workspace {
         }
         let before = intent
 
+        // A confirmation from the debug API would only fail at the signer and lose the card: keep it for the window.
+        if SignerClient.untrusted, pendingAction != nil || pendingAllocation != nil,
+           text.lowercased().contains(/^(?:делай|да|давай|подтверждаю|го|do\s+it|go|yes|confirm|sign)\b/) {
+            reply("Money moves are confirmed in LALA’s window only: press Confirm there.")
+            return
+        }
+
         // «делай» / «do it» right after a plan that waits for it carries it out; anything else drops it.
         let confirms = text.lowercased().contains(/^(?:делай|да|давай|подтверждаю|раскладывай|го|do\s+it|go|yes|confirm|sign)\b/)
         let declines = text.lowercased().wholeMatch(of: /\s*(?:no|nope|cancel|stop|нет|не\s+надо|отмена|отмени\w*|стоп|nein|abbrechen|non|annuler|cancelar|não|nao|nie|anuluj)[.!\s]*/) != nil

@@ -193,6 +193,7 @@ struct ContentView: View {
             .task {
             StatusItem.shared.openWindow = openWindow
             StatusItem.shared.install(ws)
+            if UserDefaults.standard.bool(forKey: "debugAPI") { DebugAPI.shared.start(ws) }
             // Launched from `swift run`, the process is not a regular app until told so.
             NSApp.setActivationPolicy(.regular)
             NSApp.activate()
@@ -382,6 +383,16 @@ struct SettingsView: View {
                 LabeledContent("Reward/risk at least", value: Fmt.num(ws.policy.minRewardRisk))
                 LabeledContent("Leverage up to", value: "\(Fmt.num(ws.policy.maxLeverage))×")
                 Text("A trade that would lose more at its stop is not executed. “By the book” uses \(Fmt.pct(ws.policy.defaultRiskPct)) of capital, a \(Fmt.num(ws.policy.defaultRewardRisk))R take-profit and a \(Fmt.num(ws.policy.atrStopMultiple)) ATR (4h) stop. Crypto only.")
+                    .font(.caption).foregroundStyle(.secondary)
+            }
+            Section("Debugging") {
+                Toggle("Local debug API for Claude Code (curl)", isOn: Binding(
+                    get: { UserDefaults.standard.bool(forKey: "debugAPI") },
+                    set: { on in
+                        UserDefaults.standard.set(on, forKey: "debugAPI")
+                        if on { DebugAPI.shared.start(ws) } else { DebugAPI.shared.stop() }
+                    }))
+                Text("127.0.0.1:\(String(DebugAPI.port)) with a token that changes every start (Application Support/LALA/debug-token). It reads the state, types into the chat and takes a picture of the window. It never signs: money moves still wait for Confirm and Touch ID here.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Key and signing") {

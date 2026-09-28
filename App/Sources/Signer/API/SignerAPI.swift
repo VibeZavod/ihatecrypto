@@ -116,7 +116,17 @@ public final class SignerClient: @unchecked Sendable {
 
     deinit { connection.invalidate() }
 
+    /// Set while LALA handles a message from its local debug API (DebugAPI.swift): only status requests pass, so
+    /// nothing that came from outside the window can sign or change the key, whatever path the message takes.
+    @TaskLocal public static var untrusted = false
+
     public func send(_ request: SignerRequest) async throws -> SignerReply {
+        if Self.untrusted {
+            switch request {
+            case .status, .nearAddress, .endSession: break
+            default: throw WalletError("Nothing is signed from the debug API: confirm money moves in LALA’s window.")
+            }
+        }
         let body = try JSONEncoder().encode(request)
         return try await withCheckedThrowingContinuation { continuation in
             let proxy = connection.remoteObjectProxyWithErrorHandler { error in
