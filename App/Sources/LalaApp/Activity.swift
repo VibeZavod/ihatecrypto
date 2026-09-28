@@ -75,7 +75,7 @@ extension Workspace {
                                                                lines: c.candles.last.map { ["\(Fmt.price($0.close))"] } ?? [], asset: c.coin)])
         }
         if showReceive, intent == TradeIntent(), allocationPreview == nil, yieldOptions == nil {
-            return ("Top up LALA", nil, [ActivityBubble(kind: "free", label: "Receive · Solana", title: "USDC and SOL", logo: "sol"),
+            return ("Top up ihatecrypto", nil, [ActivityBubble(kind: "free", label: "Receive · Solana", title: "USDC and SOL", logo: "sol"),
                                          ActivityBubble(kind: "free", label: "Receive · Base", title: "USDC and ETH", logo: "base")])
         }
         if let a = allocationPreview {
@@ -153,8 +153,8 @@ extension Workspace {
         updateActivity { $0.title = "Question" }
         if let client = llmClient() {
             let system = """
-            You are LALA, the user's crypto trading assistant. Answer the question using ONLY the facts below — balances, open positions, \
-            closed positions with results, markets, LALA's rule checks and recent activity. The user may write in any language; answer in \
+            You are ihatecrypto, the user's crypto trading assistant. Answer the question using ONLY the facts below — balances, open positions, \
+            closed positions with results, markets, ihatecrypto's rule checks and recent activity. The user may write in any language; answer in \
             \(replyLanguage), in 1–4 short sentences with the numbers. If the facts don't contain the answer, say so and point to History (clock \
             button in the rail). Never invent trades, prices or addresses.
             If the user asks whether to open, close or keep a trade, give a clear view from these facts — the day's move, the chart, \

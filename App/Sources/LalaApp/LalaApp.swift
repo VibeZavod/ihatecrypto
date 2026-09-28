@@ -14,9 +14,9 @@ struct LalaApp: App {
     /// Created once with the app, so the watch loop below outlives the window.
     private let workspace = Workspace()
 
-    /// `-signerSelfTest YES`: checks the signing process inside LALA.app with the public test phrase, then quits.
+    /// `-signerSelfTest YES`: checks the signing process inside ihatecrypto.app with the public test phrase, then quits.
     /// The main window stays empty so nothing else (balances, model logins) runs meanwhile.
-    /// Launch flags that drive the app are Debug-only: in a Release build any program could `open LALA.app --args …`.
+    /// Launch flags that drive the app are Debug-only: in a Release build any program could `open ihatecrypto.app --args …`.
     #if DEBUG
     private let selfTest = UserDefaults.standard.bool(forKey: "signerSelfTest")
     #else
@@ -244,11 +244,11 @@ struct ContentView: View {
                 await ws.signIn()
                 FileHandle.standardError.write(Data("LALA sign-in \(ws.providerID): \(ws.llmStatus ?? "")\n".utf8))
             }
-            // `-forgetWallet YES` (LALA.app only): removes the key from the signing process.
+            // `-forgetWallet YES` (ihatecrypto.app only): removes the key from the signing process.
             if UserDefaults.standard.bool(forKey: "forgetWallet"), SignerClient.isAvailable {
                 log("forget: ok=\((try? await SignerClient().send(.forget))?.ok ?? false)")
             }
-            // `-importTestWallet YES` (LALA.app only): the terminal test wallet goes into the signing process.
+            // `-importTestWallet YES` (ihatecrypto.app only): the terminal test wallet goes into the signing process.
             if UserDefaults.standard.bool(forKey: "importTestWallet"), SignerClient.isAvailable,
                let phrase = try? String(contentsOf: FileManager.default.homeDirectoryForCurrentUser.appending(path: ".lala/test-wallet.txt"), encoding: .utf8) {
                 let r = try? await SignerClient().send(.importMnemonic(phrase: phrase, passphrase: "", requirePresence: UserDefaults.standard.bool(forKey: "presence")))

@@ -299,11 +299,11 @@ public enum Plan {
         if i.partialTake == true {
             let oneR = s.entry + (s.entry - s.stopPrice)
             lines.append(s.notional / 2 >= minNotional
-                ? "In parts: half at 1R → \(Fmt.price(oneR)), then stop to breakeven (while LALA is open)."
+                ? "In parts: half at 1R → \(Fmt.price(oneR)), then stop to breakeven (while ihatecrypto is open)."
                 : "Can't take in parts: half the position is below the $10 minimum order.")
         }
         if let trail = i.trailingPct {
-            lines.append("Trailing \(Fmt.pct(trail)) from the best price; moves while LALA is open.")
+            lines.append("Trailing \(Fmt.pct(trail)) from the best price; moves while ihatecrypto is open.")
         }
         lines.append("Triggers on mark price; a market exit may fill worse.")
         return Block(id: "protection", label: label, title: "Stop & take-profit", lines: lines, status: e.problem == nil ? .ready : .blocked)

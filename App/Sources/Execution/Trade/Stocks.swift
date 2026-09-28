@@ -59,13 +59,13 @@ public enum RobinhoodStocks {
         guard symbolOrContract.hasPrefix("0x") else { return (try await verified(symbolOrContract, rpc: rpc), nil) }
         let address = symbolOrContract
         guard let info = try await TokenLookup.lookup(address).first(where: { $0.chain == "robinhood" }) else {
-            throw ExecutionError("This contract doesn't trade on Robinhood Chain, and by contract LALA buys only there for now.")
+            throw ExecutionError("This contract doesn't trade on Robinhood Chain, and by contract ihatecrypto buys only there for now.")
         }
         guard let liquidity = info.liquidityUSD, liquidity >= 50_000 else {
             throw ExecutionError("\(info.symbol) has only \(Fmt.usd(info.liquidityUSD ?? 0)) of liquidity: too thin to trade safely.")
         }
         guard let decimals = ABI.uint(in: try await rpc.read(address, Data([0x31, 0x3c, 0xe5, 0x67])), word: 0), decimals <= 36 else {
-            throw ExecutionError("The contract doesn't answer decimals(): not a token LALA can trade.")
+            throw ExecutionError("The contract doesn't answer decimals(): not a token ihatecrypto can trade.")
         }
         let symbol = ABI.string(try await rpc.read(address, Data([0x95, 0xd8, 0x9b, 0x41]))) ?? info.symbol
         let name = ABI.string(try await rpc.read(address, Data([0x06, 0xfd, 0xde, 0x03]))) ?? info.name
@@ -132,7 +132,7 @@ extension Executor {
     private func noPool(_ symbol: String, _ listing: TokenLookup.Info?) -> String {
         listing == nil ? "No Uniswap pool trades \(symbol) for USDG."
             // ponytail: amounts are 64-bit (≈ 18 whole tokens of 18 decimals); 256-bit words lift it.
-            : "No Uniswap v3 pool on Robinhood Chain trades \(symbol) for USDG at this size (LALA handles up to ≈ 18 whole tokens a trade for now)."
+            : "No Uniswap v3 pool on Robinhood Chain trades \(symbol) for USDG at this size (ihatecrypto handles up to ≈ 18 whole tokens a trade for now)."
     }
 
     /// Sells a Stock Token for USDG on Robinhood Chain; nil = all of it.

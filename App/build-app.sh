@@ -1,6 +1,6 @@
 #!/bin/zsh
-# Builds LALA.app with the embedded signing process, signed by the AIVAX team (N78L833HCS).
-# Usage: ./build-app.sh [Debug|Release]   → .build/xcode/Build/Products/<config>/LALA.app
+# Builds ihatecrypto.app with the embedded signing process, signed by the AIVAX team (N78L833HCS).
+# Usage: ./build-app.sh [Debug|Release]   → .build/xcode/Build/Products/<config>/ihatecrypto.app
 # A failed build exits non-zero and prints why (a compiler crash has no «error:» line, so the log is searched wider).
 set -e
 cd "$(dirname "$0")/Xcode"

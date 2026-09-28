@@ -33,10 +33,10 @@ public protocol TradeSigner: Sendable {
 
 extension TradeSigner {
     public func signNearTransfer(amount: UInt128, receiver: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data {
-        throw ExecutionError("NEAR transfers are signed in LALA.app.")
+        throw ExecutionError("NEAR transfers are signed in the ihatecrypto app.")
     }
     public func signNearDeleteAccount(beneficiary: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data {
-        throw ExecutionError("Closing the NEAR account is signed in LALA.app.")
+        throw ExecutionError("Closing the NEAR account is signed in the ihatecrypto app.")
     }
 }
 
@@ -198,7 +198,7 @@ public actor Executor {
             steps.append("Stop \(Fmt.pct(intent.stopPct ?? 0))\(intent.takePct.map { " and take-profit \(Fmt.pct($0))" } ?? "") from the entry price (\(intent.side == .long ? "stop below, take above" : "stop above, take below")), on the exchange.")
         }
         if intent.partialTake == true, intent.entryPx == nil { steps.append("Partial take-profit: half the position at 1R, as a separate order on the exchange; then the stop moves to breakeven.") }
-        if let trail = intent.trailingPct { steps.append("Trailing \(Fmt.pct(trail)): LALA moves the stop while the app is open (each move is a signature).") }
+        if let trail = intent.trailingPct { steps.append("Trailing \(Fmt.pct(trail)): ihatecrypto moves the stop while the app is open (each move is a signature).") }
         changes.append("Hyperliquid, free: \(Fmt.usd(hl.withdrawable)) → ≈ \(Fmt.usd(hl.withdrawable + arriving - sizing.margin - sizing.feesUSD / 2)) (margin \(Fmt.usd(sizing.margin)) goes into the position).")
         changes.append("Position: \(side.lowercased()) \(Fmt.num(sizing.size, maxFraction: market.szDecimals)) \(market.name), at the stop ≈ −\(Fmt.usd(sizing.lossAtStopUSD))\(sizing.profitAtTakeUSD.map { ", at the take ≈ +\(Fmt.usd($0))" } ?? "").")
         var p = Prepared(intent: intent, market: market, sizing: sizing, leverage: leverage, bridge: bridge,
@@ -370,7 +370,7 @@ public actor Executor {
         case .stopToBreakeven: return try await moveStop(asset: asset, to: nil)
         case .stopTo(let price): return try await moveStop(asset: asset, to: price)
         case .takeTo(let price): return try await moveTake(asset: asset, to: price)
-        case .trail: throw ExecutionError("A trailing stop is kept by the LALA app, not placed on the exchange.")
+        case .trail: throw ExecutionError("A trailing stop is kept by the ihatecrypto app, not placed on the exchange.")
         }
     }
 

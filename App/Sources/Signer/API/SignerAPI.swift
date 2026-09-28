@@ -158,7 +158,7 @@ public struct SignerReply: Codable, Sendable {
 /// App side: talks to the XPC service embedded in the bundle. Unavailable when running from `swift run`.
 public final class SignerClient: @unchecked Sendable {
     public static let serviceName = "app.lala.mac.signer"
-    /// The service ships inside LALA.app; a `swift run` build has none.
+    /// The service ships inside ihatecrypto.app; a `swift run` build has none.
     public static var isAvailable: Bool {
         FileManager.default.fileExists(atPath: Bundle.main.bundleURL.appending(path: "Contents/XPCServices/LalaSigner.xpc").path)
     }
@@ -180,7 +180,7 @@ public final class SignerClient: @unchecked Sendable {
         if Self.untrusted {
             switch request {
             case .status, .nearAddress, .endSession: break
-            default: throw WalletError("Nothing is signed from the debug API: confirm money moves in LALA’s window.")
+            default: throw WalletError("Nothing is signed from the debug API: confirm money moves in ihatecrypto’s window.")
             }
         }
         let body = try JSONEncoder().encode(request)

@@ -100,7 +100,7 @@ extension Executor {
         case "HLP (Hyperliquid)":
             _ = try await hlp(deposit: false, amount: asked)
             _ = try await withdrawToSolana(usdc: nil)
-        default: throw ExecutionError("LALA can't take money out of \(place).")
+        default: throw ExecutionError("ihatecrypto can't take money out of \(place).")
         }
     }
 
@@ -111,7 +111,7 @@ extension Executor {
         case "Kamino Lend": _ = try await kamino("USDC", amount: amount, deposit: true, acceptRent: true)
         case "Aave · Base": _ = try await aave(deposit: true, usdc: amount)
         case "Morpho · Base": _ = try await morpho(deposit: true, usdc: amount)
-        default: throw ExecutionError("LALA can't put money into \(place) this way.")
+        default: throw ExecutionError("ihatecrypto can't put money into \(place) this way.")
         }
     }
 }

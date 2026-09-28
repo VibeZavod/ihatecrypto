@@ -6,7 +6,7 @@ import SignerAPI
 import SolanaChain
 import WalletCore
 
-/// Runs inside LALA.app against the embedded signing process with the public BIP-39 test phrase:
+/// Runs inside ihatecrypto.app against the embedded signing process with the public BIP-39 test phrase:
 /// import, known addresses, the guard refusing what it must, signatures that verify, forget.
 /// Prints one line per check; the app quits with 0 only if all pass.
 enum SignerSelfTest {

@@ -34,7 +34,7 @@ public struct TypedData: Sendable {
         func fields(_ declared: [[String: String]], _ values: [String: Any]) throws -> [EIP712.Field] {
             try declared.map { d in
                 guard let name = d["name"], let type = d["type"] else { throw WalletError("A field without a name or type.") }
-                guard types[type] == nil, !type.hasSuffix("]") else { throw WalletError("LALA doesn't sign nested typed data (\(type)) yet.") }
+                guard types[type] == nil, !type.hasSuffix("]") else { throw WalletError("ihatecrypto doesn't sign nested typed data (\(type)) yet.") }
                 return EIP712.Field(name, type, try value(values[name], type: type))
             }
         }
@@ -70,7 +70,7 @@ public struct TypedData: Sendable {
         case let t where t.hasPrefix("uint"):
             return .bytes32(try word(v))
         default:
-            throw WalletError("LALA doesn't sign type \(type) yet.")
+            throw WalletError("ihatecrypto doesn't sign type \(type) yet.")
         }
     }
 

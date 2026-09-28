@@ -35,7 +35,7 @@ public enum AaveV3 {
     /// Throws when either differs from the addresses above: then nothing is signed.
     public static func verifyBase(_ rpc: EVMRPC = .base) async throws -> Decimal {
         let pool = ABI.address(in: try await rpc.read(baseProvider, getPool), word: 0)
-        guard pool?.lowercased() == basePool else { throw WalletError("Aave's pool on Base isn't where LALA expects it (\(pool ?? "?")). Nothing was signed.") }
+        guard pool?.lowercased() == basePool else { throw WalletError("Aave's pool on Base isn't where ihatecrypto expects it (\(pool ?? "?")). Nothing was signed.") }
         let reserve = try await rpc.read(basePool, try getReserveData(EVMRPC.baseUSDC))
         guard ABI.address(in: reserve, word: 8)?.lowercased() == baseAUSDC, let rate = ABI.decimal(in: reserve, word: 2) else {
             throw WalletError("Aave's USDC reserve on Base doesn't match. Nothing was signed.")

@@ -1,4 +1,4 @@
-# LALA.app with its signing process. `xcodegen` here, then build with xcodebuild (see ../build-app.sh).
+# ihatecrypto.app with its signing process. `xcodegen` here, then build with xcodebuild (see ../build-app.sh).
 # The SwiftPM package one level up stays the source of the modules; this project only packages and signs.
 name: LALA
 options:
@@ -25,10 +25,9 @@ targets:
   LALA:
     type: application
     platform: macOS
-    sources: [../Sources/LalaApp, Resources]
-    # The name people see (menu bar, Dock, notifications) is ihatecrypto, from Resources/en.lproj/InfoPlist.strings (the generated
-    # plist overrides CFBundleName from a file); the bundle stays LALA.app with the same identifier, so the Keychain
-    # items, Application Support/LALA and the signer keep working.
+    sources: [../Sources/LalaApp]
+    # The product (ihatecrypto.app, its name in the Dock, menu bar, notifications and Touch ID) is ihatecrypto; the target
+    # and the identifier stay LALA / app.lala.mac, so the Keychain items, Application Support/LALA and the signer keep working.
     dependencies:
       - package: Lala
         product: LalaKit
@@ -36,10 +35,9 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.lala.mac
-        PRODUCT_NAME: LALA
+        PRODUCT_NAME: ihatecrypto
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        INFOPLIST_KEY_CFBundleDisplayName: ihatecrypto
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.finance
   # Sandboxed, no network entitlement: it can only answer the app over XPC and read its own Keychain group.
   LalaSigner:

@@ -4,7 +4,7 @@ import SwiftUI
 import WalletCore
 
 /// Separate window, away from the chat: the phrase never passes through the model, the chat or a log.
-/// Inside LALA.app the phrase can go to the signing process, which keeps the seed in the Keychain; the app
+/// Inside ihatecrypto.app the phrase can go to the signing process, which keeps the seed in the Keychain; the app
 /// itself keeps only public addresses and drops the phrase as soon as it is used.
 struct ImportWalletView: View {
     @Environment(Workspace.self) private var ws

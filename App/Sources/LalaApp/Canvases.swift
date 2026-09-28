@@ -236,7 +236,7 @@ struct CanvasList: View {
                 Button { withAnimation(StudioView.spring) { ws.newCanvas() }; close?() } label: {
                     Label("New", systemImage: "square.and.pencil").font(.caption.weight(.semibold)).padding(.horizontal, 8)
                 }
-                .buttonStyle(.hoverIcon).help(ws.busy ? "LALA is still answering" : "New canvas").disabled(ws.busy)
+                .buttonStyle(.hoverIcon).help(ws.busy ? "ihatecrypto is still answering" : "New canvas").disabled(ws.busy)
                 .padding(.trailing, -8)   // the word lines up with the rows' right edge; only the hover wash goes past it
             }
             let items = ws.canvases.sorted { $0.updated > $1.updated }
@@ -580,7 +580,7 @@ struct ScheduleBoard: View {
                     .background(RoundedRectangle(cornerRadius: 12).fill(Brand.jevInk.opacity(0.1)))
             }
             HStack {
-                Text("Runs while LALA is open or in the menu bar.").font(.caption).foregroundStyle(.secondary)
+                Text("Runs while ihatecrypto is open or in the menu bar.").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Stop") { Task { await ws.send("stop recurring buys") } }.buttonStyle(.borderless).foregroundStyle(Brand.loss)
             }
@@ -628,7 +628,7 @@ struct FixChoices: View {
             Text("CHOOSE AN OPTION").font(.system(size: 10, weight: .semibold)).tracking(1.2).foregroundStyle(.secondary)
             HStack(alignment: .top, spacing: 12) {
                 if let fit = ws.fittingRisk {
-                    card(badge: "LALA recommends", title: "Risk \(Fmt.usd(fit.risk))",
+                    card(badge: "Recommended", title: "Risk \(Fmt.usd(fit.risk))",
                          detail: "notional \(Fmt.usd(fit.sizing.notional)) · margin \(Fmt.usd(fit.sizing.margin)) — everything fits", recommended: true) {
                         Task { await ws.send("risk $\(fit.risk)") }
                     }
@@ -1141,7 +1141,7 @@ extension Workspace {
                 return
             }
             guard entry.memo.isEmpty else {
-                reply("“\(entry.name)” needs a memo / tag, and LALA can’t add one to this transfer — send it from the exchange’s app instead.", note: note)
+                reply("“\(entry.name)” needs a memo / tag, and ihatecrypto can’t add one to this transfer — send it from the exchange’s app instead.", note: note)
                 return
             }
         }
@@ -1175,6 +1175,6 @@ extension Workspace {
 
     /// The last few lines of this canvas's chat, for a model reading a follow-up like «1» or «yes».
     func recentChat() -> [String] {
-        messages.dropFirst().suffix(6).map { ($0.fromUser ? "user: " : "LALA: ") + $0.text.prefix(300) }
+        messages.dropFirst().suffix(6).map { ($0.fromUser ? "user: " : "ihatecrypto: ") + $0.text.prefix(300) }
     }
 }

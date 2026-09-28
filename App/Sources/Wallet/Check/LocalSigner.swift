@@ -132,7 +132,7 @@ func moveMoney(_ text: String) async throws {
     case .morpho(let deposit, let amount): print(try await executor.morpho(deposit: deposit, usdc: amount))
     case .baseToSolana(let amount): print(try await executor.baseToSolana(usdc: amount))
     case .arbitrumToSolana(let amount): print(try await executor.evmToSolana(.arbitrum, usdc: amount))
-    case .sendTo, .sendNear, .closeNear, .sendSol: throw ExecutionError("Sending to a saved address works in LALA.app, where the address book is.")
+    case .sendTo, .sendNear, .closeNear, .sendSol: throw ExecutionError("Sending to a saved address works in the ihatecrypto app, where the address book is.")
     case .buyStock(let symbol, let usdc): print(try await executor.buyStock(symbol, usdc: usdc ?? 1))
     case .sellStock(let symbol, let amount): print(try await executor.sellStock(symbol, amount: amount))
     case .robinhoodToSolana(let amount): print(try await executor.evmToSolana(.robinhood, usdc: amount))
@@ -150,7 +150,7 @@ func moveMoney(_ text: String) async throws {
         return
     case .buy(let asset, let usdc): _ = try await executor.swap(asset, buy: true, amount: usdc)
     case .sell(let asset, let amount): _ = try await executor.swap(asset, buy: false, amount: amount)
-    case .schedule, .stopSchedules: print("Scheduled buys are run by the LALA app while it is open.")
+    case .schedule, .stopSchedules: print("Scheduled buys are run by the ihatecrypto app while it is open.")
     }
     try await printLendPositions()
     try await printBalances()
@@ -189,7 +189,7 @@ func writeBrowserTestPage(_ path: String) async throws {
     let owner = signer.wallet.solana
     let (hash, _) = try await rpc.latestBlockhash()
     let memo = SolanaInstruction(program: "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr",
-                                 accounts: [.init(pubkey: owner, isSigner: true, isWritable: false)], data: Data("LALA browser test".utf8))
+                                 accounts: [.init(pubkey: owner, isSigner: true, isWritable: false)], data: Data("ihatecrypto browser test".utf8))
     let memoMessage = try SolanaTransaction.compileMessage([memo], payer: owner, blockhash: hash)
     let stranger = Base58.encode(Data((0..<32).map { _ in UInt8.random(in: 0...255) }))
     let myUSDC = try SPL.associatedAccount(owner: owner, mint: Jupiter.usdcMint)
@@ -201,13 +201,13 @@ func writeBrowserTestPage(_ path: String) async throws {
     // EVM: reference signatures made here with the same key, which the page compares with LALA's.
     let evm = signer.wallet.evm
     func hex(_ s: EVMSignature) -> String { "0x" + s.r.hex + s.s.hex + String(format: "%02x", s.v) }
-    let login = "Sign in to the LALA test page (EVM)"
+    let login = "Sign in to the ihatecrypto test page (EVM)"
     let personal = hex(try EVMSigner.sign(digest: PersonalMessage.digest(Data(login.utf8)), privateKey: signer.keys.evm))
     let typedJSON = #"{"types":{"EIP712Domain":[{"name":"name","type":"string"},{"name":"version","type":"string"},{"name":"chainId","type":"uint256"},{"name":"verifyingContract","type":"address"}],"HyperliquidTransaction:ApproveAgent":[{"name":"hyperliquidChain","type":"string"},{"name":"agentAddress","type":"address"},{"name":"agentName","type":"string"},{"name":"nonce","type":"uint64"}]},"primaryType":"HyperliquidTransaction:ApproveAgent","domain":{"name":"HyperliquidSignTransaction","version":"1","chainId":42161,"verifyingContract":"0x0000000000000000000000000000000000000000"},"message":{"hyperliquidChain":"Mainnet","agentAddress":"0x00000000000000000000000000000000000000aa","agentName":"test","nonce":1700000000000}}"#
     let typedSig = hex(try EVMSigner.sign(digest: TypedData.parse(Data(typedJSON.utf8)).digest, privateKey: signer.keys.evm))
     let permitJSON = #"{"types":{"Permit":[{"name":"owner","type":"address"},{"name":"spender","type":"address"},{"name":"value","type":"uint256"},{"name":"nonce","type":"uint256"},{"name":"deadline","type":"uint256"}]},"primaryType":"Permit","domain":{"name":"USD Coin","version":"2","chainId":42161,"verifyingContract":"0xaf88d065e77c8cC2239327C5EDb3A432268e5831"},"message":{"owner":"\#(evm)","spender":"0x000000000000000000000000000000000000dEaD","value":"115792089237316195423570985008687907853269984665640564039457584007913129639935","nonce":0,"deadline":"99999999999"}}"#
     let html = """
-    <!doctype html><meta charset="utf-8"><title>LALA test dApp</title><pre id="out">waiting</pre>
+    <!doctype html><meta charset="utf-8"><title>ihatecrypto test dApp</title><pre id="out">waiting</pre>
     <script>
     const MEMO_TX = "\(SolanaTransaction.unsigned(memoMessage).base64EncodedString())";
     const MEMO_MESSAGE = "\(memoMessage.base64EncodedString())";
@@ -224,7 +224,7 @@ func writeBrowserTestPage(_ path: String) async throws {
       const { accounts } = await wallet.features['standard:connect'].connect();
       const account = accounts[0];
       log('connect: ' + account.address);
-      const [m] = await wallet.features['solana:signMessage'].signMessage({ account, message: new TextEncoder().encode('Sign in to the LALA test page') });
+      const [m] = await wallet.features['solana:signMessage'].signMessage({ account, message: new TextEncoder().encode('Sign in to the ihatecrypto test page') });
       log('signMessage: ' + m.signature.length + '-byte signature');
       try { await wallet.features['solana:signMessage'].signMessage({ account, message: b64d(MEMO_MESSAGE) }); log('FAIL: transaction signed as a message'); }
       catch (e) { log('transaction disguised as text: refused (' + e.message + ')'); }
@@ -237,12 +237,12 @@ func writeBrowserTestPage(_ path: String) async throws {
 
       // EVM through EIP-6963, the way wallet pickers discover providers.
       let eth = null;
-      window.addEventListener('eip6963:announceProvider', ({ detail }) => { if (detail.info.name === 'LALA') eth = detail.provider; });
+      window.addEventListener('eip6963:announceProvider', ({ detail }) => { if (detail.info.name === 'ihatecrypto') eth = detail.provider; });
       window.dispatchEvent(new Event('eip6963:requestProvider'));
       if (!eth) { log('FAIL: no EIP-6963 provider'); log('DONE'); return; }
       const req = (method, params) => eth.request({ method, params });
       const refused = async (label, method, params) => { try { await req(method, params); log('FAIL: ' + label + ' signed'); } catch (e) { log(label + ': refused, code ' + e.code); } };
-      log('EIP-6963: LALA, chain ' + await req('eth_chainId'));
+      log('EIP-6963: ihatecrypto, chain ' + await req('eth_chainId'));
       const [addr] = await req('eth_requestAccounts');
       log('evm account: ' + (addr === '\(evm)' ? 'ok ' : 'FAIL ') + addr);
       const sig = await req('personal_sign', ['0x' + [...new TextEncoder().encode('\(login)')].map(b => b.toString(16).padStart(2, '0')).join(''), addr]);

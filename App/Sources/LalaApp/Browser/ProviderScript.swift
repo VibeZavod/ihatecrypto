@@ -11,14 +11,14 @@ enum ProviderScript {
       let accounts = [];
       const features = ['solana:signTransaction', 'solana:signAndSendTransaction', 'solana:signMessage'];
       const setAccount = (r) => {
-        accounts = r && r.address ? [{ address: r.address, publicKey: fromB64(r.publicKey), chains: ['solana:mainnet'], features, label: 'LALA' }] : [];
+        accounts = r && r.address ? [{ address: r.address, publicKey: fromB64(r.publicKey), chains: ['solana:mainnet'], features, label: 'ihatecrypto' }] : [];
         (listeners.change || []).forEach((f) => f({ accounts }));
       };
       const each = async (inputs, fn) => { const out = []; for (const input of inputs) out.push(await fn(input)); return out; };
       const wallet = {
         version: '1.0.0',
-        name: 'LALA',
-        icon: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><rect width="32" height="32" rx="8" fill="#2c4f86"/><text x="16" y="22" font-size="18" font-family="Georgia" font-style="italic" fill="#eef8ff" text-anchor="middle">l</text></svg>'),
+        name: 'ihatecrypto',
+        icon: 'data:image/svg+xml;base64,' + btoa('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="15" fill="#FF7A2F"/><circle cx="16" cy="16" r="14.2" fill="none" stroke="#111" stroke-width="2" stroke-dasharray="1.6 1.6"/><circle cx="11.4" cy="14.2" r="3.9" fill="#fff" stroke="#111" stroke-width="1.2"/><circle cx="20.6" cy="14.2" r="3.9" fill="#fff" stroke="#111" stroke-width="1.2"/><circle cx="12.3" cy="11.9" r="1.8" fill="#111"/><circle cx="21.5" cy="11.9" r="1.8" fill="#111"/><path d="M12.3 22.4 Q16 21 19.7 21.9" stroke="#111" stroke-width="1.8" fill="none" stroke-linecap="round"/></svg>'),
         chains: ['solana:mainnet'],
         get accounts() { return accounts; },
         features: {
@@ -68,7 +68,7 @@ enum ProviderScript {
         on: (event, f) => { (ethListeners[event] = ethListeners[event] || []).push(f); return ethereum; },
         removeListener: (event, f) => { ethListeners[event] = (ethListeners[event] || []).filter((x) => x !== f); return ethereum; },
       };
-      const info = Object.freeze({ uuid: (crypto.randomUUID && crypto.randomUUID()) || String(Math.random()), name: 'LALA', icon: wallet.icon, rdns: 'app.lala' });
+      const info = Object.freeze({ uuid: (crypto.randomUUID && crypto.randomUUID()) || String(Math.random()), name: 'ihatecrypto', icon: wallet.icon, rdns: 'app.lala' });
       const announce = () => window.dispatchEvent(new CustomEvent('eip6963:announceProvider', { detail: Object.freeze({ info, provider: ethereum }) }));
       window.addEventListener('eip6963:requestProvider', announce);
       announce();

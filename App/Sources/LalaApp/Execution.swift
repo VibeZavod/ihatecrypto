@@ -225,7 +225,7 @@ extension Workspace {
     /// `confirmed`: the user said «do it» after the allocation plan.
     func move(_ command: WalletCommand, confirmed: Bool = false) async {
         guard let wallet = signerWallet else {
-            reply("Transfers work in LALA.app once the key is in secure storage.")
+            reply("Transfers work in the app once the key is in secure storage.")
             return
         }
         if case .yields(let asset) = command {
@@ -339,7 +339,7 @@ extension Workspace {
                 schedules.removeAll { $0.symbol == asset.symbol }
                 schedules.append(Schedule(symbol: asset.symbol, usdc: usdc, days: days, next: Date()))
                 let monthly = usdc * Decimal(30) / Decimal(days)
-                reply("Scheduled purchases: \(asset.symbol) for \(Fmt.usd(usdc)) \(days == 1 ? "daily" : days == 7 ? "weekly" : "every \(days) days") — ≈ \(Fmt.usd(monthly)) a month. The first one is now. Runs while LALA is open; each purchase goes through the same checks and signing.")
+                reply("Scheduled purchases: \(asset.symbol) for \(Fmt.usd(usdc)) \(days == 1 ? "daily" : days == 7 ? "weekly" : "every \(days) days") — ≈ \(Fmt.usd(monthly)) a month. The first one is now. Runs while ihatecrypto is open; each purchase goes through the same checks and signing.")
                 await runSchedules()
                 return
             case .stopSchedules:
@@ -392,7 +392,7 @@ extension Workspace {
             if a.bubbles.isEmpty { a.bubbles = [ActivityBubble(kind: "position", label: "Position · Hyperliquid", title: Self.describe(command), asset: coin)] }
         }
         guard let wallet = signerWallet else {
-            reply("Managing a position works in LALA.app once the key is in secure storage.")
+            reply("Managing a position works in the app once the key is in secure storage.")
             return
         }
         if case .trail(let pct) = command {
@@ -400,7 +400,7 @@ extension Workspace {
             var rules = exitRules[coin] ?? ExitRules(openedSize: abs(p.size), entry: p.entry, long: p.size > 0, breakevenAfterPartial: false, trailingPct: nil)
             rules.trailingPct = pct
             exitRules[coin] = rules
-            reply("LALA now keeps the \(IntentParser.pretty(coin)) stop \(Fmt.pct(pct)) behind the best price and only ever tightens it — while LALA is open or in the menu bar.")
+            reply("ihatecrypto now keeps the \(IntentParser.pretty(coin)) stop \(Fmt.pct(pct)) behind the best price and only ever tightens it — while ihatecrypto is open or in the menu bar.")
             await guardPositions()
             return
         }
@@ -657,7 +657,7 @@ struct ConfirmSheet: View {
             Spacer(minLength: 0)
             HStack(spacing: 12) {
                 Text(ws.signerWallet == nil
-                     ? "Signing is available in LALA.app once the key is in secure storage. This is a preview only."
+                     ? "Signing is available in the app once the key is in secure storage. This is a preview only."
                      : "A separate process signs; the model and websites never see the key.")
                     .font(.caption).foregroundStyle(.secondary)
                 Spacer()

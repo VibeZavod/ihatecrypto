@@ -1,7 +1,7 @@
 import Foundation
 import SignerAPI
 
-/// LalaSigner: XPC service inside LALA.app. Sandboxed with no network entitlement, it holds the seed
+/// LalaSigner: XPC service inside ihatecrypto.app. Sandboxed with no network entitlement, it holds the seed
 /// in the data-protection Keychain under its own access group, checks every request with the guard and
 /// only then signs. The app never sees the seed or a private key.
 final class ServiceDelegate: NSObject, NSXPCListenerDelegate {

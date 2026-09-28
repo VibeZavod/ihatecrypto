@@ -1,4 +1,4 @@
-# Модули LALA
+# Модули ihatecrypto
 
 Одна папка — один модуль SwiftPM. Зависимости идут внутрь: протоколы и цепочки не знают про интерфейс и модели.
 
@@ -26,12 +26,12 @@ Signer/Service         процесс подписи: seed в Keychain, разб
 ## Сборки
 
 - `./run.sh` — быстрая сборка для разработки, без процесса подписи (кошелёк только на просмотр).
-- `./build-app.sh [Release|Debug]` — `LALA.app` со встроенным `LalaSigner.xpc` через `Xcode/project.yml` (XcodeGen), подпись командой N78L833HCS.
-- Самопроверка процесса подписи на тестовой фразе: `open -W --stdout /dev/stdout .build/xcode/Build/Products/Release/LALA.app --args -signerSelfTest YES`. Запускать через `open`: при запуске бинарника напрямую launchd не видит XPC-сервис.
+- `./build-app.sh [Release|Debug]` — `ihatecrypto.app` со встроенным `LalaSigner.xpc` через `Xcode/project.yml` (XcodeGen), подпись командой N78L833HCS.
+- Самопроверка процесса подписи на тестовой фразе: `open -W --stdout /dev/stdout .build/xcode/Build/Products/Release/ihatecrypto.app --args -signerSelfTest YES`. Запускать через `open`: при запуске бинарника напрямую launchd не видит XPC-сервис.
 
 ## Исполнение
 
-`Executor.prepare` берёт свежие цены и балансы, применяет правила риска (`LalaCore/Risk.swift`), строит транзакцию моста и симулирует её до подписи: из этого окно подтверждения показывает, что изменится в каждом балансе. `execute` подписывает через `TradeSigner` (в LALA.app — процесс подписи, в терминале — тестовый ключ), пишет журнал до отправки и после каждого шага. Если стоп не встал на бирже, позиция сразу закрывается. В терминале: `LalaWalletCheck execute "<фраза>" [--yes]`, `close ETH --yes`, `position`.
+`Executor.prepare` берёт свежие цены и балансы, применяет правила риска (`LalaCore/Risk.swift`), строит транзакцию моста и симулирует её до подписи: из этого окно подтверждения показывает, что изменится в каждом балансе. `execute` подписывает через `TradeSigner` (в ihatecrypto.app — процесс подписи, в терминале — тестовый ключ), пишет журнал до отправки и после каждого шага. Если стоп не встал на бирже, позиция сразу закрывается. В терминале: `LalaWalletCheck execute "<фраза>" [--yes]`, `close ETH --yes`, `position`.
 
 Jev проверяет готовый план против слов пользователя и список подписей с изменениями балансов против плана (`GuardJev/JevReviewer`). Он может только предупредить (от 50% уверенности): пользователь подтверждает предупреждение отдельной галочкой. Решает код.
 
@@ -41,7 +41,7 @@ Jev проверяет готовый план против слов польз�
 
 ## Браузер для dApp
 
-`LalaApp/Browser`: WKWebView, в страницу до её скриптов встраивается кошелёк Solana (Wallet Standard и старый `navigator.wallets`) и EVM (EIP-1193, EIP-6963). Каждый запрос — через окно подтверждения; транзакции Solana разбираются, симулируются, неизвестные программы подписываются только после отдельного разрешения (`extraPrograms` процессу подписи). EVM: вход (`personal_sign`) и простые typed data; процесс подписи сам считает хэш из JSON (`WalletCore/TypedData.swift`) и отклоняет Permit/Permit2, вложенные типы и слепые хэши; EVM-транзакции (`eth_sendTransaction`): calldata разбирается (`EVMChain/EVMCall`), безлимитный approve, setApprovalForAll, permit и transferFrom со своего адреса отклоняются и в приложении, и в процессе подписи; вызов проверяется через eth_call, газ оценивается, транзакцию собирает и подписывает процесс подписи. `SiteCheck` помечает адреса, похожие на известные dApp. Jev (`JevReviewer.site`) — второе мнение о сайте и транзакции. Тест: `LalaWalletCheck browser-test-page <path>` и LALA.app с `-openBrowser file://… -browserAutoApprove YES -browserResultAfter 40`.
+`LalaApp/Browser`: WKWebView, в страницу до её скриптов встраивается кошелёк Solana (Wallet Standard и старый `navigator.wallets`) и EVM (EIP-1193, EIP-6963). Каждый запрос — через окно подтверждения; транзакции Solana разбираются, симулируются, неизвестные программы подписываются только после отдельного разрешения (`extraPrograms` процессу подписи). EVM: вход (`personal_sign`) и простые typed data; процесс подписи сам считает хэш из JSON (`WalletCore/TypedData.swift`) и отклоняет Permit/Permit2, вложенные типы и слепые хэши; EVM-транзакции (`eth_sendTransaction`): calldata разбирается (`EVMChain/EVMCall`), безлимитный approve, setApprovalForAll, permit и transferFrom со своего адреса отклоняются и в приложении, и в процессе подписи; вызов проверяется через eth_call, газ оценивается, транзакцию собирает и подписывает процесс подписи. `SiteCheck` помечает адреса, похожие на известные dApp. Jev (`JevReviewer.site`) — второе мнение о сайте и транзакции. Тест: `LalaWalletCheck browser-test-page <path>` и ihatecrypto.app с `-openBrowser file://… -browserAutoApprove YES -browserResultAfter 40`.
 
 ## Риск-менеджмент
 

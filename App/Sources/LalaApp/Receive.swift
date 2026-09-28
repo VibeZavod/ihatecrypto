@@ -12,14 +12,14 @@ struct ReceiveBoard: View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Image(systemName: "arrow.down.circle.fill").foregroundStyle(Brand.accentInk).font(.system(size: 18))
-                Text("Top up LALA").font(.system(size: 16, weight: .bold))
+                Text("Top up ihatecrypto").font(.system(size: 16, weight: .bold))
                 Spacer()
                 Button { withAnimation(StudioView.spring) { ws.showReceive = false } } label: { Image(systemName: "xmark") }
                     .buttonStyle(.hoverIcon).help("Close")
             }
             if isSolanaAddress(ws.solanaAddress) {
                 ReceiveCard(logo: "sol", network: "Solana", badge: "recommended", address: ws.solanaAddress,
-                            what: "USDC or SOL on the Solana network. USDC is what LALA trades with; keep ≈ 0.02 SOL for fees.",
+                            what: "USDC or SOL on the Solana network. USDC is what ihatecrypto trades with; keep ≈ 0.02 SOL for fees.",
                             tint: Brand.solanaTint)
             }
             if isEVMAddress(ws.hlAddress) {
@@ -30,7 +30,7 @@ struct ReceiveBoard: View {
             VStack(alignment: .leading, spacing: 6) {
                 Label("On an exchange, pick the network exactly: Solana (SPL) or Base. Sent on another network, money can get stuck.",
                       systemImage: "exclamationmark.triangle.fill").foregroundStyle(Brand.jevInk)
-                Label("Hyperliquid uses the same 0x address, but money gets there through LALA (it bridges from Solana). Never send to Hyperliquid’s old bridge contract.",
+                Label("Hyperliquid uses the same 0x address, but money gets there through ihatecrypto (it bridges from Solana). Never send to Hyperliquid’s old bridge contract.",
                       systemImage: "info.circle").foregroundStyle(.secondary)
             }
             .font(.caption)
@@ -130,7 +130,7 @@ struct BalanceFreshness: View {
         .font(.caption)
         .animation(.spring(duration: 0.35), value: shown)
         .onHover { selfHover = $0 }
-        .help("LALA reads balances straight from Solana, Hyperliquid and Base: every 30 s, every 10 s while it guards a position or watches an alert, and right after each action. Click to refresh now.")
+        .help("ihatecrypto reads balances straight from Solana, Hyperliquid and Base: every 30 s, every 10 s while it guards a position or watches an alert, and right after each action. Click to refresh now.")
     }
 
     private func freshness(now: Date) -> String {

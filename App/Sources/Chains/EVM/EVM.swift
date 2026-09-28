@@ -292,7 +292,7 @@ public enum EVMCall: Equatable, Sendable {
         }
         return switch self {
         case .approve(_, let a) where Self.unlimited(a), .increaseAllowance(_, let a) where Self.unlimited(a):
-            "Unlimited token spending approval — the drainers' main trick. LALA only approves exact amounts."
+            "Unlimited token spending approval — the drainers' main trick. ihatecrypto only approves exact amounts."
         case .setApprovalForAll(_, true):
             "Rights to all your NFTs in this contract (setApprovalForAll) — an NFT drainer trick. Refused."
         case .permit:
