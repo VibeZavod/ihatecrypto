@@ -78,8 +78,10 @@ extension Workspace {
             let free = hl.map { Fmt.usd($0.withdrawable) } ?? "—"
             if source?.status == .blocked {
                 out.append("✗ Money: \(source?.lines.first ?? "not enough USDC on Solana")")
-            } else if bridge?.status == .ready, let q = quote {
+            } else if let bridge, bridge.status == .ready || bridge.status == .warning, let q = quote {
                 out.append("✓ Money: \(free) free on Hyperliquid + \(Fmt.num(q.amountIn)) USDC from Solana over \(q.provider) (≈ \(Fmt.num(q.amountOut)) arrive)")
+                // The bridge's warning (it costs more than the take earns) belongs next to the money.
+                if bridge.status == .warning, let costly = bridge.lines.first(where: { $0.hasPrefix("The bridge costs more") }) { out.append("⚠ Money: " + costly) }
             } else if bridge?.status == .noData {
                 out.append("· Money: \(free) free on Hyperliquid; the bridge quote from Solana is loading")
             } else {

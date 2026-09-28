@@ -228,19 +228,17 @@ public enum Bridge {
     /// `arrive` = exact USDC to land on HyperCore; `send` = exact USDC to spend from Solana.
     public enum Amount: Sendable { case arrive(Decimal), send(Decimal) }
 
-    /// Both bridges in parallel; the cheaper one wins and the other is shown for comparison. `newAccount`: the user's
-    /// Hyperliquid account doesn't exist yet, so the quote goes to a fresh random address and carries the same
+    /// Both bridges in parallel. The app bridges trades through Relay, so Relay's price is the plan's (the signature
+    /// asks for it); 1Click is shown for comparison and stands in only when Relay doesn't answer. `newAccount`: the
+    /// user's Hyperliquid account doesn't exist yet, so the quote goes to a fresh random address and carries the same
     /// one-time opening fee the real deposit will.
     public static func dryQuote(_ amount: Amount, newAccount: Bool = false) async throws -> BridgeQuote {
         let recipient = newAccount ? "0x" + (0..<20).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined() : placeholderRecipient
         async let relay = try? relayQuote(amount, recipient: recipient)
         async let oneClick = try? oneClickQuote(amount, recipient: recipient)
         let options = [await relay, await oneClick].compactMap { $0 }
-        let arriving: Bool = if case .arrive = amount { true } else { false }
-        // Arriving amount fixed: least sent wins. Sent amount fixed: most received wins.
-        let sorted = options.sorted { arriving ? $0.amountIn < $1.amountIn : $0.amountOut > $1.amountOut }
-        guard var best = sorted.first else { throw NetError(message: "No bridge quotes: Relay and 1Click didn't respond.") }
-        if let other = sorted.dropFirst().first {
+        guard var best = options.first else { throw NetError(message: "No bridge quotes: Relay and 1Click didn't respond.") }
+        if let other = options.dropFirst().first {
             best.alternative = "\(other.provider): send \(Fmt.num(other.amountIn)) → receive \(Fmt.num(other.amountOut)), \(other.time.lowercased())"
         }
         best.opening = newAccount

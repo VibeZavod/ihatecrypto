@@ -40,7 +40,10 @@ final class DebugAPI {
     private var token = ""
     private weak var ws: Workspace?
     /// Canvases a test made through /reset and /send: /restore deletes them, so tests leave no trace in the list.
-    private var testCanvases: Set<UUID> = []
+    /// Kept across launches: another session may relaunch the app between a test and its /restore.
+    private var testCanvases = Set((UserDefaults.standard.stringArray(forKey: "debugTestCanvases") ?? []).compactMap(UUID.init(uuidString:))) {
+        didSet { UserDefaults.standard.set(testCanvases.map(\.uuidString), forKey: "debugTestCanvases") }
+    }
     /// /reset opened a fresh canvas: the first /send's canvas is a test canvas.
     private var freshCanvas = false
 
