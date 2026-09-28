@@ -935,24 +935,36 @@ final class Workspace {
         }
     }
 
-    /// Re-quotes only when the amount to bridge changed.
+    /// Re-quotes only when the amount to bridge changed, or whether the Hyperliquid account exists yet.
     func refreshQuote() async {
         if atr[intent.asset] == nil, let v = try? await Hyperliquid.atrPct(coin: intent.asset) { atr[intent.asset] = v }
         let amount: Bridge.Amount? = if let a = intent.amountUSDC { .send(a) }
             else if let need = Plan.bridgeNeed(resolved.intent, evaluation, hlWithdrawable: hl.map { $0.withdrawable + (market?.dex.flatMap { dexBalances[$0]?.withdrawable } ?? 0) }) { .arrive(need) }
             else { nil }
-        let key = amount.map { "\($0)" }
+        // A new Hyperliquid account pays a one-time opening fee on its first deposit; the plan shows it up front.
+        let newAccount = if amount != nil, let evm = previewWallet?.evm { (try? await Hyperliquid.isNewAccount(evm)) ?? false } else { false }
+        let key = amount.map { "\($0) \(newAccount)" }
         guard key != quotedKey else { return }
         quotedKey = key
         quote = nil
         quoteError = nil
         guard let amount else { return }
         do {
-            let q = try await Bridge.dryQuote(amount)
+            let q = try await Bridge.dryQuote(amount, newAccount: newAccount)
             if quotedKey == key { quote = q }
         } catch {
             if quotedKey == key { quoteError = error.localizedDescription; quotedKey = nil }
         }
+    }
+
+    /// The plan again from now: balances, prices and a new bridge quote, then a fresh preparation. For a canvas that has
+    /// gone stale or a preparation that failed on old numbers.
+    func rerunPlan() async {
+        prepared = nil
+        executionError = nil
+        quotedKey = nil
+        await refresh()
+        await prepareExecution()
     }
 
     func loadSigner() async {

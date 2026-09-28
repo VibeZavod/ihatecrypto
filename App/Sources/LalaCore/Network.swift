@@ -14,6 +14,12 @@ func dec(_ s: String?) throws -> Decimal {
 public enum Hyperliquid {
     static let info = "https://api.hyperliquid.xyz/info"
 
+    /// An address Hyperliquid has never seen: its first deposit pays a one-time fee for opening the account.
+    public static func isNewAccount(_ address: String) async throws -> Bool {
+        let data = try await HTTP.post(info, json: ["type": "userRole", "user": address])
+        return (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["role"] as? String == "missing"
+    }
+
     /// HIP-3 exchanges whose markets LALA shows: xyz carries the liquid commodities and stocks (oil, gold,
     /// Tesla…); the others had no volume on 2026-09-25.
     public static let hip3Dexes = ["xyz"]
@@ -222,10 +228,13 @@ public enum Bridge {
     /// `arrive` = exact USDC to land on HyperCore; `send` = exact USDC to spend from Solana.
     public enum Amount: Sendable { case arrive(Decimal), send(Decimal) }
 
-    /// Both bridges in parallel; the cheaper one wins and the other is shown for comparison.
-    public static func dryQuote(_ amount: Amount) async throws -> BridgeQuote {
-        async let relay = try? relayQuote(amount)
-        async let oneClick = try? oneClickQuote(amount)
+    /// Both bridges in parallel; the cheaper one wins and the other is shown for comparison. `newAccount`: the user's
+    /// Hyperliquid account doesn't exist yet, so the quote goes to a fresh random address and carries the same
+    /// one-time opening fee the real deposit will.
+    public static func dryQuote(_ amount: Amount, newAccount: Bool = false) async throws -> BridgeQuote {
+        let recipient = newAccount ? "0x" + (0..<20).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined() : placeholderRecipient
+        async let relay = try? relayQuote(amount, recipient: recipient)
+        async let oneClick = try? oneClickQuote(amount, recipient: recipient)
         let options = [await relay, await oneClick].compactMap { $0 }
         let arriving: Bool = if case .arrive = amount { true } else { false }
         // Arriving amount fixed: least sent wins. Sent amount fixed: most received wins.
@@ -234,15 +243,16 @@ public enum Bridge {
         if let other = sorted.dropFirst().first {
             best.alternative = "\(other.provider): send \(Fmt.num(other.amountIn)) → receive \(Fmt.num(other.amountOut)), \(other.time.lowercased())"
         }
+        best.opening = newAccount
         return best
     }
 
-    static func relayQuote(_ amount: Amount) async throws -> BridgeQuote {
+    static func relayQuote(_ amount: Amount, recipient: String = placeholderRecipient) async throws -> BridgeQuote {
         let (exactOutput, units): (Bool, Decimal) = switch amount {
         case .arrive(let v): (true, v * 100_000_000) // Hyperliquid perp USDC in Relay: 8 decimals
         case .send(let v): (false, v * 1_000_000)
         }
-        let q = try await Relay.quote(user: placeholderRefund, recipient: placeholderRecipient, originChain: Relay.Chain.solana,
+        let q = try await Relay.quote(user: placeholderRefund, recipient: recipient, originChain: Relay.Chain.solana,
                                       destinationChain: Relay.Chain.hyperliquid, originCurrency: Relay.Currency.solanaUSDC,
                                       destinationCurrency: Relay.Currency.hyperliquidUSDC,
                                       amount: NSDecimalNumber(decimal: units.rounded(0, .up)).uint64Value, exactOutput: exactOutput)
@@ -251,7 +261,7 @@ public enum Bridge {
                            amountOut: try dec(q.amountOutFormatted), time: "Seconds: 4 s to credit in live runs.")
     }
 
-    static func oneClickQuote(_ amount: Amount) async throws -> BridgeQuote {
+    static func oneClickQuote(_ amount: Amount, recipient: String = placeholderRecipient) async throws -> BridgeQuote {
         let (exactOutput, units): (Bool, Decimal) = switch amount {
         case .arrive(let v): (true, v * 100_000_000) // HyperCore USDC has 8 decimals
         case .send(let v): (false, v * 1_000_000)    // Solana USDC has 6 decimals
@@ -259,7 +269,7 @@ public enum Bridge {
         // EXACT_OUTPUT adds the slippage tolerance to amountIn; 0.1% is enough for USDC → USDC.
         let q = try await OneClick.quote(
             dry: true, exactOutput: exactOutput, origin: OneClick.Asset.solanaUSDC, destination: OneClick.Asset.hyperCoreUSDC,
-            amount: "\(units.rounded(0, .up))", refundTo: placeholderRefund, recipient: placeholderRecipient, slippageBps: 10
+            amount: "\(units.rounded(0, .up))", refundTo: placeholderRefund, recipient: recipient, slippageBps: 10
         )
         let amountIn = try dec(q.amountInFormatted)
         let priceIn = try q.minAmountIn.map { try dec($0) / 1_000_000 } ?? amountIn

@@ -653,6 +653,10 @@ struct ConfirmSheet: View {
                 Label(error, systemImage: "xmark.octagon.fill").foregroundStyle(Brand.loss)
                     .padding(12).frame(maxWidth: .infinity, alignment: .leading)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Brand.blockedTint))
+                if failed {
+                    Text("The plan may be out of date. Try again recalculates it from now — prices, balances and a new bridge quote — and prepares it again; nothing is signed.")
+                        .font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 0)
             HStack(spacing: 12) {
@@ -664,7 +668,15 @@ struct ConfirmSheet: View {
                 Button(ws.signerWallet == nil ? "Close" : "Cancel") { ws.prepared = nil; ws.executionError = nil }
                     .keyboardShortcut(.cancelAction)
                     .controlSize(.large)
-                if ws.signerWallet != nil {
+                if failed {
+                    Button { Task { await ws.rerunPlan() } } label: {
+                        Label("Try again", systemImage: "arrow.clockwise").font(.system(size: 14, weight: .bold)).padding(.horizontal, 6)
+                    }
+                    .keyboardShortcut(.defaultAction)
+                    .buttonStyle(.borderedProminent)
+                    .tint(Brand.accent)
+                    .controlSize(.large)
+                } else if ws.signerWallet != nil {
                     Button { Task { await ws.confirmExecution() } } label: {
                         Label("Sign · Touch ID", systemImage: "touchid").font(.system(size: 14, weight: .bold))
                             .padding(.horizontal, 6)
@@ -680,8 +692,12 @@ struct ConfirmSheet: View {
         .font(.system(size: 13))
         .padding(26)
         .frame(width: 680)
-        .frame(minHeight: 460)
+        // A failed preparation is a short note, not a tall empty sheet.
+        .frame(minHeight: ws.prepared == nil ? 0 : 460)
     }
+
+    /// The preparation stopped with an error and there is nothing to sign: offer to run the plan again.
+    private var failed: Bool { ws.prepared == nil && ws.executionError != nil && !ws.preparing }
 
     private var title: String {
         guard let p = ws.prepared else { return ws.executionError == nil ? "Preparing the trade" : "Couldn’t prepare the trade" }

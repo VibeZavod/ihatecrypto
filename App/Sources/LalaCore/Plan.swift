@@ -114,6 +114,8 @@ public struct BridgeQuote: Sendable, Equatable {
     public let time: String
     /// The other provider's price, for comparison.
     public var alternative: String?
+    /// The first deposit into a Hyperliquid account that doesn't exist yet: the price includes its one-time opening fee.
+    public var opening = false
 
     public init(provider: String, amountIn: Decimal, reserve: Decimal, amountOut: Decimal, time: String, alternative: String? = nil) {
         self.provider = provider
@@ -251,9 +253,16 @@ public enum Plan {
                 : "Fees and spread ≈ \(Fmt.usd(q.amountIn - q.amountOut)).",
             q.time,
         ]
+        if q.opening { lines.append("Your Hyperliquid account is new: this first deposit includes its one-time opening fee.") }
+        // Worth saying before the signature: a bridge that costs more than the take-profit earns makes the trade a loss.
+        let costly = e.sizing?.profitAtTakeUSD.map { q.amountIn - q.reserve - q.amountOut > $0 } ?? false
+        if costly, let profit = e.sizing?.profitAtTakeUSD {
+            lines.append("The bridge costs more than the take-profit earns (\(Fmt.usd(profit))): even at the take this trade loses money"
+                         + (q.opening ? ", unless the account is used again." : "."))
+        }
         if let alternative = q.alternative { lines.append(alternative) }
         lines.append("Dry quote: no addresses are sent.")
-        return Block(id: "bridge", label: label, title: title, lines: lines, status: .ready)
+        return Block(id: "bridge", label: label, title: title, lines: lines, status: costly ? .warning : .ready)
     }
 
     static func position(_ i: TradeIntent, _ e: Evaluation, _ live: Live) -> Block {

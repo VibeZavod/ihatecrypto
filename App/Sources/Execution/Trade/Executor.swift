@@ -106,6 +106,8 @@ public actor Executor {
         public let feesUSD: String
         /// Where the USDC goes: Hyperliquid for trades, Base for Aave.
         public var chain: UInt64 = Relay.Chain.hyperliquid
+        /// Part of the fee that is Hyperliquid's one-time charge for opening the account; 0 for an existing one.
+        public var opening: Decimal = 0
     }
 
     /// Everything the user confirms: what will be signed, in order, and what it does to each balance.
@@ -182,7 +184,8 @@ public actor Executor {
         var changes = prepared?.changes ?? []
         var steps: [String] = []
         if let b = bridge {
-            steps.append("Relay bridge: \(Fmt.num(b.spend)) USDC from Solana → \(Fmt.num(b.arriving)) USDC on Hyperliquid, fee \(Decimal(string: b.feesUSD).map { Fmt.usd($0) } ?? "$" + b.feesUSD).")
+            steps.append("Relay bridge: \(Fmt.num(b.spend)) USDC from Solana → \(Fmt.num(b.arriving)) USDC on Hyperliquid, fee \(Decimal(string: b.feesUSD).map { Fmt.usd($0) } ?? "$" + b.feesUSD)"
+                         + (b.opening > 0 ? ", of it \(Fmt.usd(b.opening)) once for opening your Hyperliquid account." : "."))
         }
         let arriving = bridge?.arriving ?? 0
         let side = intent.side == .long ? "Long" : "Short"
@@ -526,9 +529,15 @@ public actor Executor {
         guard let spendUnits = UInt64(quote.amountIn), spendUnits > 0 else { throw ExecutionError("Relay didn't give the amount to send.") }
         let spend = Decimal(spendUnits) / 1_000_000
         let arriving = Decimal(string: quote.amountOutFormatted) ?? 0
+        // Hyperliquid charges once for opening an account and Relay passes it on as its gas. It's allowed on top of the
+        // cap only while Hyperliquid says the account doesn't exist, and only up to $1.50 (measured 2026-09-28: $1.20).
+        var opening: Decimal = 0
+        if chain == Relay.Chain.hyperliquid, (try? await Hyperliquid.isNewAccount(wallet.evm)) == true {
+            opening = min(Decimal(string: quote.relayerGasUSD) ?? 0, Decimal(string: "1.5")!)
+        }
         // Bridge costs are capped: over what arrives (and the gas asked for) at most 3%, never more than $1; small bridges
         // may cost up to $0.15, Relay's floor for delivering gas (measured 2026-09-26: ≈ $0.10 on a $2 bridge to Base).
-        guard spend - arriving - (topupGasUSD ?? 0) <= min(max(arriving * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1) else {
+        guard spend - arriving - (topupGasUSD ?? 0) - opening <= min(max(arriving * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1) else {
             throw ExecutionError("The Relay bridge wants \(Fmt.num(spend)) USDC for \(Fmt.num(arriving)): more than allowed.")
         }
         let have = try await rpc.tokenBalance(owner: wallet.solana, mint: usdcMint)
@@ -560,7 +569,7 @@ public actor Executor {
         ]
         if !quote.gasTopup.isEmpty { changes.append("Gas for the destination: +\(quote.gasTopup) ETH arrives with the USDC.") }
         return (BridgeStep(requestId: quote.requestId, unsigned: unsigned, accounts: message.staticKeys, tokenOwners: owners,
-                           lastValid: lastValid, spend: spend, arriving: arriving, feesUSD: quote.feesUSD, chain: chain), changes)
+                           lastValid: lastValid, spend: spend, arriving: arriving, feesUSD: quote.feesUSD, chain: chain, opening: opening), changes)
     }
 
     func sendBridge(_ b: BridgeStep) async throws {

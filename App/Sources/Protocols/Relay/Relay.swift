@@ -43,6 +43,9 @@ public enum Relay {
         public let hyperliquid: HyperliquidSteps?
         /// EVM origin: transactions in order («approve», «deposit»), for the caller to check and sign.
         public var evm: [EVMStep] = []
+        /// The relayer's own gas in USD. Delivering to a Hyperliquid account that doesn't exist yet makes this
+        /// Hyperliquid's one-time opening fee (measured 2026-09-28: $1.20 against $0 for an existing account).
+        public var relayerGasUSD = ""
     }
 
     public struct EVMStep: Sendable {
@@ -166,6 +169,7 @@ public enum Relay {
             solanaInstructions: instructions, hyperliquid: hyperliquid
         )
         quote.evm = evm
+        quote.relayerGasUSD = ((j["fees"] as? [String: Any])?["relayerGas"] as? [String: Any])?["amountUsd"] as? String ?? ""
         return quote
     }
 
