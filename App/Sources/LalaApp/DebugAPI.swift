@@ -24,6 +24,7 @@ struct DebugBadge: View {
 ///     curl -s -H "Authorization: Bearer $T" 127.0.0.1:51789/screenshot -o lala.png
 ///     curl -s -H "Authorization: Bearer $T" -X POST 127.0.0.1:51789/reset      # a fresh canvas for a test
 ///     curl -s -H "Authorization: Bearer $T" -X POST 127.0.0.1:51789/cancel     # drop what waits for Confirm
+///     curl -s -H "Authorization: Bearer $T" -d '{"index":0}' 127.0.0.1:51789/pick   # press a «What next» card
 ///     curl -s -H "Authorization: Bearer $T" -d '{"canvas":"<id>"}' 127.0.0.1:51789/restore   # delete test canvases, reopen
 ///
 /// Tools/uitest.py runs scenarios through it (Tools/uitest-scenarios.json).
@@ -122,6 +123,13 @@ final class DebugAPI {
             if let id = ws.canvasID, testCanvases.contains(id) { ws.deleteCanvas(id) } else { ws.newCanvas() }
             freshCanvas = true
             return (200, "application/json", json(state(ws, since: ws.messages.count)))
+        case ("POST", "/pick"):
+            let index = (((try? JSONSerialization.jsonObject(with: r.body)) as? [String: Any])?["index"] as? Int) ?? 0
+            guard !ws.busy else { return (409, "text/plain", Data("busy\n".utf8)) }
+            guard let options = ws.nextSteps?.options, options.indices.contains(index) else { return (404, "text/plain", Data("no such card\n".utf8)) }
+            let before = ws.messages.count
+            await SignerClient.$untrusted.withValue(true) { await ws.pick(options[index]) }
+            return (200, "application/json", json(state(ws, since: before)))
         case ("POST", "/cancel"):
             guard !ws.busy else { return (409, "text/plain", Data("busy\n".utf8)) }
             let before = ws.messages.count
@@ -168,6 +176,7 @@ final class DebugAPI {
             ] as [String: Any],
             "positions": ws.positions.map { "\($0.size > 0 ? "long" : "short") \($0.coin) pnl \($0.unrealizedPnl)" },
             "wallet": ["solana": ws.solanaAddress, "evm": ws.hlAddress],
+            "favoriteTokens": ws.favoriteTokens.map { "\($0.symbol) \($0.chain) \($0.address)" },
             // For `screencapture -l <id>` from a terminal allowed to record the screen: the glass chrome doesn't
             // render through cacheDisplay (/screenshot comes out blank since the redesign).
             "windowID": NSApp.windows.first { $0.title == LalaApp.mainTitle }?.windowNumber ?? 0,
