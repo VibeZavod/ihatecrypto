@@ -9,6 +9,7 @@ canvas boards, and drops what waits for Confirm (/cancel). At the end the test c
 that was open is reopened (/restore). Nothing can sign through the debug API, so no money moves. It refuses to start
 while a move waits for Confirm or runs on the user's own canvas. Exit code 1 when any scenario fails.
 """
+import re
 import json
 import os
 import sys

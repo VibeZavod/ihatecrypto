@@ -113,8 +113,38 @@
     ],
     "expect": {
       "pending_kind": "wallet",
-      "reply_contains": "debug API",
+      "reply_contains": "API",
       "not_executing": true
+    }
+  },
+  {
+    "name": "Russian in → Russian out: the model's chat reply",
+    "send": [
+      "привет, что ты умеешь?"
+    ],
+    "expect": {
+      "no_pending": true,
+      "reply_cyrillic": true
+    }
+  },
+  {
+    "name": "Russian in → Russian out: LALA's own «Understood» reply",
+    "send": [
+      "положи 1 USDC в Jupiter"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "reply_contains": "Понял"
+    }
+  },
+  {
+    "name": "English in → English out",
+    "send": [
+      "hi, what can you do?"
+    ],
+    "expect": {
+      "no_pending": true,
+      "reply_cyrillic": false
     }
   }
 ]
