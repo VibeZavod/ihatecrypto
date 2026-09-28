@@ -48,8 +48,22 @@ public enum TokenResearch {
         public let token2022: Bool
         public let verified: Bool
         public let liquidityUSD: Decimal?
-        /// «freeze authority is on: …», plainly, worst first.
-        public let warnings: [String]
+        public let freezable: Bool
+        public let mintable: Bool
+        /// % the top holders own.
+        public let topHolders: Decimal?
+
+        /// What is risky about it, plainly, worst first.
+        public func warnings(russian: Bool = false) -> [String] {
+            var out: [String] = []
+            if freezable { out.append(russian ? "создатель может заморозить токены держателей (freeze authority включён) — продать может не получиться"
+                                              : "its creator can freeze holders' tokens (freeze authority is on), so you might not be able to sell") }
+            if mintable { out.append(russian ? "создатель может выпустить ещё (mint authority включён)" : "its creator can print more of it (mint authority is on)") }
+            if let l = liquidityUSD, l < 50_000 { out.append(russian ? "пул тонкий (\(usd(l))): даже небольшая продажа двигает цену" : "its pool is thin (\(usd(l))): a small sale moves the price") }
+            if !verified { out.append(russian ? "Jupiter его не проверял" : "Jupiter hasn't verified it") }
+            if let top = topHolders, top > 50 { out.append(russian ? "у крупнейших держателей \(pct(top, sign: false))" : "the top holders own \(pct(top, sign: false))") }
+            return out
+        }
     }
 
     public static func solanaToken(_ mint: String) async -> SolanaToken? {
@@ -63,16 +77,10 @@ public enum TokenResearch {
         let audit = t["audit"] as? [String: Any] ?? [:]
         let tags = t["tags"] as? [String] ?? []
         let verified = t["isVerified"] as? Bool == true || tags.contains("verified")
-        let liquidity = dec(t["liquidity"])
-        var warnings: [String] = []
-        if audit["freezeAuthorityDisabled"] as? Bool == false { warnings.append("its creator can freeze holders' tokens (freeze authority is on), so you might not be able to sell") }
-        if audit["mintAuthorityDisabled"] as? Bool == false { warnings.append("its creator can print more of it (mint authority is on)") }
-        if let liquidity, liquidity < 50_000 { warnings.append("its pool is thin (\(usd(liquidity))): a small sale moves the price") }
-        if !verified { warnings.append("Jupiter hasn't verified it") }
-        if let top = dec(audit["topHoldersPercentage"]), top > 50 { warnings.append("the top holders own \(pct(top, sign: false))") }
         return SolanaToken(name: t["name"] as? String ?? "?", symbol: t["symbol"] as? String ?? "?", decimals: decimals,
                            token2022: t["tokenProgram"] as? String == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" || tags.contains("token-2022"),
-                           verified: verified, liquidityUSD: liquidity, warnings: warnings)
+                           verified: verified, liquidityUSD: dec(t["liquidity"]), freezable: audit["freezeAuthorityDisabled"] as? Bool == false,
+                           mintable: audit["mintAuthorityDisabled"] as? Bool == false, topHolders: dec(audit["topHoldersPercentage"]))
     }
 
     // MARK: Sources

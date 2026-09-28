@@ -79,9 +79,8 @@ extension Workspace {
                       "Jupiter не знает токен \(mint), поэтому торговать им нельзя — ничего не ушло."), note: note)
             return nil
         }
-        if !t.warnings.isEmpty {
-            reply("⚠ \(t.name) (\(t.symbol)): " + t.warnings.joined(separator: "; ") + ".", note: note)
-        }
+        let warnings = t.warnings(russian: modulesRussian)
+        if !warnings.isEmpty { reply("⚠ \(t.name) (\(t.symbol)): " + warnings.joined(separator: "; ") + ".", note: note) }
         return SpotAsset(symbol: t.symbol, mint: mint, decimals: t.decimals, token2022: t.token2022)
     }
 

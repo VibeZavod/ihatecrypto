@@ -144,9 +144,11 @@ private final class Script: LLMClient, @unchecked Sendable {
     """
     let t = try #require(TokenResearch.solanaToken(Data(json.utf8), mint: mint))
     #expect(t.decimals == 6 && t.token2022 && !t.verified)
-    #expect(t.warnings.first?.contains("freeze") == true)
-    #expect(t.warnings.contains { $0.contains("thin") })
-    #expect(!t.warnings.contains { $0.contains("print") })
+    #expect(t.warnings().first?.contains("freeze") == true)
+    #expect(t.warnings().contains { $0.contains("thin") })
+    #expect(!t.warnings().contains { $0.contains("print") })
+    #expect(t.warnings(russian: true).first?.hasPrefix("создатель может заморозить") == true)
+    #expect(t.warnings(russian: true).count == t.warnings().count)
 }
 
 @Test func aPastedAddressIsLookedUpBeforeTheModelReads() async throws {
