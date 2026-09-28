@@ -23,7 +23,6 @@ extension Workspace {
 /// switches; kinds of moves and protocols are in Settings › Modules.
 struct NetworksChip: View {
     @Environment(Workspace.self) private var ws
-    @Environment(\.openSettings) private var openSettings
     @AppStorage(Modules.key) private var stored = ""
     @State private var open = false
     /// When the popover last closed: the click on the chip that closes it must not reopen it.
@@ -94,8 +93,7 @@ struct NetworksChip: View {
                 .padding(.horizontal, 16).padding(.bottom, 6)
             Button {
                 open = false
-                UserDefaults.standard.set("modules", forKey: SettingsView.tabKey)
-                openSettings()
+                ws.openSettings(.modules)
             } label: {
                 Text("DeFi, perps, protocols: Settings › Modules").font(.ui(11, .semibold)).underline()
                     .foregroundStyle(Color(nsColor: .linkColor))
@@ -174,7 +172,6 @@ struct ModulesSettings: View {
             }
             .padding(28)
         }
-        .frame(width: 900, height: 660)
     }
 
     private func caption(_ text: String) -> some View {
@@ -211,7 +208,7 @@ struct ModulesSettings: View {
                 }
                 Spacer(minLength: 4)
                 Toggle(k.name, isOn: Binding(get: { on }, set: { v in update { $0.set(k, v) } }))
-                    .toggleStyle(.switch).labelsHidden()
+                    .toggleStyle(AccentSwitch())
             }
             Divider().padding(.vertical, 10)
             ForEach(ModuleProtocol.allCases.filter { $0.kind == k }, id: \.self) { p in
@@ -225,7 +222,7 @@ struct ModulesSettings: View {
                     }
                     Spacer(minLength: 4)
                     Toggle(p.name, isOn: Binding(get: { m.isOn(p) }, set: { v in update { $0.set(p, v) } }))
-                        .toggleStyle(.switch).controlSize(.small).labelsHidden().disabled(!on)
+                        .toggleStyle(AccentSwitch()).disabled(!on)
                 }
                 .padding(.vertical, 5)
                 .opacity(m.allows(p) ? 1 : 0.5)

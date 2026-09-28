@@ -271,8 +271,14 @@ struct TrafficLights: NSViewRepresentable {
     static let center = CGPoint(x: 30, y: 30)
     /// The folded rail's middle (window x): the three lights center on it. nil: the close button at `center`.
     var middle: CGFloat?
+    /// The close button's middle when `middle` is nil; its double height is the title bar's.
+    var center = TrafficLights.center
 
-    func makeNSView(context: Context) -> NSView { Probe() }
+    func makeNSView(context: Context) -> NSView {
+        let probe = Probe()
+        probe.center = center
+        return probe
+    }
     func updateNSView(_ view: NSView, context: Context) {
         guard let probe = view as? Probe, probe.middle != middle else { return }
         probe.middle = middle
@@ -281,6 +287,7 @@ struct TrafficLights: NSViewRepresentable {
 
     final class Probe: NSView {
         var middle: CGFloat?
+        var center = TrafficLights.center
         private var observers: [NSObjectProtocol] = []
 
         override func viewDidMoveToWindow() {
@@ -301,10 +308,10 @@ struct TrafficLights: NSViewRepresentable {
                   let mini = window.standardWindowButton(.miniaturizeButton),
                   let zoom = window.standardWindowButton(.zoomButton),
                   let container = close.superview?.superview else { return }
-            let height = 2 * TrafficLights.center.y
+            let height = 2 * center.y
             container.frame = CGRect(x: container.frame.minX, y: window.frame.height - height, width: container.frame.width, height: height)
             let step = mini.frame.minX - close.frame.minX
-            let first = middle.map { $0 - (2 * step + close.frame.width) / 2 } ?? TrafficLights.center.x - close.frame.width / 2
+            let first = middle.map { $0 - (2 * step + close.frame.width) / 2 } ?? center.x - close.frame.width / 2
             // Folding the rail slides them along with it.
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = animated ? 0.35 : 0
@@ -730,7 +737,6 @@ struct ClosedTrades: View {
 /// Who is signed in and where settings are: the rail's bottom corner. Opens LALA's own menu (S14).
 struct ProfileMenu: View {
     @Environment(Workspace.self) private var ws
-    @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
     @State private var open = false
     @State private var confirmSignOut = false
@@ -780,10 +786,10 @@ struct ProfileMenu: View {
             }
             .padding(10)
             Divider().padding(.vertical, 4)
-            MenuRow(title: "Settings", icon: "gearshape", shortcut: "⌘,") { go { openSettings() } }
-            MenuRow(title: "Models and sign-ins", detail: "\(ws.provider.info.name) · \(ws.model)", icon: "sparkles") { go { openSettings() } }
+            MenuRow(title: "Settings", icon: "gearshape", shortcut: "⌘,") { go { ws.openSettings() } }
+            MenuRow(title: "Models and sign-ins", detail: "\(ws.provider.info.name) · \(ws.model)", icon: "sparkles") { go { ws.openSettings(.signIns) } }
             MenuRow(title: "Key and signing", detail: ws.signerWallet == nil ? "import a wallet" : "Touch ID, key in a separate process", icon: "key") { go { openWindow(id: "import") } }
-            MenuRow(title: "Risk rules", detail: "at most \(Fmt.pct(ws.policy.maxRiskPct)) per trade", icon: "shield.lefthalf.filled") { go { openSettings() } }
+            MenuRow(title: "Risk rules", detail: "at most \(Fmt.pct(ws.policy.maxRiskPct)) per trade", icon: "shield.lefthalf.filled") { go { ws.openSettings(.general) } }
             MenuRow(title: "dApp browser", icon: "globe") { go { openWindow(id: "browser") } }
             Divider().padding(.vertical, 4)
             if ws.signerWallet != nil {
@@ -2017,7 +2023,6 @@ private struct ChatComposer: View {
 /// its height: a popover that resizes moves itself, and the row under the pointer with it.
 struct ChatModelMenu: View {
     @Environment(Workspace.self) private var ws
-    @Environment(\.openSettings) private var openSettings
     @State private var open = false
     /// The two-way company standing open: the current one's when the menu opens, else the first.
     // ponytail: equal height holds while every multi-way company has exactly two ways.
@@ -2071,8 +2076,7 @@ struct ChatModelMenu: View {
                 Spacer()
                 Button("Sign-ins…") {
                     open = false
-                    UserDefaults.standard.set("general", forKey: SettingsView.tabKey)
-                    openSettings()
+                    ws.openSettings(.signIns)
                 }
                 .buttonStyle(.borderless).font(.ui(10))
             }
@@ -2120,7 +2124,7 @@ struct ChatModelMenu: View {
         ws.providerID = info.id
         ws.saveCanvas()
         open = false
-        if !connected(info) { UserDefaults.standard.set("general", forKey: SettingsView.tabKey); openSettings() }
+        if !connected(info) { ws.openSettings(.signIns) }
     }
 
     private func connected(_ info: ProviderInfo) -> Bool { info.kind == .local || linked.contains(info.id) }

@@ -621,7 +621,6 @@ extension Workspace {
 /// A plan the rules stop (S04): what fits instead, one click away.
 struct FixChoices: View {
     @Environment(Workspace.self) private var ws
-    @Environment(\.openSettings) private var openSettings
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -634,7 +633,7 @@ struct FixChoices: View {
                     }
                 }
                 card(badge: "at your own risk", title: "Raise the limit",
-                     detail: "now at most \(Fmt.pct(ws.policy.maxRiskPct)) per trade · in Settings", recommended: false) { openSettings() }
+                     detail: "now at most \(Fmt.pct(ws.policy.maxRiskPct)) per trade · in Settings", recommended: false) { ws.openSettings(.general) }
             }
         }
         .frame(width: 470, alignment: .leading)

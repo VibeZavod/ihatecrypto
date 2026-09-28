@@ -177,6 +177,14 @@ final class Workspace {
     /// A menu or Settings the person has open ("Picking a model", "Choosing networks", "In Settings"): the coin raises
     /// its brows and looks at it, and the chat's header says so.
     var tuning: String?
+    /// Settings fill the main window in place of the canvas and the chat.
+    var settingsOpen = false
+
+    /// Shows Settings, on `tab` (a `SettingsView.Tab`) when given.
+    func openSettings(_ tab: SettingsView.Tab? = nil) {
+        if let tab { UserDefaults.standard.set(tab.rawValue, forKey: SettingsView.tabKey) }
+        settingsOpen = true
+    }
     /// «Spread … across the best rates» waiting for a signature, drawn on the studio canvas.
     var allocationPreview: AllocationPreview?
     /// «Переложи в лучшие ставки» waiting for its signature: the plan, drawn on the canvas it was made on (RebalanceBoard).

@@ -83,6 +83,12 @@ struct LalaApp: App {
         }
         .defaultSize(width: 1320, height: 860)
         .windowStyle(.hiddenTitleBar)
+        .commands {
+            // Settings open in the main window, in place of the canvas: no separate Settings window.
+            CommandGroup(replacing: .appSettings) {
+                Button("Settings…") { workspace.openSettings(); StatusItem.shared.openMain() }.keyboardShortcut(",")
+            }
+        }
 
         Window("Browser", id: "browser") {
             BrowserView().environment(workspace).font(.ui(13))
@@ -94,9 +100,6 @@ struct LalaApp: App {
         }
         .windowResizability(.contentSize)
 
-        Settings {
-            SettingsView().environment(workspace).font(.ui(13))
-        }
     }
 }
 
@@ -220,11 +223,11 @@ struct MenuBarContent: View {
 
 struct ContentView: View {
     @Environment(Workspace.self) private var ws
-    @Environment(\.openSettings) private var openSettings
     @Environment(\.openWindow) private var openWindow
 
     var body: some View {
-        StudioView()
+        // The chat lives on the canvas only: Settings take the whole window, chat included.
+        Group { if ws.settingsOpen { SettingsView() } else { StudioView() } }
             .frame(minWidth: 960, minHeight: 650)
             .toolbar(removing: .title)
             .task {
@@ -238,10 +241,10 @@ struct ContentView: View {
             // argument would be taken by macOS as a file to open, and the main window would not appear.
             #if DEBUG
             if UserDefaults.standard.bool(forKey: "connectExisting") { ws.useExistingLogin() }
-            if UserDefaults.standard.bool(forKey: "openSettings") { openSettings() }
+            if UserDefaults.standard.bool(forKey: "openSettings") { ws.openSettings() }
             if UserDefaults.standard.bool(forKey: "demoImport") { openWindow(id: "import") }
             if UserDefaults.standard.bool(forKey: "signIn") {
-                openSettings()
+                ws.openSettings(.signIns)
                 await ws.signIn()
                 FileHandle.standardError.write(Data("LALA sign-in \(ws.providerID): \(ws.llmStatus ?? "")\n".utf8))
             }
@@ -267,10 +270,11 @@ struct ContentView: View {
             #endif
             await ws.refresh()
             // `-openPlace kamino`: opens that place's card from the rail, to check the canvas layout in a screenshot;
-            // `history` and `favorites` open the boards of the rail's buttons. Only shows cards, so it stays in Release builds.
+            // `history` and `favorites` open the boards of the rail's buttons, `settings` Settings (the tab: `-settingsTab modules`). Only shows cards, so it stays in Release builds.
             switch UserDefaults.standard.string(forKey: "openPlace") {
             case "history": ws.showHistory = true
             case "favorites": ws.showFavorites = true
+            case "settings": ws.openSettings()
             case let place?: ws.detail = place
             case nil: break
             }
@@ -398,111 +402,215 @@ struct MarketPicker: View {
     }
 }
 
+/// Settings, in the whole main window: a title bar, the tabs on the left under the assistant's coin, the tab on the
+/// right. The coin, or Esc, goes back to the canvas.
 struct SettingsView: View {
     @Environment(Workspace.self) private var ws
     @State private var confirmForget = false
     /// The open tab; the chat's networks menu opens Settings straight on «modules».
     static let tabKey = "settingsTab"
-    @AppStorage(SettingsView.tabKey) private var tab = "general"
+    @AppStorage(SettingsView.tabKey) private var tab = Tab.general
+
+    enum Tab: String, CaseIterable {
+        case general, signIns = "signins", wallet, modules, debugging
+
+        var title: String {
+            switch self {
+            case .general: "General"
+            case .signIns: "Sign-ins"
+            case .wallet: "Wallet"
+            case .modules: "Modules"
+            case .debugging: "Debugging"
+            }
+        }
+
+        var icon: String {
+            switch self {
+            case .general: "gearshape"
+            case .signIns: "key"
+            case .wallet: "creditcard"
+            case .modules: "square.grid.2x2"
+            case .debugging: "terminal"
+            }
+        }
+    }
 
     var body: some View {
-        TabView(selection: $tab) {
-            general.tabItem { Label("General", systemImage: "gearshape") }.tag("general")
-            ModulesSettings().tabItem { Label("Modules", systemImage: "square.grid.2x2") }.tag("modules")
+        VStack(spacing: 0) {
+            ZStack {
+                WindowDragArea()
+                Text("Settings").font(.ui(13, .semibold)).allowsHitTesting(false)
+            }
+            .frame(height: 2 * Self.lights.y)
+            .background(Brand.card)
+            Brand.cardBorder.frame(height: 1)
+            HStack(spacing: 0) {
+                sidebar
+                Brand.cardBorder.frame(width: 1)
+                page.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).background(Brand.canvas)
+            }
         }
-        // The chat's coin raises its brows and looks at Settings while they're open.
+        .ignoresSafeArea(edges: .top)
+        .background(TrafficLights(center: Self.lights))
+        .background(Button("Back to the canvas", action: close).keyboardShortcut(.cancelAction).opacity(0))
+        // The coin raises its brows and looks at Settings while they're open.
         .onAppear { ws.tuning = "In Settings" }
         .onDisappear { ws.tuning = nil }
     }
 
+    /// The close button's middle: a title bar lower than the canvas's rail corner.
+    static let lights = CGPoint(x: 20, y: 21)
+
+    private func close() { ws.settingsOpen = false }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Button(action: close) {
+                HStack(spacing: 10) {
+                    LalaLogo(size: 28, mood: .tuning, animated: true)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Assistant").font(.ui(13, .semibold))
+                        Text(ws.tuning ?? "In Settings").font(.ui(11)).foregroundStyle(.secondary)
+                    }
+                }
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .help("Back to the canvas (Esc)")
+            .padding(.horizontal, 6).padding(.bottom, 18)
+            ForEach(Tab.allCases, id: \.self) { t in
+                Button { tab = t } label: {
+                    HStack(spacing: 10) {
+                        Image(systemName: t.icon).font(.system(size: 13)).frame(width: 18)
+                            .foregroundStyle(tab == t ? Brand.accentInk : Color.secondary)
+                        Text(t.title).font(.ui(13, tab == t ? .semibold : .regular))
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 10).frame(height: 30)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(tab == t ? Brand.accent.opacity(0.14) : .clear))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+            }
+            Spacer()
+        }
+        .padding(.horizontal, 10).padding(.top, 20)
+        .frame(width: 190)
+        .background(Brand.card)
+    }
+
+    @ViewBuilder private var page: some View {
+        switch tab {
+        case .modules: ModulesSettings()
+        case .general: form("General") { general }
+        case .signIns: form("Sign-ins") { ModelSection() }
+        case .wallet: form("Wallet") { wallet }
+        case .debugging: form("Debugging") { debugging }
+        }
+    }
+
+    /// A tab of grouped rows under its title, as wide as reads well.
+    private func form(_ title: String, @ViewBuilder rows: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Text(title).font(.ui(24, .bold)).padding(.horizontal, 28).padding(.top, 28)
+            Form { rows() }.formStyle(.grouped).scrollContentBackground(.hidden).frame(maxWidth: 720)
+        }
+    }
+
     @ViewBuilder private var general: some View {
         @Bindable var ws = ws
-        Form {
-            Section("Public addresses") {
-                TextField("Solana", text: $ws.solanaAddress)
-                TextField("Hyperliquid (0x…)", text: $ws.hlAddress)
-                Text("Addresses only, for reading balances. Don't enter a seed phrase or keys here.")
-                    .font(.ui(10)).foregroundStyle(.secondary)
-            }
-            ModelSection()
-            Section("Risk management") {
-                Stepper("Risk per trade — at most \(Fmt.pct(ws.policy.maxRiskPct)) of capital",
-                        value: Binding(get: { NSDecimalNumber(decimal: ws.policy.maxRiskPct).doubleValue },
-                                       set: { ws.policy.maxRiskPct = Decimal($0) }), in: 0.5...10, step: 0.5)
-                LabeledContent("All open positions together", value: "at most \(Fmt.pct(ws.policy.maxOpenRiskPct))")
-                LabeledContent("Reward/risk at least", value: Fmt.num(ws.policy.minRewardRisk))
-                LabeledContent("Leverage up to", value: "\(Fmt.num(ws.policy.maxLeverage))×")
-                Text("A trade that would lose more at its stop is not executed. “By the book” uses \(Fmt.pct(ws.policy.defaultRiskPct)) of capital, a \(Fmt.num(ws.policy.defaultRewardRisk))R take-profit and a \(Fmt.num(ws.policy.atrStopMultiple)) ATR (4h) stop. Crypto only.")
-                    .font(.ui(10)).foregroundStyle(.secondary)
-            }
-            ChatAndNoticeSettings()
-            Section("Debugging") {
-                Toggle("Local debug API for Claude Code (curl)", isOn: Binding(
-                    get: { UserDefaults.standard.bool(forKey: "debugAPI") },
-                    set: { on in
-                        UserDefaults.standard.set(on, forKey: "debugAPI")
-                        if on { DebugAPI.shared.start(ws) } else { DebugAPI.shared.stop() }
-                    }))
-                Text("127.0.0.1:\(String(DebugAPI.port)) with a token that changes every start (Application Support/LALA/debug-token). It reads the state, types into the chat and takes a picture of the window. It never signs: money moves still wait for Confirm and Touch ID here.")
-                    .font(.ui(10)).foregroundStyle(.secondary)
-            }
-            Section("Key and signing") {
-                // Several wallets: the one that signs (the signer asks for Touch ID to switch); the list is in the key window.
-                if ws.wallets.count > 1 {
-                    Picker("Wallet that signs", selection: Binding(get: { ws.activeWalletID ?? "" }, set: { id in
-                        if let w = ws.wallets.first(where: { $0.id == id }) { Task { await ws.switchWallet(w) } }
-                    })) {
-                        ForEach(ws.wallets) { Text("\($0.label) — \(Workspace.describe($0))").tag($0.id) }
-                    }
-                }
-                Label(ws.signerWallet == nil ? "No key on this Mac yet — import a wallet" : "Key in secure storage; a separate process without network signs",
-                      systemImage: ws.signerWallet == nil ? "xmark.circle" : "checkmark.circle.fill")
-                Picker(selection: Binding(get: { ws.sessionLength }, set: { chosen in
-                    Task {
-                        // Cancelled Touch ID: the signer keeps the old time and the picker shows it again.
-                        _ = try? await SignerClient().send(.setSessionLength(seconds: chosen))
-                        await ws.loadSigner()
-                    }
+        Section("Risk management") {
+            Stepper("Risk per trade — at most \(Fmt.pct(ws.policy.maxRiskPct)) of capital",
+                    value: Binding(get: { NSDecimalNumber(decimal: ws.policy.maxRiskPct).doubleValue },
+                                   set: { ws.policy.maxRiskPct = Decimal($0) }), in: 0.5...10, step: 0.5)
+            LabeledContent("All open positions together", value: "at most \(Fmt.pct(ws.policy.maxOpenRiskPct))")
+            LabeledContent("Reward/risk at least", value: Fmt.num(ws.policy.minRewardRisk))
+            LabeledContent("Leverage up to", value: "\(Fmt.num(ws.policy.maxLeverage))×")
+            Text("A trade that would lose more at its stop is not executed. “By the book” uses \(Fmt.pct(ws.policy.defaultRiskPct)) of capital, a \(Fmt.num(ws.policy.defaultRewardRisk))R take-profit and a \(Fmt.num(ws.policy.atrStopMultiple)) ATR (4h) stop. Crypto only.")
+                .font(.ui(10)).foregroundStyle(.secondary)
+        }
+        ChatAndNoticeSettings()
+        keepRunning
+        Section("Incoming text protection") {
+            Toggle("Second check by Jev (OpenRouter)", isOn: $ws.jevScreening)
+                .disabled(ws.openRouterKey == nil)
+            Text(ws.openRouterKey == nil
+                 ? "Sign in to OpenRouter in Sign-ins. Without Jev, local rules still apply."
+                 : "On by default. Before a message reaches the model, rules and Jev's classifier check it for commands aimed at the assistant and requests to send money to an address. Jev can only stop a message, never approve a signature. The message text goes to OpenRouter.")
+                .font(.ui(10)).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var debugging: some View {
+        Section("Debugging") {
+            Toggle("Local debug API for Claude Code (curl)", isOn: Binding(
+                get: { UserDefaults.standard.bool(forKey: "debugAPI") },
+                set: { on in
+                    UserDefaults.standard.set(on, forKey: "debugAPI")
+                    if on { DebugAPI.shared.start(ws) } else { DebugAPI.shared.stop() }
+                }))
+            Text("127.0.0.1:\(String(DebugAPI.port)) with a token that changes every start (Application Support/LALA/debug-token). It reads the state, types into the chat and takes a picture of the window. It never signs: money moves still wait for Confirm and Touch ID here.")
+                .font(.ui(10)).foregroundStyle(.secondary)
+        }
+    }
+
+    @ViewBuilder private var wallet: some View {
+        @Bindable var ws = ws
+        Section("Public addresses") {
+            TextField("Solana", text: $ws.solanaAddress)
+            TextField("Hyperliquid (0x…)", text: $ws.hlAddress)
+            Text("Addresses only, for reading balances. Don't enter a seed phrase or keys here.")
+                .font(.ui(10)).foregroundStyle(.secondary)
+        }
+        Section("Key and signing") {
+            // Several wallets: the one that signs (the signer asks for Touch ID to switch); the list is in the key window.
+            if ws.wallets.count > 1 {
+                Picker("Wallet that signs", selection: Binding(get: { ws.activeWalletID ?? "" }, set: { id in
+                    if let w = ws.wallets.first(where: { $0.id == id }) { Task { await ws.switchWallet(w) } }
                 })) {
-                    ForEach(SignerSession.choices, id: \.self) { Text($0 == SignerSession.standard ? "One move" : "\($0 / 60) min").tag($0) }
-                } label: {
-                    Label("Touch ID stays valid for", systemImage: "touchid")
+                    ForEach(ws.wallets) { Text("\($0.label) — \(Workspace.describe($0))").tag($0.id) }
                 }
-                .disabled(ws.signerWallet == nil)
-                Text("One move: one Touch ID covers that move's signatures (at most a minute) and ends when it's done. With 5–30 min, signatures in that time need no new one. Each still passes the guard and Jev; locking the screen or sleep ends it. A longer time asks for Touch ID.")
-                    .font(.ui(10)).foregroundStyle(.secondary)
-                Label(ws.agentActive ? "Hyperliquid trading key on: orders only, can't withdraw" : "Hyperliquid trading key off: every order asks for Touch ID",
-                      systemImage: ws.agentActive ? "checkmark.circle.fill" : "circle")
-                if ws.signerWallet != nil {
-                    Button("Forget the key on this Mac…", role: .destructive) { confirmForget = true }
-                        .confirmationDialog("Forget the wallet key on this Mac?", isPresented: $confirmForget) {
-                            Button("Forget the key", role: .destructive) {
-                                Task { _ = try? await SignerClient().send(.forget); await ws.loadSigner() }
-                            }
-                        } message: {
-                            Text("Only if the recovery phrase is written down: without it the money on this wallet can't be reached again. Positions, stops and balances stay where they are.")
+            }
+            Label(ws.signerWallet == nil ? "No key on this Mac yet — import a wallet" : "Key in secure storage; a separate process without network signs",
+                  systemImage: ws.signerWallet == nil ? "xmark.circle" : "checkmark.circle.fill")
+            Picker(selection: Binding(get: { ws.sessionLength }, set: { chosen in
+                Task {
+                    // Cancelled Touch ID: the signer keeps the old time and the picker shows it again.
+                    _ = try? await SignerClient().send(.setSessionLength(seconds: chosen))
+                    await ws.loadSigner()
+                }
+            })) {
+                ForEach(SignerSession.choices, id: \.self) { Text($0 == SignerSession.standard ? "One move" : "\($0 / 60) min").tag($0) }
+            } label: {
+                Label("Touch ID stays valid for", systemImage: "touchid")
+            }
+            .disabled(ws.signerWallet == nil)
+            Text("One move: one Touch ID covers that move's signatures (at most a minute) and ends when it's done. With 5–30 min, signatures in that time need no new one. Each still passes the guard and Jev; locking the screen or sleep ends it. A longer time asks for Touch ID.")
+                .font(.ui(10)).foregroundStyle(.secondary)
+            Label(ws.agentActive ? "Hyperliquid trading key on: orders only, can't withdraw" : "Hyperliquid trading key off: every order asks for Touch ID",
+                  systemImage: ws.agentActive ? "checkmark.circle.fill" : "circle")
+            if ws.signerWallet != nil {
+                Button("Forget the key on this Mac…", role: .destructive) { confirmForget = true }
+                    .confirmationDialog("Forget the wallet key on this Mac?", isPresented: $confirmForget) {
+                        Button("Forget the key", role: .destructive) {
+                            Task { _ = try? await SignerClient().send(.forget); await ws.loadSigner() }
                         }
-                }
-            }
-            Section("Background") {
-                Toggle("Open ihatecrypto at login", isOn: Binding(
-                    get: { SMAppService.mainApp.status == .enabled },
-                    set: { on in try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }))
-                Text("With the window closed, ihatecrypto stays in the menu bar: it manages stops (trailing, breakeven) and scheduled purchases. After “Quit” they stop; the stop and take-profit on the exchange keep working.")
-                    .font(.ui(10)).foregroundStyle(.secondary)
-            }
-            Section("Incoming text protection") {
-                Toggle("Second check by Jev (OpenRouter)", isOn: $ws.jevScreening)
-                    .disabled(ws.openRouterKey == nil)
-                Text(ws.openRouterKey == nil
-                     ? "Sign in to OpenRouter above. Without Jev, local rules still apply."
-                     : "On by default. Before a message reaches the model, rules and Jev's classifier check it for commands aimed at the assistant and requests to send money to an address. Jev can only stop a message, never approve a signature. The message text goes to OpenRouter.")
-                    .font(.ui(10)).foregroundStyle(.secondary)
+                    } message: {
+                        Text("Only if the recovery phrase is written down: without it the money on this wallet can't be reached again. Positions, stops and balances stay where they are.")
+                    }
             }
         }
-        .formStyle(.grouped)
-        .frame(width: 560)
-        .frame(minHeight: 720)
+    }
+
+    /// What keeps running with the window closed.
+    @ViewBuilder private var keepRunning: some View {
+        Section("Background") {
+            Toggle("Open ihatecrypto at login", isOn: Binding(
+                get: { SMAppService.mainApp.status == .enabled },
+                set: { on in try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }))
+            Text("With the window closed, ihatecrypto stays in the menu bar: it manages stops (trailing, breakeven) and scheduled purchases. After “Quit” they stop; the stop and take-profit on the exchange keep working.")
+                .font(.ui(10)).foregroundStyle(.secondary)
+        }
     }
 }
 
