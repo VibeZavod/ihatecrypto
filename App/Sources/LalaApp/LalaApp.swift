@@ -541,6 +541,13 @@ struct SettingsView: View {
             Text("A trade that would lose more at its stop is not executed. “By the book” uses \(Fmt.pct(ws.policy.defaultRiskPct)) of capital, a \(Fmt.num(ws.policy.defaultRewardRisk))R take-profit and a \(Fmt.num(ws.policy.atrStopMultiple)) ATR (4h) stop. Crypto only.")
                 .font(.ui(10)).foregroundStyle(.secondary)
         }
+        Section("Tokens") {
+            Toggle("Safe search", isOn: $ws.safeSearch)
+            Text(ws.safeSearch
+                 ? "On: on Solana ihatecrypto buys only verified coins — SOL, BTC, ETH, JUP and JitoSOL. Look-alikes of famous tokens can't slip in."
+                 : "Off: any Solana token can be bought by its mint through Jupiter. Before the card, ihatecrypto says what is risky about it — a creator who can freeze or print it, a thin pool, no verification. Confirm and the simulation still apply.")
+                .font(.ui(10)).foregroundStyle(.secondary)
+        }
         ChatAndNoticeSettings()
         keepRunning
         Section("Incoming text protection") {

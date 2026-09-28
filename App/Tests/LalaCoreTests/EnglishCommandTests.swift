@@ -37,6 +37,11 @@ import Testing
     #expect(WalletCommand.parse("where to keep USDC") == .yields("USDC"))
     #expect(WalletCommand.parse("deposit 5 USDC to HLP") == .hlp(deposit: true, amount: 5))
     #expect(WalletCommand.parse("spread USDC across the best rates, max 70% per protocol") == .allocate("USDC", maxShare: 70))
+    // A limit: at most that much of the free USDC.
+    #expect(WalletCommand.parse("spread 2 USDC across the best rates") == .allocate("USDC", maxShare: nil, amount: 2))
+    #expect(WalletCommand.parse("разложи 2 USDC по лучшим ставкам, не больше 70% в один") == .allocate("USDC", maxShare: 70, amount: 2))
+    #expect(WalletCommand.parse("spread 0.5 SOL across the best rates") == .allocate("SOL", maxShare: nil, amount: Decimal(string: "0.5")))
+    #expect(WalletCommand.parse("spread 2 USDC across the best rates")?.summary == "spread 2 USDC across the best rates")
     #expect(WalletCommand.parse("buy SOL for 2 USDC") == .buy(sol, usdc: 2))
     #expect(WalletCommand.parse("buy SOL for 2 USDC every week") == .schedule(sol, usdc: 2, days: 7))
     #expect(WalletCommand.parse("buy BTC for 5 USDC every day") == .schedule(btc, usdc: 5, days: 1))

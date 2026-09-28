@@ -319,9 +319,9 @@ extension Workspace {
                 reply(try await e.solanaToEVM(net, usdc: amount ?? 0), note: "Relay · Solana → \(net.name)")
             case .sendTo(let name, let amount): prepareTransfer(amount, to: name)
             case .receive: showReceive = true
-            case .allocate(let symbol, let share):
+            case .allocate(let symbol, let share, let limit):
                 // Two steps: the plan first, the deposits only after «do it».
-                let (_, ready, preview) = try await e.allocate(symbol, maxShare: share ?? 50, execute: confirmed)
+                let (_, ready, preview) = try await e.allocate(symbol, maxShare: share ?? 50, limit: limit, execute: confirmed)
                 pendingAllocation = ready ? command : nil
                 allocationPreview = confirmed ? nil : preview
                 if !confirmed {

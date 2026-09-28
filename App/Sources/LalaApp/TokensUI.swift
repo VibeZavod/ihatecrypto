@@ -66,6 +66,25 @@ extension Workspace {
         }
     }
 
+    /// A Solana token to buy or sell by its mint: refused while Safe search is on; otherwise looked up on Jupiter (decimals,
+    /// Token-2022) and its risks said before the card. nil = said why not.
+    func spotToken(_ mint: String, note: String?) async -> SpotAsset? {
+        guard !safeSearch else {
+            reply(say("Safe search is on, so on Solana ihatecrypto buys only verified coins: SOL, BTC, ETH, JUP and JitoSOL. To trade any token by its mint, turn Safe search off in Settings › General.",
+                      "Включён Safe search: на Solana ihatecrypto покупает только проверенные монеты — SOL, BTC, ETH, JUP и JitoSOL. Чтобы торговать любым токеном по mint-адресу, выключи Safe search в Settings › General."), note: note)
+            return nil
+        }
+        guard let t = await TokenResearch.solanaToken(mint) else {
+            reply(say("Jupiter doesn’t know the token \(mint), so there’s no route to trade it — nothing moved.",
+                      "Jupiter не знает токен \(mint), поэтому торговать им нельзя — ничего не ушло."), note: note)
+            return nil
+        }
+        if !t.warnings.isEmpty {
+            reply("⚠ \(t.name) (\(t.symbol)): " + t.warnings.joined(separator: "; ") + ".", note: note)
+        }
+        return SpotAsset(symbol: t.symbol, mint: mint, decimals: t.decimals, token2022: t.token2022)
+    }
+
     /// Prices and icons for the favorites, at most once a minute.
     func refreshTokens() async {
         guard !favoriteTokens.isEmpty, Date().timeIntervalSince(tokensCheckedAt) > 60 else { return }

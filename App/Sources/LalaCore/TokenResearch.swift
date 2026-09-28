@@ -40,6 +40,41 @@ public enum TokenResearch {
 
     static func valid(_ address: String) -> Bool { (try? Base58.decode(address))?.count == 32 }
 
+    /// What buying a Solana token by its mint needs, and what to warn about.
+    public struct SolanaToken: Equatable, Sendable {
+        public let name: String
+        public let symbol: String
+        public let decimals: Int
+        public let token2022: Bool
+        public let verified: Bool
+        public let liquidityUSD: Decimal?
+        /// «freeze authority is on: …», plainly, worst first.
+        public let warnings: [String]
+    }
+
+    public static func solanaToken(_ mint: String) async -> SolanaToken? {
+        guard let data = try? await get("https://lite-api.jup.ag/tokens/v2/search?query=\(mint)") else { return nil }
+        return solanaToken(data, mint: mint)
+    }
+
+    static func solanaToken(_ data: Data, mint: String) -> SolanaToken? {
+        guard let t = (try? JSONSerialization.jsonObject(with: data) as? [[String: Any]])?.first(where: { $0["id"] as? String == mint }),
+              let decimals = (t["decimals"] as? NSNumber)?.intValue else { return nil }
+        let audit = t["audit"] as? [String: Any] ?? [:]
+        let tags = t["tags"] as? [String] ?? []
+        let verified = t["isVerified"] as? Bool == true || tags.contains("verified")
+        let liquidity = dec(t["liquidity"])
+        var warnings: [String] = []
+        if audit["freezeAuthorityDisabled"] as? Bool == false { warnings.append("its creator can freeze holders' tokens (freeze authority is on), so you might not be able to sell") }
+        if audit["mintAuthorityDisabled"] as? Bool == false { warnings.append("its creator can print more of it (mint authority is on)") }
+        if let liquidity, liquidity < 50_000 { warnings.append("its pool is thin (\(usd(liquidity))): a small sale moves the price") }
+        if !verified { warnings.append("Jupiter hasn't verified it") }
+        if let top = dec(audit["topHoldersPercentage"]), top > 50 { warnings.append("the top holders own \(pct(top, sign: false))") }
+        return SolanaToken(name: t["name"] as? String ?? "?", symbol: t["symbol"] as? String ?? "?", decimals: decimals,
+                           token2022: t["tokenProgram"] as? String == "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb" || tags.contains("token-2022"),
+                           verified: verified, liquidityUSD: liquidity, warnings: warnings)
+    }
+
     // MARK: Sources
 
     static func jupiter(_ mint: String) async -> String? {

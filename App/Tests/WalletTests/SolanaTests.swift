@@ -99,3 +99,15 @@ private let usdcMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
     _ = try SolanaMessage.parse(transaction: wire)
     #expect(throws: WalletError.self) { try SolanaMessage.parse(transaction: wire + Data([0])) }
 }
+
+/// Token-2022 accounts derive from that program: real holders of POKÉMON CARDS (a Token-2022 mint) from a mainnet
+/// transaction, 2026-09-29.
+@Test func token2022AccountsDeriveFromTheirProgram() throws {
+    let mint = "B5ANwoWkptDv1QszdPHXjCF2gTWdo27FGLffdfXzzoe6"
+    let holders = [("6LXutJvKUw8Q5ue2gCgKHQdAN4suWW8awzFVC6XCguFx", "AKfyuSUkLjnHb4KadX6SxfAi6eGePBJqQSZCsCBk2jnc"),
+                   ("GNqZFdcipNFo5nr8LnK7YVsMy84458BWHwnE1RX5dNpC", "G3zG4N9MfWTfrCBxBYNcTXsKmsYLNp4GfcUmxagndT9t"),
+                   ("GpMZbSM2GgvTKHJirzeGfMFoaZ8UR2X7F4v8vHTvxFbL", "7QnWse8CQFg6hP5uBKii1gndpMxastHFUKn4TjaFwfcM")]
+    let matches = try holders.filter { owner, account in try SPL.associatedAccount(owner: owner, mint: mint, program: SPL.token2022Program) == account }
+    #expect(!matches.isEmpty)
+    for (owner, account) in matches { #expect(try SPL.associatedAccount(owner: owner, mint: mint) != account) }
+}

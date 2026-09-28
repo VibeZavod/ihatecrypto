@@ -122,3 +122,42 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(lines[1].contains("liquidity $400K, 24h -3.2%"))
     #expect(lines[2].contains("0xfake"))
 }
+
+@Test func anySolanaTokenByItsMint() {
+    let mint = "B5ANwoWkptDv1QszdPHXjCF2gTWdo27FGLffdfXzzoe6"
+    #expect(WalletCommand.parse("buy token \(mint) for 2 USDC") == .buy(.byMint(mint), usdc: 2))
+    #expect(WalletCommand.parse("купи \(mint) на $3") == .buy(.byMint(mint), usdc: 3))
+    #expect(WalletCommand.parse("sell 1500 tokens \(mint)") == .sell(.byMint(mint), amount: 1500))
+    #expect(WalletCommand.parse("sell tokens \(mint)") == .sell(.byMint(mint), amount: nil))
+    #expect(!SpotAsset.byMint(mint).resolved && !SpotAsset.byMint(mint).verified)
+    // The fixed coins stay what they were.
+    #expect(WalletCommand.parse("buy SOL for 2 USDC") == .buy(SpotAsset.all[0], usdc: 2))
+    #expect(WalletCommand.parse("buy token \(SpotAsset.all[3].mint) for 2 USDC") != .buy(.byMint(SpotAsset.all[3].mint), usdc: 2))
+    #expect(ChatRouter.forms.contains("buy token <MINT> for N USDC"))
+}
+
+@Test func buyingByMintKnowsItsRisks() throws {
+    let mint = "B5ANwoWkptDv1QszdPHXjCF2gTWdo27FGLffdfXzzoe6"
+    let json = """
+    [{"id": "\(mint)", "name": "POKÉMON CARDS", "symbol": "POKEMON", "decimals": 6, "tokenProgram": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb",
+      "liquidity": 43138, "audit": {"mintAuthorityDisabled": true, "freezeAuthorityDisabled": false}, "tags": ["unknown"]}]
+    """
+    let t = try #require(TokenResearch.solanaToken(Data(json.utf8), mint: mint))
+    #expect(t.decimals == 6 && t.token2022 && !t.verified)
+    #expect(t.warnings.first?.contains("freeze") == true)
+    #expect(t.warnings.contains { $0.contains("thin") })
+    #expect(!t.warnings.contains { $0.contains("print") })
+}
+
+@Test func aPastedAddressIsLookedUpBeforeTheModelReads() async throws {
+    #expect(ChatRouter.pastedAddress("расскажи про 2FB5ANwoWkptDv1QszdPHXjCF2gTWdo27FGLffdfXzzoe6") == "2FB5ANwoWkptDv1QszdPHXjCF2gTWdo27FGLffdfXzzoe6")
+    #expect(ChatRouter.pastedAddress("купи 0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18 на $2") == "0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18")
+    #expect(ChatRouter.pastedAddress("what is the difference between staking and lending") == nil)
+    let model = Script([#"{"route":"chat","reply":"POKEMON, hot."}"#])
+    let reading = try await ChatRouter.route("что за токен B5ANwoWkptDv1QszdPHXjCF2gTWdo27FGLffdfXzzoe6", context: .init(), client: model, model: "m") { l in
+        "facts about \(l.arg)"
+    }
+    #expect(reading.lookups == [.init("token", "B5ANwoWkptDv1QszdPHXjCF2gTWdo27FGLffdfXzzoe6")])
+    #expect(model.sent.count == 1)
+    #expect(model.sent[0][1].text.contains("Already looked up for you — token B5AN"))
+}

@@ -37,6 +37,8 @@ if prompt == "--route" {
     context.plan = env["LALA_ROUTE_PLAN"]
     // `LALA_ROUTE_RECENT="user: …|LALA: …"`: the chat before the message, to check follow-ups like «да».
     context.recent = env["LALA_ROUTE_RECENT"].map { $0.components(separatedBy: "|") } ?? []
+    // `LALA_SAFE_SEARCH=0`: as with Safe search off in Settings.
+    context.safeSearch = env["LALA_SAFE_SEARCH"] != "0"
     let client = try provider.client(credential, save: { _ in })
     let markets: Set<String> = ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]
     // Real token lookups; the app's own data (portfolio, markets, rates) is what the context above says.

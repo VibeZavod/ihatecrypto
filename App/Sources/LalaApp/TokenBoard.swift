@@ -238,8 +238,9 @@ struct TokenBoard: View {
     private var actions: some View {
         let buy = isStock ? "buy \(symbol) stock for 2 USDC" : "buy token \(address) for 2 USDC"
         let sell = isStock ? "sell \(symbol) stock" : "sell token \(address)"
-        // Tokens by contract are bought on Robinhood Chain only; elsewhere they can be watched.
+        // Tokens by contract are bought on Robinhood Chain, and on Solana with Safe search off; elsewhere they can be watched.
         let phrases = chain == "robinhood" ? [("Buy \(symbol)", buy), ("Sell", sell)]
+            : chain == "solana" && !ws.safeSearch ? [("Buy \(symbol)", "buy token \(address) for 2 USDC"), ("Sell", "sell tokens \(address)")]
             : favorite == nil ? [("Watch \(symbol)", "watch token \(address) on \(chain)")] : []
         return HStack(spacing: 6) {
             ForEach(phrases, id: \.0) { title, phrase in

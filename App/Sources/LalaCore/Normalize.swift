@@ -65,6 +65,8 @@ public enum ChatRouter {
         public var replyLanguage = "English"
         /// Networks, kinds and protocols switched off in Settings › Modules (`Modules.offSummary`); empty when none.
         public var off = ""
+        /// Safe search on: Solana buys only the fixed verified coins. Off: any token by its mint.
+        public var safeSearch = true
         /// The cards on the canvas from the last answer, «title → command», so «да» or «второй» picks one.
         public var offered: [String] = []
         /// «2026-09-29 10:30, Tuesday»: the local time, so «в пятницу в 9» becomes a date. Gregorian whatever the Mac's calendar.
@@ -91,10 +93,11 @@ public enum ChatRouter {
       buy NEAR for N USDC | sell [N] NEAR   (native NEAR on the NEAR account → USDC on Solana; no N = all of it)
     STOCK TOKENS ON ROBINHOOD CHAIN: buy <COMPANY or TICKER> stock for N USDC | sell <TICKER> stock | move USDG from Robinhood to Solana
     ANY TOKEN BY ITS CONTRACT (Robinhood Chain): buy token <0xCONTRACT> for N USDC | sell [N] tokens <0xCONTRACT>
+    ANY SOLANA TOKEN BY ITS MINT (Jupiter; only while Safe search is off): buy token <MINT> for N USDC | sell [N] tokens <MINT>
     EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault") | withdraw [N] <USDC|SOL> from the vault
       deposit N <USDC|SOL> to kamino | withdraw <USDC|SOL> from kamino | stake N SOL | unstake N JitoSOL
       deposit N USDC to HLP | withdraw from HLP | lend N USDC on Aave | withdraw USDC from Aave | deposit N USDC into Morpho | withdraw USDC from Morpho
-      where to keep <USDC|SOL> | spread <USDC|SOL> across the best rates [max N% per protocol]
+      where to keep <USDC|SOL> | spread [N] <USDC|SOL> across the best rates [max N% per protocol]   (N = at most that much; none = all that is free)
       rebalance USDC [max N% per protocol]   (moves money ALREADY in vaults to better rates: «переложи», «перекинь депозиты», «перебалансируй», «rebalance». «spread» / «разложи» / «распредели» is only for FREE USDC on Solana)
     MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from Base to Solana | move N USDC from Arbitrum to Solana
       move N USDC from Solana to <Base|Arbitrum|Robinhood>   (arrives as USDG on Robinhood Chain)
@@ -127,8 +130,9 @@ public enum ChatRouter {
     split it into two steps. Selling stock tokens or tokens by contract leaves USDG on Robinhood Chain; «move USDG from Robinhood \
     to Solana» brings it back. \
     Between two places that aren't Solana there is no direct move: it's two steps through Solana.
-    Buying and selling a token by its contract works on Robinhood Chain only; on Solana ihatecrypto buys SOL, BTC, ETH, JUP \
-    and JitoSOL and nothing else yet. Any other token can be watched (it becomes a favorite with its price) and charted.
+    Buying and selling a token by its contract works on Robinhood Chain. On Solana ihatecrypto buys SOL, BTC, ETH, JUP and \
+    JitoSOL; any other Solana token by its mint only while Safe search is off (the context says which). Any token can be \
+    watched (it becomes a favorite with its price) and charted.
 
     Work like an agent, not a menu of canned answers: figure out what they are after, look up what you don't know, then \
     answer with the facts, your own view and the ways to go on. Your hands are the lookups and the forms below and nothing \
@@ -195,8 +199,17 @@ public enum ChatRouter {
         _ text: String, context: Context, client: any LLMClient, model: String,
         lookup: @escaping @Sendable (Lookup) async -> String = { _ in "Lookups aren't available here." }
     ) async throws -> Reading {
-        var messages = [LLMMessage(.system, system), LLMMessage(.user, brief(text, context))]
         var asked: [Lookup] = [], found: [String] = []
+        var brief = brief(text, context)
+        // A pasted contract or mint is looked up before the model reads the message: one round less.
+        if let address = pastedAddress(text) {
+            let first = Lookup("token", address)
+            let result = String(await lookup(first).prefix(4000))
+            asked.append(first)
+            found += addresses(result)
+            brief += "\n\nAlready looked up for you — token \(address):\n\(result)"
+        }
+        var messages = [LLMMessage(.system, system), LLMMessage(.user, brief)]
         for round in 0...rounds {
             let full = try await client.complete(LLMRequest(model: model, messages: messages, wantsJSON: true))
             // A model sometimes writes its lookup and then guesses the answer after it: only the first object counts.
@@ -241,6 +254,9 @@ public enum ChatRouter {
             lines.append("Switched off in Settings › Modules: \(context.off). Never offer or build a move that uses them; "
                          + "when asked for one, reply (chat) that it is off in Settings › Modules.")
         }
+        lines.append(context.safeSearch
+            ? "Safe search: ON — on Solana only SOL, BTC, ETH, JUP and JitoSOL can be bought. For another token say it is off in Settings › General › Safe search, and offer to watch it."
+            : "Safe search: OFF — any Solana token can be bought by its mint. Before offering it, look it up and say plainly what is risky about it.")
         lines.append("Now (local time): " + context.now)
         lines.append("Reply language: " + context.replyLanguage)
         lines.append("Message: " + text)
@@ -286,6 +302,15 @@ public enum ChatRouter {
             }
         }
         return nil
+    }
+
+    /// A contract or mint the user pasted, as pasted (a broken one too: the lookup repairs it).
+    static func pastedAddress(_ text: String) -> String? {
+        if let evm = text.firstMatch(of: /0x[0-9a-fA-F]{40}/) { return String(evm.0) }
+        // Whole runs of base58, so a 46-character paste isn't cut to 44.
+        return text.matches(of: /[1-9A-HJ-NP-Za-km-z]+/).map { String($0.0) }.first { a in
+            (32...60).contains(a.count) && a.contains(where: \.isNumber) && a.contains(where: \.isUppercase) && a.contains(where: \.isLowercase)
+        }
     }
 
     /// Contracts, mints and NEAR accounts in a text.

@@ -303,6 +303,10 @@ final class Workspace {
     var jevScreening = UserDefaults.standard.object(forKey: "jevScreening") as? Bool ?? true {
         didSet { UserDefaults.standard.set(jevScreening, forKey: "jevScreening") }
     }
+    /// On: Solana buys only the fixed verified coins. Off: any token by its mint, with its risks said first (TokensUI.swift).
+    var safeSearch = UserDefaults.standard.object(forKey: "safeSearch") as? Bool ?? true {
+        didSet { UserDefaults.standard.set(safeSearch, forKey: "safeSearch") }
+    }
     var openRouterKey: String? {
         _ = credentialVersion
         if case .apiKey(let key)? = Keychain.load("openrouter") { return key }
@@ -735,6 +739,7 @@ final class Workspace {
         c.addressBook = addressBook.map(\.name)
         c.replyLanguage = replyLanguage
         c.off = Modules.current.offSummary
+        c.safeSearch = safeSearch
         if let s = solana { c.balances.append("Solana \(Fmt.num(s.usdc)) USDC, \(Fmt.num(s.sol, maxFraction: 4)) SOL") }
         // Every place with money, so «выведи всё из Jupiter» needs no question about which asset is there.
         if let h = hl { c.balances.append("Hyperliquid trading balance \(Fmt.usd(h.accountValue)), withdrawable \(Fmt.usd(h.withdrawable))") }

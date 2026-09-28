@@ -40,11 +40,24 @@ public enum PositionCommand: Equatable, Sendable {
     }
 }
 
-/// Coins to buy and hold on Solana, by fixed verified mint: a search by ticker returns look-alikes.
+/// Coins to buy and hold on Solana, by fixed verified mint: a search by ticker returns look-alikes. With Safe search
+/// off, any token by its mint too: parsed with its mint alone, then looked up (decimals, symbol, token program).
 public struct SpotAsset: Equatable, Sendable {
     public let symbol: String
     public let mint: String
     public let decimals: Int
+    /// A Token-2022 mint: its accounts derive from that program, not the classic one.
+    public var token2022 = false
+
+    public init(symbol: String, mint: String, decimals: Int, token2022: Bool = false) {
+        self.symbol = symbol; self.mint = mint; self.decimals = decimals; self.token2022 = token2022
+    }
+
+    /// A token named by its mint only, until the app looks it up.
+    public static func byMint(_ mint: String) -> SpotAsset { SpotAsset(symbol: "\(mint.prefix(4))…\(mint.suffix(4))", mint: mint, decimals: 0) }
+    public var resolved: Bool { decimals > 0 }
+    /// One of the fixed verified coins (or USDC): the only ones bought while Safe search is on.
+    public var verified: Bool { self == .usdc || Self.all.contains { $0.mint == mint } }
 
     /// Checked 2026-09-25 against Jupiter's verified list (isVerified true).
     public static let all = [
@@ -98,7 +111,8 @@ public enum WalletCommand: Equatable, Sendable {
     /// Hyperliquid's HLP vault: deposit or withdraw USDC (nil = all).
     case hlp(deposit: Bool, amount: Decimal?)
     /// «Разложи USDC по лучшим ставкам»: the asset and the most one protocol may hold, % (nil = 50).
-    case allocate(String, maxShare: Decimal?)
+    /// `amount`: spread at most this much of it (nil = all that is free).
+    case allocate(String, maxShare: Decimal?, amount: Decimal? = nil)
     /// «Переложи в лучшие ставки»: USDC already deposited moves to better rates, at most this % per protocol (nil = 50),
     /// only where the extra interest pays the move back within 30 days.
     case rebalance(maxShare: Decimal?)
@@ -155,7 +169,8 @@ public enum WalletCommand: Equatable, Sendable {
         }
         if q.contains(/разлож|распредел|раскид|размест|spread|allocate|distribute|split/), q.contains(/ставк|доходн|протокол|лучш|хранилищ|rates?|yields?|protocols?|best|vaults?/) {
             let share = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*%/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
-            return .allocate(q.contains(/\bsol\b|солан|\bсол\b/) ? "SOL" : "USDC", maxShare: share)
+            let isSOL = q.contains(/\bsol\b|солан|\bсол\b/)
+            return .allocate(isSOL ? "SOL" : "USDC", maxShare: share, amount: isSOL ? coins : amount ?? coins)
         }
         if q.contains(/доходност|где\s+(?:лучше\s+)?держать|куда\s+(?:лучше\s+)?(?:положить|вложить|деть)|\bapy\b|ставк[иа]\s+(?:по\s+)?депозит|where\s+(?:to|should\s+i|can\s+i)\s+(?:keep|put|park|hold)|best\s+(?:rates?|yields?)|\byields?\b/) {
             let sol = q.contains(/\bsol\b|солан|\bсол\b|solana/), usd = q.contains(/usdc|стейбл|доллар|stable/)
@@ -168,6 +183,15 @@ public enum WalletCommand: Equatable, Sendable {
                 return .sellStock(symbol: contract, amount: amount == nil ? tokens : nil)
             }
             if q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bget\s+me\b|вложи\w*\s+в/) { return .buyStock(symbol: contract, usdc: amount) }
+        }
+        // Any Solana token by its mint («buy token B5AN… for 2 USDC»): through Jupiter, only with Safe search off.
+        if let mint = AddressBookCommand.address(in: text), !mint.hasPrefix("0x"), !mint.hasSuffix(".near"), mint.count >= 32,
+           SpotAsset.all.allSatisfy({ $0.mint != mint }) {
+            if q.contains(/\bsell\b|прода\w*|\bdump\b/) {
+                let tokens = q.firstMatch(of: /(?:^|\s)(\d+(?:[.,]\d+)?)\s*(?:tokens?|токен\w*|шт)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
+                return .sell(.byMint(mint), amount: tokens)
+            }
+            if q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bget\s+me\b|вложи\w*\s+в/) { return .buy(.byMint(mint), usdc: amount) }
         }
         // Robinhood Stock Tokens: a stock word or a company LALA knows, with buy or sell.
         if let symbol = StockNames.symbol(in: text), q.contains(/\bstocks?\b|\bshares?\b|акци\w*|токен\w*|robinhood|робинхуд|спейс|spacex|\btesla\b|тесл|нвид|nvidia/) {
@@ -370,7 +394,7 @@ extension WalletCommand {
         case .unstake(let x): return "unstake \(n(x)) JitoSOL"
         case .yields(let a): return "rates for \(a ?? "USDC and SOL")"
         case .hlp(let d, let x): return d ? "deposit \(n(x)) USDC into HLP" : "withdraw \(n(x)) USDC from HLP"
-        case .allocate(let s, let share): return "spread \(s) across the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
+        case .allocate(let s, let share, let x): return "spread \(x.map { "\(Fmt.num($0)) " } ?? "")\(s) across the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
         case .rebalance(let share): return "move deposited USDC to the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
         case .aave(let d, let x): return d ? "deposit \(n(x)) USDC into Aave on Base" : "withdraw \(n(x)) USDC from Aave to Solana"
         case .morpho(let d, let x): return d ? "deposit \(n(x)) USDC into Morpho on Base" : "withdraw \(n(x)) USDC from Morpho to Solana"

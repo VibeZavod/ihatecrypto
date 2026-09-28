@@ -1118,6 +1118,17 @@ extension Workspace {
     /// One path for every wallet command, typed or read by the model: a missing amount is asked for and remembered;
     /// money moves only after «do it» on the drawn route.
     func handleWallet(_ command: WalletCommand, note: String? = nil) async {
+        // A Solana token named by its mint: looked up first, and only with Safe search off (TokensUI.swift).
+        var command = command
+        switch command {
+        case .buy(let a, let u) where !a.resolved:
+            guard let token = await spotToken(a.mint, note: note) else { return }
+            command = .buy(token, usdc: u)
+        case .sell(let a, let x) where !a.resolved:
+            guard let token = await spotToken(a.mint, note: note) else { return }
+            command = .sell(token, amount: x)
+        default: break
+        }
         updateActivity { $0.understood = command.summary }
         if let missing = missingKey(for: command) { reply(missing, note: note); return }   // a key wallet without this chain (Wallets.swift)
         if let off = moduleRefusal(command) { reply(off, note: note); return }   // switched off in Settings › Modules

@@ -6,10 +6,12 @@ import WalletCore
 public enum SPL {
     public static let tokenProgram = "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
     public static let associatedTokenProgram = "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
+    public static let token2022Program = "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
 
-    /// The associated token account of `owner` for `mint`: a program-derived address, off the ed25519 curve.
-    public static func associatedAccount(owner: String, mint: String) throws -> String {
-        let seeds = [try Base58.decode(owner), try Base58.decode(tokenProgram), try Base58.decode(mint)]
+    /// The associated token account of `owner` for `mint`: a program-derived address, off the ed25519 curve. A Token-2022
+    /// mint's accounts derive from that program.
+    public static func associatedAccount(owner: String, mint: String, program: String = tokenProgram) throws -> String {
+        let seeds = [try Base58.decode(owner), try Base58.decode(program), try Base58.decode(mint)]
         return Base58.encode(try programAddress(seeds: seeds, program: try Base58.decode(associatedTokenProgram)))
     }
 

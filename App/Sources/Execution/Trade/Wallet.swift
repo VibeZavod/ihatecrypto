@@ -211,7 +211,7 @@ extension Executor {
     /// Any verified token into any other through Jupiter: buying and selling, and staking SOL into JitoSOL and back.
     /// The simulated balances must show at least Jupiter's minimum output arriving in our own account. `amount` in the
     /// input token; nil = all of it (SOL keeps 0.01 for fees). Spending USDC on one coin obeys the concentration rule.
-    public func convert(from: SpotAsset, to: SpotAsset, amount requested: Decimal?, equity: Decimal? = nil) async throws -> String {
+    public func convert(from: SpotAsset, to: SpotAsset, amount requested: Decimal?, equity: Decimal? = nil, dryRun: Bool = false) async throws -> String {
         guard from != to else { throw ExecutionError("That's the same token.") }
         let nativeIn = from.symbol == "SOL", nativeOut = to.symbol == "SOL"
         let scale = Decimal(sign: .plus, exponent: from.decimals, significand: 1)
@@ -232,8 +232,8 @@ extension Executor {
         let quote = try await Jupiter.quote(input: from.mint, output: to.mint, amount: units)
         report("\(from.symbol) → \(to.symbol) via Jupiter: \(Fmt.num(Decimal(units) / scale, maxFraction: 8)) → ≈ \(Fmt.num(Decimal(quote.outAmount) / outScale, maxFraction: 8)), at least \(Fmt.num(Decimal(quote.minOut) / outScale, maxFraction: 8)). Route: \(quote.route).")
         let tx = try await Jupiter.swapTransaction(quote, user: wallet.solana)
-        let inAccount = try SPL.associatedAccount(owner: wallet.solana, mint: from.mint)
-        let outAccount = try SPL.associatedAccount(owner: wallet.solana, mint: to.mint)
+        let inAccount = try SPL.associatedAccount(owner: wallet.solana, mint: from.mint, program: from.token2022 ? SPL.token2022Program : SPL.tokenProgram)
+        let outAccount = try SPL.associatedAccount(owner: wallet.solana, mint: to.mint, program: to.token2022 ? SPL.token2022Program : SPL.tokenProgram)
         let owners = [inAccount: wallet.solana, outAccount: wallet.solana]   // wSOL accounts too, for the native side
         var rules: [(String, String, Bool, Int64)] = []
         if !nativeIn { rules.append((inAccount, from.symbol, true, -Int64(units))) }
@@ -242,12 +242,14 @@ extension Executor {
         // Up to ~0.0021 SOL more when the output token's account is created (rent, returned when it is closed).
         let lamportsAtLeast: Int64 = nativeIn ? -Int64(units) - fee : nativeOut ? Int64(quote.minOut) - fee : -fee
         let outBefore = nativeOut ? try await rpc.balance(wallet.solana) : try await rpc.tokenBalance(owner: wallet.solana, mint: to.mint)
-        try await signAndSend(tx.wire, lastValid: tx.lastValidBlockHeight, owners: owners, rules: rules, note: "Jupiter \(from.symbol)→\(to.symbol)",
-                              lamportsAtLeast: lamportsAtLeast)
+        let changes = try await signAndSend(tx.wire, lastValid: tx.lastValidBlockHeight, owners: owners, rules: rules, note: "Jupiter \(from.symbol)→\(to.symbol)",
+                                            lamportsAtLeast: lamportsAtLeast, dryRun: dryRun)
+        if dryRun { return "Simulation (nothing signed): " + changes.joined(separator: "; ") }
         let outAfter = nativeOut ? try await rpc.balance(wallet.solana) : try await rpc.tokenBalance(owner: wallet.solana, mint: to.mint)
         var line = "Swapped \(Fmt.num(Decimal(units) / scale, maxFraction: 8)) \(from.symbol) → \(to.symbol) +\(Fmt.num(Decimal(Int64(outAfter) - Int64(outBefore)) / outScale, maxFraction: 8))\(nativeOut ? " (net of fees)" : "")."
-        // Out of a token entirely: its empty account still holds ~0.002 SOL of rent; closing returns it.
-        if !nativeIn, try await rpc.tokenBalance(owner: wallet.solana, mint: from.mint) == 0 {
+        // Out of a token entirely: its empty account still holds ~0.002 SOL of rent; closing returns it. A Token-2022
+        // account would need that program, which the guard doesn't allow: its rent stays.
+        if !nativeIn, !from.token2022, try await rpc.tokenBalance(owner: wallet.solana, mint: from.mint) == 0 {
             let close = SolanaInstruction(program: SPL.tokenProgram, accounts: [
                 .init(pubkey: inAccount, isSigner: false, isWritable: true), .init(pubkey: wallet.solana, isSigner: false, isWritable: true),
                 .init(pubkey: wallet.solana, isSigner: true, isWritable: false),
@@ -451,12 +453,14 @@ extension Executor {
     /// deposited, and with `execute` carries the slices out one by one through the same checked paths.
     /// USDC is counted in dollars, SOL in SOL; SOL keeps 0.02 for fees and account rent.
     /// Returns the text and whether there is anything to confirm.
-    public func allocate(_ symbol: String, maxShare: Decimal = 50, execute: Bool) async throws -> (text: String, ready: Bool, preview: AllocationPreview) {
+    public func allocate(_ symbol: String, maxShare: Decimal = 50, limit: Decimal? = nil, execute: Bool) async throws -> (text: String, ready: Bool, preview: AllocationPreview) {
         let isSOL = symbol.uppercased() == "SOL"
         let asset = isSOL ? "SOL" : "USDC"
-        let free: Decimal = isSOL
+        let held: Decimal = isSOL
             ? max(0, Decimal(try await rpc.balance(wallet.solana)) / 1_000_000_000 - Decimal(string: "0.02")!)
             : Decimal(try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
+        // «spread 2 USDC»: at most that much of what is free.
+        let free = limit.map { min(held, $0) } ?? held
         async let optionsCall = Yields.options(for: asset)
         async let vaultsCall = try? JupiterLend.vaults()
         async let jupCall = try? JupiterLend.positions(user: wallet.solana)
