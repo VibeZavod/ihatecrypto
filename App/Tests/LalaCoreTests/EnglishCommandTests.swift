@@ -76,6 +76,30 @@ import Testing
     #expect(PositionCommand.parse("close half") == .close(Decimal(string: "0.5")!))
     #expect(IntentParser.apply("short oil risk $1 by the book", to: TradeIntent(), markets: markets)?.asset == "xyz:CL")
     #expect(ChatRouter.forms.contains("buy token <0xCONTRACT> for N USDC"))
+    // Native NEAR and SOL to saved addresses, and closing the NEAR account.
+    #expect(WalletCommand.parse("send 0.05 NEAR to Bybit") == .sendNear(name: "Bybit", amount: Decimal(string: "0.05")!))
+    #expect(WalletCommand.parse("send all NEAR to Bybit") == .sendNear(name: "Bybit", amount: nil))
+    #expect(WalletCommand.parse("close the NEAR account into Bybit") == .closeNear(name: "Bybit"))
+    #expect(WalletCommand.parse("send 0.001 SOL to Old wallet") == .sendSol(name: "Old wallet", amount: Decimal(string: "0.001")!))
+    #expect(ChatRouter.forms.contains("send N SOL to <NAME from the address book>"))
+}
+
+@Test func nearAndSolTransfersParse() {
+    #expect(WalletCommand.parse("отправь 0.05 NEAR на Bybit") == .sendNear(name: "Bybit", amount: Decimal(string: "0.05")!))
+    #expect(WalletCommand.parse("отправь весь NEAR на Мой кошелёк") == .sendNear(name: "Мой кошелёк", amount: nil))
+    #expect(WalletCommand.parse("закрой NEAR-аккаунт и переведи всё на Bybit") == .closeNear(name: "Bybit"))
+    #expect(WalletCommand.parse("отправь 0,00002 SOL на старый кошелёк") == .sendSol(name: "старый кошелёк", amount: Decimal(string: "0.00002")!))
+    // Never guessed: no number and no «all» is not a NEAR transfer; SOL into a vault is a deposit.
+    #expect(WalletCommand.parse("send NEAR to Bybit") != .sendNear(name: "Bybit", amount: nil))
+    #expect(WalletCommand.parse("send 1 SOL to the vault") != .sendSol(name: "the vault", amount: 1))
+    // The other NEAR phrases keep working.
+    #expect(WalletCommand.parse("продай весь NEAR") == .sellNear(amount: nil))
+    #expect(WalletCommand.parse("send 5 USDC to Bybit") == .sendTo(name: "Bybit", amount: 5))
+    // A NEAR account in a save command, and the router never inventing one.
+    let implicit = String(repeating: "ab", count: 32)
+    #expect(AddressBookCommand.parse("save \(implicit) as Bybit on near") == .save(address: implicit, name: "Bybit", network: "near"))
+    #expect(AddressBookCommand.parse("save alice.near as Alice") == .save(address: "alice.near", name: "Alice", network: "near"))
+    #expect(!ChatRouter.addressesAllowed("save \(implicit) as X on near", userText: "сохрани кошелёк", known: []))
 }
 
 @Test func movesKeepTheirDirection() {

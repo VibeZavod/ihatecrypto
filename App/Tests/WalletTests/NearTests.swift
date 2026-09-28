@@ -39,3 +39,20 @@ import Testing
     let tail = Data([1, 0, 0, 0, 7, 64, 0, 0, 0]) + Data(beneficiary.utf8)
     #expect(tx.suffix(tail.count) == tail)
 }
+
+@Test func nearTransferToANamedAccountCarriesItsName() {
+    let tx = NearTransaction.serialize(signer: "me.near", publicKey: Data(count: 32), nonce: 7, receiver: "bybit.near",
+                                       blockHash: Data(count: 32), actions: [.transfer(deposit: 1)])
+    // receiver as a borsh string, then after the block hash: one action, variant 3, the u128 deposit.
+    #expect(tx.range(of: Data([10, 0, 0, 0]) + Data("bybit.near".utf8)) != nil)
+    #expect(tx.suffix(21) == Data([1, 0, 0, 0, 3, 1] + [UInt8](repeating: 0, count: 15)))
+}
+
+@Test func nearAddressesAreCheckedLikeTheOthers() {
+    #expect(AddressCheck.problem(String(repeating: "ab", count: 32), network: .near) == nil)
+    #expect(AddressCheck.problem("bybit.near", network: .near) == nil)
+    #expect(AddressCheck.problem("deposit.binance.near", network: .near) == nil)
+    #expect(AddressCheck.problem("Bybit.near", network: .near) != nil)          // NEAR names are lower case
+    #expect(AddressCheck.problem("0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18", network: .near) != nil)
+    #expect(AddressCheck.problem(String(repeating: "ab", count: 31), network: .near) != nil)
+}

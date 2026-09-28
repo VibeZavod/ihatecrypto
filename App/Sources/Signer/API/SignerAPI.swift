@@ -61,6 +61,12 @@ public enum SignerRequest: Codable, Sendable {
     /// and send that wNEAR to `depositAddress`, a 64-hex NEAR account, confirmed in person as a new recipient.
     /// Reply: `signedRaw` = the borsh SignedTransaction.
     case signNearIntentDeposit(amount: String, depositAddress: String, nonce: UInt64, blockHash: Data)
+    /// A native NEAR transfer the signer builds itself; the receiver must be one of `recipients` (saved addresses) and
+    /// passes the new-recipient Touch ID rule.
+    case signNearTransfer(amount: String, receiver: String, recipients: [String], nonce: UInt64, blockHash: Data)
+    /// DeleteAccount of the wallet's NEAR account into `beneficiary` (one of `recipients`), after a Touch ID prompt that
+    /// says so in plain words.
+    case signNearDeleteAccount(beneficiary: String, recipients: [String], nonce: UInt64, blockHash: Data)
 }
 
 public enum SignerSession {

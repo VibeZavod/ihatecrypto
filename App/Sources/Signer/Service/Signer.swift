@@ -128,6 +128,30 @@ enum Signer {
             r.checks = ["\(NearTransaction.near(yocto)) NEAR → wNEAR → \(depositAddress) (1Click)"]
             return r
 
+        case .signNearTransfer(let amount, let receiver, let recipients, let nonce, let blockHash):
+            guard let yocto = UInt128(amount), yocto > 0 else { throw WalletError("Not a NEAR amount: \(amount).") }
+            try checkNearRecipient(receiver, recipients, blockHash)
+            try approve([receiver])
+            let (key, account) = try nearKey(reason: "send \(NearTransaction.near(yocto)) NEAR to \(receiver)")
+            guard receiver != account else { throw WalletError("That is this wallet's own NEAR account.") }
+            var r = SignerReply(ok: true)
+            r.signedRaw = try NearTransaction.sign(receiver: receiver, nonce: nonce, blockHash: blockHash, actions: [.transfer(deposit: yocto)], privateKey: key).signed
+            r.checks = ["\(NearTransaction.near(yocto)) NEAR → \(receiver)"]
+            return r
+
+        case .signNearDeleteAccount(let beneficiary, let recipients, let nonce, let blockHash):
+            try checkNearRecipient(beneficiary, recipients, blockHash)
+            try approve([beneficiary])
+            // Always a fresh prompt, whatever Touch ID session is open: this empties and removes the account.
+            try SeedStore.confirm("DELETE your NEAR account and send all the NEAR on it to \(beneficiary)")
+            let (key, account) = try nearKey(reason: "delete your NEAR account into \(beneficiary)")
+            guard beneficiary != account else { throw WalletError("An account can't be deleted into itself.") }
+            var r = SignerReply(ok: true)
+            r.signedRaw = try NearTransaction.sign(receiver: account, nonce: nonce, blockHash: blockHash,
+                                                   actions: [.deleteAccount(beneficiary: beneficiary)], privateKey: key).signed
+            r.checks = ["NEAR account \(account.prefix(8))… deleted into \(beneficiary)"]
+            return r
+
         case .forget:
             try confirmReplacing("remove the wallet from LALA")
             RecipientStore.delete()
@@ -316,6 +340,22 @@ enum Signer {
         guard !new.isEmpty else { return }
         try SeedStore.confirm("allow LALA to send money to a new address:\n" + new.joined(separator: "\n"))
         try RecipientStore.add(new)
+    }
+
+    /// A NEAR receiver LALA may pay: a valid account, among the saved addresses the app passed, with a real block hash.
+    static func checkNearRecipient(_ receiver: String, _ recipients: [String], _ blockHash: Data) throws {
+        guard AddressCheck.problem(receiver, network: .near) == nil else { throw WalletError("Not a NEAR account: \(receiver).") }
+        guard recipients.contains(receiver) else { throw WalletError("\(receiver) isn't a saved address: NEAR goes only to one.") }
+        guard blockHash.count == 32 else { throw WalletError("A NEAR block hash is 32 bytes.") }
+    }
+
+    /// The wallet's NEAR key (m/44'/397'/0') after Touch ID, and its implicit account, which must be the one stored.
+    static func nearKey(reason: String) throws -> (key: Data, account: String) {
+        let seed = try SeedStore.load(reason: reason)
+        let key = try Derivation.ed25519(seed: seed, path: WalletPath.near(0))
+        let account = try NearAccount.implicit(privateKey: key)
+        if let known = defaults.string(forKey: "near"), known != account { throw WalletError("The NEAR key doesn't match this wallet's NEAR account.") }
+        return (key, account)
     }
 
     static func address(_ key: String) throws -> String {

@@ -25,6 +25,19 @@ public protocol TradeSigner: Sendable {
     /// Native NEAR into a 1Click deposit: the signer builds the one wrap.near transaction itself
     /// (`NearTransaction.intentDeposit`) and returns it signed, in borsh.
     func signNearIntentDeposit(amount: UInt128, depositAddress: String, nonce: UInt64, blockHash: Data) async throws -> Data
+    /// A native NEAR transfer of exactly `amount` yocto to `receiver`, which must be among `recipients` (saved addresses).
+    func signNearTransfer(amount: UInt128, receiver: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data
+    /// Deletes the wallet's NEAR account; NEAR sends all that is on it to `beneficiary` (one of `recipients`).
+    func signNearDeleteAccount(beneficiary: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data
+}
+
+extension TradeSigner {
+    public func signNearTransfer(amount: UInt128, receiver: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data {
+        throw ExecutionError("NEAR transfers are signed in LALA.app.")
+    }
+    public func signNearDeleteAccount(beneficiary: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data {
+        throw ExecutionError("Closing the NEAR account is signed in LALA.app.")
+    }
 }
 
 public struct TradeWallet: Sendable {

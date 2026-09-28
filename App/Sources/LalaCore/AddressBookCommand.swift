@@ -14,7 +14,7 @@ public enum AddressBookCommand: Equatable, Sendable {
         let q = text.lowercased()
         if let address = address(in: text), q.contains(/\b(?:save|add|remember|store|keep)\b|сохран|запомн|добав|запиши/) {
             // «… as Bybit on Arbitrum», «… как Bybit в сети base»
-            let named = text.firstMatch(of: /(?i)(?:\bas\b|\bcalled\b|\bnamed\b|\bкак\b|под\s+именем)\s+[«"“]?(.+?)[»"”]?(?=\s+(?:on|in|в|на)\s+(?:the\s+)?(?:сети\s+)?(?:solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|ethereum|эфир\w*|hyperliquid|хайперликвид\w*)\b|[.,!]?\s*$)/)
+            let named = text.firstMatch(of: /(?i)(?:\bas\b|\bcalled\b|\bnamed\b|\bкак\b|под\s+именем)\s+[«"“]?(.+?)[»"”]?(?=\s+(?:on|in|в|на)\s+(?:the\s+)?(?:сети\s+)?(?:solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|ethereum|эфир\w*|hyperliquid|хайперликвид\w*|near|неар\w*)\b|[.,!]?\s*$)/)
             guard let name = named.map({ String($0.1).trimmingCharacters(in: .whitespaces) }), !name.isEmpty, !name.contains(address) else { return nil }
             return .save(address: address, name: name, network: network(q))
         }
@@ -28,12 +28,17 @@ public enum AddressBookCommand: Equatable, Sendable {
     /// The address as the user wrote it: a 0x one, or a base58 one that mixes cases and digits like real Solana keys.
     public static func address(in text: String) -> String? {
         if let m = text.firstMatch(of: evm) { return String(m.0) }
+        // NEAR: a 64-hex implicit account, or a named one ending in .near.
+        if let m = text.firstMatch(of: /\b[0-9a-f]{64}\b/) { return String(m.0) }
+        if let m = text.firstMatch(of: /\b[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.near\b/) { return String(m.0) }
         return text.matches(of: solana).map { String($0.0) }.first { s in
             s.contains(where: \.isNumber) && s.contains(where: \.isUppercase) && s.contains(where: \.isLowercase)
         }
     }
 
     static func network(_ q: String) -> String? {
+        // A NEAR account can only be on NEAR; «on near» names it too.
+        if q.contains(/\b[0-9a-f]{64}\b|\.near\b|\b(?:on|in|в|на)\s+(?:the\s+)?(?:сети\s+)?(?:near|неар\w*)\b/) { return "near" }
         if q.contains(/\bbase\b|бейс/) { return "base" }
         if q.contains(/arbitrum|арбитрум/) { return "arbitrum" }
         if q.contains(/hyperliquid|хайперликвид/) { return "hyperliquid" }

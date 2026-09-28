@@ -65,6 +65,18 @@ nonisolated struct XPCTradeSigner: TradeSigner {
         return raw
     }
 
+    func signNearTransfer(amount: UInt128, receiver: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data {
+        let reply = try await Self.signing { try await SignerClient().send(.signNearTransfer(amount: "\(amount)", receiver: receiver, recipients: recipients, nonce: nonce, blockHash: blockHash)) }
+        guard reply.ok, let raw = reply.signedRaw else { throw ExecutionError(Self.reason(reply)) }
+        return raw
+    }
+
+    func signNearDeleteAccount(beneficiary: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data {
+        let reply = try await Self.signing { try await SignerClient().send(.signNearDeleteAccount(beneficiary: beneficiary, recipients: recipients, nonce: nonce, blockHash: blockHash)) }
+        guard reply.ok, let raw = reply.signedRaw else { throw ExecutionError(Self.reason(reply)) }
+        return raw
+    }
+
     static func reason(_ reply: SignerReply) -> String {
         ([reply.error ?? "The signer refused."] + reply.problems).joined(separator: " ")
     }
@@ -268,6 +280,20 @@ extension Workspace {
             case .sellNear(let amount):
                 guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
                 reply(try await e.sellNear(amount: amount, account: account), note: "NEAR Intents · 1Click")
+            case .sendNear(let name, let amount):
+                guard let entry = savedAddress(name, on: .near) else { throw ExecutionError("There’s no NEAR address “\(name)” in Addresses.") }
+                guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
+                reply(try await e.sendNear(amount, to: entry.address, account: account, label: entry.name), note: "NEAR")
+                markSent(entry)
+            case .closeNear(let name):
+                guard let entry = savedAddress(name, on: .near) else { throw ExecutionError("There’s no NEAR address “\(name)” in Addresses.") }
+                guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
+                reply(try await e.closeNear(into: entry.address, account: account, label: entry.name), note: "NEAR")
+                markSent(entry)
+            case .sendSol(let name, let amount):
+                guard let entry = savedAddress(name, on: .solana) else { throw ExecutionError("There’s no Solana address “\(name)” in Addresses.") }
+                reply(try await e.sendSOL(amount, to: entry.address, label: entry.name), note: "Solana")
+                markSent(entry)
             case .aave(let deposit, let amount): reply(try await e.aave(deposit: deposit, usdc: amount), note: "Aave · Base")
             case .morpho(let deposit, let amount): reply(try await e.morpho(deposit: deposit, usdc: amount), note: "Morpho · Base")
             case .baseToSolana(let amount): reply(try await e.baseToSolana(usdc: amount), note: "Relay · Base → Solana")

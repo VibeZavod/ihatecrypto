@@ -727,6 +727,9 @@ extension Workspace {
         case .solanaTo(let place, let amount?): outRoute(to: place, amount: amount)
         case .buyStock(let symbol, let usdc?): stockRoute(symbol, usdc)
         case .sellNear(let asked): sellNearRoute(asked)
+        case .sendNear(let name, let asked): nearOutRoute(to: name, amount: asked, close: false)
+        case .closeNear(let name): nearOutRoute(to: name, amount: nil, close: true)
+        case .sendSol(let name, let amount): solOutRoute(to: name, amount: amount)
         default: ends(command).map { from, to in
             let footer = if case .sellStock = command {
                 "Two Robinhood Chain transactions: an exact approve and the Uniswap swap, which may only pay this wallet. Say “do it” or press Confirm; anything else cancels."
@@ -761,6 +764,36 @@ extension Workspace {
             step("sol", "TO · SOLANA", usd.map { "≈ \(Fmt.num($0.rounded(2, .plain))) USDC" } ?? "USDC",
                  "your own address ✓", .solana),
         ])
+    }
+
+    /// NEAR to a saved NEAR account, or the whole NEAR account closed into it.
+    private func nearOutRoute(to name: String, amount asked: Decimal?, close: Bool) -> MoveRoute? {
+        guard let entry = savedAddress(name, on: .near) else { return nil }
+        let amount = close ? near : asked ?? max(0, near - Decimal(string: "0.012")!)
+        let usd = markets["NEAR"].map { amount * $0.markPx }
+        let ends = AddressCheck.ends(entry.address)
+        return MoveRoute(title: close ? "Close the NEAR account into \(entry.name)" : "Send \(Fmt.num(amount, maxFraction: 4)) NEAR to \(entry.name)",
+                         footer: (close
+                            ? "One NEAR transaction: your NEAR account is deleted and NEAR sends everything on it to \(entry.name). Touch ID asks in plain words first; buying NEAR later opens the account again. "
+                            : "One NEAR transfer, built and signed by the signer; only this saved address may receive it. ")
+                            + "Say “do it” or press Confirm.",
+                         steps: [
+            step("near", "FROM · NEAR", "\(Fmt.num(amount, maxFraction: 4)) NEAR",
+                 usd.map { "≈ \(Fmt.usd($0))" + (close ? " · everything" : asked == nil ? " · ≈ 0.012 NEAR stays" : "") } ?? "", .near),
+            step(entry.network.logo, "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", .near),
+        ], warning: entry.lastSent == nil ? "First transfer to this address. Sending a small test amount first is the safe habit." : nil)
+    }
+
+    /// SOL to a saved Solana address.
+    private func solOutRoute(to name: String, amount: Decimal) -> MoveRoute? {
+        guard let entry = savedAddress(name, on: .solana) else { return nil }
+        let ends = AddressCheck.ends(entry.address)
+        return MoveRoute(title: "Send \(Fmt.num(amount, maxFraction: 9)) SOL to \(entry.name)",
+                         footer: "One Solana transfer: only this saved address may receive it, and the simulation must show exactly this SOL leaving plus the fee. Say “do it” or press Confirm.",
+                         steps: [
+            step("sol", "FROM · SOLANA", "\(Fmt.num(amount, maxFraction: 9)) SOL", solana.map { "free: \(Fmt.num($0.sol, maxFraction: 6)) SOL" } ?? "", .solana),
+            step("sol", "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", .solana),
+        ], warning: entry.lastSent == nil ? "First transfer to this address. Sending a small test amount first is the safe habit." : nil)
     }
 
     private func withdrawRoute(_ asked: Decimal?) -> MoveRoute {
@@ -1090,6 +1123,21 @@ extension Workspace {
             let sol = isSolanaAddress(solanaAddress) ? "Solana \(AddressCheck.ends(solanaAddress).start) … \(AddressCheck.ends(solanaAddress).end)" : nil
             reply("Your addresses are on the canvas\(sol.map { " — \($0) for USDC and SOL (recommended)" } ?? ""), plus Base for USDC and ETH. LALA can’t pull money in; send it there from an exchange or another wallet, on that network. It shows up within about 30 s and I’ll tell you when it arrives. To put money you already have into a vault, say “deposit 1 USDC into Jupiter”.", note: note)
             return
+        }
+        let recipient: (name: String, network: AddressCheck.Network)? = switch command {
+        case .sendNear(let name, _), .closeNear(let name): (name, .near)
+        case .sendSol(let name, _): (name, .solana)
+        default: nil
+        }
+        if let recipient {
+            guard let entry = savedAddress(recipient.name, on: recipient.network) else {
+                reply("There’s no \(recipient.network.title) address “\(recipient.name)” in Addresses. Save it first, e.g. “save <address> as \(recipient.name) on \(recipient.network.rawValue)”.", note: note)
+                return
+            }
+            guard entry.memo.isEmpty else {
+                reply("“\(entry.name)” needs a memo / tag, and LALA can’t add one to this transfer — send it from the exchange’s app instead.", note: note)
+                return
+            }
         }
         if let question = command.amountQuestion {
             awaitingAmount = command

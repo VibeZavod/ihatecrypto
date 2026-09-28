@@ -4,7 +4,7 @@ import Foundation
 /// An address is never guessed or corrected — a wrong one is refused with the reason.
 public enum AddressCheck {
     public enum Network: String, Codable, CaseIterable, Sendable {
-        case solana, hyperliquid, ethereum, arbitrum, base, robinhood
+        case solana, hyperliquid, ethereum, arbitrum, base, robinhood, near
 
         public var title: String {
             switch self {
@@ -14,6 +14,7 @@ public enum AddressCheck {
             case .arbitrum: "Arbitrum"
             case .base: "Base"
             case .robinhood: "Robinhood Chain"
+            case .near: "NEAR"
             }
         }
     }
@@ -41,6 +42,12 @@ public enum AddressCheck {
                 return "The checksum doesn’t match, so a character is wrong. Copy the address again from the source."
             }
             return traps[a.lowercased()]
+        case .near:
+            // An implicit account (64 hex, lower case) or a named one: lower-case parts joined by dots, ending in .near.
+            guard a.wholeMatch(of: /[0-9a-f]{64}/) != nil || (a.count <= 64 && a.wholeMatch(of: /[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.near/) != nil) else {
+                return "Not a NEAR account: 64 hex characters, or a name ending in .near (lower case)."
+            }
+            return nil
         }
     }
 

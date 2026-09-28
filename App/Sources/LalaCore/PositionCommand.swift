@@ -110,6 +110,13 @@ public enum WalletCommand: Equatable, Sendable {
     case arbitrumToSolana(Decimal?)
     /// «send 5 USDC to Bybit»: to an entry of the address book, by its name. An address in the text is never a recipient.
     case sendTo(name: String, amount: Decimal)
+    /// Native NEAR from the wallet's NEAR account to an address-book entry on NEAR; nil = all but the account's own
+    /// storage and the fee.
+    case sendNear(name: String, amount: Decimal?)
+    /// Deletes the wallet's NEAR account; NEAR sends everything on it to the address-book entry `name`.
+    case closeNear(name: String)
+    /// Native SOL to an address-book entry on Solana; the amount is always said.
+    case sendSol(name: String, amount: Decimal)
     /// «задепозить», «пополнить», «my address»: money coming in from outside — show where to send it.
     case receive
     /// A Robinhood Stock Token (SPCX, TSLA…) bought on Robinhood Chain for USDC from Solana; `symbol` as the user named
@@ -202,6 +209,26 @@ public enum WalletCommand: Equatable, Sendable {
             else if q.contains(/месяц|monthly/) { days = 30 }
             else { days = 7 }
             return .schedule(asset, usdc: amount, days: days)
+        }
+        // «закрой NEAR-аккаунт и переведи всё на Bybit», «close the NEAR account into Bybit»: the last «на / to / into» names it.
+        if q.contains(/(?:close|delete|закр\w*|удали\w*)\s+(?:(?:the|my|мой)\s+)?(?:near|неар\w*)[\s-]*(?:account|аккаунт\w*)/),
+           let m = text.firstMatch(of: /(?i).*\s(?:into|to|на|в)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/) {
+            return .closeNear(name: String(m.1).trimmingCharacters(in: .whitespaces))
+        }
+        // «отправь 0.001 SOL на Old wallet», «send 0.01 SOL to Bybit»: native SOL to a saved Solana address.
+        if let m = text.firstMatch(of: /(?i)(?:send|transfer|отправь\w*|переведи|перевести|скинь|кинь)\s+(\d+(?:[.,]\d+)?)\s*(?:sol|сол\w*)\s+(?:to|на|для)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/),
+           let value = Decimal(string: String(m.1).replacingOccurrences(of: ",", with: ".")) {
+            let name = String(m.2).trimmingCharacters(in: .whitespaces)
+            // «send 1 SOL to Jupiter / the vault» is a deposit, not a transfer to someone.
+            if name.lowercased().wholeMatch(of: /(?:the\s+)?(?:vault|jupiter\w*|kamino|jito\w*|хранилищ\w*|джупитер\w*|камино)/) == nil {
+                return .sendSol(name: name, amount: value)
+            }
+        }
+        // «отправь 0.05 NEAR на Bybit», «send all NEAR to Bybit»: a number or «all» is required — never guessed.
+        if let m = text.firstMatch(of: /(?i)(?:send|transfer|move|отправь\w*|переведи|перевести|скинь|кинь)\s+((?:all|весь|всё|все)\s+(?:(?:the|my|мой|мои)\s+)?)?(?:(\d+(?:[.,]\d+)?)\s*)?(?:near|неар\w*|ниар\w*)\s+(?:to|на|для)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/),
+           m.1 != nil || m.2 != nil {
+            let amount = m.2.flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
+            return .sendNear(name: String(m.3).trimmingCharacters(in: .whitespaces), amount: amount)
         }
         // «near» is also a word: «buy ETH near 2500» is a limit on ETH, not the NEAR token.
         if q.contains(/\bкуп\w*|\bbuy\b/), q.contains(/\bnear\b(?!\s*\$?\d)|\bнеар\w*|\bниар\w*|\bнир\b/), SpotAsset.find(q) == nil,
@@ -341,6 +368,9 @@ extension WalletCommand {
         case .baseToSolana(let x): return "move \(n(x)) USDC from Base to Solana"
         case .arbitrumToSolana(let x): return "move \(n(x)) USDC from Arbitrum to Solana"
         case .sendTo(let name, let x): return "send \(Fmt.num(x)) USDC to \(name)"
+        case .sendNear(let name, let x): return "send \(n(x)) NEAR to \(name)"
+        case .closeNear(let name): return "close your NEAR account and send all its NEAR to \(name)"
+        case .sendSol(let name, let x): return "send \(Fmt.num(x, maxFraction: 9)) SOL to \(name)"
         case .receive: return "show where to top up"
         case .buyStock(let s, let u): return "buy \(s.hasPrefix("0x") ? "the token \(s)" : "\(s) stock tokens") for \(n(u)) USDC on Robinhood Chain"
         case .sellStock(let s, let x): return "sell \(n(x)) \(s.hasPrefix("0x") ? "of the token \(s)" : "\(s) stock tokens") on Robinhood Chain"

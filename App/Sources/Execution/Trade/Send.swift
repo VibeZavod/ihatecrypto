@@ -104,3 +104,90 @@ extension Executor {
         }
     }
 }
+
+/// Native NEAR and SOL to saved addresses, and closing the wallet's NEAR account. The receiver is passed to the
+/// signer as the one approved address (a new one asks for Touch ID there); the signer builds NEAR transactions itself.
+extension Executor {
+    /// NEAR to a saved NEAR account; nil = all but the account's storage and 0.01 NEAR — a transfer that opens a new
+    /// implicit account prepays ≈ 0.0076 NEAR of gas at NEAR's pessimistic price (measured 2026-09-28), refunded after.
+    public func sendNear(_ requested: Decimal?, to receiver: String, account: String, label: String) async throws -> String {
+        guard receiver != account else { throw ExecutionError("That is this wallet's own NEAR account.") }
+        // A named account can't be created by a transfer: sending to one that doesn't exist would only fail.
+        if receiver.wholeMatch(of: /[0-9a-f]{64}/) == nil, (try? await Near.balance(account: receiver))?.near ?? 0 == 0 {
+            throw ExecutionError("\(receiver) doesn't exist on NEAR: check the name in Addresses.")
+        }
+        let context = try await Near.txContext(account: account)
+        let micro: UInt128 = 1_000_000_000_000_000_000   // 10⁻⁶ NEAR
+        let balance = UInt128(context.balance) ?? 0
+        let keep = UInt128(context.storageBytes) * 10_000_000_000_000_000_000 + 10_000_000_000_000_000_000_000
+        let free = balance > keep ? (balance - keep) / micro * micro : 0
+        let yocto = requested.flatMap { UInt128(NSDecimalNumber(decimal: ($0 * 1_000_000).rounded(0, .down)).stringValue) }.map { $0 * micro } ?? free
+        guard yocto > 0, yocto <= free else {
+            throw ExecutionError("\(NearTransaction.near(free)) NEAR can be sent: the account keeps \(NearTransaction.near(keep)) for its storage and the fee.")
+        }
+        let signed = try await signer.signNearTransfer(amount: yocto, receiver: receiver, recipients: [receiver], nonce: context.nonce, blockHash: context.blockHash)
+        let hash = try await Near.send(signed)
+        try journal.append(.init(chain: "near", id: hash, kind: .confirmed, note: "send \(NearTransaction.near(yocto)) NEAR to \(label)"))
+        return "Sent \(NearTransaction.near(yocto)) NEAR to \(label). https://nearblocks.io/txns/\(hash)"
+    }
+
+    /// Deletes the wallet's NEAR account; NEAR sends everything on it, storage included, to `beneficiary`. Refused
+    /// unless the beneficiary exists: NEAR would burn the balance otherwise.
+    public func closeNear(into beneficiary: String, account: String, label: String) async throws -> String {
+        guard beneficiary != account else { throw ExecutionError("An account can't be closed into itself.") }
+        guard (try? await Near.balance(account: beneficiary))?.near ?? 0 > 0 else {
+            throw ExecutionError("\(label) doesn't exist on NEAR yet: closing into it would burn the NEAR. Send it a little NEAR first.")
+        }
+        let context = try await Near.txContext(account: account)
+        let signed = try await signer.signNearDeleteAccount(beneficiary: beneficiary, recipients: [beneficiary], nonce: context.nonce, blockHash: context.blockHash)
+        let hash = try await Near.send(signed)
+        try journal.append(.init(chain: "near", id: hash, kind: .confirmed, note: "NEAR account closed into \(label)"))
+        return "Closed your NEAR account: its \(NearTransaction.near(UInt128(context.balance) ?? 0)) NEAR went to \(label). https://nearblocks.io/txns/\(hash)"
+    }
+
+    /// SOL to a saved Solana address: only that recipient (the guard and the signer check), and the simulation must
+    /// show exactly this SOL leaving, plus the fee.
+    public func sendSOL(_ sol: Decimal, to owner: String, label: String) async throws -> String {
+        let lamports = NSDecimalNumber(decimal: (sol * 1_000_000_000).rounded(0, .down)).uint64Value
+        guard lamports > 0, owner != wallet.solana else { throw ExecutionError(lamports == 0 ? "Nothing to send." : "That is this wallet's own address.") }
+        let have = try await rpc.balance(wallet.solana)
+        guard have >= lamports + 20_000 else {
+            throw ExecutionError("\(Fmt.num(Decimal(have) / 1_000_000_000, maxFraction: 9)) SOL on Solana: not enough for \(Fmt.num(sol, maxFraction: 9)) and the fee.")
+        }
+        // An empty account opens only with Solana's rent minimum; less than that is refused by the network.
+        if try await rpc.balance(owner) == 0, lamports < 890_880 {
+            throw ExecutionError("\(label)'s Solana account is empty: Solana opens it only with at least 0.00089088 SOL (its rent minimum). Send at least that.")
+        }
+        let (blockhash, lastValid) = try await rpc.latestBlockhash()
+        let transfer = SolanaInstruction(program: SolanaGuard.system, accounts: [
+            .init(pubkey: wallet.solana, isSigner: true, isWritable: true), .init(pubkey: owner, isSigner: false, isWritable: true),
+        ], data: Data([2, 0, 0, 0]) + withUnsafeBytes(of: lamports.littleEndian) { Data($0) })
+        let unsigned = SolanaTransaction.unsigned(try SolanaTransaction.compileMessage([transfer], payer: wallet.solana, blockhash: blockhash))
+        let message = try SolanaMessage.parse(transaction: unsigned)
+        var verdict = SolanaGuard.check(message, accounts: message.staticKeys, policy: SolanaPolicy(owner: wallet.solana, recipients: [owner]), tokenOwners: [:])
+        let simulation = try await rpc.simulate(unsigned, watch: [wallet.solana], sigVerify: false)
+        if let error = simulation.error { throw ExecutionError("The simulation failed, so nothing was signed: \(error)") }
+        verdict.merge(SolanaGuard.balances([
+            .init(label: "lamports", before: Int64(have), after: Int64(simulation.after[wallet.solana]?.lamports ?? 0), atLeast: -Int64(lamports) - 20_000),
+        ]))
+        guard verdict.ok else { throw ExecutionError("The guard stopped the transfer: " + verdict.problems.joined(separator: " ")) }
+        let signed = try await signer.signSolana(unsigned, accounts: message.staticKeys, recipients: [owner], tokenOwners: [:])
+        guard signed.count == unsigned.count, signed.subdata(in: 65..<signed.count) == unsigned.subdata(in: 65..<unsigned.count) else {
+            throw ExecutionError("What was signed isn't what was checked.")
+        }
+        let signature = Base58.encode(signed.subdata(in: 1..<65))
+        try journal.append(.init(chain: "solana", id: signature, kind: .signed, note: "send \(Fmt.num(sol, maxFraction: 9)) SOL to \(label); valid until block \(lastValid)"))
+        _ = try await rpc.send(signed)
+        switch try await rpc.waitForConfirmation(signature, lastValidBlockHeight: lastValid) {
+        case .confirmed:
+            try journal.append(.init(chain: "solana", id: signature, kind: .confirmed))
+            return "Sent \(Fmt.num(sol, maxFraction: 9)) SOL to \(label) on Solana. https://solscan.io/tx/\(signature)"
+        case .failed(let e):
+            try journal.append(.init(chain: "solana", id: signature, kind: .failed, note: e))
+            throw ExecutionError("The transfer failed: \(e). The SOL stayed.")
+        case .expired:
+            try journal.append(.init(chain: "solana", id: signature, kind: .expired))
+            throw ExecutionError("The transfer didn't make it into a block; nothing moved. You can retry.")
+        }
+    }
+}

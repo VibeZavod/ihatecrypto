@@ -46,7 +46,9 @@ public enum ChatRouter {
     MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from Base to Solana | move N USDC from Arbitrum to Solana
       move N USDC from Solana to <Base|Arbitrum|Robinhood>   (arrives as USDG on Robinhood Chain)
       send N USDC to <NAME from the address book> | top up (where to send money into LALA)
-    ADDRESSES AND WATCHLIST: save <ADDRESS> as <NAME> [on solana|base|arbitrum|ethereum|hyperliquid] | add <NAME> to favorites | remove <NAME> from favorites
+      send N NEAR to <NAME from the address book> | send all NEAR to <NAME> | close the NEAR account into <NAME>
+      send N SOL to <NAME from the address book>
+    ADDRESSES AND WATCHLIST: save <ADDRESS> as <NAME> [on solana|base|arbitrum|ethereum|hyperliquid|near] | add <NAME> to favorites | remove <NAME> from favorites
       watch token <0xCONTRACT> [on robinhood|base|arbitrum|ethereum|solana] | remove token <SYMBOL> from favorites
     MARKET: chart <ASSET> [week|month] | what's moving | alert me when <ASSET> is above|below <PRICE> | cancel alerts
     APP: new canvas | clear the plan | lock
@@ -120,7 +122,7 @@ public enum ChatRouter {
     /// The model never supplies an address: each one in its command must be in the user's own message, character for
     /// character, or be the contract of one of their favorite tokens.
     public static func addressesAllowed(_ command: String, userText: String, known: [String]) -> Bool {
-        let found = command.matches(of: /0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/).map { String($0.0) }
+        let found = command.matches(of: /0x[0-9a-fA-F]{40}|[0-9a-f]{64}|[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.near|[1-9A-HJ-NP-Za-km-z]{32,44}/).map { String($0.0) }
         let knownSet = Set(known.map { $0.lowercased() })
         return found.allSatisfy { userText.contains($0) || knownSet.contains($0.lowercased()) }
     }

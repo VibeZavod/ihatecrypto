@@ -132,7 +132,7 @@ func moveMoney(_ text: String) async throws {
     case .morpho(let deposit, let amount): print(try await executor.morpho(deposit: deposit, usdc: amount))
     case .baseToSolana(let amount): print(try await executor.baseToSolana(usdc: amount))
     case .arbitrumToSolana(let amount): print(try await executor.evmToSolana(.arbitrum, usdc: amount))
-    case .sendTo: throw ExecutionError("Sending to a saved address works in LALA.app, where the address book is.")
+    case .sendTo, .sendNear, .closeNear, .sendSol: throw ExecutionError("Sending to a saved address works in LALA.app, where the address book is.")
     case .buyStock(let symbol, let usdc): print(try await executor.buyStock(symbol, usdc: usdc ?? 1))
     case .sellStock(let symbol, let amount): print(try await executor.sellStock(symbol, amount: amount))
     case .robinhoodToSolana(let amount): print(try await executor.evmToSolana(.robinhood, usdc: amount))

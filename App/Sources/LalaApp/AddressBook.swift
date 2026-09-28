@@ -162,6 +162,7 @@ extension AddressCheck.Network {
         case .arbitrum: "arb"
         case .base: "base"
         case .robinhood: "robinhood"
+        case .near: "near"
         }
     }
 }
@@ -657,11 +658,25 @@ struct PendingAddressBoard: View {
 extension Workspace {
     /// «send 5 USDC to Bybit»: the recipient comes from the address book by name, is drawn on the canvas and moves
     /// nothing until «do it».
+    /// A saved address on this network by its name: the exact name first, then one that contains it.
+    func savedAddress(_ name: String, on network: AddressCheck.Network) -> SavedAddress? {
+        let key = name.lowercased(), on = addressBook.filter { $0.network == network }
+        return on.first { $0.name.lowercased() == key } ?? on.first { $0.name.lowercased().contains(key) }
+    }
+
+    func markSent(_ entry: SavedAddress) {
+        if let i = addressBook.firstIndex(where: { $0.id == entry.id }) { addressBook[i].lastSent = Date() }
+    }
+
     func prepareTransfer(_ amount: Decimal, to name: String, note: String? = nil) {
         let key = name.lowercased()
         guard let entry = addressBook.first(where: { $0.name.lowercased() == key }) ?? addressBook.first(where: { $0.name.lowercased().contains(key) }) else {
             reply("There’s no “\(name)” in Addresses. Add it there first (the book button in the rail), then send by its name."
                   + (key.contains("solana") || key.contains("солан") ? " To bring money to your own Solana wallet, say “withdraw \(Fmt.num(amount)) USDC to Solana”." : ""), note: note)
+            return
+        }
+        guard entry.network != .near else {
+            reply("“\(entry.name)” is a NEAR account: LALA sends it NEAR, not USDC — e.g. “send 0.1 NEAR to \(entry.name)”.", note: note)
             return
         }
         guard entry.network != .ethereum else {
