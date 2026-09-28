@@ -445,7 +445,7 @@ struct StudioRail: View {
 
     /// Folded: a strip of round glass buttons, the logo on top and the profile at the bottom.
     private var narrow: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: 8) {
             // The traffic lights' row, which also drags the window.
             WindowDragArea().frame(height: Self.lightsRow)
             LalaLogo(size: 34)
@@ -465,16 +465,16 @@ struct StudioRail: View {
             Divider().frame(width: 32)
             RailActions(compact: true)
             Divider().frame(width: 32)
-            Button { canvasesOpen.toggle() } label: { RailRound(icon: "rectangle.stack", on: canvasesOpen) }
-                .buttonStyle(.plain).help("Canvases")
+            Button("Canvases") { canvasesOpen.toggle() }
+                .buttonStyle(RailRound(icon: "rectangle.stack", title: "Canvases", on: canvasesOpen)).help("Canvases")
                 .popover(isPresented: $canvasesOpen, arrowEdge: .trailing) {
                     CanvasList { canvasesOpen = false }.frame(width: 280, height: 380).padding(14)
                 }
-            Button { withAnimation(StudioView.spring) { ws.newCanvas() } } label: { RailRound(icon: "plus", dashed: true) }
-                .buttonStyle(.plain).help("New canvas").disabled(ws.busy)
+            Button("New canvas") { withAnimation(StudioView.spring) { ws.newCanvas() } }
+                .buttonStyle(RailRound(icon: "plus", title: "New", dashed: true)).help("New canvas").disabled(ws.busy)
             Spacer(minLength: 0)
-            Button { withAnimation(StudioView.spring) { collapsed = false } } label: { RailRound(icon: "sidebar.left", plain: true) }
-                .buttonStyle(.plain).help("Expand the sidebar")
+            Button("Expand the sidebar") { withAnimation(StudioView.spring) { collapsed = false } }
+                .buttonStyle(RailRound(icon: "sidebar.left", plain: true)).help("Expand the sidebar")
             ProfileMenu(compact: true)
         }
         .padding(.top, lightsTop).padding(.bottom, 12)
@@ -743,26 +743,13 @@ struct ProfileMenu: View {
     let compact: Bool
 
     var body: some View {
-        Button { open.toggle() } label: {
+        Group {
             if compact {
-                avatar
+                Button("Profile") { open.toggle() }.buttonStyle(RailRound(icon: "person.fill", title: "Profile", on: open))
             } else {
-                HStack(spacing: 10) {
-                    avatar
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("Profile").font(.ui(13, .semibold))
-                        Text(signedIn).font(.ui(12)).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                    Spacer()
-                    Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(.secondary)
-                }
-                .padding(8)
-                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Brand.glassFill))
-                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Brand.glassRim))
-                .contentShape(Rectangle())
+                Button { open.toggle() } label: { wideRow }.buttonStyle(.plain).modifier(HoverLift(radius: 16))
             }
         }
-        .buttonStyle(.plain)
         .help("Profile, settings, sign out")
         .popover(isPresented: $open, arrowEdge: compact ? .trailing : .top) { menu }
         .confirmationDialog("Sign out of \(ws.provider.info.name)?", isPresented: $confirmSignOut) {
@@ -770,6 +757,22 @@ struct ProfileMenu: View {
         } message: {
             Text("The chat stops using the model until you sign in again. Your wallet key stays in secure storage.")
         }
+    }
+
+    private var wideRow: some View {
+        HStack(spacing: 10) {
+            avatar
+            VStack(alignment: .leading, spacing: 1) {
+                Text("Profile").font(.ui(13, .semibold))
+                Text(signedIn).font(.ui(12)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(.secondary)
+        }
+        .padding(8)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Brand.glassFill))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Brand.glassRim))
+        .contentShape(Rectangle())
     }
 
     private var signedIn: String { ws.signedIn ? "signed in with \(ws.provider.info.name)" : "no model connected" }
@@ -818,7 +821,7 @@ struct ProfileMenu: View {
     }
 
     private var avatar: some View {
-        Circle().fill(Brand.glassFill).frame(width: compact ? 40 : 34, height: compact ? 40 : 34)
+        Circle().fill(Brand.glassFill).frame(width: 34, height: 34)
             .overlay(Circle().strokeBorder(Brand.glassRim))
             .overlay(Image(systemName: "person.fill").foregroundStyle(.secondary))
     }
@@ -2682,7 +2685,7 @@ struct RailActions: View {
 
     var body: some View {
         if compact {
-            VStack(spacing: 8) { topUp; portfolio; history; favorites }
+            VStack(spacing: 6) { topUp; portfolio; history; favorites }
         } else {
             Grid(horizontalSpacing: 6, verticalSpacing: 6) {
                 GridRow { topUp; portfolio }
@@ -2711,14 +2714,16 @@ struct RailActions: View {
         tile("Favorites", "star.fill", on: ws.showFavorites, help: "Favorite tokens, saved addresses, your wallets") { ws.showFavorites.toggle() }
     }
 
+    @ViewBuilder
     private func tile(_ title: String, _ icon: String, on: Bool, accent: Bool = false, help: String, action: @escaping () -> Void) -> some View {
-        Button {
+        let tap = {
             withAnimation(StudioView.spring) { action() }
             mode = "plan"
-        } label: {
-            if compact {
-                RailRound(icon: icon, on: on, accent: accent)
-            } else {
+        }
+        if compact {
+            Button(title, action: tap).buttonStyle(RailRound(icon: icon, title: title, on: on, accent: accent)).help("\(title): \(help)")
+        } else {
+            Button(action: tap) {
                 // A glass capsule; Top up is the orange one.
                 HStack(spacing: 6) {
                     Image(systemName: icon).font(.system(size: 13, weight: .semibold))
@@ -2731,36 +2736,68 @@ struct RailActions: View {
                 .overlay(Capsule().strokeBorder(accent ? Color.white.opacity(on ? 0.8 : 0.35) : on ? Brand.accent.opacity(0.6) : Brand.glassRim, lineWidth: 1))
                 .contentShape(Capsule())
             }
+            .buttonStyle(.plain)
+            .modifier(HoverLift(radius: 19))
+            .help(help)
         }
-        .buttonStyle(.plain)
-        .modifier(HoverLift(radius: compact ? 20 : 19))
-        .help(compact ? "\(title): \(help)" : help)
     }
 }
 
-/// A round button of the folded sidebar: a light glass circle, orange for Top up, dashed for a new canvas.
-struct RailRound: View {
+/// A button of the folded sidebar: a glass circle with its name under it, orange for Top up, dashed for a new canvas.
+/// Under the pointer its edge lights up in the accent and pressed it fills more; `on` marks a board that's open.
+/// Nothing moves: only the edge and the fill change (the user's rule).
+struct RailRound: ButtonStyle {
     let icon: String
+    var title: String?
     var on = false
     var accent = false
     var dashed = false
     /// No circle until the pointer is over it (the expand button).
     var plain = false
-    @State private var hover = false
 
-    var body: some View {
-        Image(systemName: icon).font(.system(size: 15, weight: .semibold))
-            .foregroundStyle(accent ? Brand.onAccent : on ? Brand.accentInk : Color.primary.opacity(0.8))
-            .frame(width: 40, height: 40)
-            .background {
-                if accent { Circle().fill(Brand.accent) }
-                else if dashed { Circle().strokeBorder(Color.secondary.opacity(0.55), style: StrokeStyle(lineWidth: 1.2, dash: [3, 3])) }
-                else if !plain || hover { Circle().fill(on ? Brand.accent.opacity(0.16) : Brand.glassFill) }
+    func makeBody(configuration: Configuration) -> some View { Face(style: self, pressed: configuration.isPressed) }
+
+    private struct Face: View {
+        let style: RailRound
+        let pressed: Bool
+        @State private var hover = false
+        @Environment(\.isEnabled) private var enabled
+
+        var body: some View {
+            let s = style, lit = hover && enabled
+            VStack(spacing: 3) {
+                Image(systemName: s.icon).font(.system(size: 17, weight: .semibold))
+                    .foregroundStyle(s.accent ? Brand.onAccent : s.on || lit ? Brand.accentInk : Color.primary.opacity(0.8))
+                    .frame(width: 42, height: 42)
+                    .background {
+                        if s.accent { Circle().fill(Brand.accent.opacity(pressed ? 0.75 : 1)) }
+                        else if pressed || s.on { Circle().fill(Brand.accent.opacity(pressed ? 0.26 : 0.16)) }
+                        else if !s.plain || lit { Circle().fill(lit ? Brand.glassSelected : Brand.glassFill) }
+                    }
+                    .overlay {
+                        if s.accent {
+                            Circle().strokeBorder(Color.white.opacity(lit || s.on ? 0.9 : 0.35), lineWidth: lit || s.on ? 2 : 1)
+                        } else if s.dashed {
+                            Circle().strokeBorder(lit ? Brand.accent : Color.secondary.opacity(0.55), style: StrokeStyle(lineWidth: 1.2, dash: [3, 3]))
+                        } else if lit || s.on {
+                            Circle().strokeBorder(Brand.accent.opacity(lit ? 0.9 : 0.6), lineWidth: 1.5)
+                        } else if !s.plain {
+                            Circle().strokeBorder(Brand.glassRim, lineWidth: 1)
+                        }
+                    }
+                if let title = s.title {
+                    Text(title).font(.ui(10, .medium)).lineLimit(1)
+                        .foregroundStyle(s.on || lit ? AnyShapeStyle(Brand.accentInk) : AnyShapeStyle(.secondary))
+                }
             }
-            .overlay { if !accent, !dashed, !plain { Circle().strokeBorder(on ? Brand.accent.opacity(0.6) : Brand.glassRim, lineWidth: 1) } }
-            .contentShape(Circle())
+            .frame(minWidth: 60)
+            .contentShape(Rectangle())
+            .opacity(enabled ? 1 : 0.5)
+            .animation(.snappy(duration: 0.16), value: lit)
+            .animation(.snappy(duration: 0.1), value: pressed)
             .onHover { hover = $0 }
-            .pointerStyle(.link)
+            .pointerStyle(enabled ? .link : nil)
+        }
     }
 }
 
