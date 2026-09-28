@@ -19,7 +19,8 @@ extension Workspace {
             }
             alerts.append(PriceAlert(coin: coin, above: up, price: price))
             let away = ((price - mark) / mark * 100).rounded(1, .plain)
-            reply("🔔 I’ll tell you when \(name) goes \(up ? "above" : "below") \(Fmt.price(price)) — now \(Fmt.price(mark)), \(Fmt.num(abs(away)))% \(up ? "higher" : "lower"). Works while LALA is open or in the menu bar.", note: note)
+            reply(say("🔔 I’ll tell you when \(name) goes \(up ? "above" : "below") \(Fmt.price(price)) — now \(Fmt.price(mark)), \(Fmt.num(abs(away)))% \(up ? "higher" : "lower"). Works while ihatecrypto is open or in the menu bar.",
+                      "🔔 Скажу, когда \(name) будет \(up ? "выше" : "ниже") \(Fmt.price(price)) — сейчас \(Fmt.price(mark)), на \(Fmt.num(abs(away)))% \(up ? "выше" : "ниже"). Работает, пока ihatecrypto открыт или в строке меню."), note: note)
         }
     }
 
@@ -28,9 +29,10 @@ extension Workspace {
         for a in alerts {
             guard let mark = markets[a.coin]?.markPx, a.fires(at: mark) else { continue }
             alerts.removeAll { $0.id == a.id }
-            let text = "\(IntentParser.pretty(a.coin)) is \(a.above ? "above" : "below") \(Fmt.price(a.price)): now \(Fmt.price(mark))."
-            notify("🔔 \(IntentParser.pretty(a.coin))", text)
-            reply(text + " The alert is done; set another any time.", note: "price alert")
+            let text = say("\(IntentParser.pretty(a.coin)) is \(a.above ? "above" : "below") \(Fmt.price(a.price)): now \(Fmt.price(mark)).",
+                           "\(IntentParser.pretty(a.coin)) \(a.above ? "выше" : "ниже") \(Fmt.price(a.price)): сейчас \(Fmt.price(mark)).")
+            notify(.alerts, "🔔 \(IntentParser.pretty(a.coin))", text)
+            reply(text + say(" The alert is done; set another any time.", " Алерт сработал; поставь новый, когда захочешь."), note: "price alert")
         }
     }
 }

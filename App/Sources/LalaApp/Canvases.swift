@@ -1126,7 +1126,8 @@ extension Workspace {
         if case .receive = command {
             withAnimation(StudioView.spring) { showReceive = true }
             let sol = isSolanaAddress(solanaAddress) ? "Solana \(AddressCheck.ends(solanaAddress).start) … \(AddressCheck.ends(solanaAddress).end)" : nil
-            reply("Your addresses are on the canvas\(sol.map { " — \($0) for USDC and SOL (recommended)" } ?? ""), plus Base for USDC and ETH. LALA can’t pull money in; send it there from an exchange or another wallet, on that network. It shows up within about 30 s and I’ll tell you when it arrives. To put money you already have into a vault, say “deposit 1 USDC into Jupiter”.", note: note)
+            reply(say("Your addresses are on the canvas\(sol.map { " — \($0) for USDC and SOL (recommended)" } ?? ""), plus Base for USDC and ETH. ihatecrypto can’t pull money in; send it there from an exchange or another wallet, on that network. It shows up within about 30 s and I’ll tell you when it arrives. To put money you already have into a vault, say “deposit 1 USDC into Jupiter”.",
+                      "Твои адреса на холсте\(sol.map { " — \($0) для USDC и SOL (рекомендую)" } ?? ""), и Base для USDC и ETH. ihatecrypto не может сам забрать деньги: отправь их туда с биржи или другого кошелька, именно в этой сети. Они появятся примерно через 30 с, и я скажу, когда придут. Чтобы положить уже имеющиеся деньги в хранилище, скажи «положи 1 USDC в Jupiter»."), note: note)
             return
         }
         let recipient: (name: String, network: AddressCheck.Network)? = switch command {
@@ -1146,7 +1147,7 @@ extension Workspace {
         }
         if let question = command.amountQuestion {
             awaitingAmount = command
-            reply(question + amountHint(command), note: note)
+            reply(say(question, "Сколько? Напиши число.") + amountHint(command), note: note)
             return
         }
         if let why = refusalBeforeCard(command) { reply(why, note: note); return }
@@ -1157,7 +1158,8 @@ extension Workspace {
         default:
             pendingAction = .wallet(command)
             pendingText = readable(command.summary)
-            reply("Understood: \(readable(command.summary)). It’s on the canvas — Sign it, or say anything else to cancel.", note: note)
+            reply(say("Understood: \(readable(command.summary)). It’s on the canvas — Sign it, or say anything else to cancel.",
+                      "Понял: \(readable(command.summary)). Карточка на холсте — нажми Confirm или напиши что-нибудь другое, чтобы отменить."), note: note)
         }
     }
 
@@ -1165,9 +1167,9 @@ extension Workspace {
     private func amountHint(_ command: WalletCommand) -> String {
         switch command {
         case .lendDeposit("SOL", _), .kamino(_, "SOL", _), .stake:
-            return solana.map { " You have \(Fmt.num($0.sol, maxFraction: 4)) SOL on Solana — answer with a number, e.g. “0.01”." } ?? ""
-        case .hlp: return hl.map { " \(Fmt.usd($0.withdrawable)) is free on Hyperliquid — answer with a number, e.g. “5”." } ?? ""
-        default: return solana.map { " You have \(Fmt.num($0.usdc)) USDC on Solana — answer with a number, e.g. “1”." } ?? ""
+            return solana.map { say(" You have \(Fmt.num($0.sol, maxFraction: 4)) SOL on Solana — answer with a number, e.g. “0.01”.", " На Solana \(Fmt.num($0.sol, maxFraction: 4)) SOL — ответь числом, например «0.01».") } ?? ""
+        case .hlp: return hl.map { say(" \(Fmt.usd($0.withdrawable)) is free on Hyperliquid — answer with a number, e.g. “5”.", " На Hyperliquid свободно \(Fmt.usd($0.withdrawable)) — ответь числом, например «5».") } ?? ""
+        default: return solana.map { say(" You have \(Fmt.num($0.usdc)) USDC on Solana — answer with a number, e.g. “1”.", " На Solana \(Fmt.num($0.usdc)) USDC — ответь числом, например «1».") } ?? ""
         }
     }
 

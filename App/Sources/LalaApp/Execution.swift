@@ -238,7 +238,8 @@ extension Workspace {
                                                    note: "on Base: bridged from Solana with a little ETH for gas"))
                 yieldOptions?.sort { $0.apy > $1.apy }
             }
-            reply(yieldOptions?.isEmpty == false ? "Rates are on the canvas — the bigger the bubble, the higher the rate." : "Yield sources didn't respond right now.", note: "DeFi")
+            reply(yieldOptions?.isEmpty == false ? say("Rates are on the canvas — the bigger the bubble, the higher the rate.", "Ставки на холсте — чем больше пузырь, тем выше ставка.")
+                                                 : say("Yield sources didn't respond right now.", "Источники ставок сейчас не ответили."), note: "DeFi")
             return
         }
         // The route as confirmed, before any balance moves: the canvas keeps it with the outcome and the time.
@@ -250,6 +251,9 @@ extension Workspace {
             // The outcome board comes from the saved canvas: save now, not after the balance refresh that follows,
             // or the canvas stays blank for those seconds.
             saveCanvas()
+            notify(.moves, confirmedRoute?.title ?? readable(Self.canvasTitle(command)),
+                   ok ? say("Done — checked, signed and confirmed.", "Готово — проверено, подписано и подтверждено сетью.")
+                      : say("It didn’t go through; the chat says why.", "Не прошло — причина в чате."), record: false)
         }
         if movesMoney(command, confirmed: confirmed) {
             withAnimation(StudioView.spring) {
@@ -348,7 +352,7 @@ extension Workspace {
             }
             finish(true)
         } catch {
-            reply("Failed: \(error.localizedDescription)")
+            reply(say("Failed: ", "Не вышло: ") + error.localizedDescription)
             finish(false)
         }
         await refresh()
@@ -402,7 +406,7 @@ extension Workspace {
         }
         executing = true
         defer { executing = false }
-        do { _ = try await executor(wallet).manage(command, asset: coin) } catch { reply("Failed: \(error.localizedDescription)") }
+        do { _ = try await executor(wallet).manage(command, asset: coin) } catch { reply(say("Failed: ", "Не вышло: ") + error.localizedDescription) }
         await refresh()
     }
 
@@ -485,9 +489,16 @@ extension Workspace {
             let usdc = schedules[index].usdc
             schedules[index].advance()
             executing = true
+            let waiting = Task { @MainActor [weak self] in
+                try await Task.sleep(for: .seconds(4))
+                guard let self, SignerActivity.shared.waiting > 0 else { return }
+                notify(.signature, say("Scheduled \(asset.symbol) buy", "Регулярная покупка \(asset.symbol)"),
+                       say("Waiting for Touch ID — confirm it on the sensor.", "Ждёт Touch ID — подтверди на датчике."), record: false)
+            }
+            defer { waiting.cancel() }
             do {
                 let line = try await executor(wallet).swap(asset, buy: true, amount: usdc, equity: equity)
-                notify("LALA: \(asset.symbol) purchase", line)
+                notify(.moves, say("\(asset.symbol) purchase", "Покупка \(asset.symbol)"), line)
             } catch {
                 reply("Scheduled \(asset.symbol) purchase failed: \(error.localizedDescription). Next one: \(Fmt.date(schedules[index].next)).")
             }
@@ -518,7 +529,9 @@ extension Workspace {
             let action = Guardian.step(&rules, size: p.size, stop: stop, mark: mark)
             exitRules[coin] = rules
             switch action {
-            case .stopToBreakeven?: await manage(.stopToBreakeven, coin: coin); notify("Partial profit taken on \(coin)", "Stop moved to breakeven.")
+            case .stopToBreakeven?:
+                await manage(.stopToBreakeven, coin: coin)
+                notify(.positions, say("Partial profit taken on \(coin)", "Частичная прибыль по \(coin)"), say("Stop moved to breakeven.", "Стоп перенесён в безубыток."))
             case .stopTo(let price)?: await manage(.stopTo(price), coin: coin)
             case nil: break
             }
@@ -530,9 +543,10 @@ extension Workspace {
         exitRules[coin] = nil
         guard let close = try? await HyperliquidAccount.lastClose(hlAddress, coin: coin), Date().timeIntervalSince(close.time) < 600 else { return }
         // HyperCore fills do not say whether a trigger or a person closed it; only that it was not LALA.
-        let text = "\(coin) position closed outside LALA (stop, take-profit or by hand) at \(Fmt.price(close.price)): \(close.pnl >= 0 ? "profit" : "loss") \(Fmt.usd(abs(close.pnl)))."
+        let text = say("\(coin) position closed outside ihatecrypto (stop, take-profit or by hand) at \(Fmt.price(close.price)): \(close.pnl >= 0 ? "profit" : "loss") \(Fmt.usd(abs(close.pnl))).",
+                       "Позиция \(coin) закрылась вне ihatecrypto (стоп, тейк или вручную) по \(Fmt.price(close.price)): \(close.pnl >= 0 ? "прибыль" : "убыток") \(Fmt.usd(abs(close.pnl))).")
         reply(text, note: "exchange")
-        notify("LALA: \(coin)", text)
+        notify(.positions, "\(coin)", text)
     }
 
     /// «stop to breakeven», «close half» — for the history.
@@ -547,14 +561,19 @@ extension Workspace {
         }
     }
 
-    func notify(_ title: String, _ body: String) {
-        // What LALA did on its own (guardian, schedules) is an activity too.
-        beginActivity(.automatic, title: title)
-        updateActivity { $0.lines.append(body) }
+    /// A macOS notification (shown while the window is in the background); `kind` can be turned off in Settings.
+    /// `record`: what LALA did on its own (guardian, schedules, arrivals) is an activity too; a move the user
+    /// confirmed already has one.
+    func notify(_ kind: Notice, _ title: String, _ body: String, record: Bool = true) {
+        if record {
+            beginActivity(.automatic, title: title)
+            updateActivity { $0.lines.append(body) }
+        }
         // Asked the first time something actually happens, never at launch. Needs an app bundle:
         // the `swift run` build has none and would crash, so there the chat line is all.
-        guard Bundle.main.bundleIdentifier != nil else { return }
+        guard kind.isOn, Bundle.main.bundleIdentifier != nil else { return }
         let center = UNUserNotificationCenter.current()
+        center.delegate = NoticeDelegate.shared
         center.requestAuthorization(options: [.alert, .sound]) { granted, _ in
             guard granted else { return }
             let content = UNMutableNotificationContent()

@@ -385,6 +385,7 @@ struct SettingsView: View {
                 Text("A trade that would lose more at its stop is not executed. “By the book” uses \(Fmt.pct(ws.policy.defaultRiskPct)) of capital, a \(Fmt.num(ws.policy.defaultRewardRisk))R take-profit and a \(Fmt.num(ws.policy.atrStopMultiple)) ATR (4h) stop. Crypto only.")
                     .font(.caption).foregroundStyle(.secondary)
             }
+            ChatAndNoticeSettings()
             Section("Debugging") {
                 Toggle("Local debug API for Claude Code (curl)", isOn: Binding(
                     get: { UserDefaults.standard.bool(forKey: "debugAPI") },

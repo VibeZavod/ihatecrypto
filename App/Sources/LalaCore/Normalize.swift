@@ -23,6 +23,8 @@ public enum ChatRouter {
         public var favorites: [String] = []
         public var addressBook: [String] = []
         public var balances: [String] = []
+        /// «Russian» or «English»: the language chat and clarify replies are written in (ChatLanguage).
+        public var replyLanguage = "English"
         public init() {}
     }
 
@@ -82,9 +84,9 @@ public enum ChatRouter {
       other address. «$2», «2 бакса», «два доллара» are 2 USDC; «всё» / «all» means leave the amount out of a withdrawal.
     - "question": about their money, positions, history, prices, or whether something is a good idea now. LALA answers from live data.
     - "plan": a change to the trade plan the forms can't say, like "take closer", "less risk", "wider stop".
-    - "chat": greetings, thanks, what LALA can do, what a DeFi term means. "reply": the answer, 1–3 short sentences in English. \
+    - "chat": greetings, thanks, what LALA can do, what a DeFi term means. "reply": the answer, 1–3 short sentences in the reply language. \
       Never invent numbers or prices.
-    - "clarify": ambiguous, or no single form does it. "reply" in English, one or two short sentences: say what is missing, or \
+    - "clarify": ambiguous, or no single form does it. "reply" in the reply language, one or two short sentences: say what is missing, or \
       offer the closest way LALA can do it as a concrete next step the user can accept with «yes» — e.g. «Hyperliquid → Kamino \
       goes through Solana: withdraw 5 USDC to Solana first, then deposit it into Kamino. Withdraw now?»
     """
@@ -97,6 +99,7 @@ public enum ChatRouter {
         if !context.favorites.isEmpty { lines.append("Favorite tokens: " + context.favorites.joined(separator: "; ")) }
         if !context.addressBook.isEmpty { lines.append("Address book names: " + context.addressBook.joined(separator: ", ")) }
         if !context.balances.isEmpty { lines.append("Balances: " + context.balances.joined(separator: "; ")) }
+        lines.append("Reply language: " + context.replyLanguage)
         lines.append("Message: " + text)
         let reply = try await client.complete(LLMRequest(model: model, messages: [
             LLMMessage(.system, system), LLMMessage(.user, lines.joined(separator: "\n")),

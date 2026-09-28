@@ -257,7 +257,7 @@ struct ActivityCard: View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: icon).foregroundStyle(Brand.accentInk)
-                Text(activity.title ?? (activity.kind == .request ? "Request" : "LALA")).font(.system(size: 14, weight: .semibold)).lineLimit(1)
+                Text(activity.title ?? (activity.kind == .request ? "Request" : "ihatecrypto")).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                 Spacer()
                 Text(Fmt.date(activity.at)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }
@@ -419,7 +419,7 @@ struct StoryCard: View {
                 asset: open ? story.coin : "", long: story.long))))
         }
         items += activities.map { a in
-            (a.at, AnyView(HistoryBubble(bubble: ActivityBubble(kind: "choice", label: a.kind == .automatic ? "Guardian" : a.request != nil ? "You asked" : "LALA",
+            (a.at, AnyView(HistoryBubble(bubble: ActivityBubble(kind: "choice", label: a.kind == .automatic ? "Guardian" : a.request != nil ? "You asked" : "ihatecrypto",
                                                                  title: a.request ?? a.title ?? "", lines: Array(a.lines.suffix(1))))))
         }
         return items.sorted { $0.0 < $1.0 }.map(\.1)

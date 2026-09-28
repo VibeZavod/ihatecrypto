@@ -114,8 +114,8 @@ public final class LoopbackServer: @unchecked Sendable {
     }
 
     private static func page(_ ok: Bool) -> Data {
-        let text = ok ? "Signed in. You can go back to LALA." : "Not found"
-        let body = "<!doctype html><meta charset=utf-8><title>LALA</title><p style=\"font:16px -apple-system;margin:40px\">\(text)</p>"
+        let text = ok ? "Signed in. You can go back to ihatecrypto." : "Not found"
+        let body = "<!doctype html><meta charset=utf-8><title>ihatecrypto</title><p style=\"font:16px -apple-system;margin:40px\">\(text)</p>"
         let head = "HTTP/1.1 \(ok ? "200 OK" : "404 Not Found")\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(body.utf8.count)\r\nConnection: close\r\n\r\n"
         return Data((head + body).utf8)
     }

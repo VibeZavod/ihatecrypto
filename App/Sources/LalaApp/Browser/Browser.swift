@@ -101,7 +101,7 @@ final class Browser {
     /// Every call from a page. `origin` comes from WebKit, not from the page, so a page cannot claim another's.
     func handle(_ method: String, _ params: [String: Any], origin: String, host: String) async throws -> Any {
         guard let owner = workspace?.signerWallet?.solana else {
-            throw SiteError("The LALA wallet isn't in secure storage: save the key via “Addresses from phrase…”.")
+            throw SiteError("The ihatecrypto wallet isn't in secure storage: save the key via “Addresses from phrase…”.")
         }
         let site = SiteCheck.check(host: host)
         switch method {
@@ -151,13 +151,13 @@ final class Browser {
             }
             return ["signed": signed.base64EncodedString()]
         default:
-            throw SiteError("LALA doesn't support \(method).")
+            throw SiteError("ihatecrypto doesn't support \(method).")
         }
     }
 
     /// EIP-1193 requests. Answers are JSON text; errors are "code|message".
     private func ethereum(_ method: String, _ paramsJSON: String, origin: String, site: SiteCheck.Verdict) async throws -> String {
-        guard let address = workspace?.signerWallet?.evm else { throw SiteError("4100|The LALA wallet isn't in secure storage.") }
+        guard let address = workspace?.signerWallet?.evm else { throw SiteError("4100|The ihatecrypto wallet isn't in secure storage.") }
         let args = (try? JSONSerialization.jsonObject(with: Data(paramsJSON.utf8))) as? [Any] ?? []
         let chain = evmChain[origin] ?? 42161
         func json(_ value: Any) throws -> String { String(decoding: try JSONSerialization.data(withJSONObject: value, options: .fragmentsAllowed), as: UTF8.self) }
@@ -174,14 +174,14 @@ final class Browser {
             return try json([address])
         case "wallet_switchEthereumChain":
             guard let id = (args.first as? [String: Any])?["chainId"] as? String, let n = UInt64(id.dropFirst(2), radix: 16), Self.evmRPC[n] != nil else {
-                throw SiteError("4902|LALA works with Ethereum, Arbitrum and Base.")
+                throw SiteError("4902|ihatecrypto works with Ethereum, Arbitrum and Base.")
             }
             evmChain[origin] = n
             return "null"
         case "personal_sign":
             guard connectedEVM.contains(origin), let raw = args.first as? String else { throw SiteError("4100|Connect the site first.") }
             let message = raw.hasPrefix("0x") ? (Data(hex: raw) ?? Data(raw.utf8)) : Data(raw.utf8)
-            guard !PersonalMessage.isBlindHash(message) else { throw SiteError("4001|The site asks to sign a hash, not text: LALA doesn't sign that.") }
+            guard !PersonalMessage.isBlindHash(message) else { throw SiteError("4001|The site asks to sign a hash, not text: ihatecrypto doesn't sign that.") }
             guard await ask(.message(String(data: message, encoding: .utf8) ?? "\(message.count) bytes"), origin: origin, site: site) else { throw SiteError("4001|The user declined.") }
             let reply = try await SignerClient().send(.signPersonal(message: message))
             guard reply.ok, let s = reply.signature else { throw SiteError("4001|" + XPCTradeSigner.reason(reply)) }
@@ -193,22 +193,22 @@ final class Browser {
             do { typed = try TypedData.parse(body) } catch { throw SiteError("4200|\(error.localizedDescription)") }
             if typed.isTokenPermission {
                 workspace?.reply("Site \(origin) asked for a “\(typed.primaryType)” signature — permission to spend your tokens. Declined: that's how drainers work.", note: "browser")
-                throw SiteError("4001|Permission to spend tokens (Permit) — LALA doesn't sign that.")
+                throw SiteError("4001|Permission to spend tokens (Permit) — ihatecrypto doesn't sign that.")
             }
             guard await ask(.typedData(typed), origin: origin, site: site) else { throw SiteError("4001|The user declined.") }
             let reply = try await SignerClient().send(.signTypedData(json: body))
             guard reply.ok, let s = reply.signature else { throw SiteError("4001|" + XPCTradeSigner.reason(reply)) }
             return try json(hex(s))
         case "eth_sign":
-            throw SiteError("4200|eth_sign signs a hash blindly — LALA doesn't support it.")
+            throw SiteError("4200|eth_sign signs a hash blindly — ihatecrypto doesn't support it.")
         case "eth_signTransaction":
-            throw SiteError("4200|LALA signs EVM transactions only when it also sends them (eth_sendTransaction).")
+            throw SiteError("4200|ihatecrypto signs EVM transactions only when it also sends them (eth_sendTransaction).")
         case "eth_sendTransaction":
             guard connectedEVM.contains(origin), let p = args.first as? [String: Any] else { throw SiteError("4100|Connect the site first.") }
-            guard let to = p["to"] as? String, Data(hex: to)?.count == 20 else { throw SiteError("4200|LALA doesn't sign contract creation.") }
+            guard let to = p["to"] as? String, Data(hex: to)?.count == 20 else { throw SiteError("4200|ihatecrypto doesn't sign contract creation.") }
             guard (p["from"] as? String)?.lowercased() ?? address.lowercased() == address.lowercased() else { throw SiteError("4100|The sender isn't your address.") }
             let data = Data(hex: (p["data"] ?? p["input"]) as? String ?? "0x") ?? Data()
-            guard let value = Self.quantity(p["value"]) else { throw SiteError("4200|The amount is larger than LALA will sign.") }
+            guard let value = Self.quantity(p["value"]) else { throw SiteError("4200|The amount is larger than ihatecrypto will sign.") }
             guard let url = Self.evmRPC[chain].flatMap(URL.init(string:)) else { throw SiteError("4901|No RPC for chain \(chain).") }
             let rpc = EVMRPC(url: url, chainId: chain)
             var review = await evmReview(to: to, value: value, data: data, from: address, rpc: rpc)
@@ -243,7 +243,7 @@ final class Browser {
             if let e = j["error"] as? [String: Any] { throw SiteError("-32000|\(e["message"] ?? "RPC error")") }
             return try json(j["result"] ?? NSNull())
         default:
-            throw SiteError("4200|LALA doesn't support \(method).")
+            throw SiteError("4200|ihatecrypto doesn't support \(method).")
         }
     }
 
@@ -527,7 +527,7 @@ struct ApprovalSheet: View {
             case .connect:
                 Text("The site will see your Solana address. It can't get anything signed without a separate confirmation.")
             case .connectEVM:
-                Text("The site will see your EVM address (also your Hyperliquid address). LALA never signs token spending permissions (Permit).")
+                Text("The site will see your EVM address (also your Hyperliquid address). ihatecrypto never signs token spending permissions (Permit).")
             case .evmTransaction(let r):
                 Text("Network \(["1": "Ethereum", "42161": "Arbitrum", "8453": "Base"]["\(r.chain)"] ?? "\(r.chain)")").font(.callout.weight(.semibold))
                 section("What it does") { ForEach(r.lines, id: \.self) { Text("· " + $0) } }
@@ -572,7 +572,7 @@ struct ApprovalSheet: View {
                 } else if !r.unknownPrograms.isEmpty {
                     Toggle("Allow \(r.unknownPrograms.count == 1 ? "an unknown program" : "unknown programs") for this transaction", isOn: $allowUnknown)
                 }
-                Text(send ? "After signing, LALA sends the transaction to the network." : "The site gets the signed transaction and sends it itself.").font(.caption).foregroundStyle(.secondary)
+                Text(send ? "After signing, ihatecrypto sends the transaction to the network." : "The site gets the signed transaction and sends it itself.").font(.caption).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
             HStack {

@@ -42,7 +42,7 @@ struct ThinkingDots: View {
         }
         .padding(.horizontal, 12).padding(.vertical, 11)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.quaternary.opacity(0.6)))
-        .accessibilityElement().accessibilityLabel("LALA is thinking")
+        .accessibilityElement().accessibilityLabel("The assistant is thinking")
     }
 }
 

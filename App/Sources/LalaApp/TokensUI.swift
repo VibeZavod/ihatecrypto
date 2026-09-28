@@ -169,7 +169,7 @@ struct AddTokenButton: View {
                         TextField("contract address (0x… or Solana mint)", text: $address).font(.system(.body, design: .monospaced)).frame(width: 320)
                         Button("Paste") { address = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
                     }
-                    Text("LALA looks it up on DexScreener: the chain it trades on, price, icon.").font(.caption).foregroundStyle(.secondary)
+                    Text("ihatecrypto looks it up on DexScreener: the chain it trades on, price, icon.").font(.caption).foregroundStyle(.secondary)
                     HStack {
                         Spacer()
                         if busy { ProgressView().controlSize(.small) }

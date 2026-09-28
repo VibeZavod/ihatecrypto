@@ -171,7 +171,7 @@ struct StudioView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            // The rail floats over the canvas's ground as a glass panel.
+            // The rail floats over the canvas's ground as a glass panel; the window's traffic lights sit inside it.
             StudioRail().padding([.leading, .vertical], 10)
             GeometryReader { geo in
                 let maxWidth = max(Self.minChat, geo.size.width / 2)
@@ -222,8 +222,11 @@ struct StudioView: View {
                 .animation(Self.spring, value: chatY)
             }
         }
+        // No title bar: the rail and the canvas go up to the window's top edge.
+        .ignoresSafeArea(edges: .top)
         // One ground under the rail and the canvas, so the glass has the same dots behind it on both sides.
         .background { ZStack { Brand.canvas; DotGrid() }.ignoresSafeArea() }
+        .background(TrafficLights())
         // A window getting narrow folds the rail, and widening again brings back what it folded; by hand it still opens.
         .onGeometryChange(for: Bool.self) { $0.size.width < Self.crampedWidth } action: { cramped in
             withAnimation(Self.spring) {
@@ -257,6 +260,55 @@ struct StudioView: View {
                 })
             .onTapGesture(count: 2) { withAnimation(Self.spring) { chatWidth = width >= maxWidth - 1 ? 350 : Double(maxWidth) } }
             .help("Drag to resize the chat · double-click: half the window")
+    }
+}
+
+/// Moves the window's traffic lights into the rail's glass corner: with the title bar hidden they'd sit on its edge.
+/// The title bar's container grows to hold them (a button outside it can't be clicked). AppKit lays the title bar out
+/// again on resize and after full screen, so they're put back each time.
+struct TrafficLights: NSViewRepresentable {
+    /// The close button's middle, from the window's top-left.
+    static let center = CGPoint(x: 30, y: 30)
+
+    func makeNSView(context: Context) -> NSView { Probe() }
+    func updateNSView(_ view: NSView, context: Context) {}
+
+    final class Probe: NSView {
+        private var observers: [NSObjectProtocol] = []
+
+        override func viewDidMoveToWindow() {
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            guard let window else { return }
+            for name in [NSWindow.didResizeNotification, NSWindow.didExitFullScreenNotification] {
+                observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.place() }
+                })
+            }
+            DispatchQueue.main.async { self.place() }
+        }
+
+        private func place() {
+            guard let window, !window.styleMask.contains(.fullScreen),
+                  let close = window.standardWindowButton(.closeButton),
+                  let mini = window.standardWindowButton(.miniaturizeButton),
+                  let zoom = window.standardWindowButton(.zoomButton),
+                  let container = close.superview?.superview else { return }
+            let height = 2 * TrafficLights.center.y
+            container.frame = CGRect(x: container.frame.minX, y: window.frame.height - height, width: container.frame.width, height: height)
+            let step = mini.frame.minX - close.frame.minX
+            for (i, button) in [close, mini, zoom].enumerated() {
+                button.setFrameOrigin(CGPoint(x: TrafficLights.center.x - close.frame.width / 2 + CGFloat(i) * step,
+                                              y: (height - button.frame.height) / 2))
+            }
+        }
+    }
+}
+
+/// An empty stretch that moves the window when dragged: the hidden title bar's job.
+struct WindowDragArea: View {
+    var body: some View {
+        Color.clear.frame(maxWidth: .infinity, maxHeight: .infinity).contentShape(Rectangle()).gesture(WindowDragGesture())
     }
 }
 
@@ -325,14 +377,23 @@ struct StudioRail: View {
 
     static let radius: CGFloat = 24
 
+    /// The first row's top: its middle lines up with the traffic lights (the rail starts 10 below the window's top).
+    private let lightsTop = TrafficLights.center.y - 10 - Self.lightsRow / 2
+    static let lightsRow: CGFloat = 28
+
     private var wide: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
+            // The traffic lights are on this row; its empty part drags the window, as a title bar would.
+            HStack {
+                WindowDragArea()
+                Button { withAnimation(StudioView.spring) { collapsed = true } } label: { Image(systemName: "sidebar.left") }
+                    .buttonStyle(.hoverIcon).help("Collapse the sidebar")
+            }
+            .frame(height: Self.lightsRow)
             HStack(spacing: 8) {
                 LalaLogo(size: 30)
                 Text("ihatecrypto").font(.brand(19)).lineLimit(1).fixedSize()
-                Spacer(minLength: 4)
-                Button { withAnimation(StudioView.spring) { collapsed = true } } label: { Image(systemName: "sidebar.left") }
-                    .buttonStyle(.hoverIcon).help("Collapse the sidebar")
+                Spacer(minLength: 0)
             }
             // The balance and its buttons stay put; only the canvases scroll, in the room left above the profile.
             // Places, positions, closed trades and favorites are on the canvas.
@@ -359,12 +420,14 @@ struct StudioRail: View {
             CanvasList()
             ProfileMenu(compact: false)
         }
-        .padding(.horizontal, 14).padding(.top, 16).padding(.bottom, 12)
+        .padding(.horizontal, 14).padding(.top, lightsTop).padding(.bottom, 12)
     }
 
     /// Folded: a strip of round glass buttons, the logo on top and the profile at the bottom.
     private var narrow: some View {
         VStack(spacing: 10) {
+            // The traffic lights' row, which also drags the window.
+            WindowDragArea().frame(height: Self.lightsRow)
             LalaLogo(size: 34)
             // The balance first, above the orange Top up button.
             VStack(spacing: 1) {
@@ -394,7 +457,7 @@ struct StudioRail: View {
                 .buttonStyle(.plain).help("Expand the sidebar")
             ProfileMenu(compact: true)
         }
-        .padding(.top, 16).padding(.bottom, 12)
+        .padding(.top, lightsTop).padding(.bottom, 12)
     }
 
     /// Every section of the rail but the canvases shows this many rows, then «Show N more».
@@ -808,7 +871,7 @@ struct StudioCanvas: View {
     private var placeholder: some View {
         VStack(spacing: 12) {
             LalaLogo(size: 40).opacity(0.5)
-            Text("LALA AI builds the plan here").font(.system(size: 17, weight: .bold))
+            Text("The assistant builds the plan here").font(.system(size: 17, weight: .bold))
             Text("next to your portfolio: where the money comes from, where it goes, the checks and the result in dollars.")
                 .font(.callout).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 320)
             LazyVGrid(columns: [GridItem(.fixed(200)), GridItem(.fixed(200))], spacing: 8) {
@@ -1365,7 +1428,7 @@ extension ExitRules {
             out.append(movedToBreakeven ? "Stop is already at breakeven (\(Fmt.price(entry)))." : "After the first half, moves the stop to breakeven (\(Fmt.price(entry))).")
         }
         if let t = trailingPct { out.append("Trailing \(Fmt.pct(t)): the stop follows the best price, now \(Fmt.price(peak)).") }
-        return out.isEmpty ? ["Stop and take-profit sit on the exchange; LALA doesn't move anything."] : out
+        return out.isEmpty ? ["Stop and take-profit sit on the exchange; ihatecrypto doesn't move anything."] : out
     }
 }
 
@@ -2016,7 +2079,7 @@ struct TemplatesPanel: View {
                                 ("Guardian", "breakeven after ½")],
         "Best rates": [("Free", "USDC on Solana"), ("Split", "best rates · ≤ 50% per protocol"), ("Deposit", "Jupiter Lend, Kamino"), ("Result", "a year’s yield in USDC")],
         "Where to keep it": [("Rates", "Jupiter Lend, Kamino, HLP, JitoSOL"), ("Conditions", "minimums, rent, lockups"), ("Advice", "at most half in one place")],
-        "Every week": [("Buy", "SOL for 2 USDC via Jupiter"), ("Every", "week, while LALA runs"), ("Checks", "address, simulation, signature"), ("Warning", "when Solana runs short")],
+        "Every week": [("Buy", "SOL for 2 USDC via Jupiter"), ("Every", "week, while ihatecrypto runs"), ("Checks", "address, simulation, signature"), ("Warning", "when Solana runs short")],
         "Back to Solana": [("From", "Hyperliquid"), ("Bridge", "Relay"), ("To", "your Solana address"), ("Signature", "main key — the trading key can’t withdraw")],
         "Protect a position": [("Position", "open on Hyperliquid"), ("Stop", "to the entry — breakeven"), ("Result", "worst case ≈ $0 and fees")],
         "Stake SOL": [("From", "SOL on Solana"), ("Swap", "SOL → JitoSOL"), ("Earns", "the staking yield"), ("Exit", "swap back any time")],
@@ -2052,7 +2115,7 @@ struct TemplatesPanel: View {
                 .padding(8).frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 12).fill(.fill.quaternary))
             }
-            Text("Say just the asset and direction — LALA fills the rest from the rules.").font(.caption2).foregroundStyle(.secondary).padding(.top, 4)
+            Text("Say just the asset and direction — ihatecrypto fills the rest from the rules.").font(.caption2).foregroundStyle(.secondary).padding(.top, 4)
         }
         .frame(width: 230, alignment: .topLeading)
         .animation(.snappy, value: hovered)
@@ -2135,7 +2198,7 @@ struct TakeChoices: View {
                             HStack(spacing: 6) {
                                 Text(style.title).font(.system(size: 15, weight: .heavy))
                                 if style == .partial {
-                                    Text("LALA recommends").font(.system(size: 10, weight: .bold)).foregroundStyle(Brand.onAccent)
+                                    Text("Recommended").font(.system(size: 10, weight: .bold)).foregroundStyle(Brand.onAccent)
                                         .padding(.horizontal, 7).padding(.vertical, 2)
                                         .background(Capsule().fill(Brand.accent))
                                 }
@@ -2452,7 +2515,7 @@ struct RailActions: View {
     }
 
     private var topUp: some View {
-        tile("Top up", "arrow.down.circle.fill", on: ws.showReceive, accent: true, help: "Your addresses: where to send money into LALA") {
+        tile("Top up", "arrow.down.circle.fill", on: ws.showReceive, accent: true, help: "Your addresses: where to send money into ihatecrypto") {
             ws.showReceive.toggle()
         }
     }
@@ -2464,7 +2527,7 @@ struct RailActions: View {
     }
 
     private var history: some View {
-        tile("History", "clock.arrow.circlepath", on: ws.showHistory, help: "What LALA did lately") { ws.showHistory.toggle() }
+        tile("History", "clock.arrow.circlepath", on: ws.showHistory, help: "What ihatecrypto did lately") { ws.showHistory.toggle() }
     }
 
     private var favorites: some View {

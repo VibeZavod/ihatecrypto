@@ -221,7 +221,7 @@ struct FavoritesBoard: View {
                 AddressCard(entry: entry, edit: { editing = $0 })
                     .transition(.scale(scale: 0.94).combined(with: .opacity))
             }
-            Label("LALA only ever sends to your own wallets. Saved addresses are for copying and, later, for transfers you sign with Touch ID — never to an address from a chat, a site or a model.",
+            Label("ihatecrypto only ever sends to your own wallets. Saved addresses are for copying and, later, for transfers you sign with Touch ID — never to an address from a chat, a site or a model.",
                   systemImage: "lock.shield")
                 .font(.caption).foregroundStyle(.secondary)
         }
@@ -676,15 +676,15 @@ extension Workspace {
             return
         }
         guard entry.network != .near else {
-            reply("“\(entry.name)” is a NEAR account: LALA sends it NEAR, not USDC — e.g. “send 0.1 NEAR to \(entry.name)”.", note: note)
+            reply("“\(entry.name)” is a NEAR account: ihatecrypto sends it NEAR, not USDC — e.g. “send 0.1 NEAR to \(entry.name)”.", note: note)
             return
         }
         guard entry.network != .ethereum else {
-            reply("“\(entry.name)” is on Ethereum mainnet, where one transfer costs dollars in gas; LALA sends USDC on Solana, Base, Arbitrum and Hyperliquid.", note: note)
+            reply("“\(entry.name)” is on Ethereum mainnet, where one transfer costs dollars in gas; ihatecrypto sends USDC on Solana, Base, Arbitrum and Hyperliquid.", note: note)
             return
         }
         if !entry.memo.isEmpty, entry.network == .solana {
-            reply("“\(entry.name)” needs a memo / tag, and LALA can’t add one to a Solana transfer yet — send it from the exchange’s app instead.", note: note)
+            reply("“\(entry.name)” needs a memo / tag, and ihatecrypto can’t add one to a Solana transfer yet — send it from the exchange’s app instead.", note: note)
             return
         }
         pendingAction = .transfer(entry, amount)
@@ -694,7 +694,7 @@ extension Workspace {
     }
 
     func transfer(_ amount: Decimal, to entry: SavedAddress) async {
-        guard let wallet = signerWallet else { reply("Transfers work in LALA.app once the key is in secure storage."); return }
+        guard let wallet = signerWallet else { reply("Transfers work in the app once the key is in secure storage."); return }
         executing = true
         defer { executing = false }
         let title = "Send \(Fmt.num(amount)) USDC to \(entry.name)"

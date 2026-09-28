@@ -12,22 +12,22 @@ public enum ChatModel {
     entryPx: limit entry price, or null for a market entry; pullbackPct: a limit entry on a pullback of this many % from the current price ("wait for a 2% pullback"), then entryPx is null.
     Return every intent field; change only what is asked.
     The user may write in any language, Russian included. Understand the request in whatever language it is written and still return the same JSON.
-    reply: one short sentence in English about what changed.
+    reply: one short sentence about what changed, in the language named on the «Reply language» line.
     Handle relative requests ("take closer", "wider stop", "less risk") yourself: change the value by about a third and name the new value in reply.
-    If the request is not about these parameters — deposits, vaults, lending, transfers, balances — return "intent": null and say in reply that it isn't a trade-plan change; never put a deposit amount into amountUSDC. If it is unclear what to change, return "intent": null and ask one clarifying question in English in reply.
+    If the request is not about these parameters — deposits, vaults, lending, transfers, balances — return "intent": null and say in reply that it isn't a trade-plan change; never put a deposit amount into amountUSDC. If it is unclear what to change, return "intent": null and ask one clarifying question in reply, in that language.
     Do not invent addresses; do not discuss signing or executing the trade.
     """
 
     /// Sends only the plan parameters and the user's words. Never addresses, balances or keys.
     /// `history`: the last lines of the chat, so a follow-up like «1» or «yes» reads in context.
     public static func edit(
-        _ intent: TradeIntent, message: String, client: any LLMClient, model: String, history: [String] = []
+        _ intent: TradeIntent, message: String, client: any LLMClient, model: String, history: [String] = [], replyLanguage: String = "English"
     ) async throws -> (TradeIntent?, String) {
         let current = String(decoding: try JSONEncoder().encode(intent), as: UTF8.self)
         let recent = history.isEmpty ? "" : "Recent chat (oldest first):\n" + history.joined(separator: "\n") + "\n"
         let text = try await client.complete(LLMRequest(model: model, messages: [
             LLMMessage(.system, system),
-            LLMMessage(.user, recent + "Current parameters (json): \(current)\nMessage: \(message)"),
+            LLMMessage(.user, recent + "Reply language: \(replyLanguage)\nCurrent parameters (json): \(current)\nMessage: \(message)"),
         ], wantsJSON: true))
         guard let json = JSONText.object(in: text) else {
             throw LLMError("The model did not reply with JSON: \(text.prefix(120))")

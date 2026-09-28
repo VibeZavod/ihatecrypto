@@ -377,7 +377,8 @@ final class Workspace {
         let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !busy else { return }
         if SeedGuard.containsMnemonic(text) {
-            reply("That looks like a recovery phrase. I don’t show it, store it or send it anywhere. Import a phrase in its own window.")
+            reply(say("That looks like a recovery phrase. I don’t show it, store it or send it anywhere. Import a phrase in its own window.",
+                      "Похоже на фразу восстановления. Я её не показываю, не храню и никуда не отправляю. Импортируй фразу в отдельном окне."))
             return
         }
         messages.append(Message(fromUser: true, text: text))
@@ -396,9 +397,10 @@ final class Workspace {
         FileHandle.standardError.write(Data("LALA screen: ok=\(screen.ok) \(screen.checks + screen.problems)\n".utf8))
         guard screen.ok else {
             let pastedAddress = text.contains(/0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/)
-            reply("This looks like an attempt to steer the assistant or swap an address. " + screen.problems.joined(separator: " ")
-                  + " The message was not passed to the model and changed nothing."
-                  + (pastedAddress ? " To keep an address, save it in Addresses — the book button in the rail." : ""),
+            reply(say("This looks like an attempt to steer the assistant or swap an address. ", "Похоже на попытку управлять ассистентом или подменить адрес. ")
+                  + screen.problems.joined(separator: " ")
+                  + say(" The message was not passed to the model and changed nothing.", " Сообщение не ушло модели и ничего не изменило.")
+                  + (pastedAddress ? say(" To keep an address, save it in Addresses — the book button in the rail.", " Чтобы сохранить адрес, добавь его в адресную книгу — кнопка с книгой слева.") : ""),
                   note: classifier == nil ? "guard: local rules" : "guard: rules and Jev")
             return
         }
@@ -407,7 +409,8 @@ final class Workspace {
         // A confirmation from the debug API would only fail at the signer and lose the card: keep it for the window.
         if SignerClient.untrusted, pendingAction != nil || pendingAllocation != nil,
            text.lowercased().contains(/^(?:делай|да|давай|подтверждаю|го|do\s+it|go|yes|confirm|sign)\b/) {
-            reply("That «do it» came from the debug API, which can’t confirm money moves. In the window, press Confirm on the card or type «do it» yourself.", note: "debug API")
+            reply(say("That «do it» came from the debug API, which can’t confirm money moves. In the window, press Confirm on the card or type «do it» yourself.",
+                      "Это «do it» пришло из отладочного API, а он не подтверждает переводы. В окне нажми Confirm на карточке или напиши «делай» сам."), note: "debug API")
             return
         }
 
@@ -420,7 +423,7 @@ final class Workspace {
             if declines {
                 allocationPreview = nil
                 rebalancePlan = nil
-                reply("Cancelled — nothing moved.")
+                reply(say("Cancelled — nothing moved.", "Отменено — ничего не ушло."))
                 return
             }
         }
@@ -428,7 +431,7 @@ final class Workspace {
             pendingAction = nil
             pendingText = nil
             if declines {
-                reply("Cancelled — nothing moved.")
+                reply(say("Cancelled — nothing moved.", "Отменено — ничего не ушло."))
                 return
             }
             if confirms {
@@ -447,7 +450,7 @@ final class Workspace {
         if let waiting = awaitingAmount {
             if declines {
                 awaitingAmount = nil
-                reply("OK, not doing that.")
+                reply(say("OK, not doing that.", "Хорошо, не делаю."))
                 return
             }
             if let value = WalletCommand.amountAnswer(text) {
@@ -456,20 +459,21 @@ final class Workspace {
                 return
             }
             if text.lowercased().wholeMatch(of: /\s*(?:да|yes|yep|ok|okay|давай|угу|sure|go)[.!\s]*/) != nil {
-                reply("How much? Just the number, for example “1”.")
+                reply(say("How much? Just the number, for example “1”.", "Сколько? Просто число, например «1»."))
                 return
             }
             awaitingAmount = nil
         }
         if declines {
             withAnimation(StudioView.spring) { allocationPreview = nil; rebalancePlan = nil; yieldOptions = nil; takeChoices = nil }
-            reply("OK — nothing was waiting, nothing moved.")
+            reply(say("OK — nothing was waiting, nothing moved.", "Хорошо — ничего не ждало подтверждения, ничего не ушло."))
             return
         }
         // «да» with nothing waiting answers LALA's last question: the model reads it with the chat. Without a model
         // there is nothing to answer.
         if llmClient() == nil, text.lowercased().wholeMatch(of: /\s*(?:делай|да|давай|подтверждаю|го|do\s+it|go|yes|yep|ok|okay|confirm|sign)[.!\s]*/) != nil {
-            reply("Nothing is waiting for a confirmation right now. Tell me what to do — for example “deposit 1 USDC into Jupiter”.")
+            reply(say("Nothing is waiting for a confirmation right now. Tell me what to do — for example “deposit 1 USDC into Jupiter”.",
+                      "Сейчас нечего подтверждать. Скажи, что сделать — например «положи 1 USDC в Jupiter»."))
             return
         }
         takeChoices = nil
@@ -494,7 +498,7 @@ final class Workspace {
             intent = TradeIntent()
             executed = nil
             takeChoices = nil
-            reply("The plan is cleared. Tell me what to do next.")
+            reply(say("The plan is cleared. Tell me what to do next.", "План очищен. Скажи, что дальше."))
             return
         }
         if text.lowercased().wholeMatch(of: /\s*(?:lock|lock\s+(?:it|the\s+wallet|signing)|заблокируй\w*|блокир\w*)\s*[.!]?\s*/) != nil {
@@ -626,17 +630,20 @@ final class Workspace {
         busy = false
         switch route {
         case nil:
-            reply("I couldn’t reach \(model) (\(failure.prefix(140))), so I didn’t act on this — nothing moved. Send it again, or pick another model above.", note: model)
+            reply(say("I couldn’t reach \(model) (\(failure.prefix(140))), so I didn’t act on this — nothing moved. Send it again, or pick another model above.",
+                      "Не достучался до \(model) (\(failure.prefix(140))), поэтому ничего не сделал — ничего не ушло. Отправь ещё раз или выбери другую модель сверху."), note: model)
         case .question?: await answer(text)
         case .plan?: await editPlanWithModel(text, client: client, before: before)
         case .chat(let r)?, .clarify(let r)?: reply(r, note: model)
         case .command(let canonical)?:
             guard ChatRouter.addressesAllowed(canonical, userText: text, known: favoriteTokens.map(\.address)) else {
-                reply("I read that as “\(canonical)”, but its address is neither in your message nor among your favorites, so I won’t use it. Paste the address itself.", note: model)
+                reply(say("I read that as “\(canonical)”, but its address is neither in your message nor among your favorites, so I won’t use it. Paste the address itself.",
+                          "Я понял это как «\(canonical)», но этого адреса нет ни в твоём сообщении, ни в избранном, поэтому я его не использую. Вставь сам адрес."), note: model)
                 return
             }
             if await !runCanonical(canonical, userText: text, before: before) {
-                reply("I read that as “\(canonical)”, but LALA can’t do that yet — nothing moved. Tell me another way, or ask what LALA can do.", note: model)
+                reply(say("I read that as “\(canonical)”, but ihatecrypto can’t do that yet — nothing moved. Tell me another way, or ask what ihatecrypto can do.",
+                          "Я понял это как «\(canonical)», но ihatecrypto пока так не умеет — ничего не ушло. Скажи иначе или спроси, что ihatecrypto умеет."), note: model)
             }
         }
     }
@@ -650,6 +657,7 @@ final class Workspace {
         c.positions = positions.map { "\($0.size > 0 ? "long" : "short") \(IntentParser.pretty($0.coin))" }
         c.favorites = favoriteTokens.map { "\($0.symbol) (\($0.name)) = \($0.address) on \($0.chainTitle)" }
         c.addressBook = addressBook.map(\.name)
+        c.replyLanguage = replyLanguage
         if let s = solana { c.balances.append("Solana \(Fmt.num(s.usdc)) USDC, \(Fmt.num(s.sol, maxFraction: 4)) SOL") }
         // Every place with money, so «выведи всё из Jupiter» needs no question about which asset is there.
         if let h = hl { c.balances.append("Hyperliquid trading balance \(Fmt.usd(h.accountValue)), withdrawable \(Fmt.usd(h.withdrawable))") }
@@ -675,7 +683,7 @@ final class Workspace {
         busy = true
         let note = "\(model) · \(provider.info.name)"
         do {
-            let (next, answer) = try await ChatModel.edit(intent, message: text, client: client, model: model, history: recentChat())
+            let (next, answer) = try await ChatModel.edit(intent, message: text, client: client, model: model, history: recentChat(), replyLanguage: replyLanguage)
             busy = false
             if let next, await editExecuted(from: before, to: next) { return }
             if let next { intent = next }
@@ -704,7 +712,7 @@ final class Workspace {
             intent = TradeIntent()
             executed = nil
             takeChoices = nil
-            reply("The plan is cleared. Tell me what to do next.", note: note)
+            reply(say("The plan is cleared. Tell me what to do next.", "План очищен. Скажи, что дальше."), note: note)
             return true
         case "lock":
             await lockSigner()
@@ -745,7 +753,8 @@ final class Workspace {
         if let coin = targetCoin(for: canonical), let command = PositionCommand.parse(canonical) {
             pendingAction = .position(command, coin: coin)
             pendingText = canonical
-            reply("Understood as “\(canonical)” for \(IntentParser.pretty(coin)). Say “do it” or press Confirm to go ahead.", note: note)
+            reply(say("Understood as “\(canonical)” for \(IntentParser.pretty(coin)). Say “do it” or press Confirm to go ahead.",
+                      "Понял как «\(canonical)» для \(IntentParser.pretty(coin)). Напиши «делай» или нажми Confirm."), note: note)
             return true
         }
         guard let next = IntentParser.apply(canonical, to: intent, markets: Set(markets.keys)) else { return false }
@@ -874,6 +883,7 @@ final class Workspace {
             let p = ((await openPositions) ?? []).filter { $0.size != 0 }
             let o = (await openOrders) ?? [], v = await vault, d = await dexes
             let before = Set(positions.map(\.coin))
+            let waitingEntries = Set(orders.filter { !$0.isTrigger }.map(\.coin))
             hl = b
             hlError = nil
             positions = p
@@ -883,6 +893,19 @@ final class Workspace {
             // A position that vanished while we were not closing it was closed by its stop or take.
             if !executing {
                 for coin in before.subtracting(positions.map(\.coin)) { await closedByExchange(coin) }
+                // A limit entry that became a position while nobody watched: it filled.
+                for p in positions where !before.contains(p.coin) && waitingEntries.contains(p.coin) {
+                    notify(.orders, say("Limit filled: \(IntentParser.pretty(p.coin))", "Лимитка исполнилась: \(IntentParser.pretty(p.coin))"),
+                           say("\(p.size > 0 ? "Long" : "Short") \(Fmt.num(abs(p.size), maxFraction: 6)) at \(Fmt.price(p.entry)); its stop and take are on the exchange.",
+                               "\(p.size > 0 ? "Лонг" : "Шорт") \(Fmt.num(abs(p.size), maxFraction: 6)) по \(Fmt.price(p.entry)); стоп и тейк стоят на бирже."))
+                }
+            }
+            // The HLP deposit's 4-day lock ended: say so once per lock.
+            if let until = hlp.lockedUntil, until <= Date(), hlp.equity > 0,
+               UserDefaults.standard.double(forKey: "hlpUnlockNoticed") != until.timeIntervalSince1970 {
+                UserDefaults.standard.set(until.timeIntervalSince1970, forKey: "hlpUnlockNoticed")
+                notify(.hlp, say("HLP unlocked", "HLP разблокирован"),
+                       say("\(Fmt.usd(hlp.equity)) in the HLP vault can be withdrawn now.", "\(Fmt.usd(hlp.equity)) в хранилище HLP теперь можно вывести."))
             }
             if recentlyClosed == nil || before != Set(positions.map(\.coin)), let fills = try? await TradeHistory.fills(user: hlAddress) {
                 let week = Date().addingTimeInterval(-7 * 86400)

@@ -101,7 +101,7 @@ struct ImportWalletView: View {
     @ViewBuilder private var create: some View {
         Section("New wallet") {
             if let words = newPhrase {
-                Text("Write these 12 words on paper, in order. They are the only way back to this wallet if the Mac is lost or wiped; LALA won't show them again.")
+                Text("Write these 12 words on paper, in order. They are the only way back to this wallet if the Mac is lost or wiped; ihatecrypto won't show them again.")
                     .font(.callout)
                 Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 8) {
                     ForEach(0..<3, id: \.self) { row in
@@ -129,7 +129,7 @@ struct ImportWalletView: View {
                         .font(.caption).foregroundStyle(.secondary)
                 }
             } else {
-                Text("LALA makes a new 12-word recovery phrase inside the signer, from this Mac's random number generator, and keeps the key sealed by the Secure Enclave. Every signature asks for Touch ID or your password."
+                Text("ihatecrypto makes a new 12-word recovery phrase inside the signer, from this Mac's random number generator, and keeps the key sealed by the Secure Enclave. Every signature asks for Touch ID or your password."
                      + (ws.signerWallet == nil ? "" : " It is added next to your other wallets and signs until you switch back."))
                     .font(.caption).foregroundStyle(.secondary)
                 HStack {

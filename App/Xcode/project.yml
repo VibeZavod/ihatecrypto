@@ -25,7 +25,10 @@ targets:
   LALA:
     type: application
     platform: macOS
-    sources: [../Sources/LalaApp]
+    sources: [../Sources/LalaApp, Resources]
+    # The name people see (menu bar, Dock, notifications) is ihatecrypto, from Resources/en.lproj/InfoPlist.strings (the generated
+    # plist overrides CFBundleName from a file); the bundle stays LALA.app with the same identifier, so the Keychain
+    # items, Application Support/LALA and the signer keep working.
     dependencies:
       - package: Lala
         product: LalaKit
@@ -35,7 +38,8 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: app.lala.mac
         PRODUCT_NAME: LALA
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
-        INFOPLIST_KEY_CFBundleDisplayName: LALA
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        INFOPLIST_KEY_CFBundleDisplayName: ihatecrypto
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.finance
   # Sandboxed, no network entitlement: it can only answer the app over XPC and read its own Keychain group.
   LalaSigner:

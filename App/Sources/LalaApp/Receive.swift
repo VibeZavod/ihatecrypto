@@ -162,12 +162,13 @@ extension Workspace {
     func announceIncoming(before: (usdc: Decimal?, sol: Decimal?, base: Decimal?)) {
         guard !executing, !preparing, Date().timeIntervalSince(lastOwnMove) > 120 else { return }
         var lines: [String] = []
-        if let old = before.usdc, let new = solana?.usdc, new - old >= Decimal(string: "0.01")! { lines.append("+\(Fmt.num(new - old)) USDC on Solana (now \(Fmt.num(new)))") }
-        if let old = before.sol, let new = solana?.sol, new - old >= Decimal(string: "0.0005")! { lines.append("+\(Fmt.num(new - old, maxFraction: 4)) SOL on Solana") }
-        if let old = before.base, let new = base?.usdc, new - old >= Decimal(string: "0.01")! { lines.append("+\(Fmt.num(new - old)) USDC on Base") }
+        let on = say("on", "на"), now = say("now", "сейчас")
+        if let old = before.usdc, let new = solana?.usdc, new - old >= Decimal(string: "0.01")! { lines.append("+\(Fmt.num(new - old)) USDC \(on) Solana (\(now) \(Fmt.num(new)))") }
+        if let old = before.sol, let new = solana?.sol, new - old >= Decimal(string: "0.0005")! { lines.append("+\(Fmt.num(new - old, maxFraction: 4)) SOL \(on) Solana") }
+        if let old = before.base, let new = base?.usdc, new - old >= Decimal(string: "0.01")! { lines.append("+\(Fmt.num(new - old)) USDC \(on) Base") }
         guard !lines.isEmpty else { return }
-        let text = "💸 Received " + lines.joined(separator: ", ") + "."
-        notify("Money arrived", text)
+        let text = say("💸 Received ", "💸 Пришло ") + lines.joined(separator: ", ") + "."
+        notify(.incoming, say("Money arrived", "Пришли деньги"), text)
         reply(text, note: "incoming")
     }
 }

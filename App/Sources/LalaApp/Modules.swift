@@ -375,7 +375,7 @@ struct PlaceDetailBoard: View {
         case "near":
             if let a = ws.nearAddress { addressRow(a) }
             row("near", "NEAR", Fmt.num(ws.near, maxFraction: 6), ws.markets["NEAR"].map { "≈ \(Fmt.usd(ws.nearUSD)) at \(Fmt.price($0.markPx))" } ?? "")
-            Text("The account is yours from the same phrase (m/44'/397'/0'). Selling NEAR back to USDC isn’t in LALA yet.")
+            Text("The account is yours from the same phrase (m/44'/397'/0'). Selling NEAR back to USDC isn’t in ihatecrypto yet.")
                 .font(.caption2).foregroundStyle(.secondary)
         case "morpho":
             if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }

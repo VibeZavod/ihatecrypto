@@ -3,6 +3,8 @@ import PackageDescription
 
 let package = Package(
     name: "Lala",
+    // en.lproj/InfoPlist.strings (the app's display name) makes SwiftPM ask for a default language.
+    defaultLocalization: "en",
     platforms: [.macOS(.v26)],
     products: [
         // For the Xcode project (project.yml) that builds LALA.app and its signing service.
