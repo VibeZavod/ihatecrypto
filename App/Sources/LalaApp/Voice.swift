@@ -20,9 +20,7 @@ final class VoiceInput {
     /// The language it listens in, in words: «Russian».
     private(set) var language = ""
     /// The last few loudness readings, 0…1, for the wave in the field.
-    private(set) var levels: [Double] = Array(repeating: 0, count: 48)
-    /// When the last reading came: the wave slides smoothly between readings instead of stepping.
-    private(set) var pushedAt = Date.now
+    private(set) var levels: [Double] = Array(repeating: 0, count: 36)
     /// Whether this take is recognized on the Mac (otherwise Apple's servers hear it).
     private(set) var onDevice = true
     private(set) var startedAt = Date.now
@@ -118,7 +116,6 @@ final class VoiceInput {
     private func push(_ level: Double) {
         levels.removeFirst()
         levels.append(level)
-        pushedAt = .now
     }
 
     /// A take of several phrases. After a pause the recognizer either starts the next phrase from nothing or goes on
@@ -193,6 +190,8 @@ final class VoiceInput {
     nonisolated private final class Tap: @unchecked Sendable {
         let request: SFSpeechAudioBufferRecognitionRequest
         var last = Date.distantPast
+        /// The loudest buffer since the last reading, so a short syllable between readings still shows.
+        var peak: Float = 0
         init(_ request: SFSpeechAudioBufferRecognitionRequest) { self.request = request }
     }
 
@@ -202,12 +201,16 @@ final class VoiceInput {
         let state = Tap(request)
         return { buffer, _ in
             state.request.append(buffer)
-            guard Date.now.timeIntervalSince(state.last) > 0.06, let samples = buffer.floatChannelData?[0] else { return }
-            state.last = .now
+            guard let samples = buffer.floatChannelData?[0] else { return }
             let n = Int(buffer.frameLength)
             var sum: Float = 0
             for i in 0..<n { sum += samples[i] * samples[i] }
-            let rms = n > 0 ? sqrt(sum / Float(n)) : 0
+            state.peak = max(state.peak, n > 0 ? sqrt(sum / Float(n)) : 0)
+            // A reading every 0.1 s: the wave moves at a calm pace.
+            guard Date.now.timeIntervalSince(state.last) > 0.1 else { return }
+            state.last = .now
+            let rms = state.peak
+            state.peak = 0
             // Speech sits around −40…−10 dB; map that to 0…1.
             level(min(1, max(0, (20 * log10(Double(max(rms, 1e-6))) + 50) / 40)))
         }
