@@ -83,6 +83,8 @@ final class Workspace {
     enum PendingAction { case wallet(WalletCommand), position(PositionCommand, coin: String), address(SavedAddress), transfer(SavedAddress, Decimal) }
     /// The English command the pending action was understood as, for the confirm button.
     var pendingText: String?
+    /// A move left waiting on a canvas the user switched away from: it waits there, for a quarter of an hour.
+    var parkedPending: [UUID: (action: PendingAction, text: String?, at: Date)] = [:]
     /// A deposit or buy that came without an amount: the next reply that is just a number fills it.
     var awaitingAmount: WalletCommand?
     /// The «Top up LALA» board on the canvas: our addresses and how balances update.

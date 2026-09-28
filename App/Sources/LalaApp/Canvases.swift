@@ -184,10 +184,17 @@ extension Workspace {
         }
         savedBoard = c.bubbles.isEmpty || chart != nil ? nil : c
         if let ch = chart, ch.candles.isEmpty { Task { await openChart(ch.coin, range: ch.range) } }
+        // Back on a canvas whose move was waiting for Confirm: it waits again (its numbers are live on the card).
+        if let parked = parkedPending.removeValue(forKey: c.id), Date().timeIntervalSince(parked.at) < 15 * 60 {
+            pendingAction = parked.action
+            pendingText = parked.text
+            savedBoard = nil
+        }
     }
 
     /// What belongs to one canvas only: boards, waiting confirmations, the draft.
     private func clearCanvas() {
+        if let pendingAction, let canvasID { parkedPending[canvasID] = (pendingAction, pendingText, Date()) }
         takeChoices = nil
         yieldOptions = nil
         allocationPreview = nil
