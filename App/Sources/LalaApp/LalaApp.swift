@@ -440,6 +440,10 @@ struct SettingsView: View {
             ZStack {
                 WindowDragArea()
                 Text("Settings").font(.ui(13, .semibold)).allowsHitTesting(false)
+                Button(action: close) { Image(systemName: "xmark").font(.system(size: 12, weight: .semibold)) }
+                    .buttonStyle(.hoverIcon)
+                    .help("Close Settings (Esc)")
+                    .frame(maxWidth: .infinity, alignment: .trailing).padding(.trailing, 10)
             }
             .frame(height: 2 * Self.lights.y)
             .background(Brand.card)
