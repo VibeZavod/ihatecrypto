@@ -312,3 +312,53 @@ func kaminoCommand(_ args: [String]) async throws {
         print("kamino reserves | position | deposit USDC 1 [--yes] | withdraw USDC [amount] [--yes]")
     }
 }
+
+/// `sweep-solana <new Solana address> --yes`: the move to a new wallet, for this (old) test wallet. All USDC goes to
+/// the new address through the executor's checked send; empty token accounts are closed for their rent; then all SOL
+/// follows, the account left at exactly zero. Only the given address may receive anything (the guard checks it).
+func sweepSolana(to destination: String) async throws {
+    let signer = try LocalSigner()
+    let me = signer.wallet.solana
+    guard (try? Base58.decode(destination))?.count == 32, destination != me else { throw WalletError("Not a Solana address to move to: \(destination)") }
+    guard send else { print("Moves everything on Solana from \(me) to \(destination). Add --yes."); return }
+    let executor = Executor(wallet: signer.wallet, signer: signer, journal: journal, rpc: rpc) { print("[\(stamp())] \($0)") }
+    let usdc = try await rpc.tokenBalance(owner: me, mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
+    if usdc > 0 { print(try await executor.sendUSDC(Decimal(usdc) / 1_000_000, to: .solana(destination), label: "the new wallet")) }
+
+    // Empty token accounts hold ≈ 0.002 SOL of rent each: closing them brings it back before the SOL leaves.
+    let accounts = (try await rpc.call("getTokenAccountsByOwner", [me, ["programId": SPL.tokenProgram], ["encoding": "jsonParsed"]]) as? [String: Any])?["value"] as? [[String: Any]] ?? []
+    let empty = accounts.compactMap { a -> String? in
+        let amount = ((((a["account"] as? [String: Any])?["data"] as? [String: Any])?["parsed"] as? [String: Any])?["info"] as? [String: Any])
+            .flatMap { ($0["tokenAmount"] as? [String: Any])?["amount"] as? String }
+        return amount == "0" ? a["pubkey"] as? String : nil
+    }
+    for account in empty {
+        let close = SolanaInstruction(program: SPL.tokenProgram, accounts: [
+            .init(pubkey: account, isSigner: false, isWritable: true), .init(pubkey: me, isSigner: false, isWritable: true),
+            .init(pubkey: me, isSigner: true, isWritable: false),
+        ], data: Data([9])) // CloseAccount
+        let (hash, lastValid) = try await rpc.latestBlockhash()
+        let wire = SolanaTransaction.unsigned(try SolanaTransaction.compileMessage([close], payer: me, blockhash: hash))
+        let signed = try await signer.signSolana(wire, accounts: try SolanaMessage.parse(transaction: wire).staticKeys, recipients: [], tokenOwners: [account: me])
+        let signature = try await rpc.send(signed)
+        print("Closed empty token account \(account.prefix(6))…: \(try await rpc.waitForConfirmation(signature, lastValidBlockHeight: lastValid))")
+    }
+
+    // All SOL: the fee is asked from the network for this very message, so the old account ends at exactly zero
+    // (anything between zero and the rent minimum would be refused).
+    let lamports = try await rpc.balance(me)
+    func transfer(_ amount: UInt64, _ hash: String) throws -> Data {
+        let data = Data([2, 0, 0, 0]) + withUnsafeBytes(of: amount.littleEndian) { Data($0) }
+        return try SolanaTransaction.compileMessage([SolanaInstruction(program: SolanaGuard.system, accounts: [
+            .init(pubkey: me, isSigner: true, isWritable: true), .init(pubkey: destination, isSigner: false, isWritable: true),
+        ], data: data)], payer: me, blockhash: hash, microLamportsPerCU: 0)
+    }
+    let (hash, lastValid) = try await rpc.latestBlockhash()
+    let feeReply = try await rpc.call("getFeeForMessage", [try transfer(lamports, hash).base64EncodedString(), ["commitment": "confirmed"]]) as? [String: Any]
+    guard let fee = (feeReply?["value"] as? NSNumber)?.uint64Value, lamports > fee else { throw WalletError("No fee quote, or nothing to move (\(lamports) lamports).") }
+    let wire = SolanaTransaction.unsigned(try transfer(lamports - fee, hash))
+    let signed = try await signer.signSolana(wire, accounts: try SolanaMessage.parse(transaction: wire).staticKeys, recipients: [destination], tokenOwners: [:])
+    let signature = try await rpc.send(signed)
+    print("Sent \(Fmt.num(Decimal(lamports - fee) / 1_000_000_000, maxFraction: 9)) SOL (fee \(fee) lamports): \(try await rpc.waitForConfirmation(signature, lastValidBlockHeight: lastValid)) https://solscan.io/tx/\(signature)")
+    print("Left on \(me): \(try await rpc.balance(me)) lamports, \(try await rpc.tokenBalance(owner: me, mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")) USDC units.")
+}
