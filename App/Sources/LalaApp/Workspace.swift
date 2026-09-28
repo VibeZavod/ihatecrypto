@@ -749,6 +749,8 @@ final class Workspace {
     }
 
     func reply(_ text: String, note: String? = nil) {
+        // The executor reports its last line and the move returns it too: say it once.
+        if let last = messages.last, !last.fromUser, last.text == text { return }
         messages.append(Message(fromUser: false, text: text, note: note))
         updateActivity { $0.lines.append(text) }
         saveCanvas()
