@@ -9,6 +9,8 @@ import SwiftUI
 
 @main
 struct LalaApp: App {
+    /// The main window's title; DebugAPI and the window test find the window by it.
+    static let mainTitle = "ihatecrypto"
     /// Created once with the app, so the watch loop below outlives the window.
     private let workspace = Workspace()
 
@@ -55,10 +57,10 @@ struct LalaApp: App {
             if UserDefaults.standard.bool(forKey: "closeWindowTest") {
                 Task {
                     try? await Task.sleep(for: .seconds(8))
-                    NSApp.windows.filter { $0.title == "LALA" }.forEach { $0.close() }
+                    NSApp.windows.filter { $0.title == LalaApp.mainTitle }.forEach { $0.close() }
                     let before = ws.updatedAt
                     try? await Task.sleep(for: .seconds(40))
-                    let log = "LALA window closed; still running; refreshed after close: \(ws.updatedAt != before) (\(ws.updatedAt.map { "\($0)" } ?? "nil"))\n"
+                    let log = "ihatecrypto window closed; still running; refreshed after close: \(ws.updatedAt != before) (\(ws.updatedAt.map { "\($0)" } ?? "nil"))\n"
                     FileHandle.standardError.write(Data(log.utf8))
                     NSApp.terminate(nil)
                 }
@@ -68,7 +70,8 @@ struct LalaApp: App {
     }
 
     var body: some Scene {
-        Window("LALA", id: "main") {
+        // The title bar is hidden: the traffic lights sit inside the glass sidebar (StudioRail lines up with them).
+        Window(LalaApp.mainTitle, id: "main") {
             if selfTest {
                 Text("Checking the signer…").padding(40)
             } else {
@@ -78,6 +81,7 @@ struct LalaApp: App {
             }
         }
         .defaultSize(width: 1320, height: 860)
+        .windowStyle(.hiddenTitleBar)
 
         Window("Browser", id: "browser") {
             BrowserView().environment(workspace)
@@ -109,7 +113,7 @@ struct LalaApp: App {
     func install(_ ws: Workspace) {
         guard item == nil else { return }
         let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-        item.button?.image = NSImage(systemSymbolName: "chart.line.uptrend.xyaxis", accessibilityDescription: "LALA")
+        item.button?.image = Self.coinTemplate()
         item.button?.target = self
         item.button?.action = #selector(toggle(_:))
         let hosting = NSHostingController(rootView: MenuBarContent().environment(ws))
@@ -117,6 +121,33 @@ struct LalaApp: App {
         popover.contentViewController = hosting
         popover.behavior = .transient
         self.item = item
+    }
+
+    /// The menu-bar coin: the logo's outline with its rolled eyes, as a template image so macOS tints it for the
+    /// menu bar (dark or light) and for the highlighted state.
+    static func coinTemplate() -> NSImage {
+        let image = NSImage(size: NSSize(width: 18, height: 18), flipped: true) { _ in
+            NSColor.black.set()
+            let coin = NSBezierPath(ovalIn: NSRect(x: 1.4, y: 1.4, width: 15.2, height: 15.2))
+            coin.lineWidth = 1.6
+            coin.stroke()
+            for x in [6.4, 11.6] as [CGFloat] {
+                let eye = NSBezierPath(ovalIn: NSRect(x: x - 2.4, y: 5.4, width: 4.8, height: 4.8))
+                eye.lineWidth = 1.1
+                eye.stroke()
+                NSBezierPath(ovalIn: NSRect(x: x - 0.6, y: 5.6, width: 2.2, height: 2.2)).fill()
+            }
+            let mouth = NSBezierPath()
+            mouth.move(to: NSPoint(x: 6.8, y: 12.7))
+            mouth.curve(to: NSPoint(x: 11.4, y: 12.4), controlPoint1: NSPoint(x: 8.4, y: 11.9), controlPoint2: NSPoint(x: 9.8, y: 11.9))
+            mouth.lineWidth = 1.3
+            mouth.lineCapStyle = .round
+            mouth.stroke()
+            return true
+        }
+        image.isTemplate = true
+        image.accessibilityDescription = "ihatecrypto"
+        return image
     }
 
     @objc private func toggle(_ sender: NSStatusBarButton) {
@@ -144,8 +175,8 @@ struct MenuBarContent: View {
             HStack(spacing: 10) {
                 LalaLogo(size: 28)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("LALA").font(.system(size: 14, weight: .bold))
-                    Text(ws.positions.isEmpty && ws.schedules.isEmpty ? "Nothing running" : "Window closed — LALA keeps working")
+                    Text("ihatecrypto").font(.brand(15))
+                    Text(ws.positions.isEmpty && ws.schedules.isEmpty ? "Nothing running" : "Window closed — ihatecrypto keeps working")
                         .font(.caption).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -159,7 +190,7 @@ struct MenuBarContent: View {
             }
             ForEach(ws.positions, id: \.coin) { PositionChip(position: $0) }
             ForEach(ws.exitRules.keys.sorted(), id: \.self) { coin in
-                Label("LALA manages the stop: \(IntentParser.pretty(coin))", systemImage: "shield.lefthalf.filled").font(.caption)
+                Label("ihatecrypto manages the stop: \(IntentParser.pretty(coin))", systemImage: "shield.lefthalf.filled").font(.caption)
             }
             ForEach(ws.schedules, id: \.symbol) { s in
                 Label("Buy \(s.symbol) for \(Fmt.usd(s.usdc)) · \(Fmt.date(s.next))", systemImage: "arrow.triangle.2.circlepath").font(.caption)
@@ -169,7 +200,12 @@ struct MenuBarContent: View {
             }
             Divider()
             HStack {
-                Button("Open LALA") { StatusItem.shared.openMain() }.buttonStyle(.borderedProminent)
+                Button { StatusItem.shared.openMain() } label: {
+                    Text("Open ihatecrypto").font(.ui(13, .semibold)).foregroundStyle(Brand.onAccent)
+                        .padding(.horizontal, 14).padding(.vertical, 7)
+                        .background(Capsule().fill(Brand.accent))
+                }
+                .buttonStyle(.plain)
                 Spacer()
                 Button("Quit") { NSApp.terminate(nil) }.keyboardShortcut("q")
             }
@@ -435,10 +471,10 @@ struct SettingsView: View {
                 }
             }
             Section("Background") {
-                Toggle("Open LALA at login", isOn: Binding(
+                Toggle("Open ihatecrypto at login", isOn: Binding(
                     get: { SMAppService.mainApp.status == .enabled },
                     set: { on in try? on ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister() }))
-                Text("With the window closed, LALA stays in the menu bar: it manages stops (trailing, breakeven) and scheduled purchases. After “Quit” they stop; the stop and take-profit on the exchange keep working.")
+                Text("With the window closed, ihatecrypto stays in the menu bar: it manages stops (trailing, breakeven) and scheduled purchases. After “Quit” they stop; the stop and take-profit on the exchange keep working.")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Section("Incoming text protection") {
