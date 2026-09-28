@@ -142,9 +142,10 @@ final class VoiceInput {
         Locale(identifier: "en_US").localizedString(forLanguageCode: language) ?? language
     }
 
-    private static func allowed() async -> Bool {
+    // TCC answers on its own queue: a MainActor closure here (the target's default) traps the moment it's called.
+    nonisolated private static func allowed() async -> Bool {
         let speech = await withCheckedContinuation { c in
-            SFSpeechRecognizer.requestAuthorization { c.resume(returning: $0 == .authorized) }
+            SFSpeechRecognizer.requestAuthorization { @Sendable status in c.resume(returning: status == .authorized) }
         }
         return speech ? await AVCaptureDevice.requestAccess(for: .audio) : false
     }
