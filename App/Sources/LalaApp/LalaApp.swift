@@ -279,6 +279,7 @@ struct ContentView: View {
             switch UserDefaults.standard.string(forKey: "openPlace") {
             case "history": ws.showHistory = true
             case "favorites": ws.showFavorites = true
+            case "schedule": ws.showSchedule = true
             case "settings": ws.openSettings()
             case let place?: ws.detail = place
             case nil: break

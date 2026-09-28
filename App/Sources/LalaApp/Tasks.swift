@@ -7,7 +7,7 @@ import WalletCore
 // Settings › General › Keep running, which keeps the app up so they run.
 
 extension Workspace {
-    /// Keeps a task if every step is something ihatecrypto does; the schedule board on an empty canvas lists it.
+    /// Keeps a task if every step is something ihatecrypto does, and opens the Schedule board (the rail's button) on the canvas.
     func schedule(_ task: ScheduledTask, note: String? = nil) {
         if let unknown = task.steps.first(where: { !knows($0) }) {
             reply(say("I can schedule that, but ihatecrypto can’t do “\(unknown)” yet — nothing was scheduled.",
@@ -15,19 +15,16 @@ extension Workspace {
             return
         }
         tasks.append(task)
+        showSchedule = true   // the canvas shows it: the chat keeps one line
         let what = task.steps.joined(separator: say(", then ", ", потом "))
-        let moves = task.steps.contains { WalletCommand.parse($0) != nil || PositionCommand.parse($0) != nil }
-        reply(say("Scheduled: \(what) — \(task.when).", "Запланировано: \(what) — \(task.when).")
-              + (moves ? say(" Money moves wait for your Confirm on their canvas; a notification says when.",
-                             " Переводы ждут твоего Confirm на своём канвасе — придёт уведомление.") : "")
-              + (KeepRunning.isOn ? "" : say(" ihatecrypto has to be running then: turn on Settings › General › Keep running.",
-                                             " В это время ihatecrypto должен быть запущен: включи Settings › General › Keep running.")), note: note)
+        reply(say("Scheduled: \(what) — \(task.when). It’s on the canvas.", "Запланировано: \(what) — \(task.when). Это на канвасе."), note: note)
     }
 
     func cancelTasks(note: String? = nil) {
         let n = tasks.count
         tasks = []
         taskQueue = nil
+        if n > 0 { showSchedule = true }
         reply(n == 0 ? say("Nothing was scheduled.", "Ничего не было запланировано.")
                      : say("Cancelled \(n) scheduled task\(n == 1 ? "" : "s").", "Отменено запланированных задач: \(n)."), note: note)
     }
@@ -127,39 +124,85 @@ enum KeepRunning {
     }
 }
 
-/// On an empty canvas, under the recurring buys: what is scheduled, when it runs next, and ✕ to drop it.
-struct TasksBoard: View {
+/// The rail's Schedule button: everything that runs on its own, next first — scheduled tasks and recurring buys, each
+/// with ✕ — and, while there is nothing, examples that go into the chat with a click.
+struct ScheduleOverview: View {
     @Environment(Workspace.self) private var ws
 
+    private struct Run: Identifiable {
+        let id: String, date: Date, title: String, detail: String, icon: String
+        let cancel: () -> Void
+    }
+
+    /// «Move deposited USDC to the best rates (max 40% per protocol)» for «rebalance USDC max 40% per protocol».
+    static func readable(_ step: String) -> String {
+        guard let s = WalletCommand.parse(step)?.summary else { return step }
+        return s.prefix(1).uppercased() + s.dropFirst()
+    }
+
+    static let examples = ["every week: rebalance USDC", "every day at 09:00: what's moving",
+                           "every monday at 10:00: profit and loss week", "buy SOL for 5 USDC every week"]
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Label("Scheduled", systemImage: "calendar.badge.clock").font(.ui(15, .bold))
+        let runs = (ws.tasks.map { t in
+            Run(id: t.id.uuidString, date: t.next, title: t.steps.map(Self.readable).joined(separator: " → "), detail: t.when,
+                icon: t.every == nil ? "calendar.badge.clock" : "repeat") { ws.tasks.removeAll { $0.id == t.id } }
+        } + ws.schedules.map { b in
+            Run(id: "buy-" + b.symbol, date: b.next, title: "Buy \(b.symbol) for \(Fmt.usd(b.usdc))",
+                detail: "every \(b.days == 1 ? "day" : b.days == 7 ? "week" : "\(b.days) days") · next \(Fmt.date(b.next))",
+                icon: "cart") { ws.schedules.removeAll { $0.symbol == b.symbol } }
+        }).sorted { $0.date < $1.date }
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Image(systemName: "calendar").foregroundStyle(Brand.accentInk).font(.system(size: 16, weight: .semibold))
+                Text("Schedule").font(.ui(16, .bold))
                 Spacer()
                 StatusChip(text: KeepRunning.isOn ? "always running" : "while open", tint: KeepRunning.isOn ? Brand.profit : Brand.jevInk)
+                Button { withAnimation(StudioView.spring) { ws.showSchedule = false } } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.hoverIcon).help("Close")
             }
-            VStack(spacing: 0) {
-                ForEach(ws.tasks) { task in
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(task.steps.joined(separator: " → ")).font(.ui(13, .semibold)).fixedSize(horizontal: false, vertical: true)
-                            Text(task.when).font(.ui(11)).foregroundStyle(.secondary)
+            if runs.isEmpty {
+                Text("Nothing scheduled. Tell the chat when and what, in any words — or start from one of these:")
+                    .font(.ui(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Flow(spacing: 6) {
+                    ForEach(Self.examples, id: \.self) { e in
+                        Button { ws.draft = e } label: {
+                            Text(e).font(.ui(12, .medium)).padding(.horizontal, 10).padding(.vertical, 6)
+                                .background(Capsule().fill(Brand.glassFill)).overlay(Capsule().strokeBorder(Brand.cardBorder))
                         }
-                        Spacer(minLength: 8)
-                        Button { ws.tasks.removeAll { $0.id == task.id } } label: { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
-                            .buttonStyle(HoverIconStyle()).help("Cancel this task")
+                        .buttonStyle(.plain).pointerStyle(.link).help("Put it in the chat")
                     }
-                    .padding(.vertical, 8)
-                    if task.id != ws.tasks.last?.id { Divider() }
+                }
+            } else {
+                VStack(spacing: 0) {
+                    ForEach(runs) { r in
+                        HStack(alignment: .firstTextBaseline, spacing: 10) {
+                            Image(systemName: r.icon).font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary).frame(width: 16)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(r.title).font(.ui(13, .semibold)).fixedSize(horizontal: false, vertical: true)
+                                Text(r.detail).font(.ui(11)).foregroundStyle(.secondary)
+                            }
+                            Spacer(minLength: 8)
+                            Button(action: r.cancel) { Image(systemName: "xmark").font(.system(size: 10, weight: .bold)) }
+                                .buttonStyle(.hoverIcon).help("Cancel")
+                        }
+                        .padding(.vertical, 9)
+                        if r.id != runs.last?.id { Divider() }
+                    }
+                }
+                .padding(.horizontal, 14)
+                .background(RoundedRectangle(cornerRadius: 18).fill(Brand.card))
+                .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.cardBorder))
+            }
+            HStack(spacing: 6) {
+                Text(KeepRunning.isOn ? "Money moves wait for your Confirm and Touch ID; a notification says when."
+                                      : "Runs only while ihatecrypto is open.")
+                    .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if !KeepRunning.isOn {
+                    Button("Keep it running…") { ws.openSettings(.general) }.buttonStyle(.borderless).font(.ui(10, .semibold))
                 }
             }
-            Text(KeepRunning.isOn ? "Money moves wait for your Confirm and Touch ID; a notification says when."
-                                  : "Runs only while ihatecrypto is open. Settings › General › Keep running keeps it up.")
-                .font(.ui(10)).foregroundStyle(.secondary)
         }
-        .padding(16)
-        .frame(width: 470)
-        .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.06), radius: 14, y: 8))
-        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.cardBorder))
+        .frame(width: 470, alignment: .leading)
     }
 }

@@ -213,6 +213,7 @@ extension Workspace {
         showMovers = false
         showHistory = false
         showFavorites = false
+        showSchedule = false
         UserDefaults.standard.set("plan", forKey: "canvasMode")
         NotificationCenter.default.post(name: .lalaCanvasFit, object: nil)
     }

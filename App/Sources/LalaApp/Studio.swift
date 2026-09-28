@@ -898,6 +898,7 @@ struct StudioCanvas: View {
             if ws.showReceive { ReceiveBoard() }
             if ws.showFavorites { FavoritesBoard().transition(.opacity) }
             if ws.showHistory { HistoryBoard().transition(.opacity) }
+            if ws.showSchedule { ScheduleOverview().transition(.opacity) }
             // Moves already done on this canvas stay above the current one.
             EarlierBoards()
             // A move waiting for its signature or running has its own title and status: no «Plan · waiting» over it.
@@ -932,8 +933,7 @@ struct StudioCanvas: View {
             if nodes.isEmpty {
                 if ws.yieldOptions == nil, ws.allocationPreview == nil, ws.rebalancePlan == nil {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
-                    if !ws.tasks.isEmpty { TasksBoard() }
-                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, ws.tasks.isEmpty, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil,
+                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil,
                               (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty { placeholder }
                 }
             } else {
@@ -2692,8 +2692,8 @@ struct AllocationBoard: View {
     private func ink(_ place: String) -> Color { place.contains("Jupiter") ? Color(hex: 0xC7F284) : .white }
 }
 
-/// Under the balance: four ways onto the canvas, each with its own icon. Top up is in the accent colour; the others
-/// light up while their board is on the canvas. The collapsed rail has the same buttons in a column, icons only.
+/// Under the balance: five ways onto the canvas, each with its own icon. Top up, in the accent colour, spans the first
+/// row; the others light up while their board is on the canvas. The collapsed rail has the same buttons in a column.
 struct RailActions: View {
     @Environment(Workspace.self) private var ws
     @AppStorage("canvasMode") private var mode = "plan"
@@ -2701,11 +2701,12 @@ struct RailActions: View {
 
     var body: some View {
         if compact {
-            VStack(spacing: 6) { topUp; portfolio; history; favorites }
+            VStack(spacing: 6) { topUp; portfolio; history; favorites; schedule }
         } else {
             Grid(horizontalSpacing: 6, verticalSpacing: 6) {
-                GridRow { topUp; portfolio }
-                GridRow { history; favorites }
+                GridRow { topUp.gridCellColumns(2) }
+                GridRow { portfolio; history }
+                GridRow { favorites; schedule }
             }
         }
     }
@@ -2728,6 +2729,10 @@ struct RailActions: View {
 
     private var favorites: some View {
         tile("Favorites", "star.fill", on: ws.showFavorites, help: "Favorite tokens, saved addresses, your wallets") { ws.showFavorites.toggle() }
+    }
+
+    private var schedule: some View {
+        tile("Schedule", "calendar", on: ws.showSchedule, help: "Scheduled tasks and recurring buys, next first") { ws.showSchedule.toggle() }
     }
 
     @ViewBuilder
