@@ -661,7 +661,15 @@ extension Workspace {
     /// A saved address on this network by its name: the exact name first, then one that contains it.
     func savedAddress(_ name: String, on network: AddressCheck.Network) -> SavedAddress? {
         let key = name.lowercased(), on = addressBook.filter { $0.network == network }
-        return on.first { $0.name.lowercased() == key } ?? on.first { $0.name.lowercased().contains(key) }
+        return on.first { $0.name.lowercased() == key } ?? (network == .solana ? ownWallet(key) : nil) ?? on.first { $0.name.lowercased().contains(key) }
+    }
+
+    /// Another of the user's own wallets, by its name («send 4 USDC to Test»): its Solana address. The signer asks for
+    /// Touch ID the first time money goes there, like for any new address.
+    func ownWallet(_ name: String) -> SavedAddress? {
+        wallets.first { $0.id != activeWalletID && $0.label.lowercased() == name.lowercased() }.flatMap { w in
+            w.solana.map { SavedAddress(name: w.label, address: $0, network: .solana, category: "Your wallet", icon: .logo("sol")) }
+        }
     }
 
     func markSent(_ entry: SavedAddress) {
@@ -670,12 +678,7 @@ extension Workspace {
 
     func prepareTransfer(_ amount: Decimal, to name: String, note: String? = nil) {
         let key = name.lowercased()
-        // Another of the user's own wallets, by its name («send 4 USDC to Test»): its Solana address. The signer asks
-        // for Touch ID the first time money goes there, like for any new address.
-        let own = wallets.first { $0.id != activeWalletID && $0.label.lowercased() == key }.flatMap { w in
-            w.solana.map { SavedAddress(name: w.label, address: $0, network: .solana, category: "Your wallet", icon: .logo("sol")) }
-        }
-        guard let entry = addressBook.first(where: { $0.name.lowercased() == key }) ?? own ?? addressBook.first(where: { $0.name.lowercased().contains(key) }) else {
+        guard let entry = addressBook.first(where: { $0.name.lowercased() == key }) ?? ownWallet(key) ?? addressBook.first(where: { $0.name.lowercased().contains(key) }) else {
             reply("There’s no “\(name)” in Addresses. Add it there first (the book button in the rail), then send by its name."
                   + (key.contains("solana") || key.contains("солан") ? " To bring money to your own Solana wallet, say “withdraw \(Fmt.num(amount)) USDC to Solana”." : ""), note: note)
             return
