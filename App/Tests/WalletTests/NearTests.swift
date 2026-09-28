@@ -30,3 +30,12 @@ import Testing
     #expect(NearTransaction.near(amount) == "0.1")
     #expect(NearTransaction.near(758_442_130_571_663_900_000_000) == "0.758442")
 }
+
+@Test func nearDeleteAccountIsActionSevenWithTheBeneficiary() {
+    let beneficiary = String(repeating: "a", count: 64)
+    let tx = NearTransaction.serialize(signer: "me.near", publicKey: Data(count: 32), nonce: 1, receiver: "me.near",
+                                       blockHash: Data(count: 32), actions: [.deleteAccount(beneficiary: beneficiary)])
+    // … actions count (u32 = 1), then variant 7 and the borsh string: u32 length, then the bytes.
+    let tail = Data([1, 0, 0, 0, 7, 64, 0, 0, 0]) + Data(beneficiary.utf8)
+    #expect(tx.suffix(tail.count) == tail)
+}

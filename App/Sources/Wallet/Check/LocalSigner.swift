@@ -400,3 +400,20 @@ func sweepHyperliquid(to destination: String) async throws {
     let free = try await Hyperliquid.balance(user: signer.wallet.evm).withdrawable
     print(try await executor.sendUSDC(free, to: .hyperliquid(destination), label: "the new wallet"))
 }
+
+/// `close-near <new NEAR implicit account> --yes`: deletes the old test wallet's NEAR account; NEAR sends everything
+/// left on it, its storage deposit included, to the new account. The new account must exist, or NEAR would burn it.
+func closeNear(to beneficiary: String) async throws {
+    let key = try TestWallet.nearKey()
+    let me = try TestWallet.nearAccount()
+    guard beneficiary.wholeMatch(of: /[0-9a-f]{64}/) != nil, beneficiary != me else { throw WalletError("Not a NEAR implicit account: \(beneficiary)") }
+    guard let there = try? await Near.balance(account: beneficiary), there.near > 0 else {
+        throw WalletError("\(beneficiary.prefix(8))… doesn't exist on NEAR yet: deleting into it would burn the balance.")
+    }
+    let context = try await Near.txContext(account: me)
+    guard send else { print("Deletes \(me.prefix(8))… (\(NearTransaction.near(UInt128(context.balance) ?? 0)) NEAR) into \(beneficiary.prefix(8))…. Add --yes."); return }
+    let signed = try NearTransaction.sign(receiver: me, nonce: context.nonce, blockHash: context.blockHash,
+                                          actions: [.deleteAccount(beneficiary: beneficiary)], privateKey: key).signed
+    let hash = try await Near.send(signed)
+    print("Deleted the old NEAR account; its NEAR went to \(beneficiary.prefix(8))…: https://nearblocks.io/txns/\(hash)")
+}

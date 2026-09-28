@@ -7,6 +7,9 @@ public enum NearTransaction {
     public enum Action: Equatable, Sendable {
         case functionCall(method: String, args: Data, gas: UInt64, deposit: UInt128)
         case transfer(deposit: UInt128)
+        /// Deletes the signer's own account; NEAR sends all that is left on it to `beneficiary` (which must exist,
+        /// or the balance is burned).
+        case deleteAccount(beneficiary: String)
     }
 
     public static let wrapContract = "wrap.near"
@@ -57,6 +60,9 @@ public enum NearTransaction {
             case .transfer(let deposit):
                 out.append(3)
                 out.append(le(deposit))
+            case .deleteAccount(let beneficiary):
+                out.append(7)
+                out.append(string(beneficiary))
             }
         }
         return out

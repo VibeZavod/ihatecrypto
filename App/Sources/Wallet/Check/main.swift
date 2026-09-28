@@ -87,6 +87,7 @@ do {
     case "kamino": try await kaminoCommand(Array(args.dropFirst().filter { !$0.hasPrefix("--") }))
     case "sweep-solana": try await sweepSolana(to: args.dropFirst().first { !$0.hasPrefix("--") } ?? "")
     case "sweep-near": try await sweepNear(to: args.dropFirst().first { !$0.hasPrefix("--") } ?? "")
+    case "close-near": try await closeNear(to: args.dropFirst().first { !$0.hasPrefix("--") } ?? "")
     case "sweep-hyperliquid": try await sweepHyperliquid(to: args.dropFirst().first { !$0.hasPrefix("--") } ?? "")
     case "browser-test-page": try await writeBrowserTestPage(args.dropFirst().first ?? "/tmp/lala-test.html")
     default: print("Unknown command: \(command)"); exit(2)
