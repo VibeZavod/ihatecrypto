@@ -156,6 +156,8 @@ struct StudioView: View {
     @State private var moving: CGSize = .zero
     @AppStorage("railCollapsed") private var railCollapsed = true
     @State private var railFoldedForRoom = false
+    /// Counts the orange waves around the window's edge (EdgePulse); each new value runs one.
+    @State private var edgePulse = 0
     static let spring = Animation.spring(response: 0.42, dampingFraction: 0.82)
     static let minChat: CGFloat = 320
     /// Room the canvas keeps for the chat when it fits its boards: the default chat width and its margins.
@@ -229,6 +231,8 @@ struct StudioView: View {
         }
         // No title bar: the rail and the canvas go up to the window's top edge.
         .ignoresSafeArea(edges: .top)
+        .overlay { EdgePulse(trigger: edgePulse) }
+        .onReceive(NotificationCenter.default.publisher(for: .lalaEdgePulse)) { _ in edgePulse += 1 }
         // One ground under the rail and the canvas, so the glass has the same dots behind it on both sides.
         .background { ZStack { Brand.canvas; DotGrid() }.ignoresSafeArea() }
         // Folded, the lights sit in the middle of the strip; open, at the rail's left beside its first row.
@@ -266,6 +270,49 @@ struct StudioView: View {
                 })
             .onTapGesture(count: 2) { withAnimation(Self.spring) { chatWidth = width >= maxWidth - 1 ? 350 : Double(maxWidth) } }
             .help("Drag to resize the chat · double-click: half the window")
+    }
+}
+
+extension Notification.Name {
+    /// The canvas was already where the Portfolio button would put it: the window's edge pulses instead.
+    static let lalaEdgePulse = Notification.Name("lalaEdgePulse")
+}
+
+/// An orange wave around the whole window's edge, two beats: the answer to «Portfolio» when the portfolio is
+/// already in place. Only the border moves; the boards stay still.
+struct EdgePulse: View {
+    let trigger: Int
+
+    private struct Wave {
+        var opacity = 0.0
+        /// How far the glow reaches into the window.
+        var spread = 4.0
+    }
+
+    var body: some View {
+        Color.clear
+            .keyframeAnimator(initialValue: Wave(), trigger: trigger) { _, wave in
+                // The window's own corners; the outer half of each stroke falls outside it.
+                ZStack {
+                    ConcentricRectangle().stroke(Brand.accent, lineWidth: 5)
+                    ConcentricRectangle().stroke(Brand.accent, lineWidth: wave.spread * 2).blur(radius: wave.spread / 2)
+                }
+                .opacity(wave.opacity)
+            } keyframes: { _ in
+                KeyframeTrack(\.opacity) {
+                    CubicKeyframe(1, duration: 0.15)
+                    CubicKeyframe(0.3, duration: 0.3)
+                    CubicKeyframe(0.8, duration: 0.15)
+                    CubicKeyframe(0, duration: 0.7)
+                }
+                KeyframeTrack(\.spread) {
+                    CubicKeyframe(26, duration: 0.45)
+                    MoveKeyframe(4)
+                    CubicKeyframe(34, duration: 0.85)
+                }
+            }
+            .ignoresSafeArea()
+            .allowsHitTesting(false)
     }
 }
 
@@ -1154,7 +1201,13 @@ struct CanvasViewport<Content: View>: View {
         .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasZoom)) { note in
             if let f = note.userInfo?["factor"] as? CGFloat { zoomAbout(pointer, by: f) }
         }
-        .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasFit)) { _ in zoom = 1; pan = .zero }
+        .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasFit)) { note in
+            // The Portfolio button with the portfolio already in place: nothing to move, so the window's edge answers.
+            if note.object as? String == "portfolio", zoom == 1, pan == .zero {
+                NotificationCenter.default.post(name: .lalaEdgePulse, object: nil)
+            }
+            zoom = 1; pan = .zero
+        }
         .onAppear(perform: watchScrolling)
         .onDisappear { if let m = scrollMonitor { NSEvent.removeMonitor(m); scrollMonitor = nil }; CanvasSharpness.shared.track(false) }
         .onChange(of: scale >= CanvasSharpness.from, initial: true) { _, on in CanvasSharpness.shared.track(on) }
@@ -2754,7 +2807,7 @@ struct RailActions: View {
 
     private var portfolio: some View {
         tile("Portfolio", "chart.pie.fill", on: false, help: "The portfolio on the canvas") {
-            NotificationCenter.default.post(name: .lalaCanvasFit, object: nil)
+            NotificationCenter.default.post(name: .lalaCanvasFit, object: "portfolio")
         }
     }
 
