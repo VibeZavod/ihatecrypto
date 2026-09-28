@@ -512,52 +512,95 @@ func signed(_ d: Decimal) -> String { d < 0 ? Fmt.usd(d) : "+" + Fmt.usd(d) }
 /// ihatecrypto's logo: an orange coin with a ridged edge that rolls its eyes («even crypto hates crypto»). The same
 /// coin is the assistant's face in the chat, and its expression says what it's doing.
 struct LalaLogo: View {
-    enum Mood { case waiting, thinking, done, error }
+    /// idle: the brand's eye-roll, still. The rest are the assistant's states from the brand board: waiting for Confirm,
+    /// building the route, done, error.
+    enum Mood { case idle, waiting, thinking, done, error }
     var size: CGFloat = 34
-    var mood: Mood = .waiting
+    var mood: Mood = .idle
+    /// The chat's avatar moves: the eyes roll while it waits for Confirm, the ridge turns and the eyes look around while
+    /// it builds the route, a hop when it's done, a shake on an error. The rail's logo stays still.
+    var animated = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Bumped on every change of mood: it plays the hop or the shake.
+    @State private var kick = 0
+
+    private struct Pose { var scale = 1.0, x = 0.0, y = 0.0 }
 
     var body: some View {
-        Canvas { context, s in
-            // Drawn on a 140-point grid, the same as the brand boards.
-            let k = s.width / 140
-            func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
-            func circle(_ x: CGFloat, _ y: CGFloat, _ r: CGFloat) -> Path { Path(ellipseIn: CGRect(x: (x - r) * k, y: (y - r) * k, width: 2 * r * k, height: 2 * r * k)) }
-            let ink = GraphicsContext.Shading.color(Brand.onAccent)
-            let line = StrokeStyle(lineWidth: 8 * k, lineCap: .round, lineJoin: .round)
-            context.fill(circle(70, 70, 64), with: .color(Brand.accent))
-            // The ridged edge: a dashed ring over the rim.
-            context.stroke(circle(70, 70, 62), with: ink, style: StrokeStyle(lineWidth: 9 * k, dash: [7 * k, 7 * k]))
-            var face = Path()
-            switch mood {
-            case .waiting, .thinking:
-                for x in [50.0, 90.0] {
-                    context.fill(circle(x, 62, 17), with: .color(.white))
-                    context.stroke(circle(x, 62, 17), with: ink, lineWidth: 5 * k)
-                    // Rolled up and to the side while waiting; looking aside while it works something out.
-                    context.fill(mood == .waiting ? circle(x + 4, 52, 8) : circle(x - 7, 58, 8), with: ink)
-                }
-                if mood == .waiting {
-                    face.move(to: p(54, 98)); face.addQuadCurve(to: p(86, 96), control: p(70, 92))
-                } else {
-                    face.move(to: p(52, 98))
-                    face.addQuadCurve(to: p(64, 98), control: p(58, 92))
-                    face.addQuadCurve(to: p(76, 98), control: p(70, 104))
-                    face.addQuadCurve(to: p(88, 98), control: p(82, 92))
-                }
-            case .done:
-                face.move(to: p(36, 64)); face.addQuadCurve(to: p(64, 64), control: p(50, 48))
-                face.move(to: p(76, 64)); face.addQuadCurve(to: p(104, 64), control: p(90, 48))
-                face.move(to: p(50, 86)); face.addQuadCurve(to: p(90, 86), control: p(70, 106))
-            case .error:
-                for (a, b) in [(p(38, 50), p(60, 72)), (p(60, 50), p(38, 72)), (p(80, 50), p(102, 72)), (p(102, 50), p(80, 72))] {
-                    face.move(to: a); face.addLine(to: b)
-                }
-                face.move(to: p(54, 98)); face.addLine(to: p(86, 98))
-            }
-            context.stroke(face, with: ink, style: line)
+        let live = animated && !reduceMotion
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !(live && (mood == .waiting || mood == .thinking)))) { timeline in
+            let t = live ? timeline.date.timeIntervalSinceReferenceDate : 0
+            Canvas { context, s in draw(&context, s, t: t) }
         }
         .frame(width: size, height: size)
+        .keyframeAnimator(initialValue: Pose(), trigger: kick) { content, pose in
+            content.scaleEffect(pose.scale).offset(x: pose.x * size / 30, y: pose.y * size / 30)
+        } keyframes: { _ in
+            KeyframeTrack(\.scale) {
+                CubicKeyframe(mood == .done ? 1.2 : mood == .error ? 1 : 1.1, duration: 0.14)
+                SpringKeyframe(1, duration: 0.5, spring: .bouncy)
+            }
+            KeyframeTrack(\.y) {
+                CubicKeyframe(mood == .done ? -7 : 0, duration: 0.16)
+                SpringKeyframe(0, duration: 0.5, spring: .bouncy)
+            }
+            KeyframeTrack(\.x) {
+                let a = mood == .error ? 4.0 : 0
+                for side in [-1.0, 1, -1, 1, -0.5] { CubicKeyframe(a * side, duration: 0.06) }
+                CubicKeyframe(0, duration: 0.06)
+            }
+        }
+        .onChange(of: mood) { if live { kick += 1 } }
         .accessibilityLabel("ihatecrypto")
+    }
+
+    /// Drawn on a 140-point grid, the same as the brand boards; `t` (seconds) moves the eyes, mouth and ridge.
+    private func draw(_ context: inout GraphicsContext, _ s: CGSize, t: Double) {
+        let k = s.width / 140
+        func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
+        func circle(_ x: CGFloat, _ y: CGFloat, _ r: CGFloat) -> Path { Path(ellipseIn: CGRect(x: (x - r) * k, y: (y - r) * k, width: 2 * r * k, height: 2 * r * k)) }
+        let ink = GraphicsContext.Shading.color(Brand.onAccent)
+        let line = StrokeStyle(lineWidth: 8 * k, lineCap: .round, lineJoin: .round)
+        context.fill(circle(70, 70, 64), with: .color(Brand.accent))
+        // The ridged edge, a dashed ring over the rim that turns while the route is being built, and the inner rim.
+        let spin = mood == .thinking ? CGFloat(t * 18) : 0
+        context.stroke(circle(70, 70, 62), with: ink, style: StrokeStyle(lineWidth: 9 * k, dash: [7 * k, 7 * k], dashPhase: spin * k))
+        context.stroke(circle(70, 70, 52), with: ink, lineWidth: 3.5 * k)
+        var face = Path()
+        switch mood {
+        case .idle, .waiting, .thinking:
+            // Where the pupils look, as an angle over the eye: up and to the right is the eye-roll. Waiting, they
+            // roll back and forth over the top; building the route, they look around up and to the left.
+            let a = switch mood {
+            case .waiting: 1.1 + 0.55 * sin(t * 2.2)
+            case .thinking: 2.25 + 0.5 * sin(t * 3.1)
+            default: 1.1
+            }
+            for x in [50.0, 90.0] {
+                context.fill(circle(x, 62, 17), with: .color(.white))
+                context.stroke(circle(x, 62, 17), with: ink, lineWidth: 5 * k)
+                context.fill(circle(x + 9 * cos(a), 62 - 9 * sin(a), 8), with: ink)
+            }
+            if mood == .thinking {
+                let w = 3 * sin(t * 6)
+                face.move(to: p(52, 98))
+                face.addQuadCurve(to: p(64, 98), control: p(58, 92 - w))
+                face.addQuadCurve(to: p(76, 98), control: p(70, 104 + w))
+                face.addQuadCurve(to: p(88, 98), control: p(82, 92 - w))
+            } else {
+                face.move(to: p(54, 98)); face.addQuadCurve(to: p(86, 96), control: p(70, 92))
+            }
+        case .done:
+            face.move(to: p(36, 64)); face.addQuadCurve(to: p(64, 64), control: p(50, 48))
+            face.move(to: p(76, 64)); face.addQuadCurve(to: p(104, 64), control: p(90, 48))
+            face.move(to: p(50, 86)); face.addQuadCurve(to: p(90, 86), control: p(70, 106))
+        case .error:
+            for (a, b) in [(p(38, 50), p(60, 72)), (p(60, 50), p(38, 72)), (p(80, 50), p(102, 72)), (p(102, 50), p(80, 72))] {
+                face.move(to: a); face.addLine(to: b)
+            }
+            face.move(to: p(54, 98)); face.addLine(to: p(86, 98))
+        }
+        context.stroke(face, with: ink, style: line)
     }
 }
 
@@ -1652,7 +1695,7 @@ struct FloatingChat: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                LalaLogo(size: 30, mood: mood)
+                LalaLogo(size: 30, mood: mood, animated: true)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Assistant").font(.ui(14, .semibold))
                     ChatModelMenu()
@@ -1726,7 +1769,7 @@ struct FloatingChat: View {
         if ws.thinking || ws.executing || ws.preparing || ws.assembly != nil { return .thinking }
         if ws.pendingText != nil || ws.pendingAllocation != nil { return .waiting }
         if let outcome = (ws.savedBoard ?? ws.finishedCanvas)?.outcome { return outcome.ok ? .done : .error }
-        return .waiting
+        return .idle
     }
 }
 
