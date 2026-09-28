@@ -86,6 +86,7 @@ do {
     case "plan": try await explainPlan(args.dropFirst().joined(separator: " "))
     case "kamino": try await kaminoCommand(Array(args.dropFirst().filter { !$0.hasPrefix("--") }))
     case "sweep-solana": try await sweepSolana(to: args.dropFirst().first { !$0.hasPrefix("--") } ?? "")
+    case "sweep-near": try await sweepNear(to: args.dropFirst().first { !$0.hasPrefix("--") } ?? "")
     case "browser-test-page": try await writeBrowserTestPage(args.dropFirst().first ?? "/tmp/lala-test.html")
     default: print("Unknown command: \(command)"); exit(2)
     }

@@ -362,3 +362,21 @@ func sweepSolana(to destination: String) async throws {
     print("Sent \(Fmt.num(Decimal(lamports - fee) / 1_000_000_000, maxFraction: 9)) SOL (fee \(fee) lamports): \(try await rpc.waitForConfirmation(signature, lastValidBlockHeight: lastValid)) https://solscan.io/tx/\(signature)")
     print("Left on \(me): \(try await rpc.balance(me)) lamports, \(try await rpc.tokenBalance(owner: me, mint: "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")) USDC units.")
 }
+
+/// `sweep-near <new NEAR implicit account> --yes`: the old test wallet's NEAR to the new wallet's account in one plain
+/// transfer. It keeps what the old account's own storage needs and a margin for the fee (a transfer's gas is tiny).
+func sweepNear(to destination: String) async throws {
+    let key = try TestWallet.nearKey()
+    let me = try TestWallet.nearAccount()
+    guard destination.wholeMatch(of: /[0-9a-f]{64}/) != nil, destination != me else { throw WalletError("Not a NEAR implicit account to move to: \(destination)") }
+    let context = try await Near.txContext(account: me)
+    let balance = UInt128(context.balance) ?? 0
+    let keep = UInt128(context.storageBytes) * 10_000_000_000_000_000_000 + 1_000_000_000_000_000_000_000   // storage + 0.001 NEAR
+    guard balance > keep else { throw WalletError("Nothing to move: \(NearTransaction.near(balance)) NEAR, \(NearTransaction.near(keep)) stays for storage.") }
+    let amount = (balance - keep) / 1_000_000_000_000_000_000 * 1_000_000_000_000_000_000
+    guard send else { print("Moves \(NearTransaction.near(amount)) NEAR from \(me) to \(destination). Add --yes."); return }
+    let signed = try NearTransaction.sign(receiver: destination, nonce: context.nonce, blockHash: context.blockHash,
+                                          actions: [.transfer(deposit: amount)], privateKey: key).signed
+    let hash = try await Near.send(signed)
+    print("Sent \(NearTransaction.near(amount)) NEAR to \(destination.prefix(8))…: https://nearblocks.io/txns/\(hash)")
+}
