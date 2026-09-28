@@ -59,7 +59,7 @@ import Testing
                     "buy token \(ai) for 2 USDC", "sell 3 tokens \(ai)", "buy Tesla stock for 3 USDC", "sell TSLA stock",
                     "move USDG from Robinhood to Solana", "buy NEAR for 5 USDC", "top up", "deposit 5 USDC to HLP",
                     "lend 2 USDC on Aave", "deposit 2 USDC into Morpho", "withdraw USDC from Morpho",
-                    "spread USDC across the best rates max 50% per protocol",
+                    "spread USDC across the best rates max 50% per protocol", "rebalance USDC max 50% per protocol",
                     "move 3 USDC from Solana to Robinhood", "move 2 USDC from Solana to Base", "move 1 USDC from Solana to Arbitrum"]
     for command in commands { #expect(WalletCommand.parse(command) != nil, "\(command)") }
     #expect(WalletCommand.parse("sell NEAR") == .sellNear(amount: nil))

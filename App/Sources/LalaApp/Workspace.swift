@@ -146,6 +146,8 @@ final class Workspace {
     var draft = ""
     /// «Spread … across the best rates» waiting for a signature, drawn on the studio canvas.
     var allocationPreview: AllocationPreview?
+    /// «Переложи в лучшие ставки» waiting for its signature: the plan, drawn on the canvas it was made on (RebalanceBoard).
+    var rebalancePlan: (canvas: UUID?, plan: Rebalance.Plan, maxShare: Decimal)?
     /// Yields shown as bubbles on the studio canvas; nil when none.
     var yieldOptions: [Yields.Option]?
     /// Take-profit styles offered on the canvas after «take profit like the best investors»; nil when none.
@@ -411,6 +413,7 @@ final class Workspace {
             if confirms { await move(pending, confirmed: true); return }
             if declines {
                 allocationPreview = nil
+                rebalancePlan = nil
                 reply("Cancelled — nothing moved.")
                 return
             }
@@ -453,7 +456,7 @@ final class Workspace {
             awaitingAmount = nil
         }
         if declines {
-            withAnimation(StudioView.spring) { allocationPreview = nil; yieldOptions = nil; takeChoices = nil }
+            withAnimation(StudioView.spring) { allocationPreview = nil; rebalancePlan = nil; yieldOptions = nil; takeChoices = nil }
             reply("OK — nothing was waiting, nothing moved.")
             return
         }
@@ -465,7 +468,7 @@ final class Workspace {
         }
         takeChoices = nil
         yieldOptions = nil
-        if pendingAllocation == nil { allocationPreview = nil }
+        if pendingAllocation == nil { allocationPreview = nil; rebalancePlan = nil }
         if TakeStyle.asksForChoice(text) {
             if intent == TradeIntent() {
                 reply("Describe the trade first — then I’ll show the ways to take profit on it.")

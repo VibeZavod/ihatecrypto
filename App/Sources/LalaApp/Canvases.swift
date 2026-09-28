@@ -1150,7 +1150,7 @@ extension Workspace {
         }
         if let why = refusalBeforeCard(command) { reply(why, note: note); return }
         switch command {
-        case .yields, .allocate, .schedule, .stopSchedules:
+        case .yields, .allocate, .rebalance, .schedule, .stopSchedules:
             // Read-only, or with a board and a step of their own.
             await move(command)
         default:

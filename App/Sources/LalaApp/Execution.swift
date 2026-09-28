@@ -319,6 +319,15 @@ extension Workspace {
                 if !confirmed {
                     reply(ready ? "The plan is on the canvas. Sign it, or ask for another limit, e.g. “max \(share.map { $0 == 70 ? 50 : 70 } ?? 70)% per protocol”." : "Nowhere to put it now — see the canvas.", note: "DeFi")
                 }
+            case .rebalance(let share):
+                // Like «spread»: the plan first, the moves only after «do it».
+                let (_, ready, plan) = try await e.rebalance(maxShare: share ?? 50, execute: confirmed)
+                pendingAllocation = ready ? command : nil
+                rebalancePlan = confirmed ? nil : (canvasID, plan, share ?? 50)
+                if !confirmed {
+                    reply(ready ? "The moves are on the canvas with their math. Sign them, or ask for another limit, e.g. “rebalance, max \(share.map { $0 == 70 ? 50 : 70 } ?? 70)% per protocol”."
+                                : plan.notes.first ?? "Nothing worth moving now — see the canvas.", note: "DeFi")
+                }
             case .schedule(let asset, let usdc, let days):
                 // The per-purchase rule applies to each run; a schedule adds up, so it is shown per month too.
                 schedules.removeAll { $0.symbol == asset.symbol }
@@ -346,7 +355,7 @@ extension Workspace {
     private func movesMoney(_ command: WalletCommand, confirmed: Bool) -> Bool {
         switch command {
         case .yields, .sendTo, .receive, .schedule, .stopSchedules: false
-        case .allocate: confirmed
+        case .allocate, .rebalance: confirmed
         default: true
         }
     }

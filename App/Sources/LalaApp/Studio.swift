@@ -765,6 +765,7 @@ struct StudioCanvas: View {
             if let allocation = ws.allocationPreview {
                 AllocationBoard(preview: allocation)
             }
+            RebalanceBoard()
             WithdrawBoard()
             RunningBoard()
             PendingAddressBoard()

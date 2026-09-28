@@ -240,6 +240,10 @@ private struct StubModel: LLMClient {
     #expect(WalletCommand.parse("какая доходность") == .yields(nil))
     #expect(WalletCommand.parse("разложи USDC по лучшим ставкам") == .allocate("USDC", maxShare: nil))
     #expect(WalletCommand.parse("распредели SOL по протоколам, не больше 70% в один") == .allocate("SOL", maxShare: 70))
+    #expect(WalletCommand.parse("переложи в лучшие ставки") == .rebalance(maxShare: nil))
+    #expect(WalletCommand.parse("rebalance my USDC, max 40% per protocol") == .rebalance(maxShare: 40))
+    #expect(WalletCommand.parse("перебалансируй депозиты") == .rebalance(maxShare: nil))
+    #expect(WalletCommand.parse("переложи 5 USDC в Kamino") != .rebalance(maxShare: nil))
     #expect(WalletCommand.parse("лонг ETH риск $1 стоп 3%, из Solana 1.5 USDC") == nil)   // a plan, not a transfer
 }
 

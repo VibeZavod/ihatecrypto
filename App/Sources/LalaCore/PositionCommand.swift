@@ -99,6 +99,9 @@ public enum WalletCommand: Equatable, Sendable {
     case hlp(deposit: Bool, amount: Decimal?)
     /// «Разложи USDC по лучшим ставкам»: the asset and the most one protocol may hold, % (nil = 50).
     case allocate(String, maxShare: Decimal?)
+    /// «Переложи в лучшие ставки»: USDC already deposited moves to better rates, at most this % per protocol (nil = 50),
+    /// only where the extra interest pays the move back within 30 days.
+    case rebalance(maxShare: Decimal?)
     /// USDC into Aave v3 on Base (bridged from Solana when short) or out of it and back to Solana;
     /// nil = ask (deposit) / everything (withdraw).
     case aave(deposit: Bool, amount: Decimal?)
@@ -145,6 +148,11 @@ public enum WalletCommand: Equatable, Sendable {
         let coins = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:sol|сол|jitosol|usdt|jupusd|usdc)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
         // «USDC на Солане» is USDC; Solana alone is the network, SOL the coin.
         let symbol = q.contains(/usdc|юсдс|юсдц/) ? "USDC" : q.contains(/\bsol\b|\bсол\b/) ? "SOL" : q.contains(/usdt/) ? "USDT" : q.contains(/jupusd/) ? "JupUSD" : "USDC"
+        // Money already deposited, moved to better rates: «переложи в лучшие ставки», «rebalance my USDC».
+        if q.contains(/перебаланс|ребаланс|rebalanc/) || (q.contains(/перелож|move\s+my\s+deposits/) && q.contains(/ставк|доходн|лучш|rates?|yields?|best/)) {
+            let share = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*%/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
+            return .rebalance(maxShare: share)
+        }
         if q.contains(/разлож|распредел|раскид|размест|spread|allocate|distribute|split/), q.contains(/ставк|доходн|протокол|лучш|хранилищ|rates?|yields?|protocols?|best|vaults?/) {
             let share = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*%/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
             return .allocate(q.contains(/\bsol\b|солан|\bсол\b/) ? "SOL" : "USDC", maxShare: share)
@@ -363,6 +371,7 @@ extension WalletCommand {
         case .yields(let a): return "rates for \(a ?? "USDC and SOL")"
         case .hlp(let d, let x): return d ? "deposit \(n(x)) USDC into HLP" : "withdraw \(n(x)) USDC from HLP"
         case .allocate(let s, let share): return "spread \(s) across the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
+        case .rebalance(let share): return "move deposited USDC to the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
         case .aave(let d, let x): return d ? "deposit \(n(x)) USDC into Aave on Base" : "withdraw \(n(x)) USDC from Aave to Solana"
         case .morpho(let d, let x): return d ? "deposit \(n(x)) USDC into Morpho on Base" : "withdraw \(n(x)) USDC from Morpho to Solana"
         case .baseToSolana(let x): return "move \(n(x)) USDC from Base to Solana"

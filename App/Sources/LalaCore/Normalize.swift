@@ -43,6 +43,7 @@ public enum ChatRouter {
       deposit N <USDC|SOL> to kamino | withdraw <USDC|SOL> from kamino | stake N SOL | unstake N JitoSOL
       deposit N USDC to HLP | withdraw from HLP | lend N USDC on Aave | withdraw USDC from Aave | deposit N USDC into Morpho | withdraw USDC from Morpho
       where to keep <USDC|SOL> | spread <USDC|SOL> across the best rates [max N% per protocol]
+      rebalance USDC [max N% per protocol]   (moves money ALREADY in vaults to better rates: «переложи», «перекинь депозиты», «перебалансируй», «rebalance». «spread» / «разложи» / «распредели» is only for FREE USDC on Solana)
     MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from Base to Solana | move N USDC from Arbitrum to Solana
       move N USDC from Solana to <Base|Arbitrum|Robinhood>   (arrives as USDG on Robinhood Chain)
       send N USDC to <NAME from the address book> | top up (where to send money into LALA)
