@@ -15,6 +15,8 @@ final class VoiceInput {
     private(set) var transcript = ""
     /// How much of `transcript` has stopped changing: the rest is the recognizer's current guess, shown grey.
     private(set) var settled = 0
+    /// The phrases before the last pause, and the recognizer's text when the last one ended.
+    private var take = Take()
     /// The language it listens in, in words: «Russian».
     private(set) var language = ""
     /// The last few loudness readings, 0…1, for the wave in the field.
@@ -33,6 +35,7 @@ final class VoiceInput {
         guard state != .listening else { return }
         transcript = ""
         settled = 0
+        take = Take()
         levels = Array(repeating: 0, count: levels.count)
         guard await Self.allowed() else {
             state = .failed("Allow the microphone and speech recognition for ihatecrypto in System Settings › Privacy & Security.")
@@ -63,8 +66,8 @@ final class VoiceInput {
             return
         }
         self.request = request
-        task = recognizer.recognitionTask(with: request, resultHandler: Self.results { [weak self] text, final, error in
-            Task { @MainActor in self?.heard(text, final: final, error: error) }
+        task = recognizer.recognitionTask(with: request, resultHandler: Self.results { [weak self] text, final, pause, error in
+            Task { @MainActor in self?.heard(text, final: final, pause: pause, error: error) }
         })
         startedAt = .now
         state = .listening
@@ -86,6 +89,7 @@ final class VoiceInput {
         task?.cancel()
         stopEngine()
         transcript = ""
+        take = Take()
         state = .idle
     }
 
@@ -95,10 +99,11 @@ final class VoiceInput {
         request = nil
     }
 
-    private func heard(_ text: String?, final: Bool, error: String?) {
+    private func heard(_ text: String?, final: Bool, pause: Bool, error: String?) {
         if let text {
-            settled = final ? text.count : Self.settledLength(was: transcript, now: text)
-            transcript = text
+            let whole = take.add(text, pause: pause)
+            settled = final || pause ? whole.count : Self.settledLength(was: transcript, now: whole)
+            transcript = whole
         }
         guard final else { return }
         task = nil
@@ -111,6 +116,37 @@ final class VoiceInput {
     private func push(_ level: Double) {
         levels.removeFirst()
         levels.append(level)
+    }
+
+    /// A take of several phrases. After a pause the recognizer either starts the next phrase from nothing or goes on
+    /// from its old text; either way what was said before stays.
+    struct Take {
+        /// The phrases before the last pause.
+        var earlier = ""
+        /// The recognizer's own text when the last phrase ended: a result that goes on from it repeats it.
+        var closed = ""
+        /// The current phrase.
+        var phrase = ""
+
+        /// The whole take after the recognizer's latest text; `pause`: that text ended a phrase.
+        mutating func add(_ text: String, pause: Bool) -> String {
+            var new = text
+            if !closed.isEmpty, new.hasPrefix(closed) { new = String(new.dropFirst(closed.count)).trimmingCharacters(in: .whitespaces) }
+            if VoiceInput.restarted(was: phrase, now: new) { earlier = whole; closed = "" }
+            phrase = new
+            let all = whole
+            if pause { earlier = all; phrase = ""; closed = text }
+            return all
+        }
+
+        var whole: String { [earlier, phrase].filter { !$0.isEmpty }.joined(separator: " ") }
+    }
+
+    /// The recognizer began again instead of revising: no word in common at the start and shorter, or under half as long.
+    static func restarted(was: String, now: String) -> Bool {
+        guard !was.isEmpty, !now.isEmpty else { return false }
+        let first = was.split(separator: " ").first == now.split(separator: " ").first
+        return (!first && now.count < was.count) || now.count * 2 < was.count
     }
 
     /// The words the new guess keeps from the last one, as a length of `now`: those stopped changing.
@@ -174,10 +210,12 @@ final class VoiceInput {
         }
     }
 
-    nonisolated private static func results(_ deliver: @escaping @Sendable (String?, Bool, String?) -> Void)
+    /// Text, whether it's the last result, whether a phrase just ended at a pause (the metadata comes only then), error.
+    nonisolated private static func results(_ deliver: @escaping @Sendable (String?, Bool, Bool, String?) -> Void)
         -> @Sendable (SFSpeechRecognitionResult?, Error?) -> Void {
         { result, error in
-            deliver(result?.bestTranscription.formattedString, (result?.isFinal ?? false) || error != nil, error?.localizedDescription)
+            deliver(result?.bestTranscription.formattedString, (result?.isFinal ?? false) || error != nil,
+                    result?.speechRecognitionMetadata != nil, error?.localizedDescription)
         }
     }
 }
