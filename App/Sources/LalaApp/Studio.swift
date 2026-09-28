@@ -2037,6 +2037,8 @@ private struct ChatComposer: View {
             }
             TextField("What should we do?", text: Bindable(ws).draft, axis: .vertical)
                 .textFieldStyle(.plain).font(.ui(14)).lineLimit(1...5)
+                // The caret in the brand's orange.
+                .tint(Brand.accent)
                 .padding(.vertical, 8)
                 .onSubmit(send)
             Button { Task { await ws.voice.start() } } label: {
