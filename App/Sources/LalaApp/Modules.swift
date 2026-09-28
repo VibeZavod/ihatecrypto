@@ -435,7 +435,7 @@ struct PlaceDetailBoard: View {
                 Button {
                     if p.1 == "top up" { withAnimation(StudioView.spring) { ws.showReceive = true } } else { ws.draft = p.1 }
                 } label: {
-                    Label(p.0, systemImage: Self.icon(p.0)).font(.system(size: 12, weight: .semibold)).foregroundStyle(Brand.accent)
+                    Label(p.0, systemImage: Self.icon(p.0)).font(.system(size: 12, weight: .semibold)).foregroundStyle(Brand.accentInk)
                         .padding(.horizontal, 10).padding(.vertical, 6).background(Capsule().fill(Brand.accent.opacity(0.1)))
                 }
                 .buttonStyle(.plain)
@@ -566,7 +566,7 @@ struct HoverIconStyle: ButtonStyle {
         var body: some View {
             let lit = hover && enabled
             configuration.label
-                .foregroundStyle(lit ? AnyShapeStyle(Brand.accent) : AnyShapeStyle(.secondary))
+                .foregroundStyle(lit ? AnyShapeStyle(Brand.accentInk) : AnyShapeStyle(.secondary))
                 .frame(minWidth: size, minHeight: size)
                 .background(RoundedRectangle(cornerRadius: 8).fill(Brand.accent.opacity(configuration.isPressed ? 0.24 : lit ? 0.13 : 0)))
                 .scaleEffect(configuration.isPressed ? 0.92 : lit ? 1.08 : 1)

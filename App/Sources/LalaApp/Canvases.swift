@@ -230,7 +230,7 @@ struct CanvasList: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Canvases").font(.caption).foregroundStyle(.secondary)
+                Text("Canvases").font(.ui(12)).foregroundStyle(.secondary).padding(.leading, 4)
                 Spacer()
                 // The whole pill is the button and lights up under the pointer, not only its glyphs.
                 Button { withAnimation(StudioView.spring) { ws.newCanvas() }; close?() } label: {
@@ -292,7 +292,7 @@ struct FolderRow: View {
             HStack(spacing: 8) {
                 Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(.tertiary)
                     .rotationEffect(.degrees(folded ? 0 : 90))
-                Image(systemName: folded ? "folder" : "folder.fill").font(.system(size: 12)).foregroundStyle(Brand.accent)
+                Image(systemName: folded ? "folder" : "folder.fill").font(.system(size: 12)).foregroundStyle(Brand.accentInk)
                 Text(name).font(.system(size: 12.5, weight: .semibold)).lineLimit(1)
                 Spacer(minLength: 0)
                 Text("\(count)").font(.caption2).foregroundStyle(.tertiary).monospacedDigit()
@@ -338,7 +338,10 @@ struct CanvasRow: View {
             .help("Pin, rename, move to a folder, delete")
         }
         .padding(.horizontal, 8).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 10).fill(current ? Brand.accent.opacity(0.1) : hover ? Color.primary.opacity(0.05) : .clear))
+        // The open canvas is a lit glass row, like a selected item in a macOS 26 sidebar.
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(current ? Brand.glassSelected : hover ? Brand.glassFill.opacity(0.6) : .clear))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(current ? Brand.glassRim : .clear))
+        .shadow(color: .black.opacity(current ? 0.06 : 0), radius: 2, y: 1)
         .onHover { hover = $0 }
         .help("\(canvas.displayTitle) · \(LLMCatalog.provider(id: canvas.providerID)?.info.name ?? canvas.providerID) · \(canvas.model)")
         .contextMenu { actions }
@@ -356,8 +359,9 @@ struct CanvasRow: View {
             if canvas.intent != TradeIntent() {
                 AssetBadge(coin: canvas.intent.asset, size: 26, dark: true)
             } else {
-                RoundedRectangle(cornerRadius: 8).fill(Brand.accent.opacity(0.12)).frame(width: 26, height: 26)
-                    .overlay(Image(systemName: canvas.bubbles.isEmpty ? "bubble.left" : "square.grid.2x2").font(.system(size: 11, weight: .semibold)).foregroundStyle(Brand.accent))
+                RoundedRectangle(cornerRadius: 8).fill(Brand.glassFill).frame(width: 26, height: 26)
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Brand.glassRim))
+                    .overlay(Image(systemName: canvas.bubbles.isEmpty ? "bubble.left" : "square.grid.2x2").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary))
             }
             VStack(alignment: .leading, spacing: 1) {
                 if renaming {
@@ -369,13 +373,13 @@ struct CanvasRow: View {
                         .onChange(of: nameFocused) { if !nameFocused, renaming { commitRename() } }
                 } else {
                     HStack(spacing: 4) {
-                        Text(canvas.displayTitle).font(.system(size: 12.5, weight: current ? .semibold : .regular)).lineLimit(1)
+                        Text(canvas.displayTitle).font(.ui(13, current ? .semibold : .medium)).lineLimit(1)
                         if canvas.pinnedAt != nil {
                             Image(systemName: "pin.fill").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary).help("Pinned")
                         }
                     }
                 }
-                Text("\(canvas.model) · \(Fmt.date(canvas.updated))").font(.system(size: 10.5)).foregroundStyle(.secondary).lineLimit(1)
+                Text("\(canvas.model) · \(Fmt.date(canvas.updated))").font(.ui(11)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
@@ -518,7 +522,7 @@ struct MenuRow: View {
                 }
                 Spacer(minLength: 8)
                 if let shortcut { Text(shortcut).font(.caption).foregroundStyle(.secondary) }
-                if checked { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Brand.accent) }
+                if checked { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Brand.accentInk) }
             }
             .padding(.horizontal, 10).padding(.vertical, detail == nil ? 8 : 7)
             .background(RoundedRectangle(cornerRadius: 10).fill(checked ? Brand.accent.opacity(0.09) : hover ? Color.primary.opacity(0.06) : .clear))
@@ -641,7 +645,7 @@ struct FixChoices: View {
         Button(action: action) {
             VStack(alignment: .leading, spacing: 6) {
                 Text(badge.uppercased()).font(.system(size: 9.5, weight: .heavy)).tracking(0.5)
-                    .foregroundStyle(recommended ? .white : .secondary)
+                    .foregroundStyle(recommended ? Brand.onAccent : .secondary)
                     .padding(.horizontal, 7).padding(.vertical, 3)
                     .background(Capsule().fill(recommended ? Brand.accent : Color.primary.opacity(0.07)))
                 Text(title).font(.system(size: 17, weight: .heavy))
@@ -977,7 +981,7 @@ struct RunningBoard: View {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     Text(run.title).font(.system(size: 14, weight: .semibold))
-                    StatusChip(text: "in progress", tint: Brand.accent)
+                    StatusChip(text: "in progress", tint: Brand.accentInk)
                     ProgressView().controlSize(.small)
                 }
                 if !run.steps.isEmpty {
@@ -985,7 +989,7 @@ struct RunningBoard: View {
                 }
                 if SignerActivity.shared.waiting > 0 {
                     Label("Touch ID — confirm on the sensor, or with your Mac password, if it asks", systemImage: "touchid")
-                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(.white)
+                        .font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.onAccent)
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(Capsule().fill(Brand.accent))
                         .opacity(pulse ? 1 : 0.6)

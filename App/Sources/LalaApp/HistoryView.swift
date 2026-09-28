@@ -222,7 +222,7 @@ struct HistoryBoard: View {
         let items = ws.activities.reversed().filter { !$0.lines.isEmpty || !$0.bubbles.isEmpty || $0.request != nil }.prefix(5)
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
-                Image(systemName: "clock.arrow.circlepath").foregroundStyle(Brand.accent).font(.system(size: 16, weight: .semibold))
+                Image(systemName: "clock.arrow.circlepath").foregroundStyle(Brand.accentInk).font(.system(size: 16, weight: .semibold))
                 Text("History · latest").font(.system(size: 16, weight: .bold))
                 Spacer()
                 Button { withAnimation(StudioView.spring) { ws.showHistory = false } } label: { Image(systemName: "xmark") }
@@ -256,13 +256,13 @@ struct ActivityCard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Image(systemName: icon).foregroundStyle(Brand.accent)
+                Image(systemName: icon).foregroundStyle(Brand.accentInk)
                 Text(activity.title ?? (activity.kind == .request ? "Request" : "LALA")).font(.system(size: 14, weight: .semibold)).lineLimit(1)
                 Spacer()
                 Text(Fmt.date(activity.at)).font(.caption).foregroundStyle(.secondary).monospacedDigit()
             }
             if let q = activity.request {
-                Text(q).font(.system(size: 13)).foregroundStyle(.white)
+                Text(q).font(.system(size: 13)).foregroundStyle(Brand.onAccent)
                     .padding(.horizontal, 12).padding(.vertical, 8)
                     .background(UnevenRoundedRectangle(topLeadingRadius: 14, bottomLeadingRadius: 14, bottomTrailingRadius: 4, topTrailingRadius: 14).fill(Brand.accent))
             }
@@ -379,7 +379,7 @@ struct StoryCard: View {
                 }
                 Spacer()
                 if story.isOpen {
-                    StatusChip(text: "open", tint: Brand.accent)
+                    StatusChip(text: "open", tint: Brand.accentInk)
                 } else {
                     Text(signed(story.realized)).font(.system(size: 18, weight: .heavy)).monospacedDigit()
                         .foregroundStyle(story.realized < 0 ? Brand.loss : Brand.profit)

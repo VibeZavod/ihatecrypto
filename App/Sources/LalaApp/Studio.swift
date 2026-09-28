@@ -11,21 +11,59 @@ import TradeExecution
 
 extension Color {
     /// One color for light and one for dark appearance.
-    init(light: UInt32, dark: UInt32) {
+    init(light: UInt32, dark: UInt32, lightAlpha: CGFloat = 1, darkAlpha: CGFloat = 1) {
         self.init(nsColor: NSColor(name: nil) { appearance in
-            let hex = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua ? dark : light
+            let isDark = appearance.bestMatch(from: [.darkAqua, .aqua]) == .darkAqua
+            let hex = isDark ? dark : light
             return NSColor(srgbRed: CGFloat((hex >> 16) & 0xFF) / 255, green: CGFloat((hex >> 8) & 0xFF) / 255,
-                           blue: CGFloat(hex & 0xFF) / 255, alpha: 1)
+                           blue: CGFloat(hex & 0xFF) / 255, alpha: isDark ? darkAlpha : lightAlpha)
         })
     }
     init(hex: UInt32) { self.init(light: hex, dark: hex) }
 }
 
+extension Font {
+    /// The interface face (Onest, in Fonts/); the system font under `swift run`, whose bundle has no fonts.
+    static func ui(_ size: CGFloat, _ weight: Font.Weight = .regular) -> Font {
+        BrandFonts.ready ? .custom("Onest", size: size).weight(weight) : .system(size: size, weight: weight)
+    }
+
+    /// The wordmark's face (DynaPuff): only the logo is cartoonish, the interface stays business-like.
+    static func brand(_ size: CGFloat) -> Font {
+        BrandFonts.ready ? .custom("DynaPuff", size: size).weight(.bold) : .system(size: size, weight: .heavy, design: .rounded)
+    }
+}
+
+/// Registers the bundled faces with this process the first time a view asks for one.
+enum BrandFonts {
+    static let ready: Bool = {
+        var ok = true
+        for name in ["Onest", "DynaPuff"] {
+            guard let url = Bundle.main.url(forResource: name, withExtension: "ttf") else { ok = false; continue }
+            ok = CTFontManagerRegisterFontsForURL(url as CFURL, .process, nil) && ok
+        }
+        return ok
+    }()
+}
+
 /// The chains' and protocols' own colors, so a block reads as «Solana» or «Hyperliquid» before its text does.
+/// The brand's one color, orange, is for the chrome: the canvas keeps each chain's and protocol's own colors.
 enum Brand {
-    static let accent = Color(hex: 0x2F5BFF)
-    static let canvas = Color(light: 0xF3F4F7, dark: 0x101216)
-    static let dots = Color(light: 0xD3D8E3, dark: 0x2A2D33)
+    /// Fills: the primary button, the send button, the logo coin. Text on it is `onAccent`.
+    static let accent = Color(hex: 0xFF7A2F)
+    /// The accent as text or an icon on the window's background, dark enough to read in light mode.
+    static let accentInk = Color(light: 0xB8480C, dark: 0xFF9A5C)
+    /// Text and glyphs on an accent fill.
+    static let onAccent = Color(hex: 0x111111)
+    /// A control sitting on glass: a light pill in light mode, a faint one in dark mode.
+    static let glassFill = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.72, darkAlpha: 0.08)
+    static let glassRim = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.95, darkAlpha: 0.12)
+    /// The selected row on glass.
+    static let glassSelected = Color(light: 0xFFFFFF, dark: 0xFFFFFF, lightAlpha: 0.9, darkAlpha: 0.14)
+    /// A tint for the big glass panels (rail, chat): text over colored canvas cards stays readable.
+    static let glassTint = Color(light: 0xFFFFFF, dark: 0x15171C, lightAlpha: 0.42, darkAlpha: 0.55)
+    static let canvas = Color(light: 0xEEF0F3, dark: 0x0E0F12)
+    static let dots = Color(light: 0xD3D7DC, dark: 0x26282D)
     static let card = Color(light: 0xFFFFFF, dark: 0x1B1E24)
     static let cardBorder = Color(light: 0xE1E4EC, dark: 0x2C3038)
     static let solanaTint = Color(light: 0xF4ECFF, dark: 0x2A2140)
@@ -133,7 +171,8 @@ struct StudioView: View {
 
     var body: some View {
         HStack(spacing: 0) {
-            StudioRail()
+            // The rail floats over the canvas's ground as a glass panel.
+            StudioRail().padding([.leading, .vertical], 10)
             GeometryReader { geo in
                 let maxWidth = max(Self.minChat, geo.size.width / 2)
                 let width = min(resizing ?? CGFloat(chatWidth), maxWidth)
@@ -183,6 +222,8 @@ struct StudioView: View {
                 .animation(Self.spring, value: chatY)
             }
         }
+        // One ground under the rail and the canvas, so the glass has the same dots behind it on both sides.
+        .background { ZStack { Brand.canvas; DotGrid() }.ignoresSafeArea() }
         // A window getting narrow folds the rail, and widening again brings back what it folded; by hand it still opens.
         .onGeometryChange(for: Bool.self) { $0.size.width < Self.crampedWidth } action: { cramped in
             withAnimation(Self.spring) {
@@ -223,6 +264,7 @@ struct StudioView: View {
 
 struct StudioRail: View {
     @Environment(Workspace.self) private var ws
+    @Environment(\.colorScheme) private var scheme
     @AppStorage("railCollapsed") private var collapsed = true
     /// The width while the edge is being dragged; nil when resting.
     @State private var dragWidth: CGFloat?
@@ -246,14 +288,19 @@ struct StudioRail: View {
         }
         .frame(width: width, alignment: .leading)
         .frame(maxHeight: .infinity, alignment: .top)
-        .clipped()
+        .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
         .animation(StudioView.spring, value: collapsed)
-        .background(Brand.card)
+        // Glass picks its own light or dark look from what's behind it; the rail's text follows the window instead.
+        .environment(\.colorScheme, scheme)
+        // Liquid Glass: the rail floats over the canvas's ground.
+        .glassEffect(.regular.tint(Brand.glassTint), in: RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
         .overlay(alignment: .trailing) {
-            // The edge: drag to collapse or expand; a spring settles it on the nearer width.
-            Rectangle().fill(edgeHover || dragWidth != nil ? Brand.accent.opacity(0.6) : Brand.cardBorder)
-                .frame(width: edgeHover || dragWidth != nil ? 3 : 1)
-                .frame(width: 10)
+            // The edge: drag to collapse or expand; a spring settles it on the nearer width. It shows under the pointer.
+            Capsule().fill(edgeHover || dragWidth != nil ? Brand.accent.opacity(0.8) : .clear)
+                .frame(width: 3, height: 56)
+                .frame(maxHeight: .infinity)
+                .frame(width: 12)
+                .offset(x: 6)
                 .contentShape(Rectangle())
                 .onHover { inside in
                     edgeHover = inside
@@ -276,32 +323,35 @@ struct StudioRail: View {
         }
     }
 
+    static let radius: CGFloat = 24
+
     private var wide: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(spacing: 10) {
-                LalaLogo(size: 34)
-                Text("lala").font(.system(size: 20, weight: .heavy)).tracking(-0.5)
-                Spacer()
+        VStack(alignment: .leading, spacing: 18) {
+            HStack(spacing: 8) {
+                LalaLogo(size: 30)
+                Text("ihatecrypto").font(.brand(19)).lineLimit(1).fixedSize()
+                Spacer(minLength: 4)
                 Button { withAnimation(StudioView.spring) { collapsed = true } } label: { Image(systemName: "sidebar.left") }
-                    .buttonStyle(.hoverIcon).help("Collapse wallet")
+                    .buttonStyle(.hoverIcon).help("Collapse the sidebar")
             }
             // The balance and its buttons stay put; only the canvases scroll, in the room left above the profile.
             // Places, positions, closed trades and favorites are on the canvas.
-            VStack(alignment: .leading, spacing: 3) {
+            VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
-                    Text("Balance").font(.caption).foregroundStyle(.secondary)
+                    Text("Balance").font(.ui(12)).foregroundStyle(.secondary)
                     BalanceFreshness(hovering: balanceHover)
                 }
                 if ws.updatedAt == nil {
                     Skeleton(width: 150, height: 34, radius: 9).padding(.vertical, 3)
                 } else {
-                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 34, weight: .bold)).monospacedDigit().tracking(-1)
+                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.ui(32, .semibold)).monospacedDigit().tracking(-0.6)
                 }
                 if !ws.positions.isEmpty {
-                    Text("\(signed(ws.positionsPnl)) in positions").font(.caption.weight(.semibold))
+                    Text("\(signed(ws.positionsPnl)) in positions").font(.ui(12, .semibold))
                         .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
                 }
             }
+            .padding(.horizontal, 4)
             .onHover { balanceHover = $0 }
             // The loaded balance fades in instead of popping up.
             .animation(.easeOut(duration: 0.35), value: ws.updatedAt == nil)
@@ -309,38 +359,42 @@ struct StudioRail: View {
             CanvasList()
             ProfileMenu(compact: false)
         }
-        .padding(18)
+        .padding(.horizontal, 14).padding(.top, 16).padding(.bottom, 12)
     }
 
+    /// Folded: a strip of round glass buttons, the logo on top and the profile at the bottom.
     private var narrow: some View {
-        VStack(spacing: 14) {
-            LalaLogo(size: 38)
-            Button { withAnimation(StudioView.spring) { collapsed = false } } label: { Image(systemName: "sidebar.left") }
-                .buttonStyle(.hoverIcon).help("Expand wallet")
-            // The balance first, above the blue Top up button.
+        VStack(spacing: 10) {
+            LalaLogo(size: 34)
+            // The balance first, above the orange Top up button.
             VStack(spacing: 1) {
                 if ws.updatedAt == nil {
-                    Skeleton(width: 48, height: 12)
+                    Skeleton(width: 44, height: 11)
                 } else {
-                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.system(size: 12, weight: .heavy)).monospacedDigit()
+                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.ui(11, .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                 }
                 if !ws.positions.isEmpty {
-                    Text(signed(ws.positionsPnl)).font(.system(size: 10, weight: .semibold))
+                    Text(signed(ws.positionsPnl)).font(.ui(10, .semibold))
                         .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
                 }
             }
+            .padding(.horizontal, 6)
+            Divider().frame(width: 32)
             RailActions(compact: true)
-            Button { withAnimation(StudioView.spring) { ws.newCanvas() } } label: { Image(systemName: "square.and.pencil") }
-                .buttonStyle(.hoverIcon).help("New canvas").disabled(ws.busy)
-            Button { canvasesOpen.toggle() } label: { Image(systemName: "rectangle.stack") }
-                .buttonStyle(.hoverIcon).help("Canvases")
+            Divider().frame(width: 32)
+            Button { canvasesOpen.toggle() } label: { RailRound(icon: "rectangle.stack", on: canvasesOpen) }
+                .buttonStyle(.plain).help("Canvases")
                 .popover(isPresented: $canvasesOpen, arrowEdge: .trailing) {
                     CanvasList { canvasesOpen = false }.frame(width: 280, height: 380).padding(14)
                 }
+            Button { withAnimation(StudioView.spring) { ws.newCanvas() } } label: { RailRound(icon: "plus", dashed: true) }
+                .buttonStyle(.plain).help("New canvas").disabled(ws.busy)
             Spacer(minLength: 0)
+            Button { withAnimation(StudioView.spring) { collapsed = false } } label: { RailRound(icon: "sidebar.left", plain: true) }
+                .buttonStyle(.plain).help("Expand the sidebar")
             ProfileMenu(compact: true)
         }
-        .padding(.vertical, 16)
+        .padding(.top, 16).padding(.bottom, 12)
     }
 
     /// Every section of the rail but the canvases shows this many rows, then «Show N more».
@@ -392,24 +446,55 @@ struct Skeleton: View {
 /// «+$0,48» / «−$0,25».
 func signed(_ d: Decimal) -> String { d < 0 ? Fmt.usd(d) : "+" + Fmt.usd(d) }
 
-/// «l·l·»: two tall strokes and two dots on the baseline, read as "la la" and as a tiny bar chart.
+/// ihatecrypto's logo: an orange coin with a ridged edge that rolls its eyes («even crypto hates crypto»). The same
+/// coin is the assistant's face in the chat, and its expression says what it's doing.
 struct LalaLogo: View {
+    enum Mood { case waiting, thinking, done, error }
     var size: CGFloat = 34
+    var mood: Mood = .waiting
 
     var body: some View {
         Canvas { context, s in
-            let k = s.width / 36
-            context.fill(Path(roundedRect: CGRect(origin: .zero, size: s), cornerRadius: 11 * k, style: .continuous), with: .color(Color(hex: 0x16161A)))
-            let w = 4.6 * k, gap = 2.4 * k, baseline = 27 * k
-            let colors = [Color.white, Color(hex: 0x97FCE4), Color.white, Color(hex: 0xC7A6FF)]
-            for (i, color) in colors.enumerated() {
-                let h = i.isMultiple(of: 2) ? 19 * k : w
-                let rect = CGRect(x: 5.2 * k + CGFloat(i) * (w + gap), y: baseline - h, width: w, height: h)
-                context.fill(Path(roundedRect: rect, cornerRadius: w / 2), with: .color(color))
+            // Drawn on a 140-point grid, the same as the brand boards.
+            let k = s.width / 140
+            func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
+            func circle(_ x: CGFloat, _ y: CGFloat, _ r: CGFloat) -> Path { Path(ellipseIn: CGRect(x: (x - r) * k, y: (y - r) * k, width: 2 * r * k, height: 2 * r * k)) }
+            let ink = GraphicsContext.Shading.color(Brand.onAccent)
+            let line = StrokeStyle(lineWidth: 8 * k, lineCap: .round, lineJoin: .round)
+            context.fill(circle(70, 70, 64), with: .color(Brand.accent))
+            // The ridged edge: a dashed ring over the rim.
+            context.stroke(circle(70, 70, 62), with: ink, style: StrokeStyle(lineWidth: 9 * k, dash: [7 * k, 7 * k]))
+            var face = Path()
+            switch mood {
+            case .waiting, .thinking:
+                for x in [50.0, 90.0] {
+                    context.fill(circle(x, 62, 17), with: .color(.white))
+                    context.stroke(circle(x, 62, 17), with: ink, lineWidth: 5 * k)
+                    // Rolled up and to the side while waiting; looking aside while it works something out.
+                    context.fill(mood == .waiting ? circle(x + 4, 52, 8) : circle(x - 7, 58, 8), with: ink)
+                }
+                if mood == .waiting {
+                    face.move(to: p(54, 98)); face.addQuadCurve(to: p(86, 96), control: p(70, 92))
+                } else {
+                    face.move(to: p(52, 98))
+                    face.addQuadCurve(to: p(64, 98), control: p(58, 92))
+                    face.addQuadCurve(to: p(76, 98), control: p(70, 104))
+                    face.addQuadCurve(to: p(88, 98), control: p(82, 92))
+                }
+            case .done:
+                face.move(to: p(36, 64)); face.addQuadCurve(to: p(64, 64), control: p(50, 48))
+                face.move(to: p(76, 64)); face.addQuadCurve(to: p(104, 64), control: p(90, 48))
+                face.move(to: p(50, 86)); face.addQuadCurve(to: p(90, 86), control: p(70, 106))
+            case .error:
+                for (a, b) in [(p(38, 50), p(60, 72)), (p(60, 50), p(38, 72)), (p(80, 50), p(102, 72)), (p(102, 50), p(80, 72))] {
+                    face.move(to: a); face.addLine(to: b)
+                }
+                face.move(to: p(54, 98)); face.addLine(to: p(86, 98))
             }
+            context.stroke(face, with: ink, style: line)
         }
         .frame(width: size, height: size)
-        .accessibilityLabel("LALA")
+        .accessibilityLabel("ihatecrypto")
     }
 }
 
@@ -525,14 +610,15 @@ struct ProfileMenu: View {
                 HStack(spacing: 10) {
                     avatar
                     VStack(alignment: .leading, spacing: 1) {
-                        Text("Profile").font(.system(size: 13, weight: .semibold))
-                        Text(signedIn).font(.caption).foregroundStyle(.secondary).lineLimit(1)
+                        Text("Profile").font(.ui(13, .semibold))
+                        Text(signedIn).font(.ui(12)).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer()
                     Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(.secondary)
                 }
                 .padding(8)
-                .background(RoundedRectangle(cornerRadius: 14).strokeBorder(Brand.cardBorder))
+                .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Brand.glassFill))
+                .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Brand.glassRim))
                 .contentShape(Rectangle())
             }
         }
@@ -592,8 +678,9 @@ struct ProfileMenu: View {
     }
 
     private var avatar: some View {
-        Circle().fill(Brand.accent.opacity(0.14)).frame(width: 36, height: 36)
-            .overlay(Image(systemName: "person.fill").foregroundStyle(Brand.accent))
+        Circle().fill(Brand.glassFill).frame(width: compact ? 40 : 34, height: compact ? 40 : 34)
+            .overlay(Circle().strokeBorder(Brand.glassRim))
+            .overlay(Image(systemName: "person.fill").foregroundStyle(.secondary))
     }
 }
 
@@ -785,8 +872,8 @@ struct StudioCanvas: View {
     /// LALA AI carries the blocks; a second cursor joins when the plan is long, Jev carries his own check.
     private func carrier(_ index: Int, _ n: StudioNode) -> (String, Color) {
         if n.kind == .jev { return ("Jev", Brand.jevCursor) }
-        if index >= 3, index % 2 == 1 { return ("LALA AI · 2", Brand.secondCursor) }
-        return ("LALA AI", Brand.accent)
+        if index >= 3, index % 2 == 1 { return ("Assistant · 2", Brand.secondCursor) }
+        return ("Assistant", Brand.accent)
     }
 
     private func cursorColor(_ index: Int, _ n: StudioNode) -> Color { carrier(index, n).1 }
@@ -837,6 +924,7 @@ struct StudioCanvas: View {
 /// moves the content already built instead of rebuilding the portfolio and the plan on every frame of the gesture.
 struct CanvasViewport<Content: View>: View {
     @Environment(Workspace.self) private var ws
+    @Environment(\.colorScheme) private var scheme
     /// Width covered by the floating chat on the right; the content is scaled to fit left of it.
     let inset: CGFloat
     /// The content's own width: at 100 % it fits left of the chat.
@@ -868,8 +956,8 @@ struct CanvasViewport<Content: View>: View {
         let live = CGSize(width: pan.width + drag.width, height: pan.height + drag.height)
         let moved = CanvasZoom.pan(keeping: (pinchAt.x, pinchAt.y), from: (live.width, live.height), by: k)
         return ZStack(alignment: .topLeading) {
-            Brand.canvas
-            DotGrid()
+            // The ground (color and dots) is StudioView's, under the rail too; this only takes the gestures.
+            Color.clear
             content
                 .scaleEffect(scale, anchor: .topLeading)
                 .offset(CGSize(width: moved.x, height: moved.y))
@@ -942,15 +1030,15 @@ struct CanvasViewport<Content: View>: View {
             // No animation: an animated zoom re-renders and re-lays out the whole canvas on every frame (≈ 60 a click
             // at 120 Hz) and saturated the main thread; a step is one redraw.
             Button { zoom = Self.zoomRange.clamped(zoom - 0.1) } label: { zoomGlyph("minus") }.help("Zoom out · or pinch")
-            Text("\(Int((scale * 100).rounded()))%").font(.system(size: 12, weight: .semibold)).monospacedDigit().frame(width: 44)
+            Text("\(Int((scale * 100).rounded()))%").font(.ui(12, .semibold)).monospacedDigit().frame(width: 44)
             Button { zoom = Self.zoomRange.clamped(zoom + 0.1) } label: { zoomGlyph("plus") }.help("Zoom in · or pinch")
             Button("Fit") { zoom = 1; pan = .zero }
             DebugBadge()
         }
         .buttonStyle(.borderless)
-        .padding(.leading, 4).padding(.trailing, 10).padding(.vertical, 1)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Brand.card))
-        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Brand.cardBorder))
+        .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 4)
+        .environment(\.colorScheme, scheme)
+        .glassEffect(.regular, in: Capsule())
     }
 }
 
@@ -1057,7 +1145,7 @@ struct StudioCursor: View {
         ZStack(alignment: .topLeading) {
             Image(systemName: "cursorarrow").font(.system(size: 22, weight: .bold)).foregroundStyle(color)
                 .shadow(color: .white, radius: 0.5)
-            Text(label).font(.system(size: 11, weight: .heavy)).foregroundStyle(color == Brand.jevCursor ? Color(hex: 0x0F1222) : .white)
+            Text(label).font(.system(size: 11, weight: .heavy)).foregroundStyle(color == Brand.jevCursor || color == Brand.accent ? Brand.onAccent : .white)
                 .padding(.horizontal, 8).padding(.vertical, 3)
                 .background(UnevenRoundedRectangle(topLeadingRadius: 3, bottomLeadingRadius: 10, bottomTrailingRadius: 10, topTrailingRadius: 10).fill(color))
                 .offset(x: 16, y: 18)
@@ -1486,6 +1574,7 @@ struct StudioNodeView: View {
 
 struct FloatingChat: View {
     @Environment(Workspace.self) private var ws
+    @Environment(\.colorScheme) private var scheme
     var compact = false
     var wide = false
     let toggleCompact: () -> Void
@@ -1498,9 +1587,9 @@ struct FloatingChat: View {
     var body: some View {
         VStack(spacing: 0) {
             HStack(spacing: 10) {
-                LalaLogo(size: 30)
+                LalaLogo(size: 30, mood: mood)
                 VStack(alignment: .leading, spacing: 1) {
-                    Text("LALA AI").font(.system(size: 14, weight: .bold))
+                    Text("Assistant").font(.ui(14, .semibold))
                     ChatModelMenu()
                 }
                 Spacer()
@@ -1527,9 +1616,10 @@ struct FloatingChat: View {
                             Text("You can say:").font(.caption).foregroundStyle(.secondary).padding(.top, 4)
                             ForEach(["long ETH risk $0.25 by the book", "where to keep USDC", "buy SOL for 2 USDC every week", "withdraw 1 USDC to Solana"], id: \.self) { phrase in
                                 Button { ws.draft = phrase } label: {
-                                    Text(phrase).font(.system(size: 13)).foregroundStyle(Brand.accent)
+                                    Text(phrase).font(.ui(13, .medium)).foregroundStyle(.primary)
                                         .padding(.horizontal, 12).padding(.vertical, 7)
-                                        .background(Capsule().fill(Brand.accent.opacity(0.1)))
+                                        .background(Capsule().fill(Brand.glassFill))
+                                        .overlay(Capsule().strokeBorder(Brand.glassRim))
                                 }
                                 .buttonStyle(.plain).pointerStyle(.link)
                             }
@@ -1556,12 +1646,22 @@ struct FloatingChat: View {
             ChatComposer()
         }
         .frame(maxHeight: .infinity)
-        .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.14), radius: 24, y: 14))
-        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.cardBorder))
+        .environment(\.colorScheme, scheme)
+        // Liquid Glass, floating over the canvas like the rail.
+        .glassEffect(.regular.tint(Brand.glassTint), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
 
     private func headerIcon(_ name: String) -> some View {
         Image(systemName: name).font(.system(size: 13, weight: .semibold))
+    }
+
+    /// The coin's face in the header: working, waiting for the user, done, or something went wrong.
+    private var mood: LalaLogo.Mood {
+        if ws.executionError != nil { return .error }
+        if ws.thinking || ws.executing || ws.preparing || ws.assembly != nil { return .thinking }
+        if ws.pendingText != nil || ws.pendingAllocation != nil { return .waiting }
+        if let outcome = (ws.savedBoard ?? ws.finishedCanvas)?.outcome { return outcome.ok ? .done : .error }
+        return .waiting
     }
 }
 
@@ -1585,8 +1685,9 @@ private struct ChatActions: View {
                         Button { Task { await ws.send(phrase) } } label: { Label(phrase, systemImage: icon) }
                             .buttonStyle(.plain).font(.system(size: 12))
                             .padding(.horizontal, 10).padding(.vertical, 6)
-                            .background(Capsule().fill(Brand.accent.opacity(0.1)))
-                            .foregroundStyle(phrase == "close" ? Brand.loss : Brand.accent)
+                            .background(Capsule().fill(Brand.glassFill))
+                            .overlay(Capsule().strokeBorder(Brand.glassRim))
+                            .foregroundStyle(phrase == "close" ? Brand.loss : Color.primary)
                     }
                 }
             }
@@ -1612,8 +1713,12 @@ private struct ChatActions: View {
                             .font(.caption.weight(.semibold)).foregroundStyle(.orange)
                         Spacer(minLength: 4)
                         if ws.missingDetails != nil {
-                            Button("By the book") { Task { await ws.send("by the book") } }
-                                .buttonStyle(.borderedProminent).controlSize(.small)
+                            Button { Task { await ws.send("by the book") } } label: {
+                                Text("By the book").font(.ui(12, .semibold)).foregroundStyle(Brand.onAccent)
+                                    .padding(.horizontal, 12).padding(.vertical, 6)
+                                    .background(Capsule().fill(Brand.accent))
+                            }
+                                .buttonStyle(.plain).pointerStyle(.link)
                                 .help("Stop from 4h volatility, take at 2R, 1% of capital at risk")
                         }
                     }
@@ -1625,10 +1730,12 @@ private struct ChatActions: View {
         }
     }
 
+    /// The one orange capsule: dark text on orange reads in both themes; grey when it can't be pressed yet.
     private func primary(_ title: String, enabled: Bool = true) -> some View {
-        Text(title).font(.system(size: 14, weight: .semibold)).foregroundStyle(.white)
-            .frame(maxWidth: .infinity, minHeight: 40)
-            .background(RoundedRectangle(cornerRadius: 12).fill(enabled ? Brand.accent : Color.gray.opacity(0.5)))
+        Text(title).font(.ui(14, .semibold)).foregroundStyle(enabled ? Brand.onAccent : Color.secondary)
+            .frame(maxWidth: .infinity, minHeight: 42)
+            .background(Capsule().fill(enabled ? Brand.accent : Color.primary.opacity(0.08)))
+            .overlay(Capsule().strokeBorder(enabled ? Color.white.opacity(0.35) : .clear))
     }
 }
 
@@ -1640,34 +1747,37 @@ private struct ChatComposer: View {
     var body: some View {
         HStack(alignment: .bottom, spacing: 8) {
             Button { templatesOpen.toggle() } label: {
-                Image(systemName: "square.grid.2x2").font(.system(size: 15, weight: .semibold))
+                Image(systemName: "square.grid.2x2").font(.system(size: 14, weight: .semibold))
                     .frame(width: 34, height: 34)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(Brand.card))
+                    .background(Circle().fill(Brand.glassFill))
+                    .overlay(Circle().strokeBorder(Brand.glassRim))
             }
             .buttonStyle(.plain)
             .pointerStyle(.link)
-            .foregroundStyle(Brand.accent)
+            .foregroundStyle(.secondary)
             .help("Plan templates")
             .popover(isPresented: $templatesOpen, arrowEdge: .top) {
                 TemplatesPanel { phrase in ws.draft = phrase; templatesOpen = false }
             }
             TextField("What should we do?", text: Bindable(ws).draft, axis: .vertical)
-                .textFieldStyle(.plain).font(.system(size: 14)).lineLimit(1...5)
+                .textFieldStyle(.plain).font(.ui(14)).lineLimit(1...5)
                 .padding(.vertical, 8)
                 .onSubmit(send)
             Button(action: send) {
                 Image(systemName: "arrow.up").font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(Color(nsColor: .windowBackgroundColor))
+                    .foregroundStyle(ws.draft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Brand.onAccent))
                     .frame(width: 34, height: 34)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(ws.draft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(.primary)))
+                    .background(Circle().fill(ws.draft.isEmpty ? Color.primary.opacity(0.08) : Brand.accent))
             }
             .buttonStyle(.plain)
             .pointerStyle(ws.draft.isEmpty || ws.busy ? nil : .link)
             .disabled(ws.draft.isEmpty || ws.busy)
             .keyboardShortcut(.return, modifiers: .command)
         }
-        .padding(6)
-        .background(RoundedRectangle(cornerRadius: 14).fill(.fill.tertiary))
+        .padding(.vertical, 5).padding(.leading, 5).padding(.trailing, 5)
+        // A glass pill on the glass chat: white in light mode, faint in dark.
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Brand.glassFill))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Brand.glassRim))
         .padding(12)
     }
 
@@ -1708,7 +1818,7 @@ struct ChatModelMenu: View {
                 Text(ws.model.isEmpty ? ws.provider.info.name : LLMCatalog.displayName(model: ws.model)).lineLimit(1)
                 Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 8, weight: .bold))
             }
-            .font(.caption).foregroundStyle(Brand.accent)
+            .font(.caption).foregroundStyle(Brand.accentInk)
             .padding(.leading, 3).padding(.trailing, 6).padding(.vertical, 2)
             .background(Capsule().fill(Brand.accent.opacity(open ? 0.12 : 0)))
         }
@@ -1866,7 +1976,7 @@ private struct CompanyRow: View {
                     Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary)
                         .rotationEffect(.degrees(disclosure ? 90 : 0))
                 } else if current {
-                    Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Brand.accent)
+                    Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Brand.accentInk)
                 }
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
@@ -2024,7 +2134,7 @@ struct TakeChoices: View {
                             HStack(spacing: 6) {
                                 Text(style.title).font(.system(size: 15, weight: .heavy))
                                 if style == .partial {
-                                    Text("LALA recommends").font(.system(size: 10, weight: .bold)).foregroundStyle(.white)
+                                    Text("LALA recommends").font(.system(size: 10, weight: .bold)).foregroundStyle(Brand.onAccent)
                                         .padding(.horizontal, 7).padding(.vertical, 2)
                                         .background(Capsule().fill(Brand.accent))
                                 }
@@ -2110,7 +2220,7 @@ struct PositionBoard: View {
                     .buttonStyle(.plain).font(.system(size: 12, weight: .semibold))
                     .padding(.horizontal, 10).padding(.vertical, 7)
                     .background(RoundedRectangle(cornerRadius: 9).fill(item.0 == "breakeven" ? Brand.accent : Color.white.opacity(0.12)))
-                    .foregroundStyle(item.0 == "close" ? Color(hex: 0xFF9C8F) : .white)
+                    .foregroundStyle(item.0 == "close" ? Color(hex: 0xFF9C8F) : item.0 == "breakeven" ? Brand.onAccent : .white)
                 }
             }
             .padding(5)
@@ -2365,27 +2475,51 @@ struct RailActions: View {
             withAnimation(StudioView.spring) { action() }
             mode = "plan"
         } label: {
-            Group {
-                if compact {
-                    Image(systemName: icon).font(.system(size: 15, weight: .semibold)).frame(width: 38, height: 38)
-                } else {
-                    HStack(spacing: 7) {
-                        Image(systemName: icon).font(.system(size: 14, weight: .semibold))
-                        Text(title).font(.system(size: 12, weight: .semibold)).lineLimit(1).minimumScaleFactor(0.8)
-                        Spacer(minLength: 0)
-                    }
-                    .padding(.horizontal, 11).padding(.vertical, 10)
-                    .frame(maxWidth: .infinity)
+            if compact {
+                RailRound(icon: icon, on: on, accent: accent)
+            } else {
+                // A glass capsule; Top up is the orange one.
+                HStack(spacing: 6) {
+                    Image(systemName: icon).font(.system(size: 13, weight: .semibold))
+                    Text(title).font(.ui(13, .semibold)).lineLimit(1).minimumScaleFactor(0.8)
                 }
+                .padding(.horizontal, 10)
+                .frame(maxWidth: .infinity, minHeight: 38)
+                .foregroundStyle(accent ? Brand.onAccent : on ? Brand.accentInk : Color.primary)
+                .background(Capsule().fill(accent ? Brand.accent : on ? Brand.accent.opacity(0.16) : Brand.glassFill))
+                .overlay(Capsule().strokeBorder(accent ? Color.white.opacity(on ? 0.8 : 0.35) : on ? Brand.accent.opacity(0.6) : Brand.glassRim, lineWidth: 1))
+                .contentShape(Capsule())
             }
-            .foregroundStyle(accent ? Color.white : on ? Brand.accent : Color.primary)
-            .background(RoundedRectangle(cornerRadius: 12).fill(accent ? Brand.accent : Color.primary.opacity(on ? 0.1 : 0.05)))
-            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(accent ? Color.white.opacity(on ? 0.7 : 0) : on ? Brand.accent : .clear, lineWidth: 1.5))
-            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .modifier(HoverLift(radius: 12))
+        .modifier(HoverLift(radius: compact ? 20 : 19, lift: 1.03))
         .help(compact ? "\(title): \(help)" : help)
+    }
+}
+
+/// A round button of the folded sidebar: a light glass circle, orange for Top up, dashed for a new canvas.
+struct RailRound: View {
+    let icon: String
+    var on = false
+    var accent = false
+    var dashed = false
+    /// No circle until the pointer is over it (the expand button).
+    var plain = false
+    @State private var hover = false
+
+    var body: some View {
+        Image(systemName: icon).font(.system(size: 15, weight: .semibold))
+            .foregroundStyle(accent ? Brand.onAccent : on ? Brand.accentInk : Color.primary.opacity(0.8))
+            .frame(width: 40, height: 40)
+            .background {
+                if accent { Circle().fill(Brand.accent) }
+                else if dashed { Circle().strokeBorder(Color.secondary.opacity(0.55), style: StrokeStyle(lineWidth: 1.2, dash: [3, 3])) }
+                else if !plain || hover { Circle().fill(on ? Brand.accent.opacity(0.16) : Brand.glassFill) }
+            }
+            .overlay { if !accent, !dashed, !plain { Circle().strokeBorder(on ? Brand.accent.opacity(0.6) : Brand.glassRim, lineWidth: 1) } }
+            .contentShape(Circle())
+            .onHover { hover = $0 }
+            .pointerStyle(.link)
     }
 }
 

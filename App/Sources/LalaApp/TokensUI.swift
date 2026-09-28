@@ -96,7 +96,7 @@ struct TokenIcon: View {
                 image.resizable().scaledToFill().frame(width: size, height: size).clipShape(Circle())
             } placeholder: {
                 Circle().fill(Brand.accent.opacity(0.14)).frame(width: size, height: size)
-                    .overlay(Text(token.symbol.prefix(2)).font(.system(size: size * 0.36, weight: .bold)).foregroundStyle(Brand.accent))
+                    .overlay(Text(token.symbol.prefix(2)).font(.system(size: size * 0.36, weight: .bold)).foregroundStyle(Brand.accentInk))
             }
             TokenLogo(name: token.chainLogo, size: size * 0.42).offset(x: 3, y: 3)
         }

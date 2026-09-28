@@ -203,7 +203,7 @@ struct TokenBoard: View {
 
     private func held(_ h: StockHolding) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "wallet.pass.fill").foregroundStyle(Brand.accent)
+            Image(systemName: "wallet.pass.fill").foregroundStyle(Brand.accentInk)
             VStack(alignment: .leading, spacing: 1) {
                 Text("You hold \(Fmt.num(h.amount, maxFraction: 6)) \(h.symbol)").font(.system(size: 13, weight: .semibold))
                 Text(isStock ? "valued at Robinhood’s bid \(h.price.map(tokenPrice) ?? "—")" : "valued at the pool price").font(.caption2).foregroundStyle(.secondary)
@@ -232,7 +232,7 @@ struct TokenBoard: View {
             if let pair = market?.pairURL { Link("DexScreener", destination: pair) }
             if chain == "robinhood", let url = URL(string: "https://robinhoodchain.blockscout.com/token/\(address)") { Link("Explorer", destination: url) }
         }
-        .buttonStyle(.borderless).font(.caption).tint(Brand.accent).foregroundStyle(Brand.accent)
+        .buttonStyle(.borderless).font(.caption).tint(Brand.accent).foregroundStyle(Brand.accentInk)
     }
 
     private var actions: some View {
@@ -241,7 +241,7 @@ struct TokenBoard: View {
         return HStack(spacing: 6) {
             ForEach([("Buy \(symbol)", buy), ("Sell", sell)], id: \.0) { title, phrase in
                 Button { ws.draft = phrase } label: {
-                    Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(title == "Sell" ? Brand.loss : Brand.accent)
+                    Text(title).font(.system(size: 12, weight: .semibold)).foregroundStyle(title == "Sell" ? Brand.loss : Brand.accentInk)
                         .padding(.horizontal, 12).padding(.vertical, 6)
                         .background(Capsule().fill((title == "Sell" ? Brand.loss : Brand.accent).opacity(0.1)))
                 }

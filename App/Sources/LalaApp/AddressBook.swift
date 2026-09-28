@@ -91,12 +91,12 @@ struct AddressIconView: View {
 
     private func symbol(_ name: String) -> some View {
         Circle().fill(Brand.accent.opacity(0.12)).frame(width: size, height: size)
-            .overlay(Image(systemName: name).font(.system(size: size * 0.42, weight: .semibold)).foregroundStyle(Brand.accent))
+            .overlay(Image(systemName: name).font(.system(size: size * 0.42, weight: .semibold)).foregroundStyle(Brand.accentInk))
     }
 
     private var letter: some View {
         Circle().fill(Brand.accent.opacity(0.12)).frame(width: size, height: size)
-            .overlay(Text(entry.name.prefix(1).uppercased()).font(.system(size: size * 0.45, weight: .bold)).foregroundStyle(Brand.accent))
+            .overlay(Text(entry.name.prefix(1).uppercased()).font(.system(size: size * 0.45, weight: .bold)).foregroundStyle(Brand.accentInk))
     }
 }
 

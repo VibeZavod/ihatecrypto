@@ -11,7 +11,7 @@ struct ReceiveBoard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
-                Image(systemName: "arrow.down.circle.fill").foregroundStyle(Brand.accent).font(.system(size: 18))
+                Image(systemName: "arrow.down.circle.fill").foregroundStyle(Brand.accentInk).font(.system(size: 18))
                 Text("Top up LALA").font(.system(size: 16, weight: .bold))
                 Spacer()
                 Button { withAnimation(StudioView.spring) { ws.showReceive = false } } label: { Image(systemName: "xmark") }
@@ -66,7 +66,7 @@ struct ReceiveCard: View {
                     TokenLogo(name: logo, size: 20)
                     Text(network).font(.system(size: 14, weight: .bold))
                     if let badge {
-                        Text(badge.uppercased()).font(.system(size: 9, weight: .heavy)).foregroundStyle(.white)
+                        Text(badge.uppercased()).font(.system(size: 9, weight: .heavy)).foregroundStyle(Brand.onAccent)
                             .padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(Brand.accent))
                     }
                 }
