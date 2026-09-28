@@ -397,6 +397,8 @@ struct StudioRail: View {
     @State private var balanceHover = false
     /// The folded rail's coin was clicked: the balances are being read again.
     @State private var refreshing = false
+    /// In full screen the traffic lights are up in the menu bar's strip: the rail's first row is free for the logo.
+    @State private var fullScreen = false
     /// The folded strip leaves room on both sides of the traffic lights.
     static let narrowWidth: CGFloat = 92, wideWidth: CGFloat = 280
 
@@ -417,6 +419,10 @@ struct StudioRail: View {
         .frame(maxHeight: .infinity, alignment: .top)
         .clipShape(RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
         .animation(StudioView.spring, value: collapsed)
+        // The rail is built again when Settings closes, possibly already in full screen: ask the window, then follow it.
+        .onAppear { fullScreen = NSApp.windows.contains { $0.styleMask.contains(.fullScreen) } }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { _ in fullScreen = true }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { _ in fullScreen = false }
         // Glass picks its own light or dark look from what's behind it; the rail's text follows the window instead.
         .environment(\.colorScheme, scheme)
         // Liquid Glass: the rail floats over the canvas's ground.
@@ -456,19 +462,29 @@ struct StudioRail: View {
     private let lightsTop = TrafficLights.center.y - 10 - Self.lightsRow / 2
     static let lightsRow: CGFloat = 28
 
+    private var collapseButton: some View {
+        Button { withAnimation(StudioView.spring) { collapsed = true } } label: { Image(systemName: "sidebar.left") }
+            .buttonStyle(.hoverIcon).help("Collapse the sidebar")
+    }
+
+    /// Top padding: under the traffic lights' row in a window, a plain margin in full screen.
+    private var top: CGFloat { fullScreen ? 14 : lightsTop }
+
     private var wide: some View {
         VStack(alignment: .leading, spacing: 16) {
             // The traffic lights are on this row; its empty part drags the window, as a title bar would.
-            HStack {
-                WindowDragArea()
-                Button { withAnimation(StudioView.spring) { collapsed = true } } label: { Image(systemName: "sidebar.left") }
-                    .buttonStyle(.hoverIcon).help("Collapse the sidebar")
+            if !fullScreen {
+                HStack {
+                    WindowDragArea()
+                    collapseButton
+                }
+                .frame(height: Self.lightsRow)
             }
-            .frame(height: Self.lightsRow)
             HStack(spacing: 8) {
                 LalaLogo(size: 30)
                 Text("ihatecrypto").font(.brand(19)).lineLimit(1).fixedSize()
                 Spacer(minLength: 0)
+                if fullScreen { collapseButton }
             }
             // The balance and its buttons stay put; only the canvases scroll, in the room left above the profile.
             // Places, positions, closed trades and favorites are on the canvas.
@@ -495,14 +511,14 @@ struct StudioRail: View {
             CanvasList()
             ProfileMenu(compact: false)
         }
-        .padding(.horizontal, 14).padding(.top, lightsTop).padding(.bottom, 12)
+        .padding(.horizontal, 14).padding(.top, top).padding(.bottom, 12)
     }
 
     /// Folded: a strip of round glass buttons, the logo on top and the profile at the bottom.
     private var narrow: some View {
         VStack(spacing: 8) {
             // The traffic lights' row, which also drags the window.
-            WindowDragArea().frame(height: Self.lightsRow)
+            if !fullScreen { WindowDragArea().frame(height: Self.lightsRow) }
             // The coin and the balance, above the orange Top up button: a click reads the balances again. The coin works
             // on it and the number fades until it's done; nothing else moves.
             Button {
@@ -545,7 +561,7 @@ struct StudioRail: View {
                 .buttonStyle(RailRound(icon: "sidebar.left", plain: true)).help("Expand the sidebar")
             ProfileMenu(compact: true)
         }
-        .padding(.top, lightsTop).padding(.bottom, 12)
+        .padding(.top, top).padding(.bottom, 12)
     }
 
     /// Every section of the rail but the canvases shows this many rows, then «Show N more».
