@@ -127,6 +127,8 @@ final class Workspace {
     var showSchedule = false
     /// Where the chat is in the window, so scrolling over it isn't taken by the canvas.
     @ObservationIgnored var chatFrame: CGRect = .zero
+    /// The same for the rail, which floats over the canvas too.
+    @ObservationIgnored var railFrame: CGRect = .zero
     /// The plan being assembled on the canvas, block by block (S02: the chat shows the count).
     var assembly: (shown: Int, total: Int)?
     /// A place opened from the rail or the portfolio: «solana», «hyperliquid», «jupiter», «aave».

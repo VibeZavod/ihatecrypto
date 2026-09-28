@@ -169,56 +169,62 @@ struct StudioView: View {
     }
 
     var body: some View {
-        HStack(spacing: 0) {
-            // The rail floats over the canvas's ground as a glass panel; the window's traffic lights sit inside it.
-            StudioRail().padding([.leading, .vertical], 10)
-            GeometryReader { geo in
-                let maxWidth = max(Self.minChat, geo.size.width / 2)
-                let width = min(resizing ?? CGFloat(chatWidth), maxWidth)
-                // Full height, or compact (half the window); the header moves the chat anywhere inside the canvas.
-                let full = max(200, geo.size.height - 32)
-                let small = min(full, max(260, geo.size.height * 0.5))
-                let height = chatOpen ? full : small
-                let room = CGSize(width: max(0, geo.size.width - width - 32), height: max(0, geo.size.height - height - 32))
-                let place = Self.clamp(CGSize(width: chatX + moving.width, height: chatY + moving.height), room: room)
-                // Docked, the canvas keeps clear of the chat; moved away, the chat floats over it.
-                let docked = place.width > -40 && place.height > -40
-                ZStack(alignment: .topTrailing) {
-                    if mode == "history" {
-                        HistoryView { withAnimation(.snappy) { mode = "plan" } }
-                    } else {
-                        // The canvas's scale follows the window alone: moving or resizing the chat, which floats
-                        // above everything, never shifts or rescales the boards.
-                        StudioCanvas(inset: Self.chatColumn)
+        // Where the rail ends: the canvas runs under it, its boards start past it.
+        let railEdge = 10 + (railCollapsed ? StudioRail.narrowWidth : StudioRail.wideWidth)
+        ZStack(alignment: .topLeading) {
+            // The canvas fills the window: the boards show around and through the glass rail, not cut at its edge.
+            if mode == "history" {
+                HistoryView { withAnimation(.snappy) { mode = "plan" } }.padding(.leading, railEdge)
+            } else {
+                // The canvas's scale follows the window alone: moving or resizing the chat, which floats
+                // above everything, never shifts or rescales the boards.
+                StudioCanvas(inset: Self.chatColumn, leading: railEdge)
+            }
+            HStack(spacing: 0) {
+                // The rail floats over the canvas as a glass panel; the window's traffic lights sit inside it.
+                StudioRail().padding([.leading, .vertical], 10)
+                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { ws.railFrame = $0 }
+                GeometryReader { geo in
+                    let maxWidth = max(Self.minChat, geo.size.width / 2)
+                    let width = min(resizing ?? CGFloat(chatWidth), maxWidth)
+                    // Full height, or compact (half the window); the header moves the chat anywhere inside the canvas.
+                    let full = max(200, geo.size.height - 32)
+                    let small = min(full, max(260, geo.size.height * 0.5))
+                    let height = chatOpen ? full : small
+                    let room = CGSize(width: max(0, geo.size.width - width - 32), height: max(0, geo.size.height - height - 32))
+                    let place = Self.clamp(CGSize(width: chatX + moving.width, height: chatY + moving.height), room: room)
+                    // Docked, the canvas keeps clear of the chat; moved away, the chat floats over it.
+                    let docked = place.width > -40 && place.height > -40
+                    ZStack(alignment: .topTrailing) {
+                        FloatingChat(
+                            compact: !chatOpen,
+                            wide: width >= maxWidth - 1,
+                            toggleCompact: { withAnimation(Self.spring) { chatOpen.toggle() } },
+                            toggleWide: { withAnimation(Self.spring) { chatWidth = width >= maxWidth - 1 ? 350 : Double(maxWidth) } },
+                            drag: $moving,
+                            endDrag: { pull in
+                                let end = Self.clamp(CGSize(width: chatX + pull.width, height: chatY + pull.height), room: room)
+                                // Close to its corner it snaps home.
+                                let home = end.width > -40 && end.height > -40
+                                chatX = home ? 0 : end.width
+                                chatY = home ? 0 : end.height
+                                moving = .zero
+                            },
+                            dock: { chatX = 0; chatY = 0 }
+                        )
+                        .frame(width: width, height: height)
+                        .overlay(alignment: .leading) { edge(width: width, maxWidth: maxWidth) }
+                        .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { ws.chatFrame = $0 }
+                        .shadow(color: .black.opacity(docked ? 0 : 0.22), radius: 26, y: 16)
+                        .offset(place)
+                        .padding(16)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                     }
-                    FloatingChat(
-                        compact: !chatOpen,
-                        wide: width >= maxWidth - 1,
-                        toggleCompact: { withAnimation(Self.spring) { chatOpen.toggle() } },
-                        toggleWide: { withAnimation(Self.spring) { chatWidth = width >= maxWidth - 1 ? 350 : Double(maxWidth) } },
-                        drag: $moving,
-                        endDrag: { pull in
-                            let end = Self.clamp(CGSize(width: chatX + pull.width, height: chatY + pull.height), room: room)
-                            // Close to its corner it snaps home.
-                            let home = end.width > -40 && end.height > -40
-                            chatX = home ? 0 : end.width
-                            chatY = home ? 0 : end.height
-                            moving = .zero
-                        },
-                        dock: { chatX = 0; chatY = 0 }
-                    )
-                    .frame(width: width, height: height)
-                    .overlay(alignment: .leading) { edge(width: width, maxWidth: maxWidth) }
-                    .onGeometryChange(for: CGRect.self) { $0.frame(in: .global) } action: { ws.chatFrame = $0 }
-                    .shadow(color: .black.opacity(docked ? 0 : 0.22), radius: 26, y: 16)
-                    .offset(place)
-                    .padding(16)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                    // @AppStorage changes skip withAnimation, so the spring is tied to the values themselves.
+                    .animation(Self.spring, value: chatOpen)
+                    .animation(Self.spring, value: chatX)
+                    .animation(Self.spring, value: chatY)
                 }
-                // @AppStorage changes skip withAnimation, so the spring is tied to the values themselves.
-                .animation(Self.spring, value: chatOpen)
-                .animation(Self.spring, value: chatX)
-                .animation(Self.spring, value: chatY)
             }
         }
         // No title bar: the rail and the canvas go up to the window's top edge.
@@ -849,6 +855,8 @@ struct StudioCanvas: View {
     @Environment(Workspace.self) private var ws
     /// Width covered by the floating chat on the right; the content is scaled to fit left of it.
     var inset: CGFloat = 0
+    /// Width covered by the rail on the left: the canvas runs under it, the content starts past it.
+    var leading: CGFloat = 0
     @State private var frames: [String: CGRect] = [:]
     /// How many plan blocks are on the canvas; grows one by one when a new plan arrives.
     @State private var shown = 0
@@ -858,7 +866,7 @@ struct StudioCanvas: View {
     private static let contentWidth: CGFloat = 28 + 270 + 36 + 470 + 24
 
     var body: some View {
-        CanvasViewport(inset: inset, contentWidth: Self.contentWidth) { content }
+        CanvasViewport(inset: inset, leading: leading, contentWidth: Self.contentWidth) { content }
             .task(id: planKey) { await assemble() }
     }
 
@@ -1088,6 +1096,8 @@ struct CanvasViewport<Content: View>: View {
     @Environment(\.colorScheme) private var scheme
     /// Width covered by the floating chat on the right; the content is scaled to fit left of it.
     let inset: CGFloat
+    /// Width covered by the rail on the left; the content starts past it.
+    let leading: CGFloat
     /// The content's own width: at 100 % it fits left of the chat.
     let contentWidth: CGFloat
     @ViewBuilder let content: Content
@@ -1105,7 +1115,7 @@ struct CanvasViewport<Content: View>: View {
 
     var body: some View {
         GeometryReader { geo in
-            let fit = min(1, max(0.55, (geo.size.width - inset) / contentWidth))
+            let fit = min(1, max(0.55, (geo.size.width - inset - leading) / contentWidth))
             canvas(scale: fit * zoom)
         }
     }
@@ -1114,7 +1124,7 @@ struct CanvasViewport<Content: View>: View {
         // Zooming about a point P keeps it still: the offset becomes P − (P − pan)·k.
         let k = Self.zoomRange.clamped(zoom * pinch) / zoom
         let scale = base * k
-        let live = CGSize(width: pan.width + drag.width, height: pan.height + drag.height)
+        let live = CGSize(width: leading + pan.width + drag.width, height: pan.height + drag.height)
         let moved = CanvasZoom.pan(keeping: (pinchAt.x, pinchAt.y), from: (live.width, live.height), by: k)
         // The ground (color and dots) is StudioView's, under the rail too; this only takes the gestures.
         // The content hangs in an overlay so the viewport keeps the window's size: a board taller than the window
@@ -1148,14 +1158,14 @@ struct CanvasViewport<Content: View>: View {
         .onAppear(perform: watchScrolling)
         .onDisappear { if let m = scrollMonitor { NSEvent.removeMonitor(m); scrollMonitor = nil }; CanvasSharpness.shared.track(false) }
         .onChange(of: scale >= CanvasSharpness.from, initial: true) { _, on in CanvasSharpness.shared.track(on) }
-        .overlay(alignment: .bottomLeading) { zoomBar(scale).padding(18) }
+        .overlay(alignment: .bottomLeading) { zoomBar(scale).padding(18).padding(.leading, leading) }
     }
 
     /// Changes the zoom by `factor`, keeping `point` (in the canvas) where it is.
     private func zoomAbout(_ point: CGPoint, by factor: CGFloat) {
         let next = Self.zoomRange.clamped(zoom * factor)
         let k = next / zoom
-        let moved = CanvasZoom.pan(keeping: (point.x, point.y), from: (pan.width, pan.height), by: k)
+        let moved = CanvasZoom.pan(keeping: (point.x - leading, point.y), from: (pan.width, pan.height), by: k)
         pan = CGSize(width: moved.x, height: moved.y)
         zoom = next
         pinchAt = .zero
@@ -1171,7 +1181,7 @@ struct CanvasViewport<Content: View>: View {
             guard hovering.wrappedValue, let window = event.window else { return event }
             let height = window.contentView?.bounds.height ?? 0
             let point = CGPoint(x: event.locationInWindow.x, y: height - event.locationInWindow.y)
-            if ws.chatFrame.contains(point) { return event }
+            if ws.chatFrame.contains(point) || ws.railFrame.contains(point) { return event }
             let step: CGFloat = event.hasPreciseScrollingDeltas ? 1 : 10
             if event.modifierFlags.contains(.command) {
                 NotificationCenter.default.post(name: .lalaCanvasZoom, object: nil, userInfo: ["factor": 1 + event.scrollingDeltaY * step * 0.01])
