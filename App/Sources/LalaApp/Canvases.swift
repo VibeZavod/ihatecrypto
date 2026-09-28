@@ -689,7 +689,7 @@ struct MoveRoute {
 
 /// A route step's color, by place; kept by name, so a saved route draws the same.
 enum RouteFill: String, Codable, Hashable, Sendable {
-    case solana, relay, hyperliquid, hlp, jupiter, kamino, jito, aave, morpho, base, arbitrum, robinhood
+    case solana, relay, hyperliquid, hlp, jupiter, kamino, jito, aave, morpho, base, arbitrum, robinhood, near
 
     var color: Color {
         switch self {
@@ -705,6 +705,7 @@ enum RouteFill: String, Codable, Hashable, Sendable {
         case .base: Color(hex: 0x0052FF)
         case .arbitrum: Color(hex: 0x213147)
         case .robinhood: Color(hex: 0x3A4A00)
+        case .near: Color(hex: 0x10231C)
         }
     }
     var dark: Bool { self != .solana }
@@ -725,6 +726,7 @@ extension Workspace {
         case .robinhoodToSolana(let amount): backRoute(from: "robinhood", amount: amount)
         case .solanaTo(let place, let amount?): outRoute(to: place, amount: amount)
         case .buyStock(let symbol, let usdc?): stockRoute(symbol, usdc)
+        case .sellNear(let asked): sellNearRoute(asked)
         default: ends(command).map { from, to in
             let footer = if case .sellStock = command {
                 "Two Robinhood Chain transactions: an exact approve and the Uniswap swap, which may only pay this wallet. Say “do it” or press Confirm; anything else cancels."
@@ -738,6 +740,26 @@ extension Workspace {
 
     private func step(_ logo: String, _ label: String, _ title: String, _ line: String, _ fill: RouteFill) -> ActivityBubble {
         ActivityBubble(kind: "step", label: label, title: title, lines: [line], logo: logo, fill: fill)
+    }
+
+    /// Any wallet command without a drawn route still gets its card with Confirm: a pending move is never invisible.
+    func fallbackRoute(_ command: WalletCommand) -> MoveRoute {
+        MoveRoute(title: readable(Self.canvasTitle(command)),
+                  footer: "Checked and simulated before it’s signed. Say “do it” or press Confirm; anything else cancels.", steps: [])
+    }
+
+    /// Native NEAR → USDC on Solana through NEAR Intents (1Click); «all» keeps ≈ 0.02 NEAR for storage and the fee.
+    private func sellNearRoute(_ asked: Decimal?) -> MoveRoute {
+        let amount = asked ?? max(0, near - Decimal(string: "0.02")!)
+        let usd = markets["NEAR"].map { amount * $0.markPx }
+        return MoveRoute(title: "Sell \(Fmt.num(amount, maxFraction: 4)) NEAR for USDC on Solana",
+                         footer: "One NEAR transaction: exactly this NEAR, wrapped and sent to the 1Click deposit address the quote names, checked before signing. USDC arrives on your own Solana address in ≈ 30–40 s. Say “do it” or press Confirm.",
+                         steps: [
+            step("near", "FROM · NEAR", "\(Fmt.num(amount, maxFraction: 4)) NEAR", usd.map { "≈ \(Fmt.usd($0)) · ≈ 0.02 NEAR stays for storage" } ?? "", .near),
+            step("near", "SWAP · NEAR INTENTS", "1Click", "≈ 30–40 s · the quote is checked", .relay),
+            step("sol", "TO · SOLANA", usd.map { "≈ \(Fmt.num($0.rounded(2, .plain))) USDC" } ?? "USDC",
+                 "your own address ✓", .solana),
+        ])
     }
 
     private func withdrawRoute(_ asked: Decimal?) -> MoveRoute {
@@ -967,7 +989,8 @@ struct WithdrawBoard: View {
     @Environment(Workspace.self) private var ws
 
     var body: some View {
-        if case .wallet(let command)? = ws.pendingAction, let route = ws.route(command) {
+        if case .wallet(let command)? = ws.pendingAction {
+            let route = ws.route(command) ?? ws.fallbackRoute(command)
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
