@@ -75,12 +75,9 @@ struct StockLogo: View {
         if let bundled = TokenLogo.name(forAsset: symbol) {
             TokenLogo(name: bundled, size: size)
         } else {
-            AsyncImage(url: url) { image in
-                image.resizable().scaledToFit().frame(width: size, height: size).clipShape(Circle())
-            } placeholder: {
+            RemoteIcon(url: url, size: size, contentMode: .fit) {
                 AssetBadge(coin: symbol, size: size, dark: true)
             }
-            .frame(width: size, height: size)
         }
     }
 }

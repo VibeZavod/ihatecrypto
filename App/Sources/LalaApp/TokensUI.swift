@@ -105,6 +105,8 @@ extension Workspace {
         for t in favoriteTokens {
             if let info = try? await TokenLookup.lookup(t.address).first(where: { $0.chain == t.chain }) { found[t.id] = info }
         }
+        // Prices first: the balances take two RPC calls per token and shouldn't hold them back (tokenInfo skips an
+        // unchanged merge, so a quiet refresh still redraws nothing).
         tokenInfo.merge(found) { $1 }
         await loadTokenBalances()
     }
@@ -129,9 +131,7 @@ struct TokenIcon: View {
 
     var body: some View {
         ZStack(alignment: .bottomTrailing) {
-            AsyncImage(url: token.image) { image in
-                image.resizable().scaledToFill().frame(width: size, height: size).clipShape(Circle())
-            } placeholder: {
+            RemoteIcon(url: token.image, size: size) {
                 Circle().fill(Brand.accent.opacity(0.14)).frame(width: size, height: size)
                     .overlay(Text(token.symbol.prefix(2)).font(.ui(size * 0.36, .bold)).foregroundStyle(Brand.accentInk))
             }

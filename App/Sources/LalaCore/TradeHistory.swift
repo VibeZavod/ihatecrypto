@@ -42,7 +42,7 @@ public enum TradeHistory {
     }
 
     /// One position from the first fill to flat again (or still open).
-    public struct Story: Identifiable, Sendable {
+    public struct Story: Identifiable, Sendable, Equatable {
         public var id: String { "\(coin)-\(opened.timeIntervalSince1970)" }
         public let coin: String
         public let long: Bool

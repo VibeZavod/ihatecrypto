@@ -32,6 +32,9 @@ final class Workspace {
     var thinking = false
 
     var markets: [String: Market] = [:]
+    /// The market picker's lists, names by group, most traded first. Set only when they change, so the picker
+    /// doesn't rebuild its menus with every price.
+    var marketNames: [Market.Group: [String]] = [:]
     var marketsError: String?
     var solana: Solana.Balance?
     var solanaError: String?
@@ -178,8 +181,18 @@ final class Workspace {
     var favoriteTokens: [FavoriteToken] = LocalStore.load("tokens.json") ?? [] {
         didSet { LocalStore.save(favoriteTokens, "tokens.json") }
     }
-    var tokenInfo: [String: TokenLookup.Info] = [:]
-    var tokenBalances: [String: Decimal] = [:]
+    /// Behind setters that skip an unchanged value: a `merge` in place (TokensUI, StocksUI) otherwise redraws the
+    /// window on every refresh, even with nothing new.
+    var tokenInfo: [String: TokenLookup.Info] {
+        get { tokenInfoRead }
+        set { if newValue != tokenInfoRead { tokenInfoRead = newValue } }
+    }
+    private var tokenInfoRead: [String: TokenLookup.Info] = [:]
+    var tokenBalances: [String: Decimal] {
+        get { tokenBalancesRead }
+        set { if newValue != tokenBalancesRead { tokenBalancesRead = newValue } }
+    }
+    private var tokenBalancesRead: [String: Decimal] = [:]
     var tokensCheckedAt = Date.distantPast
     /// Price alerts, one notification each; checked with every refresh (Alerts.swift).
     var alerts: [PriceAlert] = LocalStore.load("alerts.json") ?? [] {
@@ -282,7 +295,16 @@ final class Workspace {
     /// USDC on Arbitrum at our EVM address (money in transit or left from a transfer).
     var arbitrumUSDC: Decimal?
     /// Robinhood Chain at our EVM address: USDG, ETH for gas, the Stock Tokens bought through LALA (StocksUI.swift).
-    var robinhood: (usdg: Decimal, eth: Decimal, stocks: [StockHolding])?
+    /// A tuple isn't Equatable, so @Observable would redraw on every refresh's assignment: the setter skips an unchanged one.
+    var robinhood: (usdg: Decimal, eth: Decimal, stocks: [StockHolding])? {
+        get { robinhoodRead }
+        set {
+            if let n = newValue, let o = robinhoodRead, n == o { return }
+            if newValue == nil, robinhoodRead == nil { return }
+            robinhoodRead = newValue
+        }
+    }
+    private var robinhoodRead: (usdg: Decimal, eth: Decimal, stocks: [StockHolding])?
     /// Aave v3 USDC supply APY on Base, %, read from the pool itself.
     var aaveAPY: Decimal?
     /// Morpho's Gauntlet USDC Prime vault on Base, net of its fee.
@@ -294,7 +316,8 @@ final class Workspace {
         restoreLastCanvas()
         // What is on the open canvas at quit (a chart opened by a click, a board that finished building) is kept too.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
-            MainActor.assumeIsolated { self?.saveCanvas() }
+            // Then every file saved so far is written before the app goes (LocalStore writes off the main thread).
+            MainActor.assumeIsolated { self?.saveCanvas(); LocalStore.flush() }
         }
         // A locked screen or sleep ends the Touch ID session, however long the user let it be.
         let endSession: @Sendable (Notification) -> Void = { _ in
@@ -562,9 +585,11 @@ final class Workspace {
             reply(say("OK — nothing was waiting, nothing moved.", "Хорошо — ничего не ждало подтверждения, ничего не ушло."))
             return
         }
+        // Read once per message: each read is a Keychain round trip and a JSON decode.
+        let client = llmClient()
         // «да» with nothing waiting answers LALA's last question: the model reads it with the chat. Without a model
         // there is nothing to answer.
-        if llmClient() == nil, text.lowercased().wholeMatch(of: /\s*(?:делай|да|давай|подтверждаю|го|do\s+it|go|yes|yep|ok|okay|confirm|sign)[.!\s]*/) != nil {
+        if client == nil, text.lowercased().wholeMatch(of: /\s*(?:делай|да|давай|подтверждаю|го|do\s+it|go|yes|yep|ok|okay|confirm|sign)[.!\s]*/) != nil {
             reply(say("Nothing is waiting for a confirmation right now. Tell me what to do — for example “deposit 1 USDC into Jupiter”.",
                       "Сейчас нечего подтверждать. Скажи, что сделать — например «положи 1 USDC в Jupiter»."))
             return
@@ -612,7 +637,7 @@ final class Workspace {
         // A connected model reads every message first: its meaning, not keywords. What it understood goes through
         // the same parsers, checks, Jev and confirmations as a typed command. The local parsers below read the message
         // as typed when no model is connected or it can't be reached.
-        if let client = llmClient() {
+        if let client {
             await routeWithModel(text, client: client, before: before, offered: offered)
             return
         }
@@ -664,7 +689,6 @@ final class Workspace {
         // With no plan on the canvas, only a market or a direction starts one: «1 USDC» alone is not «long ETH».
         let startsPlan = intent != TradeIntent() || IntentParser.startsPlan(text, markets: Set(markets.keys))
         let parsed = startsPlan ? IntentParser.apply(text, to: intent, markets: Set(markets.keys)) : nil
-        let client = llmClient()
         let confident = parsed != nil && (client == nil || (!IntentParser.needsModel(text) && IntentParser.hasTradeWords(text)))
         if let next = parsed, confident {
             if await editExecuted(from: before, to: next) { return }
@@ -956,16 +980,21 @@ final class Workspace {
         async let vault = MorphoVault.value(me, rpc: rpc)
         async let eth = rpc.balance(me)
         async let arb = EVMRPC.arbitrum.tokenBalance(EVMRPC.arbitrumUSDC, owner: me)
+        // The rates move slowly: re-read them every ten minutes, not on every refresh.
+        let stale = aaveCheckedAt.map { Date().timeIntervalSince($0) > 600 } ?? true
+        async let rates: (aave: Decimal?, morpho: Decimal?) = stale ? (try? await AaveV3.verifyBase(rpc), await MorphoRates.netAPY()) : (nil, nil)
         // Awaited first, assigned together: every assignment after an await is one more redraw of the window.
-        let u = try? await usdc, a = try? await supplied, m = try? await vault, e = try? await eth, arbitrum = try? await arb
+        let u = try? await usdc, a = try? await supplied, m = try? await vault, e = try? await eth, arbitrum = try? await arb, r = await rates
         if let u, let a, let e {
-            base = (Decimal(u) / 1_000_000, Decimal(a) / 1_000_000, Decimal(m ?? 0) / 1_000_000, Decimal(e) / Decimal(sign: .plus, exponent: 18, significand: 1))
+            let b = (usdc: Decimal(u) / 1_000_000, aave: Decimal(a) / 1_000_000, morpho: Decimal(m ?? 0) / 1_000_000,
+                     eth: Decimal(e) / Decimal(sign: .plus, exponent: 18, significand: 1))
+            // A tuple isn't Equatable: without this check @Observable redraws on every refresh.
+            if base.map({ $0 != b }) ?? true { base = b }
         }
         if let arbitrum { arbitrumUSDC = Decimal(arbitrum) / 1_000_000 }
-        // The rate moves slowly: re-read it every ten minutes, not on every refresh.
-        if aaveCheckedAt.map({ Date().timeIntervalSince($0) > 600 }) ?? true, let apy = try? await AaveV3.verifyBase(rpc) {
+        if let apy = r.aave {
             aaveAPY = apy
-            morphoAPY = await MorphoRates.netAPY()
+            morphoAPY = r.morpho
             aaveCheckedAt = Date()
         }
     }
@@ -974,6 +1003,8 @@ final class Workspace {
         do {
             markets = try await Hyperliquid.markets()
             marketsError = nil
+            let names = Dictionary(uniqueKeysWithValues: Market.Group.allCases.map { g in (g, markets(g, limit: g == .crypto ? 25 : 30).map(\.name)) })
+            if names != marketNames { marketNames = names }
         } catch {
             marketsError = error.localizedDescription
         }
@@ -1001,7 +1032,8 @@ final class Workspace {
             let k = await kaminoPositions, n = await nearBalance
             solana = s
             solanaError = nil
-            lend = l
+            // Tuples aren't Equatable: without this check @Observable redraws on every refresh.
+            if !l.elementsEqual(lend, by: ==) { lend = l }
             if let k { kamino = k.reduce(0) { $0 + $1.valueUSD } }
             if let n { near = n.near + n.wrapped }
         } catch {
@@ -1031,14 +1063,18 @@ final class Workspace {
             let b = try await balance
             let p = ((await openPositions) ?? []).filter { $0.size != 0 }
             let o = (await openOrders) ?? [], v = await vault, d = await dexes
+            // The week's closes are read again when the open positions changed: after the positions and their
+            // notices, so a stop-out never waits on the fills request (one more redraw, only then).
+            let readFills = recentlyClosed == nil || Set(positions.map(\.coin)) != Set(p.map(\.coin))
             let before = Set(positions.map(\.coin))
             let waitingEntries = Set(orders.filter { !$0.isTrigger }.map(\.coin))
             hl = b
             hlError = nil
             positions = p
-            dexBalances = d
+            // Tuples aren't Equatable: without these checks @Observable redraws on every refresh.
+            if d.count != dexBalances.count || d.contains(where: { dex, new in dexBalances[dex].map { $0 != new } ?? true }) { dexBalances = d }
             orders = o
-            if let v { hlp = (v.equity, v.lockedUntil) }
+            if let v, hlp != (v.equity, v.lockedUntil) { hlp = (v.equity, v.lockedUntil) }
             // A position that vanished while we were not closing it was closed by its stop or take.
             if !executing {
                 for coin in before.subtracting(positions.map(\.coin)) { await closedByExchange(coin) }
@@ -1057,7 +1093,7 @@ final class Workspace {
                 notify(.hlp, say("HLP unlocked", "HLP разблокирован"),
                        say("\(Fmt.usd(hlp.equity)) in the HLP vault can be withdrawn now.", "\(Fmt.usd(hlp.equity)) в хранилище HLP теперь можно вывести."))
             }
-            if recentlyClosed == nil || before != Set(positions.map(\.coin)), let fills = try? await TradeHistory.fills(user: hlAddress) {
+            if readFills, let fills = try? await TradeHistory.fills(user: user) {
                 let week = Date().addingTimeInterval(-7 * 86400)
                 recentlyClosed = TradeHistory.stories(fills).filter { ($0.closed ?? .distantPast) > week }
             }
@@ -1101,14 +1137,17 @@ final class Workspace {
 
     func loadSigner() async {
         guard SignerClient.isAvailable, let status = try? await SignerClient().send(.status) else { return }
+        // The switch first, before anything can wait: the old wallet's card, rules and positions go at once.
         signerHasWallet = status.hasWallet
         wallets = status.wallets ?? []
         if status.activeWallet != activeWalletID { walletChanged(to: status.activeWallet) }
         // A phrase wallet imported before NEAR: the signer derives the address once (one unlock), then keeps it.
-        // A key wallet has no NEAR account at all.
+        // A key wallet has no NEAR account at all. The rest is assigned together after it: every assignment after an
+        // await is one more redraw of the window.
         let phrase = activeWallet?.kind ?? "phrase" == "phrase"
         let near = status.hasWallet == true && status.nearAddress == nil && phrase ? try? await SignerClient().send(.nearAddress).nearAddress : status.nearAddress
-        if nearAddress != near { nearAddress = near; await loadSolana() }
+        let nearChanged = nearAddress != near
+        nearAddress = near
         agentAddress = status.agentAddress
         agentActive = status.agentActive ?? false
         sessionLength = status.sessionLength ?? SignerSession.standard
@@ -1122,6 +1161,8 @@ final class Workspace {
         } else {
             signerWallet = nil
         }
+        // NEAR's balance is read with Solana's.
+        if nearChanged { await loadSolana() }
     }
 }
 

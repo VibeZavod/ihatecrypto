@@ -118,16 +118,14 @@ struct TokenLogo: View {
 
     /// Chains without a bundled image: their color and sign.
     static let drawn: [String: (UInt32, String)] = ["eth": (0x627EEA, "Ξ")]
-    private static var cache: [String: NSImage] = [:]
+    /// Misses too: most traded assets (oil, stocks, many coins) have no file, and every badge asked the bundle twice
+    /// on every pass.
+    private static var cache: [String: NSImage?] = [:]
     static func image(_ name: String) -> NSImage? {
         if let hit = cache[name] { return hit }
-        for ext in ["png", "svg"] {
-            if let url = Bundle.main.url(forResource: name, withExtension: ext), let image = NSImage(contentsOf: url) {
-                cache[name] = image
-                return image
-            }
-        }
-        return nil
+        let image = ["png", "svg"].lazy.compactMap { Bundle.main.url(forResource: name, withExtension: $0).flatMap(NSImage.init(contentsOf:)) }.first
+        cache[name] = .some(image)
+        return image
     }
 
     /// The logo for a traded asset; nil for assets that have none (oil, stocks).
@@ -182,7 +180,7 @@ struct StudioView: View {
             } else {
                 // The canvas's scale follows the window alone: moving or resizing the chat, which floats
                 // above everything, never shifts or rescales the boards.
-                StudioCanvas(inset: Self.chatColumn, leading: railEdge)
+                CanvasViewport(inset: Self.chatColumn, leading: railEdge, contentWidth: StudioCanvas.contentWidth) { StudioCanvas() }
             }
             HStack(spacing: 0) {
                 // The rail floats over the canvas as a glass panel; the window's traffic lights sit inside it.
@@ -628,6 +626,9 @@ struct LalaLogo: View {
     /// it builds the route, a hop when it's done, a shake on an error. The rail's logo stays still.
     var animated = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// Each of its frames redraws the whole window (≈ 13 ms of main thread, measured): while the window is in the
+    /// background nobody sees it move, so it holds still, and a card waiting there for Confirm costs nothing.
+    @Environment(\.appearsActive) private var windowActive
     /// Bumped on every change of mood: it plays the hop or the shake.
     @State private var kick = 0
 
@@ -635,7 +636,7 @@ struct LalaLogo: View {
 
     var body: some View {
         let live = animated && !reduceMotion
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !(live && [.waiting, .thinking, .listening].contains(mood)))) { timeline in
+        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !(live && windowActive && [.waiting, .thinking, .listening].contains(mood)))) { timeline in
             let t = live ? timeline.date.timeIntervalSinceReferenceDate : 0
             Canvas { context, s in draw(&context, s, t: t) }
         }
@@ -917,35 +918,35 @@ struct ProfileMenu: View {
 // MARK: Canvas
 
 /// The portfolio frame and the plan beside it; LALA AI's cursor places the blocks one by one.
+/// What the canvas shows: the portfolio and the plan. The pan and zoom around it are CanvasViewport's, and this view
+/// takes nothing from it, so what it reads from the workspace redraws the canvas and nothing else does.
 struct StudioCanvas: View {
     @Environment(Workspace.self) private var ws
-    /// Width covered by the floating chat on the right; the content is scaled to fit left of it.
-    var inset: CGFloat = 0
-    /// Width covered by the rail on the left: the canvas runs under it, the content starts past it.
-    var leading: CGFloat = 0
-    @State private var frames: [String: CGRect] = [:]
+    @State private var frames = BlockFrames()
     /// How many plan blocks are on the canvas; grows one by one when a new plan arrives.
     @State private var shown = 0
     @State private var assembling = false
 
     /// Portfolio frame + gap + plan + leading padding.
-    private static let contentWidth: CGFloat = 28 + 270 + 36 + 470 + 24
+    static let contentWidth: CGFloat = 28 + 270 + 36 + 470 + 24
 
     var body: some View {
-        CanvasViewport(inset: inset, leading: leading, contentWidth: Self.contentWidth) { content }
-            .task(id: planKey) { await assemble() }
-    }
-
-    private var content: some View {
+        // The plan once per pass: the blocks, the status and the lines all read it.
+        let nodes = nodes
         HStack(alignment: .top, spacing: 36) {
-            StudioPortfolio(onFrame: record)
-            plan.frame(width: 470, alignment: .topLeading)
+            StudioPortfolio(frames: frames)
+            plan(nodes).frame(width: 470, alignment: .topLeading)
         }
         .padding(.leading, 28).padding(.top, 24)
         // Full height even when the canvas is shorter: blocks never squeeze their text; drag to see the rest.
         .fixedSize(horizontal: false, vertical: true)
+        // Inside the zoom: a pan moves none of the frames measured in it.
         .coordinateSpace(.named("studio"))
-        .backgroundPreferenceValue(EmptyPreferenceKey.self) { _ in connectors }
+        // Only with a plan: without one there's nothing to join, and the Canvas would be a bitmap as big as the content.
+        .background(alignment: .topLeading) {
+            if !nodes.isEmpty { Connectors(frames: frames, visible: Set(nodes.prefix(shown).map(\.id)).union(["pf.solana"])) }
+        }
+        .task(id: planKey) { await assemble() }
     }
 
     // MARK: Plan
@@ -958,8 +959,7 @@ struct StudioCanvas: View {
     /// Once the plan is on the exchange, the canvas shows the position itself instead of the old route.
     private var nodes: [StudioNode] { hasRoute && !ws.managesPosition ? StudioNode.build(ws) : [] }
 
-    @ViewBuilder private var plan: some View {
-        let nodes = nodes
+    private func plan(_ nodes: [StudioNode]) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             // A place opened from the rail is its own block above the plan or the position: outside their frame,
             // covering nothing.
@@ -1035,7 +1035,7 @@ struct StudioCanvas: View {
         return StudioNodeView(node: n)
             .overlay { if current { RoundedRectangle(cornerRadius: 20).strokeBorder(cursorColor(index, n), lineWidth: 3) } }
             .opacity(visible ? 1 : 0)
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("studio")) } action: { record(n.id, $0) }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("studio")) } action: { frames.record(n.id, $0) }
     }
 
     private var placeholder: some View {
@@ -1114,28 +1114,57 @@ struct StudioCanvas: View {
 
     @ViewBuilder private func cursors(_ nodes: [StudioNode]) -> some View {
         if assembling, shown > 0, shown <= nodes.count {
-            let n = nodes[shown - 1]
-            let (label, color) = carrier(shown - 1, n)
-            if let f = frames[n.id], let origin = frames["plan.origin"] {
-                StudioCursor(label: label, color: color)
-                    .offset(x: f.maxX - origin.minX - 34, y: f.maxY - origin.minY - 20)
-                    .animation(.easeInOut(duration: 0.4), value: shown)
-            }
+            let (label, color) = carrier(shown - 1, nodes[shown - 1])
+            PlanCursor(frames: frames, id: nodes[shown - 1].id, label: label, color: color)
+                .animation(.easeInOut(duration: 0.4), value: shown)
         }
         Color.clear.frame(width: 1, height: 1)
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("studio")) } action: { record("plan.origin", $0) }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("studio")) } action: { frames.record("plan.origin", $0) }
     }
 
-    // MARK: Lines
+}
 
-    private var connectors: some View {
+/// Where the canvas's blocks are, for the lines between them and the assistant's cursor. Kept apart from the canvas and
+/// read only by those two: a block that moves or grows (a hovered token row, a new plan block) redraws them, not the
+/// whole canvas, and nothing at all when no plan is drawn.
+@Observable
+final class BlockFrames {
+    private(set) var rects: [String: CGRect] = [:]
+
+    func record(_ id: String, _ frame: CGRect) {
+        if rects[id] != frame { rects[id] = frame }
+    }
+}
+
+/// The assistant's cursor at the corner of the block it's placing.
+private struct PlanCursor: View {
+    let frames: BlockFrames
+    let id: String
+    let label: String
+    let color: Color
+
+    var body: some View {
+        if let f = frames.rects[id], let origin = frames.rects["plan.origin"] {
+            StudioCursor(label: label, color: color)
+                .offset(x: f.maxX - origin.minX - 34, y: f.maxY - origin.minY - 20)
+        }
+    }
+}
+
+/// The lines between the blocks on the canvas.
+private struct Connectors: View {
+    let frames: BlockFrames
+    /// The blocks already placed: one still waiting its turn in the assembly gets no line yet.
+    let visible: Set<String>
+
+    var body: some View {
+        let frames = frames.rects
         let pairs: [(String, String, Color)] = [
             ("pf.solana", "source", Color(hex: 0x9945FF)), ("source", "bridge", Color(hex: 0x9945FF)),
             ("bridge", "position", Brand.relay), ("position", "protection", Color(hex: 0x0F6B5D)),
             ("protection", "jev", Brand.jevCursor), ("risk", "outcome", .primary), ("jev", "outcome", .primary)
         ]
-        let visible = Set(nodes.prefix(shown).map(\.id)).union(["pf.solana"])
-        return Canvas { context, _ in
+        Canvas { context, _ in
             for (a, b, color) in pairs where visible.contains(a) && visible.contains(b) {
                 guard let fa = frames[a], let fb = frames[b] else { continue }
                 var path = Path()
@@ -1147,10 +1176,6 @@ struct StudioCanvas: View {
             }
         }
         .allowsHitTesting(false)
-    }
-
-    private func record(_ id: String, _ frame: CGRect) {
-        if frames[id] != frame { frames[id] = frame }
     }
 }
 
@@ -1208,7 +1233,7 @@ struct CanvasViewport<Content: View>: View {
         // Pinch with two fingers: in and out around the point between them.
         .simultaneousGesture(MagnifyGesture()
             .updating($pinch) { value, state, _ in state = value.magnification }
-            .onChanged { value in pinchAt = value.startLocation; CanvasSharpness.shared.hold() }
+            .onChanged { value in pinchAt = value.startLocation }
             .onEnded { value in zoomAbout(value.startLocation, by: value.magnification) })
         .onContinuousHover { phase in
             switch phase {
@@ -1218,6 +1243,10 @@ struct CanvasViewport<Content: View>: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasZoom)) { note in
             if let f = note.userInfo?["factor"] as? CGFloat { zoomAbout(pointer, by: f) }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasPan)) { note in
+            pan.width += note.userInfo?["dx"] as? CGFloat ?? 0
+            pan.height += note.userInfo?["dy"] as? CGFloat ?? 0
         }
         .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasFit)) { note in
             // The Portfolio button with the portfolio already in place: nothing to move, so the window's edge answers.
@@ -1229,6 +1258,8 @@ struct CanvasViewport<Content: View>: View {
         .onAppear(perform: watchScrolling)
         .onDisappear { if let m = scrollMonitor { NSEvent.removeMonitor(m); scrollMonitor = nil }; CanvasSharpness.shared.track(false) }
         .onChange(of: scale >= CanvasSharpness.from, initial: true) { _, on in CanvasSharpness.shared.track(on) }
+        // Any motion of the content (a drag, a scroll, a pinch, a zoom step, a resize): sharpen once it stops.
+        .onChange(of: [scale, moved.x, moved.y]) { CanvasSharpness.shared.hold() }
         .overlay(alignment: .bottomLeading) { zoomBar(scale).padding(18).padding(.leading, leading) }
     }
 
@@ -1240,7 +1271,6 @@ struct CanvasViewport<Content: View>: View {
         pan = CGSize(width: moved.x, height: moved.y)
         zoom = next
         pinchAt = .zero
-        CanvasSharpness.shared.hold()
     }
 
     /// Trackpad two-finger scrolling pans; ⌘ + scroll zooms (for a mouse wheel). Over the chat, scrolling stays the chat's.
@@ -1287,17 +1317,25 @@ struct CanvasViewport<Content: View>: View {
 }
 
 /// A zoomed-in canvas stays sharp. SwiftUI draws what a scaleEffect enlarges at the window's scale (2× on Retina) and
-/// Core Animation stretches that bitmap, so at 250 % the text was soft. Each drawing layer under the zoom gets
-/// 2 × zoom instead. SwiftUI puts the window's scale back on every layer it updates (a changed number, a hover),
-/// so this runs after each Core Animation commit while the canvas is zoomed in; the fixed layer is drawn again at
-/// once, before the next frame. SF Symbols come as ready bitmaps and stay as they are.
+/// Core Animation stretches that bitmap, so at 250 % the text was soft. Each drawing layer in sight under the zoom
+/// gets 2 × zoom instead (at most 4). SwiftUI puts the window's scale back on every layer it updates (a changed number,
+/// a hover), so this runs after Core Animation's commits while the canvas is zoomed in, at most 10 times a second and
+/// not while the content moves; the fixed layer is drawn again at once. SF Symbols come as ready bitmaps and stay as
+/// they are.
 @MainActor
 final class CanvasSharpness {
     static let shared = CanvasSharpness()
     /// Below it the stretch doesn't show, and hover lifts (1.02–1.08) aren't worth a redraw.
     static let from: CGFloat = 1.25
+    /// At most 2 × the window's scale (4 pixels a point on Retina): at 250 % text is a touch soft, but a board's bitmap
+    /// is 16 bytes a point instead of 25, and there's one redraw less to wait for.
+    static let most: CGFloat = 2
+    /// A walk of the layers at most this often: a spinner or the thinking dots no longer mean a walk every frame.
+    static let every: CFTimeInterval = 0.1
     private var observer: CFRunLoopObserver?
     private var holdUntil: CFTimeInterval = 0
+    private var lastWalk: CFTimeInterval = 0
+    private var wakePending = false
     private var drawing: [ObjectIdentifier: Bool] = [:]
 
     func track(_ zoomedIn: Bool) {
@@ -1314,29 +1352,40 @@ final class CanvasSharpness {
         }
     }
 
-    /// A pinch changes the scale every frame and SwiftUI resets every layer each time: sharpen once it stops,
-    /// not 120 times a second at a new size.
+    /// A pinch changes the scale every frame and SwiftUI resets every layer each time, and a pan changes nothing a walk
+    /// would fix: sharpen once the content stops, not 120 times a second.
     func hold() {
+        guard observer != nil else { return }
         holdUntil = CACurrentMediaTime() + 0.2
-        // Wakes the run loop after the pause, so the observer runs even if nothing else happens.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25) {}
+        wake(after: 0.25)
+    }
+
+    /// Wakes the run loop once, so the observer runs even if nothing else happens; one wake at a time.
+    private func wake(after delay: CFTimeInterval) {
+        guard !wakePending else { return }
+        wakePending = true
+        DispatchQueue.main.asyncAfter(deadline: .now() + delay) { MainActor.assumeIsolated { CanvasSharpness.shared.wakePending = false } }
     }
 
     private func sharpen() {
-        guard CACurrentMediaTime() >= holdUntil else { return }
-        for window in NSApp.windows where window.isVisible {
-            if let layer = window.contentView?.layer { sharpen(layer, scale: 1, backing: window.backingScaleFactor) }
+        let now = CACurrentMediaTime()
+        if now < holdUntil { return wake(after: holdUntil - now + 0.02) }
+        if now - lastWalk < Self.every { return wake(after: Self.every - (now - lastWalk) + 0.01) }
+        lastWalk = now
+        for window in NSApp.windows where window.isVisible && window.occlusionState.contains(.visible) {
+            if let layer = window.contentView?.layer { sharpen(layer, root: layer, scale: 1, backing: window.backingScaleFactor) }
         }
     }
 
-    private func sharpen(_ layer: CALayer, scale: CGFloat, backing: CGFloat) {
+    private func sharpen(_ layer: CALayer, root: CALayer, scale: CGFloat, backing: CGFloat) {
         let s = scale * hypot(layer.transform.m11, layer.transform.m12)
-        if s >= Self.from, draws(layer) {
-            // In quarter steps, at most 3×: a pixel of the screen or finer, without redrawing on every tiny change.
-            let target = backing * min(3, (s * 4).rounded(.up) / 4)
+        // Only what's in the window: a board panned out of sight keeps its bitmap, and gets sharpened when it's back.
+        if s >= Self.from, draws(layer), root.bounds.intersects(layer.convert(layer.bounds, to: root)) {
+            // In quarter steps: a pixel of the screen or finer, without redrawing on every tiny change.
+            let target = backing * min(Self.most, (s * 4).rounded(.up) / 4)
             if layer.contentsScale != target { layer.contentsScale = target; layer.setNeedsDisplay() }
         }
-        layer.sublayers?.forEach { sharpen($0, scale: s, backing: backing) }
+        layer.sublayers?.forEach { sharpen($0, root: root, scale: s, backing: backing) }
     }
 
     /// Only layers that draw themselves: SwiftUI's text and shapes, Canvas, AppKit controls. A layer holding a
@@ -1363,11 +1412,6 @@ private struct DotGrid: View {
         }
         .accessibilityHidden(true)
     }
-}
-
-private struct EmptyPreferenceKey: PreferenceKey {
-    static let defaultValue = 0
-    static func reduce(value: inout Int, nextValue: () -> Int) {}
 }
 
 struct StatusChip: View {
@@ -1438,7 +1482,8 @@ struct HoldingRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            AsyncImage(url: token.icon) { $0.resizable().scaledToFill() } placeholder: {
+            // An unverified token's icon URL is its creator's pick: fetching it would tell a scammer the user's IP.
+            RemoteIcon(url: token.verified ? token.icon : nil, size: 20) {
                 Circle().fill(Brand.solanaInk.opacity(0.15))
                     .overlay(Text(token.symbol.prefix(1)).font(.ui(9, .bold)).foregroundStyle(Brand.solanaInk))
             }
@@ -1450,9 +1495,12 @@ struct HoldingRow: View {
             Text(token.symbol).font(.ui(12, .semibold)).lineLimit(1)
             if !token.verified { Text("unverified").font(.ui(9)).foregroundStyle(.secondary) }
             Spacer(minLength: 4)
+            // 20 pt, under the row's own height: at the usual 28 the row grew while the pointer was on it, and the card's
+            // new height redrew the whole canvas on every row the pointer crossed. Kept out of the row until hovered: one
+            // button per row would be one more thing to move on every step of a pan.
             if hover || !shown {
                 Button { withAnimation(.snappy) { ws.tokenChoices[token.id] = !shown } } label: { Image(systemName: shown ? "eye.slash" : "eye") }
-                    .buttonStyle(.hoverIcon).help(shown ? "Hide \(token.symbol): it leaves the portfolio and its total" : "Show \(token.symbol) in the portfolio")
+                    .buttonStyle(HoverIconStyle(size: 20)).help(shown ? "Hide \(token.symbol): it leaves the portfolio and its total" : "Show \(token.symbol) in the portfolio")
             }
             VStack(alignment: .trailing, spacing: 0) {
                 Text(token.usd.map(Fmt.usd) ?? "no price").font(.ui(12, .bold)).monospacedDigit()
@@ -1467,7 +1515,8 @@ struct HoldingRow: View {
 
 struct StudioPortfolio: View {
     @Environment(Workspace.self) private var ws
-    let onFrame: (String, CGRect) -> Void
+    /// Where the Solana card is, for the plan's first line. A class: passing it never counts as a change.
+    let frames: BlockFrames
 
     var body: some View {
         Group {
@@ -1494,13 +1543,14 @@ struct StudioPortfolio: View {
         }
     }
 
-    private var loaded: some View {
+    @ViewBuilder private var loaded: some View {
+        // Once per pass: it filters the whole equity history.
+        let series = ws.equitySeries()
         VStack(alignment: .leading, spacing: 10) {
             HStack {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("PORTFOLIO").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
                     Text(ws.total.map(Fmt.usd) ?? "—").font(.ui(20, .heavy)).monospacedDigit()
-                    let series = ws.equitySeries()
                     if series.count > 2, let first = series.first, let last = series.last {
                         Text("\(signed(last.usd - first.usd)) · \(Int((last.at.timeIntervalSince(first.at) / 86_400).rounded(.up))) d")
                             .font(.ui(10, .semibold)).monospacedDigit()
@@ -1515,8 +1565,8 @@ struct StudioPortfolio: View {
                         .background(Capsule().fill((ws.positionsPnl < 0 ? Brand.loss : Brand.profit).opacity(0.12)))
                 }
             }
-            if ws.equitySeries().count > 2 {
-                EquitySparkline(points: ws.equitySeries(), height: 30)
+            if series.count > 2 {
+                EquitySparkline(points: series, height: 30)
             }
             PortfolioRing()
             VStack(alignment: .leading, spacing: 8) {
@@ -1538,7 +1588,7 @@ struct StudioPortfolio: View {
             .padding(11)
             .background(RoundedRectangle(cornerRadius: 16).fill(Brand.solanaTint))
             .modifier(Openable(place: "solana"))
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("studio")) } action: { onFrame("pf.solana", $0) }
+            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("studio")) } action: { frames.record("pf.solana", $0) }
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 10) {
@@ -2053,6 +2103,8 @@ private struct ChatActions: View {
             }
             .padding(.bottom, 4)
         } else if ws.intent != TradeIntent(), !ws.managesPosition {
+            // Once: each read builds the whole plan again.
+            let ready = ws.planIsReady
             VStack(alignment: .leading, spacing: 6) {
                 if let r = ws.planReview {
                     Label(r.text, systemImage: r.concern ? "exclamationmark.triangle.fill" : "checkmark.seal")
@@ -2061,13 +2113,13 @@ private struct ChatActions: View {
                 HStack {
                     if ws.executing || ws.preparing { ProgressView().controlSize(.small) }
                     Button { Task { await ws.prepareExecution() } } label: {
-                        primary(ws.signerWallet == nil ? "Preview" : "Execute", enabled: ws.planIsReady)
+                        primary(ws.signerWallet == nil ? "Preview" : "Execute", enabled: ready)
                     }
                     .buttonStyle(.plain)
-                    .disabled(!ws.planIsReady || ws.previewWallet == nil || ws.executing || ws.preparing)
+                    .disabled(!ready || ws.previewWallet == nil || ws.executing || ws.preparing)
                 }
                 // A grey Execute says why, and the missing details are one tap away.
-                if !ws.planIsReady, !ws.preparing, !ws.executing {
+                if !ready, !ws.preparing, !ws.executing {
                     HStack(spacing: 8) {
                         Label(ws.missingDetails.map { "Execute needs \($0)." } ?? "A rule on the canvas stops this plan.", systemImage: "lock.fill")
                             .font(.ui(10, .semibold)).foregroundStyle(.orange)
@@ -2102,10 +2154,12 @@ private struct ChatActions: View {
 /// The voice as bars, the newest on the left: taller the louder, a dot in silence. Heights flow into each other as
 /// the row moves right instead of jumping, and the older half fades out.
 private struct VoiceBars: View {
-    /// Oldest first, 0…1.
-    let levels: [Double]
+    /// Its levels (oldest first, 0…1) are read here, not in the composer: ten readings a second redraw the wave, not
+    /// the field and its buttons.
+    let voice: VoiceInput
 
     var body: some View {
+        let levels = voice.levels
         let bars = Array(levels.reversed())
         HStack(spacing: 3) {
             ForEach(bars.indices, id: \.self) { i in
@@ -2170,7 +2224,7 @@ private struct ChatComposer: View {
             }
             .font(.ui(14)).lineLimit(5).frame(maxWidth: .infinity, alignment: .leading)
             HStack(spacing: 8) {
-                VoiceBars(levels: voice.levels)
+                VoiceBars(voice: voice)
                 TimelineView(.periodic(from: voice.startedAt, by: 1)) { context in
                     let s = max(0, Int(context.date.timeIntervalSince(voice.startedAt)))
                     Text(String(format: "%d:%02d", s / 60, s % 60)).font(.ui(12, .semibold)).monospacedDigit().foregroundStyle(.secondary)
@@ -2762,13 +2816,16 @@ struct PriceRuler: View {
 
     /// Labels sorted along the bar, each in the first row where it doesn't overlap the previous one, and never past
     /// either end of the bar: a label near an edge is pushed inside, so nothing leaves the card.
+    /// The labels' own face (`Font.ui(10, .semibold)`), so the measured width is the drawn one; looked up once, not on
+    /// every layout pass.
+    private static let labelFont = BrandFonts.ready
+        ? NSFont(descriptor: NSFontDescriptor(fontAttributes: [.family: "Onest", .traits: [NSFontDescriptor.TraitKey.weight: NSFont.Weight.semibold]]), size: 10) ?? .systemFont(ofSize: 10, weight: .semibold)
+        : .systemFont(ofSize: 10, weight: .semibold)
+
     private func placed(_ items: [(text: String, x: CGFloat, color: Color)], width w: CGFloat) -> [(text: String, x: CGFloat, color: Color, row: Int)] {
         var ends: [CGFloat] = []
-        // The labels' own face (`Font.ui(10, .semibold)`), so the measured width is the drawn one.
-        let font = BrandFonts.ready ? NSFont(descriptor: NSFontDescriptor(fontAttributes: [.family: "Onest", .traits: [NSFontDescriptor.TraitKey.weight: NSFont.Weight.semibold]]), size: 10) ?? .systemFont(ofSize: 10, weight: .semibold)
-            : .systemFont(ofSize: 10, weight: .semibold)
         return items.sorted { $0.x < $1.x }.map { item in
-            let width = ceil((item.text as NSString).size(withAttributes: [.font: font]).width)
+            let width = ceil((item.text as NSString).size(withAttributes: [.font: Self.labelFont]).width)
             let start = min(max(0, item.x - width / 2), max(0, w - width))
             let row = ends.firstIndex { $0 + 6 < start } ?? ends.count
             if row == ends.count { ends.append(start + width) } else { ends[row] = start + width }

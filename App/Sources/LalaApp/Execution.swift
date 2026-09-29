@@ -89,7 +89,9 @@ extension Workspace {
     }
 
     var planIsReady: Bool {
-        !blocks.isEmpty && blocks.allSatisfy { [.ready, .warning, .info].contains($0.status) }
+        // Built once: `blocks` works the whole plan out again on every read.
+        let b = blocks
+        return !b.isEmpty && b.allSatisfy { [.ready, .warning, .info].contains($0.status) }
     }
 
     func executor(_ wallet: TradeWallet) -> Executor {
@@ -232,15 +234,8 @@ extension Workspace {
         // Again at Confirm: a card parked on a canvas may come back after its module was switched off.
         if let off = moduleRefusal(command) { reply(off); return }
         if case .yields(let asset) = command {
-            // Read-only: the rates are drawn on the canvas.
-            yieldOptions = await Yields.options(for: asset)
-            // Aave on Base, from the pool itself: LALA bridges there and supplies with «lend N USDC on Aave».
-            if asset != "SOL", aaveAPY == nil { aaveAPY = try? await AaveV3.verifyBase() }
-            if asset != "SOL", let apy = aaveAPY {
-                yieldOptions?.append(Yields.Option(asset: "USDC", place: "Aave · Base", apy: apy, tvlUSD: nil, how: "lend 2 USDC on Aave",
-                                                   note: "on Base: bridged from Solana with a little ETH for gas"))
-                yieldOptions?.sort { $0.apy > $1.apy }
-            }
+            // Read-only: the rates are drawn on the canvas, Aave on Base among them (Agent.swift), in one assignment.
+            yieldOptions = await loadYields(asset)
             reply(yieldOptions?.isEmpty == false ? say("Rates are on the canvas — the bigger the bubble, the higher the rate.", "Ставки на холсте — чем больше пузырь, тем выше ставка.")
                                                  : say("Yield sources didn't respond right now.", "Источники ставок сейчас не ответили."), note: "DeFi")
             return
@@ -557,7 +552,8 @@ extension Workspace {
             }
             let stop = orders.first { $0.coin == coin && $0.isTrigger && ($0.orderType ?? "").contains("Stop") }?.triggerPx
             let action = Guardian.step(&rules, size: p.size, stop: stop, mark: mark)
-            exitRules[coin] = rules
+            // Only a real change: each write redraws and saves the rules to UserDefaults, and this runs every tick.
+            if exitRules[coin] != rules { exitRules[coin] = rules }
             switch action {
             case .stopToBreakeven?:
                 let title = say("Partial profit taken on \(coin)", "Частичная прибыль по \(coin)"), body = say("Stop moved to breakeven.", "Стоп перенесён в безубыток.")

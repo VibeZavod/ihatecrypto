@@ -26,6 +26,8 @@ struct DebugBadge: View {
 ///     curl -s -H "Authorization: Bearer $T" -X POST 127.0.0.1:51789/cancel     # drop what waits for Confirm
 ///     curl -s -H "Authorization: Bearer $T" -d '{"index":0}' 127.0.0.1:51789/pick   # press a «What next» card
 ///     curl -s -H "Authorization: Bearer $T" -d '{"canvas":"<id>"}' 127.0.0.1:51789/restore   # delete test canvases, reopen
+///     curl -s -H "Authorization: Bearer $T" -d '{"factor":2}' 127.0.0.1:51789/zoom   # zoom in ({"fit":true}: 100 %)
+///     curl -s -H "Authorization: Bearer $T" -d '{"seconds":4}' 127.0.0.1:51789/pan    # pan back and forth, for xctrace
 ///
 /// Tools/uitest.py runs scenarios through it (Tools/uitest-scenarios.json).
 ///
@@ -146,6 +148,23 @@ final class DebugAPI {
             freshCanvas = false
             if let back, let canvas = ws.canvases.first(where: { $0.id == back }) { ws.openCanvas(canvas) }
             return (200, "application/json", json(state(ws, since: ws.messages.count)))
+        case ("POST", "/zoom"):
+            // Zooms the canvas like ⌘-scroll (factor 2 = twice as close), or back to 100 % with {"fit":true}.
+            let body = (try? JSONSerialization.jsonObject(with: r.body)) as? [String: Any]
+            if body?["fit"] as? Bool == true { NotificationCenter.default.post(name: .lalaCanvasFit, object: nil) }
+            else { NotificationCenter.default.post(name: .lalaCanvasZoom, object: nil, userInfo: ["factor": CGFloat(body?["factor"] as? Double ?? 1)]) }
+            return (200, "text/plain", Data("ok\n".utf8))
+        case ("POST", "/pan"):
+            // A drag without a hand for measuring: `seconds` of panning at 120 steps a second, back and forth by `dx`.
+            let body = (try? JSONSerialization.jsonObject(with: r.body)) as? [String: Any]
+            let seconds = min(max(body?["seconds"] as? Double ?? 3, 0), 60), dx = body?["dx"] as? Double ?? 300
+            let steps = Int(seconds * 120)
+            for i in 0..<steps {
+                let dir: CGFloat = (i / 60) % 2 == 0 ? 1 : -1
+                NotificationCenter.default.post(name: .lalaCanvasPan, object: nil, userInfo: ["dx": dir * CGFloat(dx) / 60, "dy": dir * CGFloat(dx) / 120])
+                try? await Task.sleep(for: .milliseconds(8))
+            }
+            return (200, "text/plain", Data("ok\n".utf8))
         case ("GET", "/screenshot"):
             guard let png = screenshot() else { return (500, "text/plain", Data("no window\n".utf8)) }
             return (200, "image/png", png)

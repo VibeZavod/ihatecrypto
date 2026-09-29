@@ -80,7 +80,7 @@ public enum Hyperliquid {
         return atr / bars[bars.count - 1].c * 100
     }
 
-    public struct Balance: Sendable {
+    public struct Balance: Sendable, Equatable {
         public let accountValue: Decimal
         public let withdrawable: Decimal
         public let spotUSDC: Decimal
@@ -119,7 +119,7 @@ public enum Solana {
     static let rpc = "https://api.mainnet-beta.solana.com"
     static let usdcMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
-    public struct Balance: Sendable {
+    public struct Balance: Sendable, Equatable {
         public let sol: Decimal
         public let usdc: Decimal
         /// Every other token in the wallet, the most valuable first; scam airdrops included (see Holding.looksReal).

@@ -664,7 +664,7 @@ public enum HLReply: Equatable, Sendable, CustomStringConvertible {
 }
 
 public enum HyperliquidAccount {
-    public struct Order: Decodable, Sendable {
+    public struct Order: Decodable, Sendable, Equatable {
         public let coin: String
         public let oid: UInt64
         public let isTrigger: Bool
@@ -690,7 +690,7 @@ public enum HyperliquidAccount {
         }
     }
 
-    public struct Position: Sendable {
+    public struct Position: Sendable, Equatable {
         public let coin: String
         /// Signed: negative for a short.
         public let size: Decimal

@@ -83,10 +83,11 @@ extension Workspace {
         equityHistory = equityHistory.filter { $0.at > cutoff } + [EquityPoint(at: Date(), usd: e, wallet: pnlWallet)]
     }
 
-    /// The last `days` of history plus the value now.
+    /// The last `days` of history plus the value now. «Now» is when the balances were read: stamped with the clock, the
+    /// series was new on every pass and the sparkline redrew each time.
     func equitySeries(days: Double = 7) -> [EquityPoint] {
         let since = Date().addingTimeInterval(-days * 86_400)
-        return equityHistory.filter { $0.at >= since } + (equity.map { [EquityPoint(at: Date(), usd: $0)] } ?? [])
+        return equityHistory.filter { $0.at >= since } + (equity.map { [EquityPoint(at: updatedAt ?? Date(), usd: $0)] } ?? [])
     }
 }
 

@@ -388,9 +388,11 @@ struct MarketPicker: View {
             Menu("Hyperliquid") {
                 ForEach(Market.Group.allCases, id: \.self) { group in
                     Menu(group == .crypto ? "Crypto — main exchange" : "\(group.rawValue) — xyz (HIP-3)") {
-                        ForEach(ws.markets(group, limit: group == .crypto ? 25 : 30), id: \.name) { m in
-                            Button { Task { await ws.choose(m) } } label: {
-                                if m.name == ws.intent.asset { Label(IntentParser.pretty(m.name), systemImage: "checkmark") } else { Text(IntentParser.pretty(m.name)) }
+                        // Names grouped and sorted once per market load (Workspace.loadMarkets); the market itself is
+                        // read on the click, so a price moving doesn't redraw the menus.
+                        ForEach(ws.marketNames[group] ?? [], id: \.self) { name in
+                            Button { Task { if let m = ws.markets[name] { await ws.choose(m) } } } label: {
+                                if name == ws.intent.asset { Label(IntentParser.pretty(name), systemImage: "checkmark") } else { Text(IntentParser.pretty(name)) }
                             }
                         }
                     }

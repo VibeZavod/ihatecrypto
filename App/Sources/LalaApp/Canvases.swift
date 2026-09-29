@@ -7,14 +7,27 @@ import TradeExecution
 import WalletCore
 
 /// Owner-only JSON files in Application Support/LALA.
+///
+/// A chat reply changes activity.json and canvases.json several times in one go: each file is encoded once, at the
+/// end of that turn of the run loop, and written off the main thread. Encoding stays on main: the app's types are
+/// main-actor isolated, so their Codable conformances can't run elsewhere.
 enum LocalStore {
-    static func url(_ name: String) -> URL {
+    /// Writes go one at a time, in order.
+    private static let queue = DispatchQueue(label: "app.lala.localstore")
+    /// Values saved during this turn, by file: only the last one of each is encoded.
+    private static var pending: [String: () -> Data?] = [:]
+    /// The bytes each file last got: an unchanged value isn't written again.
+    private static var written: [String: Data] = [:]
+
+    nonisolated static func url(_ name: String) -> URL {
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "LALA")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder.appending(path: name)
     }
 
     static func load<T: Decodable>(_ name: String) -> T? {
+        // A save still on its way would be read stale (flows.json is read, added to and saved).
+        flush()
         guard let data = try? Data(contentsOf: url(name)) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -22,21 +35,45 @@ enum LocalStore {
     }
 
     static func save<T: Encodable>(_ value: T, _ name: String) {
-        let encoder = JSONEncoder()
-        encoder.dateEncodingStrategy = .iso8601
-        guard let data = try? encoder.encode(value) else { return }
-        let file = url(name)
-        if !FileManager.default.fileExists(atPath: file.path) {
-            FileManager.default.createFile(atPath: file.path, contents: nil, attributes: [.posixPermissions: 0o600])
+        if pending.isEmpty { Task { encodePending() } }
+        pending[name] = {
+            let encoder = JSONEncoder()
+            encoder.dateEncodingStrategy = .iso8601
+            return try? encoder.encode(value)
         }
-        try? data.write(to: file, options: .atomic)
-        try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+    }
+
+    /// Encodes what was saved and hands the bytes to the queue.
+    private static func encodePending() {
+        let jobs = pending
+        pending = [:]
+        for (name, encode) in jobs {
+            guard let data = encode(), written[name] != data else { continue }
+            written[name] = data
+            queue.async {
+                let file = url(name)
+                if !FileManager.default.fileExists(atPath: file.path) {
+                    FileManager.default.createFile(atPath: file.path, contents: nil, attributes: [.posixPermissions: 0o600])
+                }
+                do { try data.write(to: file, options: .atomic) } catch {
+                    // Not on disk (a full disk): the same value saved again has to be written, not skipped as unchanged.
+                    Task { @MainActor in if written[name] == data { written[name] = nil } }
+                }
+                try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
+            }
+        }
+    }
+
+    /// Everything saved so far is on disk when this returns: at quit, and before a read.
+    static func flush() {
+        encodePending()
+        queue.sync {}
     }
 }
 
 /// One canvas: its chat, its plan, the model it was talked through and the bubbles last on it.
 /// Kept on this Mac (canvases.json, owner-only); the canvas open at quit opens again at launch.
-struct CanvasSession: Codable, Identifiable {
+struct CanvasSession: Codable, Identifiable, Equatable {
     var id = UUID()
     var updated = Date()
     var title = ""
@@ -110,6 +147,11 @@ extension Workspace {
                      || $0.title != c.title || $0.outcome != c.outcome }) ?? true {
             c.updated = Date()
         }
+        // Nothing new but the board's time (a reply saves, then the message's end saves again): `canvases` is left
+        // alone, so what reads it doesn't redraw and the file isn't written.
+        var unchanged = c
+        unchanged.boardAt = old?.boardAt
+        if unchanged == old { return }
         canvasID = c.id
         if let i = canvases.firstIndex(where: { $0.id == c.id }) { canvases[i] = c } else { canvases.append(c) }
     }
@@ -1037,7 +1079,6 @@ extension Workspace {
 /// the executed (or failed) board when the move ends, so the canvas never goes blank in between.
 struct RunningBoard: View {
     @Environment(Workspace.self) private var ws
-    @State private var pulse = false
 
     var body: some View {
         if let run = ws.runningAction {
@@ -1129,12 +1170,14 @@ struct RouteStepView: View {
     @Environment(Workspace.self) private var ws
     let step: ActivityBubble
     var state: State = .plain
-    @SwiftUI.State private var pulse = false
 
     var body: some View {
         card
             .opacity(state == .next ? 0.4 : 1)
-            .overlay(ArrowCard(radius: 16, tip: 10).stroke(Brand.accent, lineWidth: 3).opacity(state == .now ? (pulse ? 1 : 0.3) : 0))
+            .overlay {
+                // Only the step a move is on breathes: the pulse used to be started on every step of the route.
+                if state == .now { StepPulse() }
+            }
             .overlay(alignment: .topTrailing) {
                 switch state {
                 case .done: Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).foregroundStyle(.white, Brand.profit).padding(10)
@@ -1142,9 +1185,7 @@ struct RouteStepView: View {
                 default: EmptyView()
                 }
             }
-            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
             .animation(.snappy, value: state)
-            .onAppear { pulse = true }
     }
 
     @ViewBuilder private var card: some View {
@@ -1171,6 +1212,18 @@ struct RouteStepView: View {
         .fixedSize(horizontal: false, vertical: true)
         .background(ArrowCard(radius: 16, tip: 10).fill(fill.color))
         .openable(logo: step.logo, routeStep: true)
+    }
+}
+
+/// The current step's outline breathing: an accent arrow whose opacity goes 0.3 ↔ 1.
+private struct StepPulse: View {
+    @State private var pulse = false
+
+    var body: some View {
+        ArrowCard(radius: 16, tip: 10).stroke(Brand.accent, lineWidth: 3)
+            .opacity(pulse ? 1 : 0.3)
+            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
+            .onAppear { pulse = true }
     }
 }
 

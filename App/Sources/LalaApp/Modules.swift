@@ -480,7 +480,7 @@ extension View {
     }
 }
 
-/// A portfolio card that opens its place's details: a pointer and a lift on hover, an outline while open.
+/// A portfolio card that opens its place's details: a pointer and an accent edge on hover, a stronger one while open.
 struct Openable: ViewModifier {
     static func place(logo: String) -> String? {
         ["sol": "solana", "hype": "hyperliquid", "jup": "jupiter", "kamino": "kamino", "near": "near", "robinhood": "robinhood", "morpho": "morpho"][logo]
@@ -495,12 +495,17 @@ struct Openable: ViewModifier {
 
     func body(content: Content) -> some View {
         let open = !routeStep && ws.detail == place
-        let edge = Brand.accent.opacity(open ? 1 : hover ? 0.6 : 0), width: CGFloat = open ? 2 : 1.5
+        let width: CGFloat = open ? 2 : 1.5
+        // A fixed-color edge whose opacity fades: an opacity change doesn't re-render the layer (a color change would,
+        // every frame, and at up to 4× on a zoomed canvas).
         content
             .overlay {
-                if routeStep { ArrowCard(radius: 16, tip: 10).stroke(edge, lineWidth: width) } else { RoundedRectangle(cornerRadius: 16).strokeBorder(edge, lineWidth: width) }
+                Group {
+                    if routeStep { ArrowCard(radius: 16, tip: 10).stroke(Brand.accent, lineWidth: width) } else { RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent, lineWidth: width) }
+                }
+                .opacity(open ? 1 : hover ? 0.6 : 0)
+                .animation(.snappy(duration: 0.18), value: hover)
             }
-            .animation(.snappy(duration: 0.18), value: hover)
             .contentShape(Rectangle())
             .onHover { hover = $0 }
             .pointerStyle(.link)
@@ -553,7 +558,7 @@ struct PortfolioRing: View {
     }
 }
 
-/// Icon buttons light up under the pointer: an accent wash behind, the accent color, a small lift; a press dips.
+/// Icon buttons light up under the pointer: an accent wash behind and the accent color; a press deepens the wash.
 struct HoverIconStyle: ButtonStyle {
     var size: CGFloat = 28
 
@@ -567,12 +572,17 @@ struct HoverIconStyle: ButtonStyle {
 
         var body: some View {
             let lit = hover && enabled
+            // Only the wash animates, and only its opacity (a fixed-color layer fading isn't re-rendered each frame, even
+            // on a zoomed canvas); the icon's color switches at once instead of re-drawing the glyph every frame.
             configuration.label
                 .foregroundStyle(lit ? AnyShapeStyle(Brand.accentInk) : AnyShapeStyle(.secondary))
                 .frame(minWidth: size, minHeight: size)
-                .background(RoundedRectangle(cornerRadius: 8).fill(Brand.accent.opacity(configuration.isPressed ? 0.24 : lit ? 0.13 : 0)))
-                .animation(.snappy(duration: 0.16), value: lit)
-                .animation(.snappy(duration: 0.1), value: configuration.isPressed)
+                .background {
+                    RoundedRectangle(cornerRadius: 8).fill(Brand.accent)
+                        .opacity(configuration.isPressed ? 0.24 : lit ? 0.13 : 0)
+                        .animation(.snappy(duration: 0.16), value: lit)
+                        .animation(.snappy(duration: 0.1), value: configuration.isPressed)
+                }
                 .contentShape(Rectangle())
                 .onHover { hover = $0 }
                 .pointerStyle(enabled ? .link : nil)
@@ -584,9 +594,9 @@ extension ButtonStyle where Self == HoverIconStyle {
     static var hoverIcon: HoverIconStyle { HoverIconStyle() }
 }
 
-/// Logos and rows that open something: a soft wash and a lift under the pointer.
 /// Something clickable under the pointer: the hand cursor and an accent edge (a filled card hides the background
 /// tint, so the edge is what shows it can be clicked). Cards never move: no lift, no scale — only the border (the user's rule).
+/// Wash and edge are fixed colors whose opacity fades: that isn't a re-render per frame, even on a zoomed canvas.
 struct HoverLift: ViewModifier {
     var radius: CGFloat = 12
     var enabled = true
@@ -595,9 +605,8 @@ struct HoverLift: ViewModifier {
     func body(content: Content) -> some View {
         let on = hover && enabled
         content
-            .background(RoundedRectangle(cornerRadius: radius).fill(Color.primary.opacity(on ? 0.07 : 0)))
-            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Brand.accent.opacity(on ? 0.7 : 0), lineWidth: 1.5))
-            .animation(.snappy(duration: 0.16), value: on)
+            .background(RoundedRectangle(cornerRadius: radius).fill(Color.primary).opacity(on ? 0.07 : 0).animation(.snappy(duration: 0.16), value: on))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Brand.accent, lineWidth: 1.5).opacity(on ? 0.7 : 0).animation(.snappy(duration: 0.16), value: on))
             .onHover { hover = $0 }
             .pointerStyle(enabled ? .link : .default)
     }
@@ -612,4 +621,6 @@ extension Notification.Name {
     static let lalaCanvasZoom = Notification.Name("lalaCanvasZoom")
     /// The rail's «Portfolio»: the canvas back to 100 % with the portfolio in view.
     static let lalaCanvasFit = Notification.Name("lalaCanvasFit")
+    /// The debug API's pan (a measured drag without a hand): userInfo["dx"], ["dy"].
+    static let lalaCanvasPan = Notification.Name("lalaCanvasPan")
 }

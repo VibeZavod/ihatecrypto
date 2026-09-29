@@ -21,7 +21,9 @@ struct TokenBoard: View {
     @State private var points: [TokenMarket.Point] = []
     @State private var range: ChartCommand.Range = .day
     @State private var error: String?
-    @State private var selected: Date?
+    /// The chart point under the pointer. The board holds it but never reads it: only the price line and the marker
+    /// do, so a mouse move over the chart redraws those two, not the chart, the stats and the rest of the board.
+    @State private var pointer = ChartPointer()
     @State private var copied = false
 
     static func place(chain: String, address: String) -> String { "token:\(chain):\(address)" }
@@ -67,6 +69,8 @@ struct TokenBoard: View {
             guard let pool = market?.pool else { return }
             do {
                 points = try await TokenMarket.history(chain: chain, pool: pool, range: range)
+                // A point from the previous range isn't on this chart: the price line goes back to the price now.
+                pointer.point = nil
                 error = points.count > 1 ? nil : "No trades in this period."
             } catch {
                 self.error = error.localizedDescription
@@ -101,17 +105,9 @@ struct TokenBoard: View {
 
     /// The price now, or at the pointer on the chart, and the move over the range.
     private var price: some View {
-        let shown = selected.flatMap(point(at:))
-        let now = shown?.close ?? market?.priceUSD ?? points.last?.close ?? holding?.price
-        let change = rangeChange
-        return HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(now.map(tokenPrice) ?? "—").font(.ui(28, .heavy)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.5).layoutPriority(1)
-            if let shown {
-                Text(shown.time.formatted(Date.FormatStyle(locale: Locale(identifier: "en_US")).day().month(.abbreviated).hour().minute()))
-                    .font(.ui(10)).foregroundStyle(.secondary)
-            } else if let change {
-                Text("\(signedPct(change)) · \(range.title)").font(.ui(10, .bold)).foregroundStyle(change < 0 ? Brand.loss : Brand.profit).lineLimit(1)
-            }
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            PointerPrice(pointer: pointer, now: market?.priceUSD ?? points.last?.close ?? holding?.price, change: rangeChange, rangeTitle: range.title)
+                .layoutPriority(1)
             Spacer()
             Picker("", selection: $range) {
                 ForEach(ChartCommand.Range.allCases, id: \.self) { r in Text(["24h", "7d", "30d"][ChartCommand.Range.allCases.firstIndex(of: r) ?? 0]).tag(r) }
@@ -138,16 +134,11 @@ struct TokenBoard: View {
                         .foregroundStyle(tint)
                         .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
                 }
-                if let p = selected.flatMap(point(at:)) {
-                    RuleMark(x: .value("Time", p.time)).foregroundStyle(.secondary.opacity(0.5)).lineStyle(StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    PointMark(x: .value("Time", p.time), y: .value("Price", NSDecimalNumber(decimal: p.close).doubleValue))
-                        .foregroundStyle(tint).symbolSize(40)
-                }
             }
             .chartYScale(domain: (lo - pad)...(hi + pad))
             .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) }
             .chartYAxis { AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) }
-            .chartXSelection(value: $selected)
+            .chartOverlay { proxy in TokenChartHover(proxy: proxy, points: points, pointer: pointer, tint: tint) }
             .frame(height: 190)
         } else if let error {
             Label(error, systemImage: "chart.xyaxis.line").font(.ui(10)).foregroundStyle(.secondary)
@@ -155,10 +146,6 @@ struct TokenBoard: View {
         } else {
             ProgressView().frame(maxWidth: .infinity, minHeight: 190)
         }
-    }
-
-    private func point(at time: Date) -> TokenMarket.Point? {
-        points.min { abs($0.time.timeIntervalSince(time)) < abs($1.time.timeIntervalSince(time)) }
     }
 
     private func stats(_ m: TokenMarket.Info) -> some View {
@@ -259,5 +246,62 @@ struct TokenBoard: View {
     /// $218.7M, $1.3M, $12K.
     private func compact(_ d: Decimal) -> String {
         d.formatted(.currency(code: "USD").notation(.compactName).precision(.significantDigits(3)).locale(Locale(identifier: "en_US")))
+    }
+}
+
+/// The token chart's point under the pointer, shared by the marker on the chart and the price line above it.
+@Observable final class ChartPointer {
+    var point: TokenMarket.Point?
+}
+
+/// The price at the pointer (or now) and beside it the pointer's time (or the move over the range).
+private struct PointerPrice: View {
+    let pointer: ChartPointer
+    let now: Decimal?
+    let change: Decimal?
+    let rangeTitle: String
+
+    var body: some View {
+        let shown = pointer.point
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text((shown?.close ?? now).map(tokenPrice) ?? "—").font(.ui(28, .heavy)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.5).layoutPriority(1)
+            if let shown {
+                Text(shown.time.formatted(Date.FormatStyle(locale: Locale(identifier: "en_US")).day().month(.abbreviated).hour().minute()))
+                    .font(.ui(10)).foregroundStyle(.secondary)
+            } else if let change {
+                Text("\(signedPct(change)) · \(rangeTitle)").font(.ui(10, .bold)).foregroundStyle(change < 0 ? Brand.loss : Brand.profit).lineLimit(1)
+            }
+        }
+    }
+}
+
+/// A dashed line and a dot at the pointer. Its own view (like ChartHover), so moving the pointer redraws the marker,
+/// not the chart's hundreds of marks.
+private struct TokenChartHover: View {
+    let proxy: ChartProxy
+    let points: [TokenMarket.Point]
+    let pointer: ChartPointer
+    let tint: Color
+
+    var body: some View {
+        GeometryReader { geo in
+            let plot = proxy.plotFrame.map { geo[$0] } ?? .zero
+            ZStack(alignment: .topLeading) {
+                Color.clear.contentShape(Rectangle())
+                    .onContinuousHover { phase in
+                        var near: TokenMarket.Point?
+                        if case .active(let p) = phase, let at: Date = proxy.value(atX: p.x - plot.minX) {
+                            near = points.min { abs($0.time.timeIntervalSince(at)) < abs($1.time.timeIntervalSince(at)) }
+                        }
+                        // Moving within one point's slot changes nothing: no redraw.
+                        if near != pointer.point { pointer.point = near }
+                    }
+                if let p = pointer.point, let x = proxy.position(forX: p.time), let y = proxy.position(forY: NSDecimalNumber(decimal: p.close).doubleValue) {
+                    Path { $0.move(to: CGPoint(x: plot.minX + x, y: plot.minY)); $0.addLine(to: CGPoint(x: plot.minX + x, y: plot.maxY)) }
+                        .stroke(.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                    Circle().fill(tint).frame(width: 7, height: 7).position(x: plot.minX + x, y: plot.minY + y)
+                }
+            }
+        }
     }
 }
