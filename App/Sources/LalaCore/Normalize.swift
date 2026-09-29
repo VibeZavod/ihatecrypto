@@ -209,7 +209,8 @@ public enum ChatRouter {
       Keep numbers, tickers, prices and percentages as meant; never invent an amount: leave it out and ihatecrypto asks for it.
       A token they name by symbol that is among their favorites is written with that favorite's contract. Any other address \
       must be one they wrote (repaired by the token lookup is fine) — never one you remember or made up. «$2», «2 бакса», \
-      «два доллара» are 2 USDC; «всё» / «all» means leave the amount out of a withdrawal.
+      «два доллара» are 2 USDC; «всё» / «all» means leave the amount out of a withdrawal, and from a place holding \
+      several assets (Kamino, Jupiter Lend: USDC and SOL) it is each of them, as steps — ask only when a lookup shows nothing there.
     - "plan": a change to the trade plan the forms can't say, like "take closer", "less risk", "wider stop".
     - "chat": answers, views and explanations — about their money, a token, a market, whether something is a good idea, \
       what ihatecrypto can do, a DeFi term. "reply": 1–4 short sentences in the reply language with the numbers that matter \
@@ -343,7 +344,8 @@ public enum ChatRouter {
         \(forms)
         Check it like a careful second reader: the same action, direction, place and asset as asked; each number the user \
         gave kept, in the same role (money put into a trade «N USDC» vs the loss at the stop «risk $N»; percent vs dollars; \
-        a price vs a percent); nothing they didn't ask for. A follow-up («да», «второй», «то же для ETH») is read against the \
+        a price vs a percent); nothing they didn't ask for. Read a typo as the word it most likely is in a wallet \
+        («подай 0,01 сол» is «продай», «выеди» is «выведи») and flag only a real difference in meaning. A follow-up («да», «второй», «то же для ETH») is read against the \
         recent chat. Numbers they didn't give may be missing: the app fills them by its rules or asks. A bridge fee taken off \
         a later step's amount is fine.
         Reply with ONE JSON object: {"matches": true} or {"matches": false, "why": "one short sentence in the reply language: \
