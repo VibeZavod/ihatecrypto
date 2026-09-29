@@ -706,7 +706,7 @@ final class Workspace {
 
         // With no plan on the canvas, only a market or a direction starts one: «1 USDC» alone is not «long ETH».
         let startsPlan = intent != TradeIntent() || IntentParser.startsPlan(text, markets: Set(markets.keys))
-        let parsed = startsPlan ? IntentParser.apply(text, to: intent, markets: Set(markets.keys)) : nil
+        let parsed = startsPlan ? IntentParser.apply(text, to: intent, markets: Set(markets.keys)).map(Self.started) : nil
         let confident = parsed != nil && (client == nil || (!IntentParser.needsModel(text) && IntentParser.hasTradeWords(text)))
         if let next = parsed, confident {
             if await editExecuted(from: before, to: next) { return }
@@ -848,8 +848,9 @@ final class Workspace {
         busy = true
         let note = "\(model) · \(provider.info.name)"
         do {
-            let (next, answer) = try await ChatModel.edit(intent, message: text, client: client, model: model, history: recentChat(), replyLanguage: replyLanguage)
+            let (edited, answer) = try await ChatModel.edit(intent, message: text, client: client, model: model, history: recentChat(), replyLanguage: replyLanguage)
             busy = false
+            let next = edited.map(Self.started)
             if let next, await editExecuted(from: before, to: next) { return }
             if let next { intent = next }
             let changes = next?.changes(from: before) ?? []
@@ -925,14 +926,42 @@ final class Workspace {
                       "Понял как «\(canonical)» для \(IntentParser.pretty(coin)). Напиши «делай» или нажми Confirm."), note: note)
             return true
         }
-        guard let next = IntentParser.apply(canonical, to: intent, markets: Set(markets.keys)) else { return false }
+        guard let next = IntentParser.apply(canonical, to: intent, markets: Set(markets.keys)).map(Self.started) else { return false }
         if await editExecuted(from: before, to: next) { return true }
         intent = next
         let changes = next.changes(from: before)
+        // Right after launch the prices may not be in yet: the plan is checked against its market, so load it first.
+        if market == nil { await loadMarkets() }
         await refreshQuote()
-        reply((changes.isEmpty ? "That’s already in the plan." : "Plan updated: " + changes.joined(separator: ", ") + ".") + outcomeLine, note: note)
+        replyPlan(changes, command: canonical, userText: text, note: note)
         await reviewPlan()
         return true
+    }
+
+    /// The reply after a command built or changed the plan: the changes and the plan checked item by item at once; then
+    /// the model's own word on it (ChatRouter.comment, ~10 s) takes the first line's place, with the changes worth
+    /// making as cards. The chat stays open meanwhile; the word is dropped when anything was said or changed since.
+    private func replyPlan(_ changes: [String], command: String, userText: String, note: String) {
+        let list = outcomeLine
+        reply((changes.isEmpty ? "That’s already in the plan." : "Plan updated: " + changes.joined(separator: ", ") + ".") + list, note: note)
+        guard let client = llmClient(), !list.isEmpty, let sent = messages.last, !sent.fromUser else { return }
+        let plan = intent, context = routerContext(), model = model
+        Task {
+            let reading = try? await ChatRouter.comment(on: list, command: command, userText, context: context, client: client, model: model)
+            guard let reading, case .chat(let words) = reading.route, intent == plan, messages.last?.id == sent.id else { return }
+            messages[messages.count - 1] = Message(id: sent.id, fromUser: false, text: words + list, note: note)
+            updateActivity { if let j = $0.lines.lastIndex(of: sent.text) { $0.lines[j] = words + list } }
+            saveCanvas()
+            offer(reading, userText: userText)
+        }
+    }
+
+    /// «long ETH» alone equals the empty plan (TradeIntent's defaults are ETH, long), which isn't drawn and changes
+    /// nothing. A plan that names only its market and side is filled by the risk rules instead, as «by the book» is.
+    static func started(_ next: TradeIntent) -> TradeIntent {
+        var next = next
+        if next == TradeIntent() { next.autoRules = true }
+        return next
     }
 
     /// After every message about the plan: the plan checked item by item and the next step (TradeAdvice.swift).

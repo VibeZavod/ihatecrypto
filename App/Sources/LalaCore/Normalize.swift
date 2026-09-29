@@ -253,6 +253,32 @@ public enum ChatRouter {
         throw LLMError("The model kept looking things up without answering.")
     }
 
+    /// After a command built or changed the trade plan: the model reads ihatecrypto's own check of it and answers like an
+    /// agent — what it built, what matters most, and the changes worth making as cards. Every number is the check's.
+    public static func comment(on check: String, command: String, _ text: String, context: Context, client: any LLMClient, model: String) async throws -> Reading {
+        let ask = brief(text, context) + """
+
+
+        You read the message as «\(command)», and ihatecrypto built it. Its own check of the plan now on the canvas \
+        (every number in it is ihatecrypto's; lines start with ✓ met, ✗ missing or blocked, ⚠ warning, · note):
+        \(check)
+
+        Answer now, as {"route": "chat", "reply": "...", "options": [...]}. "reply": 1–3 short sentences in the reply \
+        language, like a sharp friend who trades: what you built in plain words (the market, the side, what the rules \
+        filled in), then the one thing in the check that matters most — a ✗ or ⚠ line first, else the loss at the stop \
+        against the profit at the take — and what you'd do about it. Quote numbers only from the check, and don't repeat it \
+        line by line: it is shown under your reply. "options": 2–3 changes to this plan in the TRADE PLAN forms (risk $N, \
+        stop N%, take NR, leverage Nx, on a N% pullback, take in parts…) that answer what you pointed out, one \
+        recommended. The plan's own Execute button signs it, so never offer that.
+        """
+        let full = try await client.complete(LLMRequest(model: model, messages: [LLMMessage(.system, system), LLMMessage(.user, ask)], wantsJSON: true))
+        let reply = firstObject(in: full) ?? full
+        guard let json = JSONText.object(in: reply), case .done(let reading) = try step(json), case .chat = reading.route else {
+            throw LLMError("The model didn't comment on the plan: \(reply.prefix(120))")
+        }
+        return reading
+    }
+
     static func brief(_ text: String, _ context: Context) -> String {
         var lines: [String] = []
         if !context.recent.isEmpty { lines.append("Recent chat (oldest first):\n" + context.recent.joined(separator: "\n")) }

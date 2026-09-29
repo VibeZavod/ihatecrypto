@@ -191,5 +191,15 @@
       "reply_cyrillic": true,
       "next_steps_at_least": 2
     }
+  },
+  {
+    "name": "a bare «long ETH» builds the plan by the rules, never «already in the plan»",
+    "send": [
+      "сделай лонг по эфиру"
+    ],
+    "expect": {
+      "plan": "ETH",
+      "no_pending": true
+    }
   }
 ]
