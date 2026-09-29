@@ -742,10 +742,20 @@ struct StepDetails: View {
     private var ways: some View {
         VStack(alignment: .leading, spacing: 6) {
             Text("ROUTE").font(.ui(10, .heavy)).tracking(0.8).foregroundStyle(.secondary)
-            wayRow(nil, "Whichever leaves more", "both quoted right before signing, gas counted", logos: ["relay", "uni"], recommended: true)
-            wayRow("relay", "Relay swap", "one Solana signature, Relay swaps on the way", logos: ["relay"])
-            wayRow("uniswap", "Relay bridge + Uniswap", "USDC over the bridge, then Uniswap with an exact approve", logos: ["relay", "uni"])
+            wayRow(nil, "The best one", quotes?.first.map { "now \(Workspace.wayName($0.way)), ≈ \($0.gets) · checked again before signing" }
+                   ?? "both quoted, gas counted · checked again before signing", logos: ["relay", "uni"], recommended: true)
+            wayRow("relay", "Relay swap", quoted("relay") ?? "one Solana signature, Relay swaps on the way", logos: ["relay"])
+            wayRow("uniswap", "Relay bridge + Uniswap", quoted("uniswap") ?? "USDC over the bridge, then Uniswap with an exact approve", logos: ["relay", "uni"])
         }
+    }
+
+    /// Both ways as quoted now for this trade, the better first (Workspace.quoteSwap).
+    private var quotes: [(way: String, gets: String, worth: Decimal)]? {
+        ws.swapQuote.flatMap { $0.command == pending ? $0.ways : nil }
+    }
+
+    private func quoted(_ way: String) -> String? {
+        quotes?.first { $0.way == way }.map { "≈ \($0.gets) · \(Fmt.usd($0.worth)) after gas" }
     }
 
     private func wayRow(_ value: String?, _ title: String, _ detail: String, logos: [String], recommended: Bool = false) -> some View {

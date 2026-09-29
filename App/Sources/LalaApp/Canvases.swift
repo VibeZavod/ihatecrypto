@@ -984,12 +984,13 @@ extension Workspace {
         let fill: RouteFill = place == "base" ? .base : .arbitrum
         let label = token.hasPrefix("0x") ? "\(token.prefix(6))…\(token.suffix(4))" : token.uppercased()
         let logo = place == "arbitrum" ? "arb" : place
-        // The way picked in the step's details, else the better of the two when it runs.
+        let command: WalletCommand = usdc != nil ? .buyOn(place, token: token, usdc: usdc) : .sellOn(place, token: token, amount: sell)
+        // The way picked in the step's details, else the one that leaves more now (quoted while the card waits).
         let way = switch routeWays[Self.wayKey(place, token)] {
         case "relay": step("relay", "RELAY SWAP", "one step", usdc != nil ? "Relay swaps on the way · one Solana signature" : "Relay swaps it back to USDC on Solana", .relay)
         case "uniswap": step("relay", "RELAY + UNISWAP", usdc != nil ? "bridge, then Uniswap" : "Uniswap, then bridge",
                              usdc != nil ? "USDC to \(name), then Uniswap with an exact approve" : "Uniswap on \(name), then Relay's bridge to Solana", .relay)
-        default: step("relay", "RELAY OR RELAY + UNISWAP", "whichever leaves more", "both quoted right before signing, gas counted", .relay)
+        default: bestWay(swapQuote.flatMap { q in q.command == command ? q.ways : nil })
         }
         let footer = "Relay’s swap is one Solana signature; the other way bridges USDC over Relay and swaps on Uniswap with an exact approve, the swap paying only this wallet. "
             + (token.hasPrefix("0x") ? "A token by its contract must trade on \(name) with $50k+ of liquidity. " : "The ticker is taken from Uniswap’s token list, its contract checked on-chain. ")
@@ -1006,6 +1007,44 @@ extension Workspace {
             way,
             step("sol", "TO · SOLANA", "USDC", "your wallet", .solana),
         ])
+    }
+
+    static func wayName(_ way: String) -> String { way == "relay" ? "Relay swap" : "Relay + Uniswap" }
+
+    /// The way that leaves more right now, what it gives and by how much it beats the other; `ways` is nil while both
+    /// are being quoted.
+    private func bestWay(_ ways: [(way: String, gets: String, worth: Decimal)]?) -> ActivityBubble {
+        guard let ways else { return step("relay", "RELAY OR UNISWAP · COMPARING", "comparing…", "Relay swap vs Relay + Uniswap", .relay) }
+        guard let best = ways.first else { return step("relay", "RELAY OR UNISWAP · COMPARING", "no quote now", "asking again every 30 s", .relay) }
+        let other = Self.wayName(best.way == "relay" ? "uniswap" : "relay")
+        let margin = ways.dropFirst().first.map { best.worth - $0.worth }
+        let line = switch margin {
+        case nil: "\(other) doesn't quote it now"
+        case let m? where m < Decimal(string: "0.01")!: "about the same as \(other)"
+        case let m?: "\(Fmt.usd(m)) more than \(other)"
+        }
+        return step("relay", "\(Self.wayName(best.way).uppercased()) · BEST NOW", "≈ \(best.gets)", line, .relay)
+    }
+
+    /// Quotes both ways of a Base or Arbitrum trade while its card waits for Confirm, again every 30 s, so the card
+    /// shows the one that leaves more now. Nothing is signed; the executor quotes once more right before signing.
+    func quoteSwap(_ command: WalletCommand) async {
+        let (place, token, usdc, sell): (String, String, Decimal?, Decimal?)
+        switch command {
+        case .buyOn(let p, let t, let u?): (place, token, usdc, sell) = (p, t, u, nil)
+        case .sellOn(let p, let t, let a): (place, token, usdc, sell) = (p, t, nil, a)
+        default: return
+        }
+        guard let wallet = previewWallet else { return }
+        let net: EVMNetwork = place == "arbitrum" ? .arbitrum : .base
+        while !Task.isCancelled {
+            let ways = try? await executor(wallet).swapQuotes(net, token, usdc: usdc, sell: sell)
+            guard !Task.isCancelled else { return }
+            // A failed quote keeps the last good one.
+            if let ways, !ways.isEmpty { swapQuote = (command, ways) }
+            else if swapQuote?.command != command { swapQuote = (command, []) }
+            try? await Task.sleep(for: .seconds(30))
+        }
     }
 
     /// Solana → Relay → our own address on Base, Arbitrum or Robinhood Chain.
@@ -1154,6 +1193,7 @@ struct WithdrawBoard: View {
             }
             .frame(width: max(470, RouteCards.width(route.steps.count)), alignment: .leading)
             .transition(.opacity)
+            .task(id: command) { await ws.quoteSwap(command) }
         }
     }
 }

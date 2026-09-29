@@ -226,6 +226,9 @@ final class Workspace {
     /// The way a Base or Arbitrum trade takes, picked in its route step's details (Workspace.wayKey → "relay" or
     /// "uniswap"); none = whichever leaves more. Used once, by the move it was picked for.
     var routeWays: [String: String] = [:]
+    /// Both ways of the Base or Arbitrum trade waiting for Confirm, quoted now, the better first (Workspace.quoteSwap):
+    /// its card shows the one that leaves more. Empty = neither quotes.
+    var swapQuote: (command: WalletCommand, ways: [(way: String, gets: String, worth: Decimal)])?
     /// Speaking into the chat's field.
     let voice = VoiceInput()
     /// A menu or Settings the person has open ("Picking a model", "Choosing networks", "In Settings"): the coin raises

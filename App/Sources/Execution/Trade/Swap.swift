@@ -114,7 +114,26 @@ extension Executor {
 
     /// What the refusal says when the picked way has no quote: the other one is still there to choose.
     private static func unquoted(_ prefer: String?, _ what: String) -> String? {
-        prefer.map { "\($0 == "relay" ? "Relay's swap" : "Relay + Uniswap") doesn't quote \(what) right now. Nothing was signed; pick «Whichever leaves more» on the route's step to take the other way." }
+        prefer.map { "\($0 == "relay" ? "Relay's swap" : "Relay + Uniswap") doesn't quote \(what) right now. Nothing was signed; pick «The best one» on the route's step to take the other way." }
+    }
+
+    /// Both ways of a buy (`usdc`) or a sale (`sell`, nil = all) quoted now for the route's card, the one that leaves
+    /// more first; nothing is signed. `gets` is what arrives («2.41 AERO», «1.97 USDC»), `worth` its USD after gas.
+    public func swapQuotes(_ net: EVMNetwork, _ ref: String, usdc: Decimal?, sell: Decimal?) async throws
+        -> [(way: String, gets: String, worth: Decimal)] {
+        guard let uni = UniswapV3.on(net.rpc.chainId) else { return [] }
+        let token = try await evmToken(ref, on: net)
+        let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
+        if let usdc {
+            let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
+            return try await buyWays(net, token, units: units, uni).ways.sorted { $0.worth > $1.worth }
+                .map { ($0.name, "\(Fmt.num($0.out / scale, maxFraction: 6)) \(token.symbol)", $0.worth) }
+        }
+        let held = try await balance(token.address, on: net.rpc)
+        let units = (sell.map { min($0 * scale, held) } ?? held).whole
+        guard units > 0 else { return [] }
+        return try await sellWays(net, token, units: units, uni).ways.sorted { $0.worth > $1.worth }
+            .map { ($0.name, "\(Fmt.num($0.out / 1_000_000)) USDC", $0.worth) }
     }
 
     /// Buys a token on Base or Arbitrum for `usdc` from Solana, the better of the two ways (or the one picked).
