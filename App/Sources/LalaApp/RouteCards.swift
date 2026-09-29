@@ -297,7 +297,7 @@ struct RouteCard: View {
                 .frame(maxHeight: .infinity, alignment: .bottom)
             VStack(alignment: .leading, spacing: 5) {
                 HStack(alignment: .top) {
-                    LogoBadge(step: step, ring: look.body)
+                    LogoBadge(step: step)
                     Spacer(minLength: 6)
                     if state != .plain { StateChip(state: state, fill: look.fill) }
                 }
@@ -371,29 +371,22 @@ private struct RingPulse: View {
     }
 }
 
-/// The place's logo in a white badge at the card's corner; a second, smaller one for a way that also goes through
-/// Uniswap.
+/// The place's logo at the card's corner, bare on the card; a second, smaller one beside it for a way that also goes
+/// through Uniswap.
 struct LogoBadge: View {
     @Environment(Workspace.self) private var ws
     let step: ActivityBubble
-    /// The card's color, around the second logo.
-    let ring: Color
     var size: CGFloat = 36
 
     var body: some View {
-        RoundedRectangle(cornerRadius: size * 0.28, style: .continuous).fill(.white).frame(width: size, height: size)
-            .overlay { logo }
-            .overlay(alignment: .bottomTrailing) {
-                if step.label.uppercased().contains("UNISWAP") {
-                    TokenLogo(name: "uni", size: size * 0.36)
-                        .padding(2).background(Circle().fill(.white)).overlay(Circle().strokeBorder(ring, lineWidth: 2))
-                        .offset(x: 7, y: 6)
-                }
-            }
+        HStack(alignment: .bottom, spacing: 2) {
+            logo.frame(width: size, height: size)
+            if step.label.uppercased().contains("UNISWAP") { TokenLogo(name: "uni", size: size * 0.7) }
+        }
     }
 
     @ViewBuilder private var logo: some View {
-        let inner = size * 0.72
+        let inner = size
         if let logo = step.logo, logo.hasPrefix("stock:") {
             let symbol = String(logo.dropFirst(6))
             StockLogo(symbol: symbol, url: ws.robinhood?.stocks.first { $0.symbol == symbol }?.logo, size: inner)
@@ -705,7 +698,7 @@ struct StepDetails: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            LogoBadge(step: step, ring: Brand.card, size: 40)
+            LogoBadge(step: step, size: 40)
             VStack(alignment: .leading, spacing: 2) {
                 Text(Self.pretty(step.label)).font(.ui(16, .bold)).lineLimit(1)
                 Text("Step \(index + 1) of \(count) · \(ws.readable(step.title))").font(.ui(12)).foregroundStyle(.secondary).lineLimit(1)
