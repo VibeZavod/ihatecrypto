@@ -402,13 +402,15 @@ struct StudioRail: View {
 
     var body: some View {
         ZStack(alignment: .topLeading) {
-            // Past the middle the wide rail shows; below it, the strip. Both fade and slide into place.
+            // Past the middle the wide rail shows; below it, the strip. The wide rail stands still: the widening edge
+            // uncovers it and it fades in a beat later; folding, it fades out quickly. Nothing slides.
             if width < 170 {
                 narrow.frame(width: Self.narrowWidth)
                     .transition(.opacity.combined(with: .scale(scale: 0.9, anchor: .leading)))
             } else {
                 wide.frame(width: max(width, 220))
-                    .transition(.opacity.combined(with: .move(edge: .leading)))
+                    .transition(.asymmetric(insertion: .opacity.animation(.easeOut(duration: 0.25).delay(0.08)),
+                                            removal: .opacity.animation(.easeOut(duration: 0.12))))
             }
         }
         .frame(width: width, alignment: .leading)
