@@ -305,6 +305,8 @@ final class Browser {
             lines.append("Uniswap swap paying \(r.lowercased() == from.lowercased() ? "this wallet" : r).")
         case .vault(let r, let owner):
             lines.append("Vault \(owner == nil ? "deposit" : "withdrawal") crediting \(r.lowercased() == from.lowercased() ? "this wallet" : r).")
+        case .lending(let b):
+            lines.append("Lending pool call (Aave supply or withdraw) crediting \(b.lowercased() == from.lowercased() ? "this wallet" : b).")
         case .contract(let selector):
             lines.append("Contract call \(to), function \(selector)\(value > 0 ? ", with \(Fmt.num(Decimal(value) / 1_000_000_000_000_000_000, maxFraction: 8)) \(native)" : "").")
         }

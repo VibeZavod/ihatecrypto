@@ -187,6 +187,16 @@ public struct EVMRPC: Sendable {
     public static let base = EVMRPC(url: URL(string: "https://base.drpc.org")!, chainId: 8453)
     /// Circle's native USDC on Base (6 decimals).
     public static let baseUSDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
+    /// Polygon PoS, gas in POL; drpc serves calls, estimates and receipts (checked 2026-09-29).
+    public static let polygon = EVMRPC(url: URL(string: "https://polygon.drpc.org")!, chainId: 137)
+    /// Circle's native USDC on Polygon, not the bridged USDC.e.
+    public static let polygonUSDC = "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359"
+    /// Ethereum mainnet: a supply costs dollars of gas here, so the planners weigh it before choosing it.
+    public static let ethereum = EVMRPC(url: URL(string: "https://eth.drpc.org")!, chainId: 1)
+    public static let ethereumUSDC = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+
+    /// The only networks the signer signs for: the app's signing process and the CLI check the same list.
+    public static let signable: Set<UInt64> = [1, 137, 42161, 8453, 4663]
 
     /// eth_call: the raw return value.
     public func read(_ to: String, _ data: Data) async throws -> Data {
@@ -334,6 +344,8 @@ public enum EVMCall: Equatable, Sendable {
     case swap(recipient: String)
     /// An ERC-4626 vault (Morpho): who gets the shares or the assets, and whose shares are spent (nil for a deposit).
     case vault(receiver: String, owner: String?)
+    /// A lending pool (Aave's supply, deposit or withdraw): who gets the aTokens or the withdrawn asset.
+    case lending(beneficiary: String)
     case contract(selector: String)
 
     public static func decode(_ data: Data) -> EVMCall {
@@ -354,6 +366,8 @@ public enum EVMCall: Equatable, Sendable {
         case "b858183f": if let r = address(2) { return .swap(recipient: r) }
         case "6e553f65": if let r = address(1) { return .vault(receiver: r, owner: nil) }
         case "b460af94", "ba087652": if let r = address(1), let o = address(2) { return .vault(receiver: r, owner: o) }
+        // Aave: supply/deposit(asset, amount, onBehalfOf, referral) and withdraw(asset, amount, to): the third word.
+        case "617ba037", "e8eda9df", "69328dec": if let b = address(2) { return .lending(beneficiary: b) }
         default: break
         }
         return .contract(selector: "0x" + selector)
@@ -366,6 +380,9 @@ public enum EVMCall: Equatable, Sendable {
     public func refusal(sender: String) -> String? {
         if case .swap(let recipient) = self, recipient.lowercased() != sender.lowercased() {
             return "The swap would pay \(recipient), not this wallet."
+        }
+        if case .lending(let beneficiary) = self, beneficiary.lowercased() != sender.lowercased() {
+            return "The lending pool would credit \(beneficiary), not this wallet."
         }
         if case .vault(let receiver, let owner) = self {
             if receiver.lowercased() != sender.lowercased() { return "The vault would credit \(receiver), not this wallet." }

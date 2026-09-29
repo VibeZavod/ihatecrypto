@@ -96,9 +96,15 @@ import WalletCore
     #expect(try AaveV3.getReserveData(EVMRPC.baseUSDC).prefix(4).hex == selector("getReserveData(address)"))
     #expect(try ERC20.approve(spender: AaveV3.basePool, amount: 5).prefix(4).hex == selector("approve(address,uint256)"))
     #expect(try ERC20.allowance(owner: me, spender: AaveV3.basePool).prefix(4).hex == selector("allowance(address,address)"))
-    // An exact approve passes the guard's calldata check; Aave's supply is an ordinary contract call.
+    // An exact approve passes the guard's calldata check; a supply or withdraw to this wallet passes too.
     #expect(EVMCall.decode(try ERC20.approve(spender: AaveV3.basePool, amount: 2_000_000)).refusal(sender: me) == nil)
+    #expect(EVMCall.decode(supply) == .lending(beneficiary: me))
     #expect(EVMCall.decode(supply).refusal(sender: me) == nil)
+    #expect(EVMCall.decode(all).refusal(sender: me) == nil)
+    // The signer checks whom Aave credits: aTokens or USDC for anyone else are refused.
+    let thief = "0x9999999999999999999999999999999999999999"
+    #expect(EVMCall.decode(try AaveV3.supply(asset: EVMRPC.baseUSDC, amount: 2_000_000, onBehalfOf: thief)).refusal(sender: me) != nil)
+    #expect(EVMCall.decode(try AaveV3.withdraw(asset: EVMRPC.baseUSDC, amount: nil, to: thief)).refusal(sender: me) != nil)
     // 3.8946% APR in ray → ≈ 3.97% APY.
     let apy = AaveV3.apy(rateRay: Decimal(string: "38946000000000000000000000")!)
     #expect(apy > Decimal(string: "3.96")! && apy < Decimal(string: "3.98")!)
@@ -189,4 +195,10 @@ import WalletCore
     let quote = try UniswapV3.quoteExactInput(path: path, amountIn: 5_000_000)
     #expect(quote.prefix(4).hex == "cdca1753" && quote.count == 4 + 32 * 3 + 96)
     #expect(UniswapV3.on(8453)?.router == "0x2626664c2603336e57b271c5c0b26f421741e481" && UniswapV3.on(42161) != nil && UniswapV3.on(1) == nil)
+}
+
+@Test func signableNetworks() {
+    // Polygon and Ethereum join Base, Arbitrum and Robinhood Chain; nothing else is signed.
+    #expect(EVMRPC.signable == [1, 137, 42161, 8453, 4663])
+    #expect(EVMRPC.polygon.chainId == 137 && EVMRPC.ethereum.chainId == 1)
 }

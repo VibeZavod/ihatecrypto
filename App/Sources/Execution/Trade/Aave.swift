@@ -20,6 +20,8 @@ public struct EVMNetwork: Sendable {
     public let gasFloor: UInt64
     /// What the top-up is worth in USD (it must land above the floor).
     public let topupUSD: Decimal
+    /// The coin gas is paid in.
+    public var gasCoin = "ETH"
 
     public static let base = EVMNetwork(name: "Base", key: "base", rpc: .base, usdc: EVMRPC.baseUSDC, relayChain: Relay.Chain.base,
                                         explorer: "https://basescan.org", gasFloor: 5_000_000_000_000, topupUSD: Decimal(string: "0.03")!)
@@ -32,9 +34,20 @@ public struct EVMNetwork: Sendable {
                                              relayChain: Relay.Chain.robinhood, explorer: "https://robinhoodchain.blockscout.com",
                                              gasFloor: 15_000_000_000_000, topupUSD: Decimal(string: "0.08")!)
 
-    static func of(chainId: UInt64) -> EVMNetwork {
-        [arbitrum, robinhood].first { $0.rpc.chainId == chainId } ?? base
-    }
+    /// Polygon's gas is POL at ≈ $0.12: 0.3 POL covers several calls at today's 274 gwei, and a $0.06 top-up lands above it.
+    public static let polygon = EVMNetwork(name: "Polygon", key: "polygon", rpc: .polygon, usdc: EVMRPC.polygonUSDC, relayChain: Relay.Chain.polygon,
+                                           explorer: "https://polygonscan.com", gasFloor: 300_000_000_000_000_000,
+                                           topupUSD: Decimal(string: "0.06")!, gasCoin: "POL")
+    /// Ethereum: an Aave supply is ≈ 250k gas, $0.50 at 0.74 gwei (2026-09-29); the floor covers a supply and a
+    /// withdraw at twice that, and a $2.50 top-up lands above it.
+    // ponytail: fixed floor; derive it from eth_gasPrice if mainnet fees jump past ≈ 2 gwei.
+    public static let ethereum = EVMNetwork(name: "Ethereum", key: "ethereum", rpc: .ethereum, usdc: EVMRPC.ethereumUSDC, relayChain: Relay.Chain.ethereum,
+                                            explorer: "https://etherscan.io", gasFloor: 800_000_000_000_000, topupUSD: Decimal(string: "2.5")!)
+
+    public static let all = [base, arbitrum, robinhood, polygon, ethereum]
+
+    /// nil for a network LALA doesn't move money on: never guessed.
+    static func of(chainId: UInt64) -> EVMNetwork? { all.first { $0.rpc.chainId == chainId } }
 }
 
 /// Aave v3 on Base: USDC in and out. USDC missing on Base comes from Solana over Relay, with a little ETH for gas.
@@ -101,7 +114,7 @@ extension Executor {
         let (step, changes) = try await prepareBridge(.arrive(arrive), to: net.relayChain, currency: net.usdc, decimals: 6,
                                                       topupGasUSD: needGas ? topupUSD : nil)
         let stable = net.key == "robinhood" ? "USDG" : "USDC"
-        report("Bridge to \(net.name): \(Fmt.num(step.spend)) USDC from Solana → \(Fmt.num(step.arriving)) \(stable)\(needGas ? " plus ETH for gas" : ""). "
+        report("Bridge to \(net.name): \(Fmt.num(step.spend)) USDC from Solana → \(Fmt.num(step.arriving)) \(stable)\(needGas ? " plus \(net.gasCoin) for gas" : ""). "
                + changes.joined(separator: " "))
         try await sendBridge(step)
         let started = Date()
@@ -214,11 +227,11 @@ extension Executor {
     /// One EVM transaction: dry run by eth_estimateGas (a call that would revert stops here), the fee within the ETH
     /// there, the journal written before sending.
     func sendEVM(_ rpc: EVMRPC, to: String, data: Data, note: String, recipients: [String] = []) async throws -> String {
-        let net = EVMNetwork.of(chainId: rpc.chainId)
+        guard let net = EVMNetwork.of(chainId: rpc.chainId) else { throw ExecutionError("ihatecrypto doesn't move money on network \(rpc.chainId). Nothing was signed.") }
         let estimate = try await rpc.estimateGas(from: wallet.evm, to: to, value: 0, data: data)
         let (tip, maxFee) = try await rpc.fees()
         let gasLimit = estimate + estimate / 4
-        guard gasLimit * maxFee <= (try await rpc.balance(wallet.evm)) else { throw ExecutionError("Not enough ETH on \(net.name) for gas: \(note).") }
+        guard gasLimit * maxFee <= (try await rpc.balance(wallet.evm)) else { throw ExecutionError("Not enough \(net.gasCoin) on \(net.name) for gas: \(note).") }
         let nonce = try await rpc.nonce(wallet.evm)
         let raw = try await signer.signEVM(chainId: rpc.chainId, nonce: nonce, maxPriorityFee: tip, maxFee: maxFee, gasLimit: gasLimit, to: to, data: data,
                                            recipients: recipients)

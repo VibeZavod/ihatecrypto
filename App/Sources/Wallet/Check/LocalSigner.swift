@@ -55,7 +55,7 @@ struct LocalSigner: TradeSigner {
     /// The same calldata rules as the signing process: known networks, no unlimited approvals, tokens only to us.
     func signEVM(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64, to: String, data: Data,
                  recipients: [String]) async throws -> Data {
-        guard [1, 42161, 8453, 4663].contains(chainId) else { throw ExecutionError("Not signing for network \(chainId).") }
+        guard EVMRPC.signable.contains(chainId) else { throw ExecutionError("Not signing for network \(chainId).") }
         let call = EVMCall.decode(data)
         if let refusal = call.refusal(sender: wallet.evm) { throw ExecutionError(refusal) }
         if case .transfer(let recipient, _) = call, !(recipients + [wallet.evm]).contains(where: { $0.lowercased() == recipient.lowercased() }) {
