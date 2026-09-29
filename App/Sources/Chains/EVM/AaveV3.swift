@@ -75,6 +75,4 @@ public enum AaveV3 {
         return apy(rateRay: rate)
     }
 
-    // ponytail: Base-only shim for Workspace.loadBase until it reads every market; the rpc is always Base's.
-    public static func verifyBase(_ rpc: EVMRPC = .base) async throws -> Decimal { try await verify(base) }
 }

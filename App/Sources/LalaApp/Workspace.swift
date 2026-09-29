@@ -977,12 +977,12 @@ final class Workspace {
         let rpc = EVMRPC.base, me = hlAddress
         async let usdc = rpc.tokenBalance(EVMRPC.baseUSDC, owner: me)
         async let supplied = rpc.tokenBalance(AaveV3.baseAUSDC, owner: me)
-        async let vault = MorphoVault.value(me, rpc: rpc)
+        async let vault = MorphoVault.value(me, MorphoVault.base)
         async let eth = rpc.balance(me)
         async let arb = EVMRPC.arbitrum.tokenBalance(EVMRPC.arbitrumUSDC, owner: me)
         // The rates move slowly: re-read them every ten minutes, not on every refresh.
         let stale = aaveCheckedAt.map { Date().timeIntervalSince($0) > 600 } ?? true
-        async let rates: (aave: Decimal?, morpho: Decimal?) = stale ? (try? await AaveV3.verifyBase(rpc), await MorphoRates.netAPY()) : (nil, nil)
+        async let rates: (aave: Decimal?, morpho: Decimal?) = stale ? (try? await AaveV3.verify(AaveV3.base), await MorphoRates.netAPY(MorphoVault.base)) : (nil, nil)
         // Awaited first, assigned together: every assignment after an await is one more redraw of the window.
         let u = try? await usdc, a = try? await supplied, m = try? await vault, e = try? await eth, arbitrum = try? await arb, r = await rates
         if let u, let a, let e {

@@ -65,7 +65,4 @@ public enum MorphoVault {
     public static func value(_ owner: String, _ v: Vault) async throws -> UInt64 {
         ABI.uint(in: try await v.rpc.read(v.address, try maxWithdraw(owner)), word: 0) ?? 0
     }
-
-    // ponytail: Base-only shim for Workspace.loadBase until it reads every vault; the rpc is always Base's.
-    public static func value(_ owner: String, rpc: EVMRPC) async throws -> UInt64 { try await value(owner, base) }
 }
