@@ -302,10 +302,21 @@ extension Workspace {
                 guard let entry = savedAddress(name, on: .solana) else { throw ExecutionError("There’s no Solana address “\(name)” in Addresses.") }
                 reply(try await e.sendSOL(amount, to: entry.address, label: entry.name), note: "Solana")
                 markSent(entry)
-            case .aave(let deposit, let amount): reply(try await e.aave(deposit: deposit, usdc: amount), note: "Aave · Base")
-            case .morpho(let deposit, let amount): reply(try await e.morpho(deposit: deposit, usdc: amount), note: "Morpho · Base")
+            case .aave(let deposit, let amount, let network):
+                guard let m = AaveV3.markets.first(where: { $0.chain == network }) else {
+                    throw ExecutionError("ihatecrypto uses Aave on Base, Arbitrum, Polygon and Ethereum, not on \(WalletCommand.placeName(network)).")
+                }
+                reply(try await e.aave(deposit: deposit, usdc: amount, market: m), note: m.place)
+            case .morpho(let deposit, let amount, let network):
+                guard let v = MorphoVault.vaults.first(where: { $0.chain == network }) else {
+                    throw ExecutionError("ihatecrypto uses Morpho on Base, Arbitrum and Ethereum, not on \(WalletCommand.placeName(network)).")
+                }
+                reply(try await e.morpho(deposit: deposit, usdc: amount, vault: v), note: v.place)
             case .baseToSolana(let amount): reply(try await e.baseToSolana(usdc: amount), note: "Relay · Base → Solana")
             case .arbitrumToSolana(let amount): reply(try await e.evmToSolana(.arbitrum, usdc: amount), note: "Relay · Arbitrum → Solana")
+            case .evmToSolana(let network, let amount):
+                guard let net = EVMNetwork.named(network) else { throw ExecutionError("ihatecrypto doesn't move money on \(network).") }
+                reply(try await e.evmToSolana(net, usdc: amount), note: "Relay · \(net.name) → Solana")
             case .buyStock(let symbol, let usdc):
                 reply(try await e.buyStock(symbol, usdc: usdc ?? 0), note: "Robinhood Chain · Uniswap")
                 // A token bought by its contract shows among the favorites, with what the wallet holds of it.
@@ -321,7 +332,8 @@ extension Workspace {
                 reply(try await e.sellOn(net, token, amount: amount), note: "\(net.name) · Relay / Uniswap")
             case .robinhoodToSolana(let amount): reply(try await e.evmToSolana(.robinhood, usdc: amount), note: "Relay · Robinhood → Solana")
             case .solanaTo(let place, let amount):
-                let net: EVMNetwork = place == "base" ? .base : place == "arbitrum" ? .arbitrum : .robinhood
+                // Never a guess: a network the app doesn't know gets nothing.
+                guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't move money to \(place).") }
                 reply(try await e.solanaToEVM(net, usdc: amount ?? 0), note: "Relay · Solana → \(net.name)")
             case .sendTo(let name, let amount): prepareTransfer(amount, to: name)
             case .receive: showReceive = true

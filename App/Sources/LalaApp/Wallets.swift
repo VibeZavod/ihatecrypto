@@ -89,7 +89,7 @@ extension Workspace {
         let chains: [String] = switch command {
         case .yields, .receive, .stopSchedules: []
         case .hlp: ["evm"]
-        case .withdrawToSolana, .aave, .morpho, .baseToSolana, .arbitrumToSolana, .robinhoodToSolana, .solanaTo, .buyStock, .sellStock, .buyOn, .sellOn: ["evm", "solana"]
+        case .withdrawToSolana, .aave, .morpho, .baseToSolana, .arbitrumToSolana, .evmToSolana, .robinhoodToSolana, .solanaTo, .buyStock, .sellStock, .buyOn, .sellOn: ["evm", "solana"]
         case .sendNear, .closeNear: ["near"]
         case .buyNear, .sellNear: ["solana", "near"]
         default: ["solana"]   // spot, vaults, staking, sends: all on Solana

@@ -128,10 +128,17 @@ func moveMoney(_ text: String) async throws {
     case .sellNear(let amount):
         print(try await executor.sellNear(amount: amount, account: try TestWallet.nearAccount()))
         if let b = try? await Near.balance(account: try TestWallet.nearAccount()) { print("NEAR account: \(Fmt.num(b.near, maxFraction: 6)) NEAR, \(Fmt.num(b.wrapped, maxFraction: 6)) wNEAR") }
-    case .aave(let deposit, let amount): print(try await executor.aave(deposit: deposit, usdc: amount))
-    case .morpho(let deposit, let amount): print(try await executor.morpho(deposit: deposit, usdc: amount))
+    case .aave(let deposit, let amount, let net):
+        guard let m = AaveV3.markets.first(where: { $0.chain == net }) else { throw ExecutionError("No Aave market on \(net).") }
+        print(try await executor.aave(deposit: deposit, usdc: amount, market: m))
+    case .morpho(let deposit, let amount, let net):
+        guard let v = MorphoVault.vaults.first(where: { $0.chain == net }) else { throw ExecutionError("No Morpho vault on \(net).") }
+        print(try await executor.morpho(deposit: deposit, usdc: amount, vault: v))
     case .baseToSolana(let amount): print(try await executor.baseToSolana(usdc: amount))
     case .arbitrumToSolana(let amount): print(try await executor.evmToSolana(.arbitrum, usdc: amount))
+    case .evmToSolana(let net, let amount):
+        guard let n = EVMNetwork.named(net) else { throw ExecutionError("ihatecrypto doesn't move money on \(net).") }
+        print(try await executor.evmToSolana(n, usdc: amount))
     case .sendTo, .sendNear, .closeNear, .sendSol: throw ExecutionError("Sending to a saved address works in the ihatecrypto app, where the address book is.")
     case .buyStock(let symbol, let usdc): print(try await executor.buyStock(symbol, usdc: usdc ?? 1))
     case .sellStock(let symbol, let amount): print(try await executor.sellStock(symbol, amount: amount))

@@ -100,11 +100,12 @@ public enum ChatRouter {
     ANY SOLANA TOKEN BY ITS MINT (Jupiter; only while Safe search is off): buy token <MINT> for N USDC | sell [N] tokens <MINT>
     EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault") | withdraw [N] <USDC|SOL> from the vault
       deposit N <USDC|SOL> to kamino | withdraw <USDC|SOL> from kamino | stake N SOL | unstake N JitoSOL
-      deposit N USDC to HLP | withdraw from HLP | lend N USDC on Aave | withdraw USDC from Aave | deposit N USDC into Morpho | withdraw USDC from Morpho
+      deposit N USDC to HLP | withdraw from HLP | lend N USDC on Aave [on <Base|Arbitrum|Polygon|Ethereum>] | withdraw USDC from Aave [on <network>]
+      deposit N USDC into Morpho [on <Base|Arbitrum|Ethereum>] | withdraw USDC from Morpho [on <network>]   (no network = Base; name it only when the user does)
       where to keep <USDC|SOL> | spread [N] <USDC|SOL> across the best rates [max N% per protocol]   (N = at most that much; none = all that is free)
       rebalance USDC [max N% per protocol]   (moves money ALREADY in vaults to better rates: «переложи», «перекинь депозиты», «перебалансируй», «rebalance». «spread» / «разложи» / «распредели» is only for FREE USDC on Solana)
-    MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from Base to Solana | move N USDC from Arbitrum to Solana
-      move N USDC from Solana to <Base|Arbitrum|Robinhood>   (arrives as USDG on Robinhood Chain)
+    MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from <Base|Arbitrum|Polygon|Ethereum> to Solana
+      move N USDC from Solana to <Base|Arbitrum|Polygon|Ethereum|Robinhood>   (arrives as USDG on Robinhood Chain)
       send N USDC to <NAME from the address book> | top up (where to send money into ihatecrypto)
       send N NEAR to <NAME from the address book> | send all NEAR to <NAME> | close the NEAR account into <NAME>
       send N SOL to <NAME from the address book>
@@ -126,11 +127,12 @@ public enum ChatRouter {
     («робингуд»/«робинхуд» = Robinhood Chain, «хайпер» = Hyperliquid, «солана»/«сол» = the Solana wallet, «бакс» = a dollar).
 
     Where their money lives, all at their own addresses: the Solana wallet (USDC and SOL, the hub); Hyperliquid (perp margin \
-    and the HLP vault); Jupiter Lend and Kamino on Solana; Base (Aave, Morpho, idle USDC); Arbitrum (idle USDC); Robinhood \
-    Chain (USDG, stock tokens, tokens by contract); NEAR.
-    How money moves: through Solana. Solana ⇄ Base, Arbitrum and Robinhood Chain over Relay; Hyperliquid → Solana; a trade \
+    and the HLP vault); Jupiter Lend and Kamino on Solana; Aave on Base, Arbitrum, Polygon and Ethereum; Morpho on Base, \
+    Arbitrum and Ethereum; idle USDC on those networks; Robinhood Chain (USDG, stock tokens, tokens by contract); NEAR. \
+    Ethereum's gas costs dollars: only large amounts are worth it there, and «spread»/«rebalance» weigh that by themselves.
+    How money moves: through Solana. Solana ⇄ Base, Arbitrum, Polygon, Ethereum and Robinhood Chain over Relay; Hyperliquid → Solana; a trade \
     plan brings USDC from Solana to Hyperliquid by itself; NEAR ⇄ Solana USDC through NEAR Intents (buy NEAR / sell NEAR); every vault is entered from Solana and left back to Solana \
-    in ONE command — Aave and Morpho too: «withdraw USDC from Aave» withdraws on Base and bridges to Solana by itself, so never \
+    in ONE command — Aave and Morpho too: «withdraw USDC from Aave on Arbitrum» withdraws there and bridges to Solana by itself, so never \
     split it into two steps. Selling stock tokens or tokens by contract leaves USDG on Robinhood Chain; «move USDG from Robinhood \
     to Solana» brings it back. \
     Between two places that aren't Solana there is no direct move: it's two steps through Solana.

@@ -245,3 +245,20 @@ import Testing
     #expect(WalletCommand.parse("выведи из морфо") == .morpho(deposit: false, amount: nil))
     #expect(WalletCommand.parse("lend 2 USDC on Aave") == .aave(deposit: true, amount: 2))
 }
+
+@Test func lendingCommandsNameTheirNetwork() {
+    #expect(WalletCommand.parse("lend 2 USDC on Aave on Arbitrum") == .aave(deposit: true, amount: 2, network: "arbitrum"))
+    #expect(WalletCommand.parse("положи 3 usdc в aave на полигоне") == .aave(deposit: true, amount: 3, network: "polygon"))
+    #expect(WalletCommand.parse("deposit 50 USDC into Morpho on Ethereum") == .morpho(deposit: true, amount: 50, network: "ethereum"))
+    #expect(WalletCommand.parse("выведи всё из morpho на арбитруме") == .morpho(deposit: false, amount: nil, network: "arbitrum"))
+    // No network named: Base, as before.
+    #expect(WalletCommand.parse("lend 2 USDC on Aave") == .aave(deposit: true, amount: 2, network: "base"))
+    // From Solana into Aave on a network is a deposit there, not an idle transfer.
+    #expect(WalletCommand.parse("переведи 2 usdc из соланы в aave на арбитрум") == .aave(deposit: true, amount: 2, network: "arbitrum"))
+    // Idle USDC to and from the new networks.
+    #expect(WalletCommand.parse("move 3 USDC from Solana to Polygon") == .solanaTo("polygon", 3))
+    #expect(WalletCommand.parse("move 5 USDC from Polygon to Solana") == .evmToSolana("polygon", 5))
+    #expect(WalletCommand.parse("верни usdc с эфириума в солану") == .evmToSolana("ethereum", nil))
+    #expect(WalletCommand.aave(deposit: true, amount: nil, network: "polygon").amountQuestion == "How much USDC into Aave on Polygon?")
+    #expect(WalletCommand.morpho(deposit: false, amount: 1, network: "ethereum").summary == "withdraw 1 USDC from Morpho on Ethereum to Solana")
+}

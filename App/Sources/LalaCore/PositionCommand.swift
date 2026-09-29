@@ -121,15 +121,17 @@ public enum WalletCommand: Equatable, Sendable {
     /// «Переложи в лучшие ставки»: USDC already deposited moves to better rates, at most this % per protocol (nil = 50),
     /// only where the extra interest pays the move back within 30 days.
     case rebalance(maxShare: Decimal?)
-    /// USDC into Aave v3 on Base (bridged from Solana when short) or out of it and back to Solana;
-    /// nil = ask (deposit) / everything (withdraw).
-    case aave(deposit: Bool, amount: Decimal?)
-    /// The same with Morpho's Gauntlet USDC Prime vault on Base.
-    case morpho(deposit: Bool, amount: Decimal?)
+    /// USDC into Aave v3 on `network` («base», «arbitrum», «polygon», «ethereum»; bridged from Solana when short) or
+    /// out of it and back to Solana; nil = ask (deposit) / everything (withdraw).
+    case aave(deposit: Bool, amount: Decimal?, network: String = "base")
+    /// The same with a Morpho vault («base», «arbitrum», «ethereum»).
+    case morpho(deposit: Bool, amount: Decimal?, network: String = "base")
     /// USDC idle on Base back to Solana over Relay; nil = everything.
     case baseToSolana(Decimal?)
     /// The same from Arbitrum.
     case arbitrumToSolana(Decimal?)
+    /// The same from «polygon» or «ethereum».
+    case evmToSolana(String, Decimal?)
     /// «send 5 USDC to Bybit»: to an entry of the address book, by its name. An address in the text is never a recipient.
     case sendTo(name: String, amount: Decimal)
     /// Native NEAR from the wallet's NEAR account to an address-book entry on NEAR; nil = all but the account's own
@@ -225,9 +227,10 @@ public enum WalletCommand: Equatable, Sendable {
             if q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bget\s+me\b|вложи\w*\s+в/) { return .buyStock(symbol: symbol, usdc: amount) }
         }
         // Out of the Solana wallet: «move 3 USDC from Solana to Robinhood», «переведи 3 USDC из соланы в робингуд».
-        if let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(base|бейс\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*)/) {
-            let place = String(m.1)
-            return .solanaTo(place.hasPrefix("b") || place.hasPrefix("бейс") ? "base" : place.hasPrefix("arb") || place.hasPrefix("арб") ? "arbitrum" : "robinhood", amount)
+        // «из соланы в aave на арбитрум» is a deposit into Aave there, not an idle transfer: it's read further down.
+        if !q.contains(/\baave\b|ааве|morpho|морфо/),
+           let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(base|бейс\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*)/) {
+            return .solanaTo(Self.network(String(m.1)) ?? "robinhood", amount)
         }
         if q.contains(/robinhood|робин[гх]уд/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .robinhoodToSolana(amount)
@@ -243,14 +246,16 @@ public enum WalletCommand: Equatable, Sendable {
             if outOf { return .hlp(deposit: false, amount: coins ?? amount ?? bare) }
             if into { return .hlp(deposit: true, amount: coins ?? amount ?? bare) }
         }
+        // The network the lending command names; Base when it names none.
+        let lendingNetwork = Self.network(in: q) ?? "base"
         if q.contains(/\baave\b|ааве|\bаав/) {
-            if outOf { return .aave(deposit: false, amount: coins ?? amount ?? bare) }
+            if outOf { return .aave(deposit: false, amount: coins ?? amount ?? bare, network: lendingNetwork) }
             // Only with a word for putting money in: «what do I have on Aave?» is a question.
-            if into || q.contains(/\blend\b|\bsupply\b|\bbuy\b|\bкуп\w*|одолж/) { return .aave(deposit: true, amount: coins ?? amount ?? bare) }
+            if into || q.contains(/\blend\b|\bsupply\b|\bbuy\b|\bкуп\w*|одолж/) { return .aave(deposit: true, amount: coins ?? amount ?? bare, network: lendingNetwork) }
         }
         if q.contains(/morpho|морфо|gauntlet/) {
-            if outOf { return .morpho(deposit: false, amount: coins ?? amount ?? bare) }
-            if into || q.contains(/\blend\b|\bsupply\b|\bdeposit\b|депозит|полож|одолж/) { return .morpho(deposit: true, amount: coins ?? amount ?? bare) }
+            if outOf { return .morpho(deposit: false, amount: coins ?? amount ?? bare, network: lendingNetwork) }
+            if into || q.contains(/\blend\b|\bsupply\b|\bdeposit\b|депозит|полож|одолж/) { return .morpho(deposit: true, amount: coins ?? amount ?? bare, network: lendingNetwork) }
         }
         if q.contains(/kamino|камино/) {
             if outOf { return .kamino(deposit: false, symbol: symbol, amount: coins ?? amount ?? bare) }
@@ -319,6 +324,10 @@ public enum WalletCommand: Equatable, Sendable {
         if q.contains(/arbitrum|арбитрум/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .arbitrumToSolana(amount)
         }
+        if let net = Self.network(in: q), net == "polygon" || net == "ethereum",
+           q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
+            return .evmToSolana(net, amount)
+        }
         if q.contains(/\bbase\b|бейс/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .baseToSolana(amount)
         }
@@ -361,8 +370,8 @@ extension WalletCommand {
         case .lendDeposit(let s, nil): "How much \(s) into Jupiter Lend?"
         case .kamino(true, let s, nil): "How much \(s) into Kamino?"
         case .hlp(true, nil): "How much USDC into HLP? (at least $5)"
-        case .aave(true, nil): "How much USDC into Aave on Base?"
-        case .morpho(true, nil): "How much USDC into Morpho on Base?"
+        case .aave(true, nil, let net): "How much USDC into Aave on \(Self.placeName(net))?"
+        case .morpho(true, nil, let net): "How much USDC into Morpho on \(Self.placeName(net))?"
         case .buy(let a, nil): "For how many USDC should I buy \(a.symbol)?"
         case .buyNear(nil): "For how many USDC should I buy NEAR?"
         case .buyStock(let s, nil): "For how many USDC should I buy \(s)?"
@@ -378,8 +387,8 @@ extension WalletCommand {
         case .lendDeposit(let s, _): .lendDeposit(s, amount)
         case .kamino(let d, let s, _): .kamino(deposit: d, symbol: s, amount: amount)
         case .hlp(let d, _): .hlp(deposit: d, amount: amount)
-        case .aave(let d, _): .aave(deposit: d, amount: amount)
-        case .morpho(let d, _): .morpho(deposit: d, amount: amount)
+        case .aave(let d, _, let net): .aave(deposit: d, amount: amount, network: net)
+        case .morpho(let d, _, let net): .morpho(deposit: d, amount: amount, network: net)
         case .buy(let a, _): .buy(a, usdc: amount)
         case .buyNear: .buyNear(usdc: amount)
         case .buyStock(let s, _): .buyStock(symbol: s, usdc: amount)
@@ -390,8 +399,21 @@ extension WalletCommand {
         }
     }
 
-    static func placeName(_ place: String) -> String {
-        ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood Chain"][place] ?? place.capitalized
+    public static func placeName(_ place: String) -> String {
+        ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood Chain", "polygon": "Polygon", "ethereum": "Ethereum"][place] ?? place.capitalized
+    }
+
+    /// The EVM network a word names: «арбитрум» → «arbitrum», «полигон» → «polygon», «эфириум» or «mainnet» → «ethereum».
+    static func network(_ word: String) -> String? {
+        let w = word.lowercased()
+        return w.hasPrefix("b") || w.hasPrefix("бейс") ? "base" : w.hasPrefix("arb") || w.hasPrefix("арб") ? "arbitrum"
+            : w.hasPrefix("rob") || w.hasPrefix("роб") ? "robinhood" : w.hasPrefix("pol") || w.hasPrefix("пол") ? "polygon"
+            : w.hasPrefix("eth") || w.hasPrefix("эфир") || w.hasPrefix("main") || w.hasPrefix("мейн") ? "ethereum" : nil
+    }
+
+    /// The first EVM network the text names, if any.
+    static func network(in q: String) -> String? {
+        q.firstMatch(of: /\b(base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*)\b/).flatMap { network(String($0.1)) }
     }
 
     /// «1», «1 USDC», «$1.5», «да, 2», «ok 3» — a short reply that is only an amount.
@@ -421,10 +443,13 @@ extension WalletCommand {
         case .hlp(let d, let x): return d ? "deposit \(n(x)) USDC into HLP" : "withdraw \(n(x)) USDC from HLP"
         case .allocate(let s, let share, let x): return "spread \(x.map { "\(Fmt.num($0)) " } ?? "")\(s) across the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
         case .rebalance(let share): return "move deposited USDC to the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
-        case .aave(let d, let x): return d ? "deposit \(n(x)) USDC into Aave on Base" : "withdraw \(n(x)) USDC from Aave to Solana"
-        case .morpho(let d, let x): return d ? "deposit \(n(x)) USDC into Morpho on Base" : "withdraw \(n(x)) USDC from Morpho to Solana"
+        case .aave(let d, let x, let net):
+            return d ? "deposit \(n(x)) USDC into Aave on \(Self.placeName(net))" : "withdraw \(n(x)) USDC from Aave on \(Self.placeName(net)) to Solana"
+        case .morpho(let d, let x, let net):
+            return d ? "deposit \(n(x)) USDC into Morpho on \(Self.placeName(net))" : "withdraw \(n(x)) USDC from Morpho on \(Self.placeName(net)) to Solana"
         case .baseToSolana(let x): return "move \(n(x)) USDC from Base to Solana"
         case .arbitrumToSolana(let x): return "move \(n(x)) USDC from Arbitrum to Solana"
+        case .evmToSolana(let net, let x): return "move \(n(x)) USDC from \(Self.placeName(net)) to Solana"
         case .sendTo(let name, let x): return "send \(Fmt.num(x)) USDC to \(name)"
         case .sendNear(let name, let x): return "send \(n(x)) NEAR to \(name)"
         case .closeNear(let name): return "close your NEAR account and send all its NEAR to \(name)"

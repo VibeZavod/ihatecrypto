@@ -722,10 +722,11 @@ extension Workspace {
     func route(_ command: WalletCommand) -> MoveRoute? {
         switch command {
         case .withdrawToSolana(let asked): withdrawRoute(asked)
-        case .aave(deposit: true, amount: let amount?): aaveRoute(amount)
-        case .aave(deposit: false, amount: let amount): backRoute(from: "aave", amount: amount)
-        case .morpho(deposit: true, amount: let amount?): aaveRoute(amount, morpho: true)
-        case .morpho(deposit: false, amount: let amount): backRoute(from: "morpho", amount: amount)
+        case .aave(deposit: true, amount: let amount?, network: let net): aaveRoute(amount, network: net)
+        case .aave(deposit: false, amount: let amount, network: let net): backRoute(from: "aave", amount: amount, network: net)
+        case .morpho(deposit: true, amount: let amount?, network: let net): aaveRoute(amount, morpho: true, network: net)
+        case .morpho(deposit: false, amount: let amount, network: let net): backRoute(from: "morpho", amount: amount, network: net)
+        case .evmToSolana(let net, let amount): backRoute(from: net, amount: amount, network: net)
         case .baseToSolana(let amount): backRoute(from: "base", amount: amount)
         case .arbitrumToSolana(let amount): backRoute(from: "arbitrum", amount: amount)
         case .robinhoodToSolana(let amount): backRoute(from: "robinhood", amount: amount)
@@ -817,7 +818,8 @@ extension Workspace {
     }
 
     /// Aave, or Morpho's vault: the same way in on Base.
-    private func aaveRoute(_ amount: Decimal, morpho: Bool = false) -> MoveRoute {
+    private func aaveRoute(_ amount: Decimal, morpho: Bool = false, network: String = "base") -> MoveRoute {
+        guard network == "base" else { return lendingRoute(amount, morpho: morpho, network: network) }
         let onBase = base?.usdc ?? 0
         let short = max(0, amount - onBase)
         let needGas = (base?.eth ?? 0) < Decimal(string: "0.000005")!
@@ -974,7 +976,40 @@ extension Workspace {
     }
 
     /// Aave or idle USDC on Base, Arbitrum or Robinhood Chain → Relay → Solana.
-    private func backRoute(from place: String, amount: Decimal?) -> MoveRoute {
+    /// Aave or Morpho on a network other than Base. The app doesn't read balances there yet, so the route shows the way,
+    /// not live amounts; the executor checks everything before signing.
+    private func lendingRoute(_ amount: Decimal, morpho: Bool, network: String) -> MoveRoute {
+        let name = WalletCommand.placeName(network), coin = network == "polygon" ? "POL" : "ETH"
+        let protocolName = morpho ? "Morpho" : "Aave"
+        return MoveRoute(title: "\(protocolName) · \(morpho ? "deposit" : "lend") \(Fmt.num(amount)) USDC on \(name)",
+                         footer: "USDC missing on \(name) comes from Solana over Relay, with \(coin) for gas when there's none; then two \(name) transactions: "
+                            + "approve exactly \(Fmt.num(amount)) USDC, then \(morpho ? "deposit; the shares come to this wallet only" : "supply"). "
+                            + "\(morpho ? "The vault's asset is" : "Pool and aToken are") re-read from \(name) first"
+                            + (network == "ethereum" ? "; Ethereum's gas costs dollars" : "") + ". Say “do it” or press Confirm.",
+                         steps: [
+            step("sol", "FROM · SOLANA", solana.map { "\(Fmt.num($0.usdc)) USDC" } ?? "—", "sends what's missing there", .solana),
+            step("relay", "BRIDGE · RELAY", "USDC → \(name)", "+ \(coin) for gas when there's none · ≈ 2 s", .relay),
+            morpho ? step("morpho", "MORPHO · \(name.uppercased())", "\(Fmt.num(amount)) USDC", "rate from the vault", .morpho)
+                   : step("aave", "AAVE V3 · \(name.uppercased())", "\(Fmt.num(amount)) USDC", "rate from the pool", .aave),
+        ])
+    }
+
+    private func backRoute(from place: String, amount: Decimal?, network: String = "base") -> MoveRoute {
+        if network != "base" {
+            let name = WalletCommand.placeName(network), lending = place == "aave" || place == "morpho"
+            let what = place == "aave" ? "Aave" : "Morpho", moving = amount.map { Fmt.num($0) } ?? "all"
+            let from = lending
+                ? step(place, "FROM · \(what.uppercased()) ON \(name.uppercased())", "\(moving) USDC", "with the interest", place == "aave" ? .aave : .morpho)
+                : step(network == "polygon" ? "pol" : network == "arbitrum" ? "arb" : "eth", "FROM · \(name.uppercased())", "\(moving) USDC", "idle USDC", .relay)
+            return MoveRoute(title: lending ? "\(what) · withdraw \(moving) USDC on \(name) to Solana" : "\(name) · \(moving) USDC to Solana",
+                             footer: (lending ? "Three \(name) transactions: withdraw from \(what), an exact approve and Relay’s deposit"
+                                              : "Two \(name) transactions: an exact approve and Relay’s deposit")
+                                + " — checked field by field before signing. Say “do it” or press Confirm.", steps: [
+                from,
+                step("relay", "BRIDGE · RELAY", "\(moving) USDC", "a few seconds", .relay),
+                step("sol", "TO · SOLANA", solana.map { Fmt.num($0.usdc) } ?? "—", "your own address ✓", .solana),
+            ])
+        }
         let available = place == "aave" ? base?.aave : place == "morpho" ? base?.morpho : place == "arbitrum" ? arbitrumUSDC : place == "robinhood" ? robinhood?.usdg : base?.usdc
         let moving = amount.map { min($0, available ?? $0) } ?? available
         let chainName = place == "arbitrum" ? "Arbitrum" : place == "robinhood" ? "Robinhood Chain" : "Base"
