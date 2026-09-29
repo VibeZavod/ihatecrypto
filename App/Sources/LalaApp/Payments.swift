@@ -74,9 +74,12 @@ extension Workspace {
                             + (short ? "what's short comes from Solana over Relay first; " : "")
                             + "the fee, ≈ $0.001, comes out of the USDC. Then the request goes again with the payment's hash. Say “do it” or press Confirm.",
                          steps: [
-            ActivityBubble(kind: "step", label: short ? "FROM · SOLANA → TEMPO" : "FROM · TEMPO",
-                           title: "\(Fmt.num(there)) → \(Fmt.num(max(0, there - c.usdc))) USDC", lines: [short ? "bridged over Relay first" : "your USDC on Tempo"],
-                           logo: short ? "sol" : "tempo", fill: short ? .solana : .tempo),
+            // Short on Tempo: what's missing plus a cent for fees comes from Solana, Relay's ≈ $0.02 on top (2026-09-30).
+            short ? ActivityBubble(kind: "step", label: "FROM · SOLANA → TEMPO", title: "\(Fmt.num(c.usdc - there + Decimal(string: "0.01")!, maxFraction: 6)) USDC",
+                                   lines: ["bridged over Relay first, ≈ $0.02", solana.map { "\(Fmt.num($0.usdc)) USDC on Solana" } ?? "from your Solana USDC"],
+                                   logo: "sol", fill: .solana)
+                  : ActivityBubble(kind: "step", label: "FROM · TEMPO", title: "\(Fmt.num(there)) → \(Fmt.num(there - c.usdc)) USDC", lines: ["your USDC on Tempo"],
+                                   logo: "tempo", fill: .tempo),
             ActivityBubble(kind: "step", label: "PAY · MPP", title: "\(price) USDC", lines: [c.purpose ?? "one request"], logo: "tempo", fill: .tempo),
             ActivityBubble(kind: "step", label: "TO · \(host.uppercased())", title: "the answer comes here", lines: [c.realm], logo: "tempo", fill: .check),
         ])
