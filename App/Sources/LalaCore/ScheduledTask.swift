@@ -9,6 +9,8 @@ public struct ScheduledTask: Codable, Equatable, Sendable, Identifiable {
     public var next: Date
     /// nil: once.
     public var every: Every?
+    /// What started it when the clock didn't: «ETH went below 2,680» for a price alert's steps.
+    public var because: String?
 
     public enum Every: Codable, Equatable, Sendable {
         case hours(Int), days(Int), months(Int)
@@ -35,8 +37,8 @@ public struct ScheduledTask: Codable, Equatable, Sendable, Identifiable {
         }
     }
 
-    public init(steps: [String], next: Date, every: Every?) {
-        (self.steps, self.next, self.every) = (steps, next, every)
+    public init(steps: [String], next: Date, every: Every?, because: String? = nil) {
+        (self.steps, self.next, self.every, self.because) = (steps, next, every, because)
     }
 
     /// Dates are Gregorian whatever the Mac's calendar is (this one is set to Buddhist years).

@@ -48,17 +48,22 @@ extension Workspace {
         var task = tasks[i]
         if task.advance() { tasks[i] = task } else { tasks.remove(at: i) }
         newCanvas()
-        let request = say("Scheduled: ", "По расписанию: ") + task.steps.joined(separator: say(", then ", ", потом "))
+        let request = (task.because.map { $0 + ": " } ?? say("Scheduled: ", "По расписанию: ")) + task.steps.joined(separator: say(", then ", ", потом "))
         messages.append(Message(fromUser: true, text: request))
         beginActivity(.request, request: request, schedule: "task:\(task.id)")
         let run = currentActivity
         await runSteps(task.steps)
         // The Schedule canvas opens the canvas it ran on (saved by now).
         if let i = activities.lastIndex(where: { $0.id == run }) { activities[i].canvas = canvasID }
-        let waits = pendingAction != nil || pendingAllocation != nil
+        // A trade plan waits for Execute the way a move waits for Confirm; one a rule stops needs the user just as much.
+        let plan = intent != TradeIntent() && !managesPosition
+        let waits = pendingAction != nil || pendingAllocation != nil || plan
         // The run is already in the history as its request.
-        notify(waits ? .confirm : .moves, request, waits ? say("Ready on its canvas — press Confirm.", "Готово на своём канвасе — нажми Confirm.")
-                                                         : messages.last.map(\.text) ?? "", record: false)
+        notify(waits ? .confirm : .moves, request,
+               plan ? (planIsReady ? say("The plan is ready on its canvas — press Execute.", "План готов на своём канвасе — нажми Execute.")
+                                   : say("The plan is on its canvas, but a rule stops it — open it to fix.", "План на своём канвасе, но его стопорит правило — открой и поправь."))
+                    : waits ? say("Ready on its canvas — press Confirm.", "Готово на своём канвасе — нажми Confirm.")
+                            : messages.last.map(\.text) ?? "", record: false)
     }
 
     /// Steps one after another. One that waits for Confirm holds the rest until its move has gone through

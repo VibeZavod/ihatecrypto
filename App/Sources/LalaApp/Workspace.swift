@@ -153,6 +153,8 @@ final class Workspace {
     var chart: ChartState?
     /// The day's biggest movers on the canvas.
     var showMovers = false
+    /// The price alerts as a board on the canvas, opened when one is set.
+    var showAlerts = false
     /// The latest of the history and the favorites on the canvas, opened by the rail's buttons.
     var showHistory = false
     var showFavorites = false
@@ -807,6 +809,11 @@ final class Workspace {
         c.recent = Array(recentChat().dropLast())   // the last line is the message itself
         c.offered = offered.map { "\($0.title) → \($0.command)\($0.recommended ? " (recommended)" : "")" }
         if intent != TradeIntent(), let json = try? JSONEncoder().encode(intent) { c.plan = String(decoding: json, as: UTF8.self) }
+        if let ch = chart { c.canvas.append("chart \(ch.coin) (\(ch.range.title))") }
+        if let p = pendingText { c.canvas.append("waiting for Confirm: \(p)") }
+        c.canvas += alerts.map { a in
+            "price alert: \(a.coin) \(a.above ? "above" : "below") \(Fmt.price(a.price))" + (a.steps.map { ", then " + $0.joined(separator: " then ") } ?? "")
+        }
         c.positions = positions.map { "\($0.size > 0 ? "long" : "short") \(IntentParser.pretty($0.coin))" }
         c.favorites = favoriteTokens.map { "\($0.symbol) (\($0.name)) = \($0.address) on \($0.chainTitle)" }
         c.addressBook = addressBook.map(\.name)

@@ -228,6 +228,16 @@ import Testing
     #expect(AlertCommand.parse("notify me about ETH", markets: m) == nil)
     let a = PriceAlert(coin: "ETH", above: false, price: 2600)
     #expect(a.fires(at: 2599) && a.fires(at: 2600) && !a.fires(at: 2601))
+    // With steps after the colon: the level before it, and the numbers of the steps don't become the level.
+    #expect(AlertCommand.parse("when ETH is below 2,680: long ETH risk $0.28 stop 2.1% take 4.2% leverage 3x", markets: m)
+            == .set(coin: "ETH", price: 2680, above: false, steps: ["long ETH risk $0.28 stop 2.1% take 4.2% leverage 3x"]))
+    #expect(AlertCommand.parse("when SOL is above 250: sell SOL then lend USDC", markets: m)
+            == .set(coin: "SOL", price: 250, above: true, steps: ["sell SOL", "lend USDC"]))
+    #expect(AlertCommand.parse("when my portfolio grows: long ETH", markets: m) == nil)
+    #expect(ChatRouter.parses("when ETH is below 2680: long ETH leverage 3x", markets: m))
+    // Alerts kept before steps existed still load.
+    let old = try! JSONDecoder().decode(PriceAlert.self, from: Data(#"{"id":"\#(UUID())","coin":"ETH","above":true,"price":1,"created":0}"#.utf8))
+    #expect(old.steps == nil)
 }
 
 @Test func sendToSavedNames() {

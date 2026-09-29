@@ -1,6 +1,7 @@
 import Foundation
 
 /// «Tell me when oil drops below 90»: one notification when the mark price crosses the level, then the alert is done.
+/// With steps («when ETH is below 2,680: long ETH leverage 3x») it runs them instead, like a task due now.
 public struct PriceAlert: Codable, Equatable, Sendable, Identifiable {
     public var id = UUID()
     public let coin: String
@@ -8,22 +9,34 @@ public struct PriceAlert: Codable, Equatable, Sendable, Identifiable {
     public let above: Bool
     public let price: Decimal
     public var created = Date()
+    /// The router's commands to run when it fires; nil: only the notification.
+    public var steps: [String]?
 
-    public init(coin: String, above: Bool, price: Decimal) {
+    public init(coin: String, above: Bool, price: Decimal, steps: [String]? = nil) {
         self.coin = coin
         self.above = above
         self.price = price
+        self.steps = steps
     }
 
     public func fires(at mark: Decimal) -> Bool { above ? mark >= price : mark <= price }
 }
 
 public enum AlertCommand: Equatable, Sendable {
-    /// `above` nil: whichever side of the current price the level is on.
-    case set(coin: String, price: Decimal, above: Bool?)
+    /// `above` nil: whichever side of the current price the level is on. `steps`: what to run when it fires.
+    case set(coin: String, price: Decimal, above: Bool?, steps: [String] = [])
     case clear
 
     public static func parse(_ text: String, markets: Set<String> = []) -> AlertCommand? {
+        // «when ETH is below 2,680: long ETH leverage 3x»: the level before the colon, steps after it joined by « then ».
+        if let colon = text.firstIndex(of: ":"), text[..<colon].lowercased().contains(/^\s*(?:when|if|once|alert)\b/) {
+            let steps = text[text.index(after: colon)...].split(separator: /\s+then\s+|\s*;\s*/)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+            if !steps.isEmpty {
+                guard case .set(let coin, let price, let above, _)? = parse("alert me " + text[..<colon], markets: markets) else { return nil }
+                return .set(coin: coin, price: price, above: above, steps: steps)
+            }
+        }
         let q = text.lowercased()
         if q.contains(/(?:cancel|clear|remove|delete|stop)\s+(?:all\s+|my\s+|the\s+)*(?:price\s+)?alerts?|(?:отмени|удали|убери|сними)\w*\s+(?:все\s+)?(?:алерт|уведомлен|оповещен)/) {
             return .clear

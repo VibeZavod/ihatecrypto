@@ -254,6 +254,7 @@ extension Workspace {
         detail = nil
         showReceive = false
         showMovers = false
+        showAlerts = false
         showHistory = false
         showFavorites = false
         showSchedule = false

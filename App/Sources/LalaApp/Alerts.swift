@@ -9,18 +9,27 @@ extension Workspace {
             let n = alerts.count
             alerts = []
             reply(n == 0 ? "There were no price alerts." : "Price alerts cleared (\(n)).", note: note)
-        case .set(let coin, let price, let above):
+        case .set(let coin, let price, let above, let steps):
             let name = IntentParser.pretty(coin)
+            if let unknown = steps.first(where: { !knows($0) }) {
+                reply(say("I can set the alert, but ihatecrypto can’t do “\(unknown)” yet — nothing was set.",
+                          "Алерт поставить могу, но «\(unknown)» ihatecrypto пока не умеет — ничего не поставлено."), note: note)
+                return
+            }
             guard let mark = markets[coin]?.markPx else { reply("No price for \(name) right now — try again in a moment.", note: note); return }
             let up = above ?? (price > mark)
             if up ? mark >= price : mark <= price {
                 reply("\(name) is already \(up ? "above" : "below") \(Fmt.price(price)): now \(Fmt.price(mark)).", note: note)
                 return
             }
-            alerts.append(PriceAlert(coin: coin, above: up, price: price))
+            alerts.append(PriceAlert(coin: coin, above: up, price: price, steps: steps.isEmpty ? nil : steps))
+            withAnimation(StudioView.spring) { showAlerts = true }
+            UserDefaults.standard.set("plan", forKey: "canvasMode")
             let away = ((price - mark) / mark * 100).rounded(1, .plain)
-            reply(say("🔔 I’ll tell you when \(name) goes \(up ? "above" : "below") \(Fmt.price(price)) — now \(Fmt.price(mark)), \(Fmt.num(abs(away)))% \(up ? "higher" : "lower"). Works while ihatecrypto is open or in the menu bar.",
-                      "🔔 Скажу, когда \(name) будет \(up ? "выше" : "ниже") \(Fmt.price(price)) — сейчас \(Fmt.price(mark)), на \(Fmt.num(abs(away)))% \(up ? "выше" : "ниже"). Работает, пока ihatecrypto открыт или в строке меню."), note: note)
+            let then = steps.isEmpty ? "" : say(" Then I’ll prepare “\(steps.joined(separator: ", then "))” and send it to you to confirm.",
+                                               " Тогда подготовлю «\(steps.joined(separator: ", потом "))» и пришлю на подтверждение.")
+            reply(say("🔔 On the canvas: \(name) \(up ? "above" : "below") \(Fmt.price(price)) — now \(Fmt.price(mark)), \(Fmt.num(abs(away)))% \(up ? "higher" : "lower").",
+                      "🔔 На канвасе: \(name) \(up ? "выше" : "ниже") \(Fmt.price(price)) — сейчас \(Fmt.price(mark)), на \(Fmt.num(abs(away)))% \(up ? "выше" : "ниже").") + then, note: note)
         }
     }
 
@@ -29,11 +38,115 @@ extension Workspace {
         for a in alerts {
             guard let mark = markets[a.coin]?.markPx, a.fires(at: mark) else { continue }
             alerts.removeAll { $0.id == a.id }
+            // Its steps run as a task due now: on their own canvas once nothing else is going on, and a move or a plan
+            // waits there for Confirm with a notification (runDueTask).
+            if let steps = a.steps {
+                let because = say("\(IntentParser.pretty(a.coin)) went \(a.above ? "above" : "below") \(Fmt.price(a.price))",
+                                  "\(IntentParser.pretty(a.coin)) \(a.above ? "выше" : "ниже") \(Fmt.price(a.price))")
+                tasks.append(ScheduledTask(steps: steps, next: Date(), every: nil, because: because))
+                continue
+            }
             let text = say("\(IntentParser.pretty(a.coin)) is \(a.above ? "above" : "below") \(Fmt.price(a.price)): now \(Fmt.price(mark)).",
                            "\(IntentParser.pretty(a.coin)) \(a.above ? "выше" : "ниже") \(Fmt.price(a.price)): сейчас \(Fmt.price(mark)).")
             notify(.alerts, "🔔 \(IntentParser.pretty(a.coin))", text)
             reply(text + say(" The alert is done; set another any time.", " Алерт сработал; поставь новый, когда захочешь."), note: "price alert")
         }
+    }
+}
+
+/// The alerts as a board on the canvas, each one as the blocks the agent built it from: the level, every step it
+/// prepares when the price gets there, and the notification that asks for the user's Confirm, arrows between them.
+struct AlertsBoard: View {
+    @Environment(Workspace.self) private var ws
+
+    private struct Block: Identifiable {
+        let id: String
+        var coin: String?
+        var icon: String?
+        let label: String, title: String
+        var line: String?
+        var remove: (() -> Void)?
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Image(systemName: "bell.badge.fill").foregroundStyle(.orange)
+                Text("Price alerts").font(.ui(15, .bold))
+                Spacer()
+                Button { withAnimation(StudioView.spring) { ws.showAlerts = false } } label: { Image(systemName: "xmark") }
+                    .buttonStyle(.hoverIcon).help("Hide the board; the alerts stay")
+            }
+            ForEach(ws.alerts) { chain(blocks($0)) }
+            Text("Checked every 10 s while ihatecrypto is open or in the menu bar. Nothing moves until you confirm it.")
+                .font(.ui(10)).foregroundStyle(.tertiary)
+        }
+        .padding(16)
+        .frame(width: 470, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.06), radius: 14, y: 8))
+        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.cardBorder))
+        .transition(.opacity)
+    }
+
+    private func blocks(_ a: PriceAlert) -> [Block] {
+        let name = IntentParser.pretty(a.coin).components(separatedBy: " (").first ?? a.coin
+        let now = (ws.markets[a.coin]?.markPx).map { "now \(Fmt.price($0)) · \(Fmt.num(abs(((a.price - $0) / $0 * 100).rounded(1, .plain))))% away" }
+        let markets = Set(ws.markets.keys)
+        let steps = (a.steps ?? []).enumerated().map { k, step -> Block in
+            // A trade plan reads as the plan it becomes; anything else as the command it is.
+            if IntentParser.startsPlan(step, markets: markets), let t = IntentParser.apply(step, to: TradeIntent(), markets: markets) {
+                let rest = t.changes(from: TradeIntent()).filter { !$0.hasPrefix("market") && $0 != "long" && $0 != "short" && !$0.hasPrefix("leverage") }
+                return Block(id: "\(a.id)-\(k)", coin: t.asset, label: "THEN · PLAN ON HYPERLIQUID",
+                             title: "\(t.side == .long ? "Long" : "Short") \(IntentParser.pretty(t.asset))\(t.leverage.map { " ×" + Fmt.num($0) } ?? "")",
+                             line: rest.isEmpty ? nil : rest.joined(separator: " · "))
+            }
+            return Block(id: "\(a.id)-\(k)", icon: "bolt.fill", label: "THEN", title: ScheduleCanvas.readable(step))
+        }
+        return [Block(id: "\(a.id)-when", coin: a.coin, label: "WHEN · PRICE", title: "\(name) \(a.above ? "above" : "below") \(Fmt.price(a.price))",
+                      line: now) { withAnimation(.snappy) { ws.alerts.removeAll { $0.id == a.id } } }]
+            + steps
+            + [Block(id: "\(a.id)-you", icon: "bell.and.waves.left.and.right", label: "YOU · NOTIFICATION",
+                     title: steps.isEmpty ? "A notification" : "A notification, then your Confirm",
+                     line: steps.isEmpty ? nil : "Prepared on its own canvas; nothing moves without Touch ID.")]
+    }
+
+    private func chain(_ blocks: [Block]) -> some View {
+        VStack(spacing: 4) {
+            ForEach(Array(blocks.enumerated()), id: \.element.id) { i, b in
+                if i > 0 { Image(systemName: "arrow.down").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary).accessibilityHidden(true) }
+                block(b, first: i == 0)
+            }
+        }
+    }
+
+    /// The level is solid, what follows it is still to come: a dashed edge.
+    private func block(_ b: Block, first: Bool) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 16, style: .continuous)
+        return HStack(spacing: 12) {
+            Group {
+                if let coin = b.coin { AssetBadge(coin: coin, size: 32, dark: true) }
+                else { Image(systemName: b.icon ?? "bolt.fill").font(.system(size: 14, weight: .semibold)).foregroundStyle(.orange) }
+            }
+            .frame(width: 36, height: 36)
+            .background(RoundedRectangle(cornerRadius: 11).fill(Color.orange.opacity(b.coin == nil ? 0.12 : 0)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(b.label).font(.ui(9.5, .heavy)).tracking(0.7).foregroundStyle(.secondary).lineLimit(1)
+                Text(b.title).font(.ui(13, .semibold)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                if let line = b.line {
+                    Text(line).font(.ui(11)).monospacedDigit().foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            Spacer(minLength: 4)
+            if let remove = b.remove {
+                Button(action: remove) { Image(systemName: "trash") }.buttonStyle(.hoverIcon).help("Remove the alert")
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(shape.fill(first ? Color.orange.opacity(0.08) : Color.clear))
+        .overlay(shape.strokeBorder(first ? Color.orange.opacity(0.45) : Color.secondary.opacity(0.35),
+                                    style: StrokeStyle(lineWidth: 1.2, dash: first ? [] : [5, 4])))
+        .accessibilityElement(children: .combine)
     }
 }
 

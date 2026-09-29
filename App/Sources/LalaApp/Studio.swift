@@ -997,6 +997,7 @@ struct StudioCanvas: View {
             if let chart = ws.chart { ChartBoard(state: chart) }
             PnLBoard()
             if ws.showMovers { MoversBoard() }
+            if ws.showAlerts, !ws.alerts.isEmpty { AlertsBoard() }
             if let yields = ws.yieldOptions, !yields.isEmpty {
                 YieldBubbles(options: yields)
             }

@@ -56,6 +56,8 @@ public enum ChatRouter {
     public struct Context: Sendable {
         public var recent: [String] = []
         public var plan: String?
+        /// The other blocks on the canvas in the router's forms: «chart ETH», «waiting for Confirm: …», «price alert: …».
+        public var canvas: [String] = []
         public var positions: [String] = []
         /// «AI (Artificial Inu) = 0x… on Robinhood Chain»
         public var favorites: [String] = []
@@ -118,6 +120,7 @@ public enum ChatRouter {
     LATER OR ON REPEAT (COMMAND is one form above, or several joined by " then "; the time is the user's local time):
       in N <minutes|hours|days|weeks|months>: COMMAND | at HH:MM: COMMAND | tomorrow [at HH:MM]: COMMAND | on YYYY-MM-DD [at HH:MM]: COMMAND
       every <hour|day|week|month|N hours|N days|N weeks|N months> [at HH:MM]: COMMAND | every <monday…sunday> [at HH:MM]: COMMAND | cancel scheduled tasks
+      when <ASSET> is above|below <PRICE>: COMMAND   (once, when the price gets there: a price alert that then prepares COMMAND; a trade plan or a money move waits for their Confirm, with a notification. «поставь алерт на 2680 и пришли лонг ×3 на аппрув» = when ETH is below 2680: long ETH leverage 3x. Build it from the blocks on the canvas when they point at them («на этот план», «вот это»): the plan written in the long|short form from its fields, or the move waiting for Confirm)
       («через неделю переложи депозиты в лучшие ставки» = in 1 week: rebalance USDC; «каждый день в 9 продавай SOL и клади USDC в vault» = every day at 09:00: sell SOL then lend USDC. Recurring BUYS keep their own form above. A step no form can do makes the whole request "clarify": say which step ihatecrypto can't do yet.)
     """
 
@@ -255,6 +258,7 @@ public enum ChatRouter {
         if !context.recent.isEmpty { lines.append("Recent chat (oldest first):\n" + context.recent.joined(separator: "\n")) }
         if !context.offered.isEmpty { lines.append("Cards you offered after your last reply, in order: " + context.offered.joined(separator: "; ")) }
         lines.append("Plan on the canvas: " + (context.plan ?? "none"))
+        if !context.canvas.isEmpty { lines.append("Other blocks on the canvas: " + context.canvas.joined(separator: "; ")) }
         lines.append("Open positions: " + (context.positions.isEmpty ? "none" : context.positions.joined(separator: "; ")))
         if !context.favorites.isEmpty { lines.append("Favorite tokens: " + context.favorites.joined(separator: "; ")) }
         if !context.addressBook.isEmpty { lines.append("Address book names: " + context.addressBook.joined(separator: ", ")) }
