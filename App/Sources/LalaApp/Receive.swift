@@ -97,7 +97,7 @@ struct ReceiveCard: View {
     }
 }
 
-/// A refresh icon; on hover it turns once and «Updated 12 s ago» slides out. A click refreshes now.
+/// A refresh icon; on hover it lights up and «Updated 12 s ago» fades in. A click refreshes now.
 struct BalanceFreshness: View {
     @Environment(Workspace.self) private var ws
     /// The hover of the block around it (the balance), so the line shows without aiming at the small icon.
@@ -114,21 +114,20 @@ struct BalanceFreshness: View {
                 Task { await ws.refresh(); refreshing = false }
             } label: {
                 Image(systemName: "arrow.triangle.2.circlepath")
-                    .symbolEffect(.rotate, value: shown)
                     .symbolEffect(.rotate, isActive: refreshing)
             }
-            .buttonStyle(.borderless).foregroundStyle(.secondary).disabled(refreshing)
+            .buttonStyle(HoverIconStyle(size: 18)).disabled(refreshing)
             .accessibilityLabel("Refresh balances")
             if shown {
                 TimelineView(.periodic(from: .now, by: 1)) { context in
                     Text(refreshing ? "Updating…" : freshness(now: context.date))
                         .font(.ui(10)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
                 }
-                .transition(.move(edge: .leading).combined(with: .opacity))
+                .transition(.opacity)
             }
         }
         .font(.ui(10))
-        .animation(.spring(duration: 0.35), value: shown)
+        .animation(.easeOut(duration: 0.2), value: shown)
         .onHover { selfHover = $0 }
         .help("ihatecrypto reads balances straight from Solana, Hyperliquid and Base: every 30 s, every 10 s while it guards a position or watches an alert, and right after each action. Click to refresh now.")
     }
