@@ -689,6 +689,7 @@ final class Workspace {
         // No model connected: the local parsers read the message as typed.
         if ScheduledTask.cancelsAll(text) { cancelTasks(); return }
         if let task = ScheduledTask.parse(text) { schedule(task); return }
+        if case .pay? = WalletCommand.parse(text), let command = WalletCommand.parse(text) { await handleWallet(command); return }
         if let command = TokenCommand.parse(text) {
             await tokenCommand(command)
             return
@@ -941,6 +942,9 @@ final class Workspace {
         let note = "understood as “\(canonical)” · \(model)"
         if ScheduledTask.cancelsAll(canonical) { cancelTasks(note: note); return true }
         if let task = ScheduledTask.parse(canonical) { schedule(task, note: note); return true }
+        // A paid request before any other reading: its body is free text, where a contract, «then» or «chart» belongs to
+        // the question, not to another command (Grok's X search about MOO opened MOO's token card instead).
+        if case .pay? = WalletCommand.parse(canonical), let command = WalletCommand.parse(canonical) { await handleWallet(command, note: note); return true }
         // «6 USDC then leverage 4x» is one change to the plan.
         if let merged = ChatRouter.planChange(canonical, markets: Set(markets.keys)) {
             return await runCanonical(merged, userText: text, before: before)
