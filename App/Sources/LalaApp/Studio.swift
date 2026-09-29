@@ -98,10 +98,7 @@ struct TokenLogo: View {
     var round = false
 
     var body: some View {
-        if let (color, sign) = Self.drawn[name] {
-            Circle().fill(Color(hex: color)).frame(width: size, height: size)
-                .overlay(Text(sign).font(.ui(size * 0.55, .bold)).foregroundStyle(.white))
-        } else if name == "hype" {
+        if name == "hype" {
             (round ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.3))).fill(Brand.hl).frame(width: size, height: size)
                 .overlay(logo(size: size * 0.72, round: false))
         } else {
@@ -124,8 +121,6 @@ struct TokenLogo: View {
         }
     }
 
-    /// Chains without a bundled image: their color and sign.
-    static let drawn: [String: (UInt32, String)] = ["eth": (0x627EEA, "Ξ")]
     /// Misses too: most traded assets (oil, stocks, many coins) have no file, and every badge asked the bundle twice
     /// on every pass.
     private static var cache: [String: NSImage?] = [:]
@@ -137,10 +132,10 @@ struct TokenLogo: View {
     }
 
     /// The logo for a traded asset; nil for assets that have none (oil, stocks).
-    /// By ticker: «xrp.png», «tsla.png» (HIP-3 «xyz:TSLA» too) when bundled, ETH drawn; nil when there's none.
+    /// By ticker: «xrp.png», «tsla.png», «eth.svg» (HIP-3 «xyz:TSLA» too) when bundled; nil when there's none.
     static func name(forAsset coin: String) -> String? {
         let ticker = (coin.split(separator: ":").last.map(String.init) ?? coin).lowercased()
-        return drawn[ticker] != nil || image(ticker) != nil ? ticker : nil
+        return image(ticker) != nil ? ticker : nil
     }
 }
 
