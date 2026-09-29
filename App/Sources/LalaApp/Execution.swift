@@ -115,6 +115,12 @@ extension Workspace {
             out.append("Stop \(Fmt.pct(intent.stopPct ?? 0)) → \(Fmt.price(s.stopPrice)), loss ≈ \(Fmt.usd(s.lossAtStopUSD)) (risk \(Fmt.usd(intent.riskUSD ?? 0))).")
             if let t = s.takePrice { out.append("Take-profit \(Fmt.pct(intent.takePct ?? 0)) → \(Fmt.price(t)), profit ≈ \(Fmt.usd(s.profitAtTakeUSD ?? 0)).") }
         }
+        // Tied to a price alert, the plan waits for it: without this line the check reads «long below 117.44» against
+        // today's entry and cries mismatch.
+        if let a = planAlert {
+            out.append("It waits for a price alert: when \(intent.asset) \(a.above ? "rises" : "falls") to \(Fmt.price(a.price)), the plan comes to the user to "
+                       + "confirm and enters at the market price then (≈ \(Fmt.price(a.price))); the entry above is today's price, for sizing.")
+        }
         if !resolved.notes.isEmpty { out.append("The user asked to fill in the rest by the rules: " + resolved.notes.joined(separator: " ")) }
         if let a = intent.amountUSDC { out.append("Move \(Fmt.num(a)) USDC from Solana to Hyperliquid.") }
         else if let q = quote { out.append("Bridge \(q.provider): \(Fmt.num(q.amountIn)) USDC from Solana to Hyperliquid.") }
