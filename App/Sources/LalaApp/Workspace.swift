@@ -434,6 +434,25 @@ final class Workspace {
         }
     }
 
+    /// Jev's own sign-in: an OpenRouter key, without making OpenRouter the chat's model.
+    func signInJev() async {
+        guard let openRouter = LLMCatalog.provider(id: "openrouter") else { return }
+        jevStatus = say("Waiting for the sign-in in the browser…", "Жду входа в браузере…")
+        do {
+            Keychain.save(try await openRouter.signIn(open: { url in Task { @MainActor in NSWorkspace.shared.open(url) } }), for: "openrouter")
+            signedInCache.remove("openrouter")
+            credentialVersion += 1
+            jevStatus = say("Connected: Jev checks every command and plan.", "Подключено: Jev проверяет каждую команду и план.")
+            jevNote = nil
+            planReview = nil
+            reviewedIntent = nil
+        } catch {
+            jevStatus = error.localizedDescription
+        }
+    }
+    /// How Jev's sign-in went, for Settings.
+    var jevStatus: String?
+
     func useExistingLogin() {
         guard let login = provider.existingLogin() else { llmStatus = "No sign-in found on this Mac."; return }
         setCredential(login)
@@ -547,8 +566,8 @@ final class Workspace {
 
         // «делай» / «do it» right after a plan that waits for it carries it out; anything else drops it.
         let confirms = text.lowercased().contains(/^(?:делай|да|давай|подтверждаю|раскладывай|го|do\s+it|go|yes|confirm|sign)\b/)
-        // Anything but a confirmation takes over from a scheduled task that waited for one.
-        if !confirms { taskQueue = nil }
+        // Anything but a confirmation, or the amount a step asked for, takes over from the steps that waited for it.
+        if !confirms, awaitingAmount == nil || WalletCommand.amountAnswer(text) == nil { taskQueue = nil }
         let declines = text.lowercased().wholeMatch(of: /\s*(?:no|nope|cancel|stop|нет|не\s+надо|отмена|отмени\w*|стоп|nein|abbrechen|non|annuler|cancelar|não|nao|nie|anuluj)[.!\s]*/) != nil
         if let pending = pendingAllocation {
             pendingAllocation = nil
@@ -568,14 +587,7 @@ final class Workspace {
                 return
             }
             if confirms {
-                switch pending {
-                case .wallet(let command): await move(command)
-                case .position(let command, let coin): await manage(command, coin: coin)
-                case .transfer(let entry, let amount): await transfer(amount, to: entry)
-                case .address(let entry):
-                    addressBook.append(entry)
-                    reply("Saved “\(entry.name)” in Addresses (\(entry.network.title)). Star it there or say “add \(entry.name) to favorites”.")
-                }
+                await carryOut(pending)
                 return
             }
         }
@@ -726,6 +738,18 @@ final class Workspace {
         await reviewPlan()
     }
 
+    /// A move the user confirmed, carried out.
+    func carryOut(_ pending: PendingAction) async {
+        switch pending {
+        case .wallet(let command): await move(command)
+        case .position(let command, let coin): await manage(command, coin: coin)
+        case .transfer(let entry, let amount): await transfer(amount, to: entry)
+        case .address(let entry):
+            addressBook.append(entry)
+            reply("Saved “\(entry.name)” in Addresses (\(entry.network.title)). Star it there or say “add \(entry.name) to favorites”.")
+        }
+    }
+
     /// Which position a position command is about. Never a guess: the asset the message names, else the plan's asset
     /// if it has a position, else the only position when no plan is on screen. nil means ask.
     func targetCoin(for text: String) -> String? {
@@ -757,9 +781,21 @@ final class Workspace {
         let context = routerContext(offered: offered)
         // The model's lookups run here, on this canvas's data; the chat shows which one is under way.
         let lookup: @Sendable (ChatRouter.Lookup) async -> String = { [weak self] l in await self?.agentLookup(l) ?? "" }
+        // A second reader of every command: Jev when OpenRouter is connected, else the model reading it again.
+        let key = jevScreening ? openRouterKey : nil, recent = context.recent, model = model
+        @Sendable func secondReading(_ command: String) async -> String? {
+            if let key, let r = try? await JevReviewer.reading(message: text, recent: recent, command: command, apiKey: key) {
+                return r.concern ? r.text : nil
+            }
+            do { return try await ChatRouter.verify(text, command: command, context: context, client: client, model: model) } catch { return nil }
+        }
+        var check: (@Sendable (String) async -> String?)?
+        if jevScreening { check = secondReading }
         for _ in 0..<2 where reading == nil {
             do {
-                reading = try await ChatRouter.route(text, context: context, client: client, model: model, lookup: lookup)
+                // Before the markets load a trade can't be checked: the model's command goes through as it is.
+                reading = try await ChatRouter.route(text, context: context, client: client, model: model,
+                                                     markets: markets.isEmpty ? nil : Set(markets.keys), lookup: lookup, check: check)
             } catch {
                 failure = error.localizedDescription
                 FileHandle.standardError.write(Data("LALA router: \(error)\n".utf8))
@@ -773,7 +809,16 @@ final class Workspace {
         // The block the answer points to opens with it; the cards follow the reply.
         if let reading { await show(reading, userText: text) }
         defer { if let reading { offer(reading, userText: text) } }
-        let note = reading.map { $0.lookups.isEmpty ? model : "\(model) · looked at \(Set($0.lookups.map(\.tool)).sorted().joined(separator: ", "))" } ?? model
+        var note = reading.map { $0.lookups.isEmpty ? model : "\(model) · looked at \(Set($0.lookups.map(\.tool)).sorted().joined(separator: ", "))" } ?? model
+        if reading?.corrected != nil { note += " · corrected after a second reading" }
+        // The second reader still disagrees after the model tried again: nothing runs, the user decides.
+        if var r = reading, case .command(let c) = r.route, let doubt = r.doubt {
+            r.options = [ChatRouter.Option(title: c, comment: doubt, command: c, recommended: true)]
+            reading = r
+            reply(say("I read that as “\(c)”, but a second reading disagrees: \(doubt) Nothing ran. If that’s what you meant, pick the card; otherwise say it another way.",
+                      "Я понял это как «\(c)», но вторая проверка не согласна: \(doubt) Я ничего не запускал. Если ты это и имел в виду — выбери карточку, иначе скажи по-другому."), note: note)
+            return
+        }
         switch reading?.route {
         case nil:
             reply(say("I couldn’t reach \(model) (\(failure.prefix(140))), so I didn’t act on this — nothing moved. Send it again, or pick another model above.",
@@ -820,6 +865,7 @@ final class Workspace {
         c.replyLanguage = replyLanguage
         c.off = Modules.current.offSummary
         c.safeSearch = safeSearch
+        c.capital = equity.map { Fmt.usd($0) }
         if let s = solana { c.balances.append("Solana \(Fmt.num(s.usdc)) USDC, \(Fmt.num(s.sol, maxFraction: 4)) SOL") }
         // Every place with money, so «выведи всё из Jupiter» needs no question about which asset is there.
         if let h = hl { c.balances.append("Hyperliquid trading balance \(Fmt.usd(h.accountValue)), withdrawable \(Fmt.usd(h.withdrawable))") }
@@ -868,6 +914,17 @@ final class Workspace {
         let note = "understood as “\(canonical)” · \(model)"
         if ScheduledTask.cancelsAll(canonical) { cancelTasks(note: note); return true }
         if let task = ScheduledTask.parse(canonical) { schedule(task, note: note); return true }
+        // «6 USDC then leverage 4x» is one change to the plan.
+        if let merged = ChatRouter.planChange(canonical, markets: Set(markets.keys)) {
+            return await runCanonical(merged, userText: text, before: before)
+        }
+        // «withdraw 5 USDC to Solana then deposit 5 USDC to kamino»: the steps now, one Confirm for the whole chain.
+        if let steps = ChatRouter.steps(canonical) {
+            guard steps.allSatisfy(knows) else { return false }
+            reply(say("In steps: ", "По шагам: ") + steps.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " → "), note: note)
+            await runSteps(steps)
+            return true
+        }
         switch canonical.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! ")) {
         case "new canvas":
             messages.removeLast()
@@ -920,7 +977,18 @@ final class Workspace {
                       "Понял как «\(canonical)» для \(IntentParser.pretty(coin)). Напиши «делай» или нажми Confirm."), note: note)
             return true
         }
-        guard let next = IntentParser.apply(canonical, to: intent, markets: Set(markets.keys)).map(Self.started) else { return false }
+        // «close ETH», «move stop to breakeven» with no such position: never a new plan («close ETH» names ETH).
+        let onlyPosition = canonical.lowercased().contains(/^\s*(?:close|cancel\s+orders|move\s+stop\s+to\s+breakeven)\b/)
+        let plan = onlyPosition ? nil : IntentParser.apply(canonical, to: intent, markets: Set(markets.keys)).map(Self.started)
+        guard let next = plan else {
+            // «close» with nothing open: say so, rather than that ihatecrypto can't close.
+            guard PositionCommand.parse(canonical) != nil else { return false }
+            reply(positions.isEmpty && pendingEntry == nil
+                  ? say("There’s no open position, so nothing to \(canonical).", "Открытых позиций нет — «\(canonical)» не к чему применить.")
+                  : say("Which position? Open: \(positions.map { IntentParser.pretty($0.coin) }.joined(separator: ", ")).",
+                        "Какую позицию? Открыты: \(positions.map { IntentParser.pretty($0.coin) }.joined(separator: ", "))."), note: note)
+            return true
+        }
         if await editExecuted(from: before, to: next) { return true }
         intent = next
         let changes = next.changes(from: before)
@@ -950,13 +1018,7 @@ final class Workspace {
         }
     }
 
-    /// «long ETH» alone equals the empty plan (TradeIntent's defaults are ETH, long), which isn't drawn and changes
-    /// nothing. A plan that names only its market and side is filled by the risk rules instead, as «by the book» is.
-    static func started(_ next: TradeIntent) -> TradeIntent {
-        var next = next
-        if next == TradeIntent() { next.autoRules = true }
-        return next
-    }
+    static func started(_ next: TradeIntent) -> TradeIntent { next.started }
 
     /// «clear the plan», typed, read by the model or the plan's Cancel.
     func clearPlan(note: String? = nil) {
@@ -1164,7 +1226,8 @@ final class Workspace {
     /// Re-quotes only when the amount to bridge changed, or whether the Hyperliquid account exists yet.
     func refreshQuote() async {
         if atr[intent.asset] == nil, let v = try? await Hyperliquid.atrPct(coin: intent.asset) { atr[intent.asset] = v }
-        let amount: Bridge.Amount? = if let a = intent.amountUSDC { .send(a) }
+        // The resolved plan's: «5 USDC» that sizes the trade is its margin, and the bridge brings what that needs.
+        let amount: Bridge.Amount? = if let a = resolved.intent.amountUSDC { .send(a) }
             else if let need = Plan.bridgeNeed(resolved.intent, evaluation, hlWithdrawable: hl.map { $0.withdrawable + (market?.dex.flatMap { dexBalances[$0]?.withdrawable } ?? 0) }) { .arrive(need) }
             else { nil }
         // A new Hyperliquid account pays a one-time opening fee on its first deposit; the plan shows it up front.

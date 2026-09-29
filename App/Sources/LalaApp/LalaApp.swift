@@ -554,12 +554,19 @@ struct SettingsView: View {
         }
         ChatAndNoticeSettings()
         keepRunning
-        Section("Incoming text protection") {
-            Toggle("Second check by Jev (OpenRouter)", isOn: $ws.jevScreening)
-                .disabled(ws.openRouterKey == nil)
+        Section("Second check") {
+            Toggle("Check every command and plan a second time", isOn: $ws.jevScreening)
+            if ws.openRouterKey == nil {
+                HStack {
+                    Text("Jev isn't connected").font(.ui(12))
+                    Spacer()
+                    Button("Connect OpenRouter") { Task { await ws.signInJev() } }
+                }
+            }
+            if let status = ws.jevStatus { Text(status).font(.ui(10)).foregroundStyle(.secondary) }
             Text(ws.openRouterKey == nil
-                 ? "Sign in to OpenRouter in Sign-ins. Without Jev, local rules still apply."
-                 : "On by default. Before a message reaches the model, rules and Jev's classifier check it for commands aimed at the assistant and requests to send money to an address. Jev can only stop a message, never approve a signature. The message text goes to OpenRouter.")
+                 ? "Jev is a separate model on OpenRouter: the browser opens to sign in and adds an OpenRouter key; the chat keeps its own model. Until then the chat's model reads each command and plan a second time, and local rules check incoming text."
+                 : "Jev reads each command the chat understood and each plan against your words; a disagreement goes back to the model, then to you. Before a message reaches the model, rules and Jev also check it for commands aimed at the assistant and requests to send money to an address. Jev can only stop something, never approve a signature. The texts go to OpenRouter.")
                 .font(.ui(10)).foregroundStyle(.secondary)
         }
     }

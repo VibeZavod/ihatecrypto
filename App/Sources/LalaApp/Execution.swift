@@ -121,22 +121,36 @@ extension Workspace {
         return out
     }
 
-    /// Jev reads each ready plan against the user's words. It can only warn.
+    /// Jev reads each sized plan against the user's words; without OpenRouter the chat's model does. It can only warn.
     func reviewPlan() async {
-        guard planIsReady, intent != reviewedIntent || planReview == nil else { return }
-        guard jevScreening, let key = openRouterKey else {
-            planReview = nil
-            jevNote = jevScreening ? "Jev isn't connected: sign in to OpenRouter in Settings. Only code checks apply." : nil
-            return
-        }
+        // Any sized plan, a stopped one too: a misread request («5 USDC» read as risk $5) is what the rules stop.
+        guard evaluation.sizing != nil, intent != reviewedIntent || planReview == nil else { return }
+        guard jevScreening else { planReview = nil; jevNote = nil; return }
         reviewedIntent = intent
         let requests = messages.filter(\.fromUser).map(\.text)
+        if let key = openRouterKey {
+            do {
+                planReview = try await JevReviewer.plan(requests: requests, plan: planLines, apiKey: key)
+                jevNote = nil
+                return
+            } catch {
+                jevNote = "Jev is unavailable: \(error.localizedDescription)."
+            }
+        }
+        guard let client = llmClient() else {
+            planReview = nil
+            jevNote = "Jev isn't connected (sign in to OpenRouter in Settings › Sign-ins) and no model is: only code checks apply."
+            return
+        }
         do {
-            planReview = try await JevReviewer.plan(requests: requests, plan: planLines, apiKey: key)
+            let why = try await ChatRouter.verifyPlan(requests: requests, plan: planLines, language: replyLanguage, client: client, model: model)
+            planReview = JevReview(label: why == nil ? "matches" : "mismatch", confidence: 1, concern: why != nil,
+                                   text: why.map { "\(model): \($0)" } ?? "\(model) read the plan against your words: it matches."
+                                       + (openRouterKey == nil ? " Jev isn't connected (OpenRouter), so the chat's model checked." : ""))
             jevNote = nil
         } catch {
             planReview = nil
-            jevNote = "Jev is unavailable: \(error.localizedDescription). Only code checks apply."
+            jevNote = "Neither Jev nor \(model) could check the plan: \(error.localizedDescription). Only code checks apply."
         }
     }
 

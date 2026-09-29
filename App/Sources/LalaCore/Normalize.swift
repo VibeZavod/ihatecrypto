@@ -44,6 +44,10 @@ public enum ChatRouter {
         public var lookups: [Lookup] = []
         /// Addresses the lookups returned (a token found by its name, an address repaired): display commands may use them.
         public var found: [String] = []
+        /// A second reader still disagrees with the command after the model tried again: why. The app asks the user.
+        public var doubt: String?
+        /// What the second reader said about the first command, when it disagreed and the model tried again.
+        public var corrected: String?
         public init(route: Route, show: String? = nil, options: [Option] = []) { self.route = route; self.show = show; self.options = options }
     }
 
@@ -63,6 +67,8 @@ public enum ChatRouter {
         public var favorites: [String] = []
         public var addressBook: [String] = []
         public var balances: [String] = []
+        /// «$29.85»: the capital the risk rules measure, so «риск 2% от депо» becomes dollars.
+        public var capital: String?
         /// «Russian» or «English»: the language chat and clarify replies are written in (ChatLanguage).
         public var replyLanguage = "English"
         /// Networks, kinds and protocols switched off in Settings › Modules (`Modules.offSummary`); empty when none.
@@ -85,8 +91,16 @@ public enum ChatRouter {
     /// Every example must parse locally (RouterTests): the model is told to produce exactly these.
     public static let forms = """
     TRADE PLAN (a perp on Hyperliquid; ASSET is a crypto ticker like BTC, ETH, SOL, HYPE, or oil, brent, gold, silver, or a stock ticker like TSLA, NVDA):
-      long|short <ASSET> [risk $N] [stop N%] [take N% | take NR] [leverage Nx] [by the book] [on a N% pullback] [limit <PRICE>] [take in parts] [trailing N%]
-      with a plan already on the canvas, a change alone: risk $N | stop N% | take N% | take NR | leverage Nx | limit <PRICE> | at market | by the book
+      long|short <ASSET> [N USDC] [risk $N] [stop N%] [take N% | take NR] [leverage Nx] [by the book] [on a N% pullback] [limit <PRICE>] [take in parts] [trailing N%]
+      with a plan already on the canvas, a change alone: N USDC | risk $N | stop N% | take N% | take NR | leverage Nx | limit <PRICE> | at market | by the book
+        | take in parts («фиксируй частями») | trailing N% | on a N% pullback
+      N USDC is the money put into the trade (its margin; the size follows from it and the stop): «на 5 баксов», «увеличь до 5 USDC»,
+      «сумма 10», «зайди на 20$». risk $N is only what is lost at the stop: «риск 1$», «рискну долларом», «потерять не больше 2».
+      «by the book» fills whatever they didn't give — risk, stop, take and leverage (the rules' cap) — so «max leverage by the
+      rules» is just by the book. Several changes to the plan go in ONE line («6 USDC leverage 4x»), never as steps. One trade
+      plan at a time: two trades in one message («лонг эфира и шорт битка») is "clarify", offering the first.
+      Risk as a share of capital: 1% is by the book; another share is risk $N of the capital in the context («риск 2% от депо»
+      with $30 = risk $0.6). A limit N% away from the price is «on a N% pullback» (below it for a long, above for a short).
       take profit options   (how pros take profit)
     OPEN POSITION (add the asset when there are several, e.g. "close ETH"):
       move stop to breakeven | stop at <PRICE> | take at <PRICE> | trail N% | close | close half | close N% | cancel orders
@@ -111,16 +125,21 @@ public enum ChatRouter {
       send N USDC to <NAME from the address book> | top up (where to send money into ihatecrypto)
       send N NEAR to <NAME from the address book> | send all NEAR to <NAME> | close the NEAR account into <NAME>
       send N SOL to <NAME from the address book>
-    ADDRESSES AND WATCHLIST: save <ADDRESS> as <NAME> [on solana|base|arbitrum|ethereum|hyperliquid|near] | add <NAME> to favorites | remove <NAME> from favorites
+    ADDRESSES AND WATCHLIST: save <ADDRESS> as <NAME> [on solana|base|arbitrum|ethereum|hyperliquid|near] | add <NAME> to favorites | remove <NAME> from favorites   (NAME from the address book, not a ticker)
       watch token <CONTRACT or MINT> [on robinhood|base|arbitrum|ethereum|solana] | remove token <SYMBOL> from favorites
-    MARKET: chart <ASSET> [week|month] | what's moving | alert me when <ASSET> is above|below <PRICE> | cancel alerts
+    MARKET: chart <ASSET> [week|month] | what's moving | alert me when <ASSET> is above|below|at <PRICE> | cancel alerts
+      (at: no side said, «алерт на 2600» — ihatecrypto picks it from the price)
       chart token <CONTRACT or MINT> on <solana|robinhood|base|arbitrum|ethereum>   (any token's card: price chart, market cap, liquidity, volume, links)
     P/L: profit and loss [today|week|month|all] [for <ASSET>]   (how much they made or lost, on trading and on the whole portfolio)
     APP: new canvas | clear the plan | lock
+    NOW, IN STEPS (what no single form does, built from the forms above, up to 5): COMMAND then COMMAND [then COMMAND…]
+      («выведи 5 с хайпера и положи в камино» = withdraw 5 USDC to Solana then deposit 5 USDC to kamino). The user confirms the chain once, at its first
+      money move, and each step after it runs by itself once the one before went through. Moving money between places costs a
+      bridge fee (often about $1), so a step that spends what an earlier one brought uses a little less (withdraw 5 → deposit 4); a step no form can do makes the whole request "clarify".
     LATER OR ON REPEAT (COMMAND is one form above, or several joined by " then "; the time is the user's local time):
       in N <minutes|hours|days|weeks|months>: COMMAND | at HH:MM: COMMAND | tomorrow [at HH:MM]: COMMAND | on YYYY-MM-DD [at HH:MM]: COMMAND
       every <hour|day|week|month|N hours|N days|N weeks|N months> [at HH:MM]: COMMAND | every <monday…sunday> [at HH:MM]: COMMAND | cancel scheduled tasks
-      when <ASSET> is above|below <PRICE>: COMMAND   (once, when the price gets there: a price alert that then prepares COMMAND; a trade plan or a money move waits for their Confirm, with a notification. «поставь алерт на 2680 и пришли лонг ×3 на аппрув» = when ETH is below 2680: long ETH leverage 3x. Build it from the blocks on the canvas when they point at them («на этот план», «вот это»): the plan written in the long|short form from its fields, or the move waiting for Confirm)
+      when <ASSET> is above|below|at <PRICE>: COMMAND   (once, when the price gets there: a price alert that then prepares COMMAND; a trade plan or a money move waits for their Confirm, with a notification. «поставь алерт на 2680 и пришли лонг ×3 на аппрув» = when ETH is below 2680: long ETH leverage 3x. Build it from the blocks on the canvas when they point at them («на этот план», «вот это»): the plan written in the long|short form from its fields, or the move waiting for Confirm)
       («через неделю переложи депозиты в лучшие ставки» = in 1 week: rebalance USDC; «каждый день в 9 продавай SOL и клади USDC в vault» = every day at 09:00: sell SOL then lend USDC. Recurring BUYS keep their own form above. A step no form can do makes the whole request "clarify": say which step ihatecrypto can't do yet.)
     """
 
@@ -138,7 +157,7 @@ public enum ChatRouter {
     in ONE command — Aave and Morpho too: «withdraw USDC from Aave on Arbitrum» withdraws there and bridges to Solana by itself, so never \
     split it into two steps. Selling stock tokens or tokens by contract leaves USDG on Robinhood Chain; «move USDG from Robinhood \
     to Solana» brings it back. \
-    Between two places that aren't Solana there is no direct move: it's two steps through Solana.
+    Between two places that aren't Solana there is no direct move: build it as steps through Solana (NOW, IN STEPS).
     Buying and selling a token by its contract works on Robinhood Chain, Base and Arbitrum. On Solana ihatecrypto buys \
     SOL, BTC, ETH, JUP and JitoSOL, and any Jupiter-verified token by its ticker (BONK, WIF, USDT…) — Safe search on or off; \
     any other Solana token by its mint only while Safe search is off (the context says which). On Base and Arbitrum it \
@@ -192,26 +211,32 @@ public enum ChatRouter {
       canvas ("show"), so don't recite every number. Every number comes from the lookups or the context; never invent one. \
       The decision is theirs; never promise an outcome.
     - "clarify": ambiguous, or no single form does it. "reply" in the reply language, one or two short sentences: say what is missing, or \
-      offer the closest way ihatecrypto can do it as a concrete next step the user can accept with «yes» — e.g. «Hyperliquid → Kamino \
-      goes through Solana: withdraw 5 USDC to Solana first, then deposit it into Kamino. Withdraw now?»
+      offer the closest way ihatecrypto can do it as a concrete next step the user can accept with «yes» — e.g. «ihatecrypto can't \
+      stake ETH; it can lend USDC or stake SOL. Stake 0.1 SOL?»
     - "show": one command that opens a block on the canvas beside the reply. An answer about one token, one market or \
       the rates always shows its block: chart <ASSET> [week|month] | \
-      chart token <ADDRESS> on <chain> (use the address and chain the token lookup returned) | what's moving | where to keep <USDC|SOL>
+      chart token <ADDRESS> on <chain> (use the address and chain the token lookup returned) | what's moving | where to keep <USDC|SOL>. \
+      A general question (a term, how something works) shows nothing.
     - "options" (with "chat" and "clarify"; leave them out for greetings and thanks): 2–4 ways to go on, shown as cards the user \
       can pick: [{"title": "a short label in the reply language", "comment": "one sentence in the reply language: what it gives \
       and the catch, with a number where it helps", "command": "one line in the English forms above", "recommended": true}]. \
       Mark exactly one "recommended": the one you'd pick for them. Only forms ihatecrypto has; amounts that fit their balances; \
-      a money move among them still waits for their Confirm. Every card does something: «leave it as it is» is not a card, \
+      a money move among them still waits for their Confirm. Every card does something: «leave it as it is» is not a card, nor one that repeats what the plan already has, \
       and the app's own commands (new canvas, clear the plan, lock) never are. Don't offer what "show" already opens: go one step further \
       (another range, an alert at a level that matters, watching it, a safer alternative, a way to earn instead).
     """
 
     /// Reads the message, looking things up with `lookup` as the model asks (at most `rounds` times), until its answer.
+    /// With `markets`, a command no parser reads goes back to the model with what's wrong, so it answers with forms that
+    /// do it or says plainly what ihatecrypto can't do: it never ends at «can't do that yet».
+    /// `check` is a second reader (Jev, or a model asked to verify): given the command, nil when it does what the message
+    /// asks, else why not. A disagreement goes back to the model once; a second one is left to the user (`doubt`).
     public static func route(
-        _ text: String, context: Context, client: any LLMClient, model: String,
-        lookup: @escaping @Sendable (Lookup) async -> String = { _ in "Lookups aren't available here." }
+        _ text: String, context: Context, client: any LLMClient, model: String, markets: Set<String>? = nil,
+        lookup: @escaping @Sendable (Lookup) async -> String = { _ in "Lookups aren't available here." },
+        check: (@Sendable (String) async -> String?)? = nil
     ) async throws -> Reading {
-        var asked: [Lookup] = [], found: [String] = []
+        var asked: [Lookup] = [], found: [String] = [], corrected: String?
         var brief = brief(text, context)
         // A pasted contract or mint is looked up before the model reads the message: one round less.
         if let address = pastedAddress(text) {
@@ -231,6 +256,25 @@ public enum ChatRouter {
             do { next = try step(json) } catch { throw LLMError("The model's reply doesn't fit (\(error)): \(reply.prefix(300))") }
             switch next {
             case .done(var reading):
+                if let markets, round < rounds, case .command(let c) = reading.route, let bad = unparsed(c, markets: markets) {
+                    messages.append(LLMMessage(.assistant, reply))
+                    messages.append(LLMMessage(.user, "«\(bad)» can't run: no form reads it, or it names a market Hyperliquid doesn't have. Answer again, as one JSON object: "
+                                               + "the forms that do it (steps joined by « then »), or \"clarify\" saying plainly which part ihatecrypto "
+                                               + "can't do, with the closest ways it can as options."))
+                    continue
+                }
+                if let check, case .command(let c) = reading.route, let why = await check(c) {
+                    if corrected == nil, round < rounds {
+                        corrected = why
+                        messages.append(LLMMessage(.assistant, reply))
+                        messages.append(LLMMessage(.user, "A second reader checked «\(c)» against the message and disagrees: \(why) "
+                                                   + "Read the message again and answer, as one JSON object: the command that does exactly what they "
+                                                   + "asked, or \"clarify\" if it really can be read two ways."))
+                        continue
+                    }
+                    reading.doubt = why
+                }
+                reading.corrected = corrected
                 reading.lookups = asked
                 reading.found = found
                 return reading
@@ -269,7 +313,7 @@ public enum ChatRouter {
         against the profit at the take — and what you'd do about it. Quote numbers only from the check, and don't repeat it \
         line by line: it is shown under your reply. "options": 2–3 changes to this plan in the TRADE PLAN forms (risk $N, \
         stop N%, take NR, leverage Nx, on a N% pullback, take in parts…) that answer what you pointed out, one \
-        recommended. The plan's own Execute button signs it, so never offer that.
+        recommended; when the money is short, a smaller N USDC that fits. The plan's own Execute button signs it, so never offer that.
         """
         let full = try await client.complete(LLMRequest(model: model, messages: [LLMMessage(.system, system), LLMMessage(.user, ask)], wantsJSON: true))
         let reply = firstObject(in: full) ?? full
@@ -277,6 +321,50 @@ public enum ChatRouter {
             throw LLMError("The model didn't comment on the plan: \(reply.prefix(120))")
         }
         return reading
+    }
+
+    /// A second reading by a model: does the command do what the message asks? nil when it does, else why not (in the
+    /// reply language). For when Jev isn't connected; the same model reading again, with the forms spelled out, still
+    /// catches a number put in the wrong role («увеличь до 5 USDC» written as risk $5).
+    public static func verify(_ text: String, command: String, context: Context, client: any LLMClient, model: String) async throws -> String? {
+        let ask = brief(text, context) + """
+
+
+        Another assistant read the message and wrote this command, in the app's English forms: «\(command)»
+        The forms and what they mean:
+        \(forms)
+        Check it like a careful second reader: the same action, direction, place and asset as asked; each number the user \
+        gave kept, in the same role (money put into a trade «N USDC» vs the loss at the stop «risk $N»; percent vs dollars; \
+        a price vs a percent); nothing they didn't ask for. A follow-up («да», «второй», «то же для ETH») is read against the \
+        recent chat. Numbers they didn't give may be missing: the app fills them by its rules or asks. A bridge fee taken off \
+        a later step's amount is fine.
+        Reply with ONE JSON object: {"matches": true} or {"matches": false, "why": "one short sentence in the reply language: \
+        what the user asked and what the command does instead"}.
+        """
+        let full = try await client.complete(LLMRequest(model: model, messages: [LLMMessage(.user, ask)], wantsJSON: true))
+        guard let json = JSONText.object(in: firstObject(in: full) ?? full),
+              let a = try JSONSerialization.jsonObject(with: json) as? [String: Any] else { throw LLMError("The checker did not reply with JSON.") }
+        let matches = a["matches"] as? Bool ?? (a["matches"].map { "\($0)" } == "true")
+        return matches ? nil : ((a["why"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "it does something else")
+    }
+
+    /// The plan against the user's own words, by a model: nil when it matches, else what differs (in `language`).
+    public static func verifyPlan(requests: [String], plan: [String], language: String, client: any LLMClient, model: String) async throws -> String? {
+        let ask = """
+        A trader typed these messages to a crypto app, oldest first; later ones edit earlier ones:
+        \(requests.suffix(8).map { "- " + $0.prefix(400) }.joined(separator: "\n"))
+        The app built this trade plan from them, with live prices («by the book» values come from its risk rules):
+        \(plan.joined(separator: "\n"))
+        Does the plan do what the latest intent of the messages asks: the same market, side, and each number the trader gave \
+        in the same role (money put into the trade vs the loss at the stop, percent vs dollars, leverage)? Values the trader \
+        left to the rules are fine. Reply with ONE JSON object: {"matches": true} or {"matches": false, "why": "one short \
+        sentence in \(language): what they asked and what the plan does instead"}.
+        """
+        let full = try await client.complete(LLMRequest(model: model, messages: [LLMMessage(.user, ask)], wantsJSON: true))
+        guard let json = JSONText.object(in: firstObject(in: full) ?? full),
+              let a = try JSONSerialization.jsonObject(with: json) as? [String: Any] else { throw LLMError("The checker did not reply with JSON.") }
+        let matches = a["matches"] as? Bool ?? (a["matches"].map { "\($0)" } == "true")
+        return matches ? nil : ((a["why"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "the plan differs from the request")
     }
 
     static func brief(_ text: String, _ context: Context) -> String {
@@ -289,6 +377,7 @@ public enum ChatRouter {
         if !context.favorites.isEmpty { lines.append("Favorite tokens: " + context.favorites.joined(separator: "; ")) }
         if !context.addressBook.isEmpty { lines.append("Address book names: " + context.addressBook.joined(separator: ", ")) }
         if !context.balances.isEmpty { lines.append("Balances: " + context.balances.joined(separator: "; ")) }
+        if let capital = context.capital { lines.append("Capital the risk rules measure: " + capital) }
         if !context.off.isEmpty {
             lines.append("Switched off in Settings › Modules: \(context.off). Never offer or build a move that uses them; "
                          + "when asked for one, reply (chat) that it is off in Settings › Modules.")
@@ -359,9 +448,46 @@ public enum ChatRouter {
         text.matches(of: /0x[0-9a-fA-F]{40}|[0-9a-f]{64}|[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.near|[1-9A-HJ-NP-Za-km-z]{32,44}/).map { String($0.0) }
     }
 
-    /// Whether ihatecrypto has a parser for this English line: the check every command and card of the model passes.
+    /// «withdraw 5 USDC to Solana then deposit 5 USDC to kamino»: the steps of a command run now, in order. nil for one
+    /// command, and for a scheduled task's or a price alert's steps (they follow their «…:»).
+    public static func steps(_ command: String) -> [String]? {
+        guard !command.contains(":") else { return nil }
+        let steps = command.split(separator: /(?i)\s+then\s+/).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return steps.count > 1 ? steps : nil
+    }
+
+    /// A chain whose steps only change the trade plan is one change: «6 USDC then leverage 4x» → «6 USDC leverage 4x».
+    public static func planChange(_ c: String, markets: Set<String>) -> String? {
+        guard let steps = steps(c), steps.allSatisfy({ onlyPlan($0, markets: markets) }),
+              steps.filter({ IntentParser.startsPlan($0, markets: markets) }).count <= 1 else { return nil }
+        return steps.joined(separator: " ")
+    }
+
+    /// A line only the trade plan's parser reads.
+    static func onlyPlan(_ s: String, markets: Set<String>) -> Bool {
+        WalletCommand.parse(s) == nil && TokenCommand.parse(s) == nil && ChartCommand.parse(s, markets: markets) == nil
+            && AlertCommand.parse(s, markets: markets) == nil && PnLCommand.parse(s, markets: markets) == nil && ScheduledTask.parse(s) == nil
+            && AddressBookCommand.parse(s) == nil && IntentParser.apply(s, to: TradeIntent(), markets: markets) != nil
+    }
+
+    /// The command, or its first step, that no parser reads. nil when every one does.
+    static func unparsed(_ c: String, markets: Set<String>) -> String? {
+        (steps(c) ?? [c]).first { !parses($0, markets: markets) }
+    }
+
+    /// Whether ihatecrypto has a parser for this English line (each step of a chain): the check every command and card
+    /// of the model passes.
     public static func parses(_ c: String, markets: Set<String>) -> Bool {
-        ["new canvas", "clear the plan", "lock"].contains(c.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! ")))
+        // The canvas holds one trade plan: a chain that starts two would replace the first with the second.
+        if let steps = steps(c) {
+            return steps.filter { onlyPlan($0, markets: markets) && IntentParser.startsPlan($0, markets: markets) }.count <= 1
+                && steps.allSatisfy { parses($0, markets: markets) }
+        }
+        // «long PEPE» where Hyperliquid has no such market would keep the plan's old one: it doesn't parse.
+        if !markets.isEmpty, let m = c.firstMatch(of: /^(?i)(?:long|short)\s+(\S+)/),
+           !["risk", "stop", "take", "leverage", "by", "on", "limit", "trailing"].contains(m.1.lowercased()),
+           !m.1.hasSuffix("USDC"), Double(m.1) == nil, IntentParser.namedAsset(String(m.1), markets: markets) == nil { return false }
+        return ["new canvas", "clear the plan", "lock"].contains(c.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! ")))
             || WalletCommand.parse(c) != nil || TokenCommand.parse(c) != nil || PositionCommand.parse(c) != nil
             || ChartCommand.parse(c, markets: markets) != nil || AlertCommand.parse(c, markets: markets) != nil || AddressBookCommand.parse(c) != nil
             || PnLCommand.parse(c, markets: markets) != nil || ScheduledTask.parse(c) != nil || ScheduledTask.cancelsAll(c)

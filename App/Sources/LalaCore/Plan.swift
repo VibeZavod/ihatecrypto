@@ -262,6 +262,12 @@ public enum Plan {
         }
         if let alternative = q.alternative { lines.append(alternative) }
         lines.append("Dry quote: no addresses are sent.")
+        // A set amount («risk $1, 5 USDC») must still carry the margin once the bridge has taken its fee.
+        if i.amountUSDC != nil, let s = e.sizing, q.amountOut + (live.hlWithdrawable ?? 0) < s.margin + s.feesUSD {
+            lines.insert("Only \(Fmt.num(q.amountOut)) USDC arrive, and the position needs \(Fmt.usd(s.margin + s.feesUSD)) for margin and fees: "
+                         + "send more or lower the risk.", at: 0)
+            return Block(id: "bridge", label: label, title: title, lines: lines, status: .blocked)
+        }
         return Block(id: "bridge", label: label, title: title, lines: lines, status: costly ? .warning : .ready)
     }
 

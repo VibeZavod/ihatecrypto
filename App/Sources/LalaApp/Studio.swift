@@ -1711,6 +1711,9 @@ struct StudioNode: Identifiable {
         if let r = ws.planReview {
             out.append(StudioNode(id: "jev", kind: .jev, label: "Jev", title: r.concern ? "Has doubts" : "Matches your request",
                                   lines: [r.text], status: r.concern ? .warning : .ready))
+        } else if let note = ws.jevNote, ws.evaluation.sizing != nil {
+            // Off or unreachable: the card says so, rather than the check silently missing from the route.
+            out.append(StudioNode(id: "jev", kind: .jev, label: "Jev", title: "Not checking", lines: [note], status: .info))
         }
         if let s = ws.evaluation.sizing {
             var line = "If stopped: −\(Fmt.usd(s.lossAtStopUSD))"
@@ -1748,6 +1751,8 @@ extension Workspace {
     /// bridge, the rules and Jev's check, the position, its stop and take, and what it comes to. A step a rule stops,
     /// or that waits for a detail, says so on its card; its lines open with a click.
     func planRoute(_ nodes: [StudioNode]) -> (steps: [ActivityBubble], footer: String) {
+        // The plan as the rules filled it: the leverage, stop and limit by the book are on the cards too.
+        let intent = resolved.intent
         func node(_ kind: StudioNode.Kind) -> StudioNode? { nodes.first { $0.kind == kind } }
         func state(_ s: Block.Status, check: Bool = false) -> String {
             switch s {
@@ -1774,8 +1779,9 @@ extension Workspace {
                 // quoted — what the margin and fees come to, so the card always says how much.
                 let free = hl?.withdrawable ?? 0
                 let need = sizing.map { max(0, $0.margin + $0.feesUSD - free).rounded(2, .up) }
-                let send = quote?.amountIn ?? intent.amountUSDC ?? need
-                let approx = quote == nil && intent.amountUSDC == nil ? "≈ " : ""
+                let asked = resolved.intent.amountUSDC
+                let send = quote?.amountIn ?? asked ?? need
+                let approx = quote == nil && asked == nil ? "≈ " : ""
                 var lines = solana.map { s in [row("wallet", send.map { "\(Fmt.num(s.usdc)) → \(Fmt.num(max(0, s.usdc - $0)))" } ?? Fmt.num(s.usdc))] } ?? []
                 if source.status == .blocked, let short = source.lines.last { lines.insert(short, at: 0) }
                 steps.append(card("FROM · SOLANA", send.map { "\(approx)\(Fmt.num($0)) USDC" } ?? "USDC", lines.isEmpty ? source.lines : lines,
@@ -1810,8 +1816,8 @@ extension Workspace {
             steps.append(card("CHECK RULES", r.title, lines.isEmpty ? r.lines : lines, state(r.status, check: true), .check))
         }
         if let j = node(.jev) {
-            steps.append(card("JEV CHECKS", j.status == .warning ? "Has doubts" : "Matches request", j.lines,
-                              j.status == .warning ? "attention" : "passed", .check))
+            steps.append(card("JEV CHECKS", j.status == .info ? "Not checking" : j.status == .warning ? "Has doubts" : "Matches request", j.lines,
+                              j.status == .info ? "info" : j.status == .warning ? "attention" : "passed", .check))
         }
         if let p = node(.position) {
             let leverage = "\(Fmt.num(intent.leverage ?? 1))×"

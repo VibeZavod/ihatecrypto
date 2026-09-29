@@ -55,6 +55,10 @@ public struct JevReview: Sendable, Equatable {
     /// Jev disagrees with enough confidence to stop and ask the user.
     public let concern: Bool
     public let text: String
+
+    public init(label: String, confidence: Double, concern: Bool, text: String) {
+        (self.label, self.confidence, self.concern, self.text) = (label, confidence, concern, text)
+    }
 }
 
 public enum JevReviewer {
@@ -78,6 +82,24 @@ public enum JevReviewer {
         return review(label, confidence, good: "matches", texts: [
             "matches": "Jev: the plan matches the request", "mismatch": "Jev: the plan differs from the request",
             "risky": "Jev: the plan carries a risk you may not expect",
+        ])
+    }
+
+    static let readingLabels: [String: String] = [
+        "matches": "The command does what the latest message asks: the same action, direction, place and asset, and each number the user gave in the same role (money put into a trade «N USDC», the loss at the stop «risk $N», percents).",
+        "mismatch": "The command does something else: another action, direction, place or asset, or a number the user gave in a different role or changed.",
+        "unclear": "The message is too vague to tell what the user wants.",
+    ]
+
+    /// The chat model's reading of a message, as the English command it wrote, against the user's own words.
+    public static func reading(message: String, recent: [String], command: String, apiKey: String) async throws -> JevReview {
+        let (label, confidence) = try await JevClassifier.decide(
+            apiKey: apiKey, state: ["recent_chat": recent.suffix(6).map { String($0.prefix(300)) }, "message": String(message.prefix(600)), "command": command],
+            instructions: "A crypto wallet's assistant read state.message (in any language, with state.recent_chat before it) and wrote state.command, one line in the app's fixed English command forms, to carry out. Judge whether the command does what the user asked. Numbers the user didn't give may be missing: the app fills them by its rules or asks.",
+            criteria: readingLabels)
+        return review(label, confidence, good: "matches", texts: [
+            "matches": "Jev: the command matches the message", "mismatch": "Jev: the command does something other than the message asks",
+            "unclear": "Jev: the message is too vague to tell",
         ])
     }
 

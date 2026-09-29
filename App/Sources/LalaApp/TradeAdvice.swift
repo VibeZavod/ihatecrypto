@@ -54,7 +54,8 @@ extension Workspace {
         out.append(marketLine)
         out.append("✓ Direction: \(r.side == .long ? "long" : "short")")
         if let risk = r.riskUSD {
-            out.append("✓ Risk: \(Fmt.usd(risk))\(share(risk))\(intent.riskUSD == nil ? " by the book" : "")")
+            let from = intent.riskUSD != nil ? "" : intent.amountUSDC.map { " from \(Fmt.num($0)) USDC in the trade" } ?? " by the book"
+            out.append("✓ Risk: \(Fmt.usd(risk))\(share(risk))\(from)")
         } else {
             out.append("✗ Risk: not set" + (book.riskUSD.map { " — by the book \(Fmt.usd($0)), \(Fmt.pct(policy.defaultRiskPct)) of capital" } ?? ""))
         }
@@ -72,19 +73,22 @@ extension Workspace {
         }
         out.append(r.entryPx.map { "✓ Entry: limit \(Fmt.price($0))" + (r.pullbackPct.map { " (\(Fmt.pct($0)) pullback)" } ?? "") } ?? "✓ Entry: at market")
         if let s = sizing {
-            out.append("✓ Size: \(Fmt.usd(s.notional)) · \(Fmt.num(r.leverage ?? 1))× · margin \(Fmt.usd(s.margin))")
+            out.append("\(evaluation.problem == nil ? "✓" : "✗") Size: \(Fmt.usd(s.notional)) · \(Fmt.num(r.leverage ?? 1))× · margin \(Fmt.usd(s.margin))"
+                       + (evaluation.problem.map { ". \($0)" } ?? ""))
             // Where the margin comes from: Hyperliquid's free balance, topped up from Solana over the bridge.
             let bridge = blocks.first { $0.id == "bridge" }, source = blocks.first { $0.id == "source" }
             let free = hl.map { Fmt.usd($0.withdrawable) } ?? "—"
             if source?.status == .blocked {
-                out.append("✗ Money: \(source?.lines.first ?? "not enough USDC on Solana")")
+                out.append("✗ Money: \(source?.lines.last ?? "not enough USDC on Solana")")
             } else if let bridge, bridge.status == .ready || bridge.status == .warning, let q = quote {
                 out.append("✓ Money: \(free) free on Hyperliquid + \(Fmt.num(q.amountIn)) USDC from Solana over \(q.provider) (≈ \(Fmt.num(q.amountOut)) arrive)")
                 // The bridge's warning (it costs more than the take earns) belongs next to the money.
                 if bridge.status == .warning, let costly = bridge.lines.first(where: { $0.hasPrefix("The bridge costs more") }) { out.append("⚠ Money: " + costly) }
+            } else if let bridge, bridge.status == .blocked, let why = bridge.lines.first {
+                out.append("✗ Money: \(why)")
             } else if bridge?.status == .noData {
                 out.append("· Money: \(free) free on Hyperliquid; the bridge quote from Solana is loading")
-            } else {
+            } else if bridge?.status == .info {
                 out.append("✓ Money: \(free) free on Hyperliquid covers the margin")
             }
             let advice = RiskRules.check(r, s, market: m, equity: equity, policy: policy,

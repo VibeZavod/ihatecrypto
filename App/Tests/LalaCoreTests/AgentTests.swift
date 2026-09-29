@@ -64,6 +64,30 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(model.sent.last?.last?.text.contains("No more lookups") == true)
 }
 
+@Test func stepsRunNowAndEachMustParse() {
+    let m: Set<String> = ["ETH", "SOL"]
+    #expect(ChatRouter.steps("withdraw 5 USDC to Solana then deposit 5 USDC to kamino") == ["withdraw 5 USDC to Solana", "deposit 5 USDC to kamino"])
+    #expect(ChatRouter.steps("lend 1 USDC") == nil)
+    #expect(ChatRouter.steps("in 1 week: sell SOL then lend USDC") == nil)   // a scheduled task keeps its steps
+    #expect(ChatRouter.parses("withdraw 5 USDC to Solana Then deposit 5 USDC to kamino", markets: m))
+    #expect(!ChatRouter.parses("withdraw 5 USDC to Solana then write me a trading bot", markets: m))
+    #expect(ChatRouter.unparsed("lend 1 USDC then write me a trading bot", markets: m) == "write me a trading bot")
+    #expect(ChatRouter.forms.contains("COMMAND then COMMAND"))
+}
+
+@Test func aCommandNoParserReadsGoesBackToTheModel() async throws {
+    let model = Script([
+        #"{"route":"command","command":"write me a trading bot"}"#,
+        #"{"route":"clarify","reply":"Бота ihatecrypto не пишет."}"#,
+    ])
+    let reading = try await ChatRouter.route("напиши бота", context: .init(), client: model, model: "m", markets: ["ETH"])
+    #expect(reading.route == .clarify("Бота ihatecrypto не пишет."))
+    #expect(model.sent[1].last?.text.contains("no form reads it") == true)
+    // Without the markets nothing is checked: the command comes back as the model wrote it.
+    let unchecked = try await ChatRouter.route("напиши бота", context: .init(), client: Script([#"{"route":"command","command":"write me a trading bot"}"#]), model: "m")
+    #expect(unchecked.route == .command("write me a trading bot"))
+}
+
 @Test func tokenCardsAndWatchingParse() {
     let mint = "B5ANwoWkptDv1QszdPHXjCF2gTWdo27FGLffdfXzzoe6"
     #expect(TokenCommand.parse("chart token \(mint) on solana") == .show(address: mint, chain: "solana"))
@@ -194,4 +218,84 @@ private final class Script: LLMClient, @unchecked Sendable {
     """
     #expect(TokenResearch.solanaMint(Data(json.utf8), symbol: "WIF") == "EKpQGSJtjMFqKZ9KQanSqYXRcF8fBopzLHYxdM65zcjm")
     #expect(TokenResearch.solanaMint(Data(json.utf8), symbol: "BONK") == nil)
+}
+
+@Test func moneyInTheTradeSizesIt() throws {
+    // «увеличь до 5 USDC» on a 3× plan by the book: a $5 margin, not a $5 risk.
+    var m = Market(name: "SOL", markPx: 120, szDecimals: 2, maxLeverage: 20)
+    m.atrPct = 2
+    var i = try #require(IntentParser.apply("long SOL leverage 3x by the book", to: TradeIntent(), markets: ["SOL"]))
+    i = try #require(IntentParser.apply("5 USDC", to: i, markets: ["SOL"]))
+    #expect(i.amountUSDC == 5 && i.riskUSD == nil)
+    let r = Plan.resolve(i, market: m, equity: 30, policy: RiskPolicy()).intent
+    let s = try #require(Plan.evaluate(r, market: m).sizing)
+    #expect(r.amountUSDC == nil)
+    #expect(s.margin <= 5 && s.margin >= Decimal(string: "4.5")!)   // SOL trades in 0.01 steps
+    // A risk named with it keeps «N USDC» as the amount to send.
+    let both = try #require(IntentParser.apply("risk $1", to: i, markets: ["SOL"]))
+    #expect(Plan.resolve(both, market: m, equity: 30, policy: RiskPolicy()).intent.amountUSDC == 5)
+}
+
+@Test func aSmallAccountReachesTheMinimumOrder() throws {
+    // $29 at 1% sizes HYPE under $10: the rules raise the risk to the least that reaches it, within the limit.
+    var m = Market(name: "HYPE", markPx: 88, szDecimals: 2, maxLeverage: 10)
+    m.atrPct = 2.2
+    let i = try #require(IntentParser.apply("long HYPE leverage 3x by the book", to: TradeIntent(), markets: ["HYPE"]))
+    let policy = RiskPolicy(), r = Plan.resolve(i, market: m, equity: 29, policy: policy).intent
+    let s = try #require(Plan.evaluate(r, market: m).sizing)
+    #expect(s.notional >= 10 && s.notional < 11)
+    #expect(Plan.evaluate(r, market: m).problem == nil)
+    // Past the limit it stays as the rules said, and the plan says why it can't be placed.
+    let tiny = Plan.resolve(i, market: m, equity: 5, policy: policy).intent
+    #expect(Plan.evaluate(tiny, market: m).problem?.contains("$10 minimum") == true)
+}
+
+@Test func moneyInTheTradeLowersTheRulesLeverageToFitTheLimit() throws {
+    // «make it 8 bucks» on a short by the book: 8 × 5× × 2.9% = $1.16 breaks a 3.5% limit of $29; 4× fits.
+    var m = Market(name: "SOL", markPx: 120, szDecimals: 2, maxLeverage: 20)
+    m.atrPct = Decimal(string: "1.9")!
+    var policy = RiskPolicy()
+    policy.maxRiskPct = Decimal(string: "3.5")!
+    policy.maxLeverage = 5
+    let i = try #require(IntentParser.apply("short SOL by the book 8 USDC", to: TradeIntent(), markets: ["SOL"]))
+    let r = Plan.resolve(i, market: m, equity: 29, policy: policy).intent
+    #expect(r.leverage == 4)
+    #expect(try #require(r.riskUSD) <= Decimal(string: "1.01")!)
+    // Leverage the user named stays.
+    let named = try #require(IntentParser.apply("leverage 5x", to: i, markets: ["SOL"]))
+    #expect(Plan.resolve(named, market: m, equity: 29, policy: policy).intent.leverage == 5)
+}
+
+@Test func aMarketHyperliquidDoesntHaveDoesntParse() {
+    let m: Set<String> = ["ETH", "SOL", "kPEPE", "DOGE", "xyz:CL", "xyz:TSLA"]
+    // PEPE trades by the thousand; it used to leave the plan on ETH.
+    #expect(IntentParser.apply("long PEPE by the book", to: TradeIntent(), markets: m)?.asset == "kPEPE")
+    #expect(ChatRouter.parses("long PEPE by the book", markets: m))
+    #expect(IntentParser.apply("long KPEPE 4 USDC leverage 2x", to: TradeIntent(), markets: m)?.asset == "kPEPE")
+    #expect(IntentParser.namedAsset("kPEPE", markets: m) == "kPEPE" && IntentParser.namedAsset("лонг kpepe", markets: m) == "kPEPE")
+    #expect(!ChatRouter.parses("long FOOBAR by the book", markets: m))
+    #expect(ChatRouter.parses("long oil leverage 2x", markets: m) && ChatRouter.parses("short TSLA 5 USDC", markets: m))
+    #expect(ChatRouter.parses("long 5 USDC", markets: m) && ChatRouter.parses("short by the book", markets: m))
+}
+
+@Test func aChainOfPlanChangesIsOneAndTwoPlansDontChain() {
+    let m: Set<String> = ["ETH", "BTC", "SOL"]
+    #expect(ChatRouter.planChange("6 USDC then leverage 4x", markets: m) == "6 USDC leverage 4x")
+    #expect(ChatRouter.planChange("long ETH 5 USDC then alert me when ETH is below 2600", markets: m) == nil)
+    #expect(!ChatRouter.parses("long ETH then short BTC", markets: m))
+    #expect(ChatRouter.parses("withdraw 2 USDC to Solana then long ETH 2 USDC", markets: m))
+    #expect(AlertCommand.parse("alert me when ETH is at 2600", markets: m) == .set(coin: "ETH", price: 2600, above: nil))
+}
+
+@Test func aSecondReadingSendsAMisreadBackOnceThenAsks() async throws {
+    // «увеличь до 5 USDC» read as risk $5: the checker disagrees, the model fixes it.
+    let model = Script([#"{"route":"command","command":"risk $5"}"#, #"{"route":"command","command":"5 USDC"}"#])
+    let fixed = try await ChatRouter.route("увеличь до 5 USDC", context: .init(), client: model, model: "m",
+                                           check: { $0 == "risk $5" ? "they asked for 5 USDC in the trade, not a $5 risk" : nil })
+    #expect(fixed.route == .command("5 USDC") && fixed.corrected != nil && fixed.doubt == nil)
+    #expect(model.sent[1].last?.text.contains("not a $5 risk") == true)
+    // Still disagreeing after that: the user decides.
+    let stubborn = try await ChatRouter.route("увеличь до 5 USDC", context: .init(), client: Script([#"{"route":"command","command":"risk $5"}"#, #"{"route":"command","command":"risk $5"}"#]),
+                                              model: "m", check: { _ in "not what they asked" })
+    #expect(stubborn.doubt == "not what they asked")
 }

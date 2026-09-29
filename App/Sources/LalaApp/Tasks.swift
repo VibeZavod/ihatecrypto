@@ -66,17 +66,48 @@ extension Workspace {
                             : messages.last.map(\.text) ?? "", record: false)
     }
 
-    /// Steps one after another. One that waits for Confirm holds the rest until its move has gone through
-    /// (`continueTask`): they may need the money it moves.
-    func runSteps(_ steps: [String]) async {
+    /// Steps one after another. The first that waits for Confirm holds the rest until its move has gone through
+    /// (`continueTask`): they may need the money it moves. That one Confirm covers the chain: once `confirmed`, a step's
+    /// move is carried out at once, and one that doesn't go through stops the rest.
+    func runSteps(_ steps: [String], confirmed: Bool = false) async {
         thinking = true
         var rest: [String] = []
         for (k, step) in steps.enumerated() {
             guard await runCanonical(step, userText: step, before: intent) else {
-                reply(say("ihatecrypto can’t do “\(step)” — the scheduled task stops here.", "ihatecrypto не умеет «\(step)» — задача по расписанию на этом останавливается."))
+                reply(say("ihatecrypto can’t do “\(step)” — the steps stop here.", "ihatecrypto не умеет «\(step)» — на этом шаги останавливаются."))
                 break
             }
-            if pendingAction != nil || pendingAllocation != nil || awaitingAmount != nil { rest = Array(steps[(k + 1)...]); break }
+            if confirmed, pendingAction != nil || pendingAllocation != nil {
+                finishedAction = nil
+                if let p = pendingAction {
+                    pendingAction = nil
+                    pendingText = nil
+                    await carryOut(p)
+                } else if let p = pendingAllocation {
+                    pendingAllocation = nil
+                    await move(p, confirmed: true)
+                }
+                if finishedAction?.outcome.ok == false {
+                    if k + 1 < steps.count { reply(say("“\(step)” didn’t go through, so the steps after it don’t run.", "«\(step)» не прошёл, поэтому следующие шаги не запускаю.")) }
+                    break
+                }
+                continue
+            }
+            if pendingAction != nil || pendingAllocation != nil || awaitingAmount != nil {
+                rest = Array(steps[(k + 1)...])
+                // The Confirm covers the chain, so it names what follows.
+                if let p = pendingText, !rest.isEmpty { pendingText = ([p] + rest).joined(separator: " → ") }
+                break
+            }
+            // A move that didn't get to its Confirm (short of money, a rule, switched off) stops the rest: they may need its money.
+            switch WalletCommand.parse(step) {
+            case nil, .yields?, .schedule?, .stopSchedules?, .receive?: continue
+            default:
+                if k + 1 < steps.count {
+                    reply(say("“\(step)” didn’t get to its Confirm, so the steps after it don’t run.", "«\(step)» не дошёл до подтверждения, поэтому следующие шаги не запускаю."))
+                }
+            }
+            break
         }
         thinking = false
         snapshotCanvas()
@@ -90,7 +121,7 @@ extension Workspace {
         guard let q = taskQueue else { return }
         taskQueue = nil
         guard q.canvas == canvasID, finishedAction?.outcome.ok == true, Date().timeIntervalSince(q.since) < 1800 else { return }
-        Task { await runSteps(q.steps) }
+        Task { await runSteps(q.steps, confirmed: true) }
     }
 }
 

@@ -29,18 +29,32 @@ let credential = env["LALA_LLM_KEY"].map(Credential.apiKey) ?? provider.existing
 let model = env["LALA_LLM_MODEL"] ?? provider.info.defaultModel
 let prompt = args.dropFirst().first ?? "Answer in one word: working"
 
+// `--verify "message" "command"`: the second reading alone, as the chat runs it on every command.
+if prompt == "--verify", args.count >= 4 {
+    var context = ChatRouter.Context()
+    context.plan = env["LALA_ROUTE_PLAN"]
+    context.recent = env["LALA_ROUTE_RECENT"].map { $0.components(separatedBy: "|") } ?? []
+    context.replyLanguage = args[2].contains(/[а-яА-ЯёЁ]/) ? "Russian" : "English"
+    let client = try provider.client(credential, save: { _ in })
+    let why = try await ChatRouter.verify(args[2], command: args[3], context: context, client: client, model: model)
+    print("«\(args[2])» as «\(args[3])» → " + (why.map { "✗ \($0)" } ?? "✓ matches"))
+    exit(0)
+}
+
 if prompt == "--route" {
     var context = ChatRouter.Context()
     context.favorites = ["AI (Artificial Inu) = 0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18 on Robinhood Chain"]
     context.addressBook = ["Bybit"]
     context.balances = ["Solana 22.38 USDC, 0.0297 SOL", "Hyperliquid $7.47"]
     context.plan = env["LALA_ROUTE_PLAN"]
+    context.capital = "$29.85"
     // `LALA_ROUTE_RECENT="user: …|LALA: …"`: the chat before the message, to check follow-ups like «да».
     context.recent = env["LALA_ROUTE_RECENT"].map { $0.components(separatedBy: "|") } ?? []
     // `LALA_SAFE_SEARCH=0`: as with Safe search off in Settings.
     context.safeSearch = env["LALA_SAFE_SEARCH"] != "0"
     let client = try provider.client(credential, save: { _ in })
-    let markets: Set<String> = ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]
+    // `LALA_MARKETS="BTC,ETH,…,xyz:CL"`: Hyperliquid's real list, for the plans test.
+    let markets: Set<String> = env["LALA_MARKETS"].map { Set($0.components(separatedBy: ",")) } ?? ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]
     // Real token lookups; the app's own data (portfolio, markets, rates) is what the context above says.
     let balances = context.balances.joined(separator: "; ")
     let lookup: @Sendable (ChatRouter.Lookup) async -> String = { l in
@@ -58,7 +72,40 @@ if prompt == "--route" {
         context.replyLanguage = m.contains(/[а-яА-ЯёЁ]/) ? "Russian" : "English"
         let started = Date()
         do {
-            let reading = try await ChatRouter.route(message, context: context, client: client, model: model, lookup: lookup)
+            let checkContext = context
+            @Sendable func secondReading(_ command: String) async -> String? {
+                do { return try await ChatRouter.verify(m, command: command, context: checkContext, client: client, model: model) } catch { return nil }
+            }
+            let reading = try await ChatRouter.route(message, context: context, client: client, model: model, markets: markets,
+                                                     lookup: lookup, check: secondReading)
+            // `LALA_ROUTE_JSON=1`: one JSON line per message with the plan it leads to, for the plans test.
+            if env["LALA_ROUTE_JSON"] == "1" {
+                let base = context.plan.flatMap { try? JSONDecoder().decode(TradeIntent.self, from: Data($0.utf8)) } ?? TradeIntent()
+                var out: [String: Any] = ["message": m, "seconds": Date().timeIntervalSince(started)]
+                var intent: TradeIntent?
+                switch reading.route {
+                case .command(let written):
+                    let c = ChatRouter.planChange(written, markets: markets) ?? written
+                    out["route"] = "command"; out["command"] = written; out["parses"] = ChatRouter.parses(written, markets: markets)
+                    if ChatRouter.steps(c) == nil, ScheduledTask.parse(c) == nil, AlertCommand.parse(c, markets: markets) == nil,
+                       WalletCommand.parse(c) == nil, TokenCommand.parse(c) == nil, ChartCommand.parse(c, markets: markets) == nil,
+                       PnLCommand.parse(c, markets: markets) == nil, !c.lowercased().hasPrefix("close") {
+                        intent = IntentParser.apply(c, to: base, markets: markets)?.started
+                    }
+                case .plan:
+                    out["route"] = "plan"
+                    intent = try? await ChatModel.edit(base, message: m, client: client, model: model, history: context.recent, replyLanguage: context.replyLanguage).0?.started
+                case .chat(let r): out["route"] = "chat"; out["reply"] = r
+                case .clarify(let r): out["route"] = "clarify"; out["reply"] = r
+                case .question: out["route"] = "question"
+                }
+                if let intent, let data = try? JSONEncoder().encode(intent) { out["intent"] = try? JSONSerialization.jsonObject(with: data) }
+                if let d = reading.doubt { out["doubt"] = d }
+                if let c = reading.corrected { out["corrected"] = c }
+                out["options"] = reading.options.map(\.command)
+                print(String(decoding: try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys]), as: UTF8.self))
+                continue
+            }
             var line = "\(reading.route)"
             if case .command(let c) = reading.route { line += "  " + verdict(c) }
             for l in reading.lookups { line += "\n   lookup: \(l.tool) \(l.arg)" }

@@ -7,7 +7,7 @@ public enum ChatModel {
     You change a trade plan's parameters at the user's request. Return only a JSON object like
     {"intent": {"asset": "ETH", "side": "long", "riskUSD": 10, "stopPct": 3, "takePct": 6, "leverage": 2, "amountUSDC": null, "takeR": null, "autoRules": null, "entryPx": null, "pullbackPct": null}, "reply": "Take-profit: 6% → 4%."}
     asset: a Hyperliquid ticker, either a crypto ("ETH") or a market on the HIP-3 exchange xyz ("xyz:CL" is WTI oil, "xyz:BRENTOIL", "xyz:GOLD", "xyz:TSLA"); side: long or short; riskUSD: the maximum loss in dollars; stopPct and takePct: percent from the entry price;
-    leverage: whole-number leverage; amountUSDC: how much USDC to send from Solana, or null; takeR: take-profit as a multiple of the stop ("take 2R", "1:3"), then takePct is null;
+    leverage: whole-number leverage; amountUSDC: the money put into the trade, its margin («на 5 баксов», «увеличь до 5 USDC»): with riskUSD null the size follows from it and the stop; or null; takeR: take-profit as a multiple of the stop ("take 2R", "1:3"), then takePct is null;
     autoRules: true if the user asks for it by the book, by the rules or the best way (in Russian e.g. "как учат", "по правилам"): then do not invent numbers, leave missing stopPct, takePct and riskUSD null; code computes them from volatility, 2R and 1% of capital.
     entryPx: limit entry price, or null for a market entry; pullbackPct: a limit entry on a pullback of this many % from the current price ("wait for a 2% pullback"), then entryPx is null.
     Return every intent field; change only what is asked.

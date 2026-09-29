@@ -150,9 +150,40 @@ extension Plan {
             r.partialTake = true
             notes.append("Exit in parts: half at 1R, then stop to breakeven, the rest runs to the take-profit.")
         }
+        // «5 USDC» and no risk named: the money in the trade is its margin, so the size and the risk follow from it and
+        // the stop, and the bridge brings what that margin and the fees need.
+        if r.riskUSD == nil, let amount = i.amountUSDC, amount > 0, let stop = r.stopPct {
+            var lev = r.leverage ?? 1
+            // What a dollar of position loses at the stop, taker fees on both legs included, so the margin is the money.
+            let perDollar = stop / 100 + 2 * RiskCalc.takerFee
+            // Leverage the rules chose is lowered until that money's risk fits the limit: «8 USDC» at 5× would break it.
+            if i.leverage == nil, let equity, equity > 0 {
+                let fit = (equity * p.maxRiskPct / 100 / (amount * perDollar)).rounded(0, .down)
+                if fit >= 1, fit < lev {
+                    lev = fit
+                    r.leverage = fit
+                    notes.append("Leverage \(Fmt.num(fit))× keeps \(Fmt.num(amount)) USDC in the trade within the \(Fmt.pct(p.maxRiskPct)) risk limit.")
+                }
+            }
+            r.riskUSD = (amount * lev * perDollar).rounded(2, .down)
+            r.amountUSDC = nil
+            notes.append("\(Fmt.num(amount)) USDC in the trade at \(Fmt.num(lev))× with a \(Fmt.pct(stop)) stop risks \(Fmt.usd(r.riskUSD!)).")
+        }
         if r.riskUSD == nil, auto, let equity, equity > 0 {
             r.riskUSD = (equity * p.defaultRiskPct / 100).rounded(2, .down)
             notes.append("Risk \(Fmt.pct(p.defaultRiskPct)) of \(Fmt.usd(equity)) capital = \(Fmt.usd(r.riskUSD!)).")
+        }
+        // A small account's share sizes under Hyperliquid's $10 minimum order: raise the risk to the least that reaches
+        // it while the rule's limit allows, rather than draw a plan that can't be placed.
+        if i.riskUSD == nil, let risk = r.riskUSD, let stop = r.stopPct, let m = market, m.markPx > 0, let equity, equity > 0 {
+            let entry = r.entryPx ?? m.markPx
+            let stopPx = entry * (1 - (r.side == .long ? 1 : -1) * stop / 100)
+            let perCoin = entry * stop / 100 + (entry + stopPx) * RiskCalc.takerFee
+            let least = ((minNotional / entry).rounded(m.szDecimals, .up) * perCoin).rounded(2, .up)
+            if least > risk, least <= equity * p.maxRiskPct / 100 {
+                r.riskUSD = least
+                notes.append("Risk raised to \(Fmt.usd(least)) so the order reaches Hyperliquid's $10 minimum.")
+            }
         }
         return (r, notes)
     }

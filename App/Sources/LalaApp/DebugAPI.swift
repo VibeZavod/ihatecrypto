@@ -185,6 +185,9 @@ final class DebugAPI {
             "boards": boards(ws, canvas),
             "outcome": canvas?.outcome.map { $0.ok ? "executed" : "failed" } ?? NSNull(),
             "pending": ws.pendingText ?? NSNull(),
+            // Jev's reading of the plan against the chat, or why there is none.
+            "jev": ws.planReview.map { ["label": $0.label, "concern": $0.concern, "text": $0.text] as [String: Any] } ?? ws.jevNote ?? NSNull(),
+            "checklist": ws.planChecklist,
             "busy": ws.busy,
             "messages": ws.messages.dropFirst(since).map { ["user": $0.fromUser, "text": $0.text, "note": $0.note ?? NSNull()] as [String: Any] },
             "balances": [

@@ -40,7 +40,7 @@ public struct TradeIntent: Codable, Equatable, Sendable {
         if stopPct != old.stopPct { out.append("stop \(opt(stopPct, Fmt.pct))") }
         if takePct != old.takePct { out.append("take \(opt(takePct, Fmt.pct))") }
         if leverage != old.leverage { out.append("leverage \(opt(leverage) { Fmt.num($0) + "×" })") }
-        if amountUSDC != old.amountUSDC { out.append("from Solana \(opt(amountUSDC) { Fmt.num($0) + " USDC" })") }
+        if amountUSDC != old.amountUSDC { out.append("money in the trade \(opt(amountUSDC) { Fmt.num($0) + " USDC" })") }
         if takeR != old.takeR { out.append("take \(opt(takeR) { Fmt.num($0) + "R" })") }
         if autoRules != old.autoRules, autoRules == true { out.append("the rest by the risk rules") }
         if partialTake != old.partialTake, partialTake == true { out.append("take in parts: half at 1R, then stop to breakeven") }
@@ -53,6 +53,15 @@ public struct TradeIntent: Codable, Equatable, Sendable {
 
     /// The plan in the router's own form («long SOL risk $0.3 stop 3% take 6% leverage 2x»), which IntentParser.apply
     /// reads back to the same plan: what a price alert tied to a plan runs to prepare it again.
+    /// A plan that names neither its risk nor its stop — only the market, side, leverage, money or entry («long ETH»,
+    /// «лонг соланы х3 на 5 юсдс») — is filled by the risk rules, as «by the book» is. «long ETH» alone would otherwise
+    /// equal the empty plan (TradeIntent's defaults are ETH, long), which isn't drawn.
+    public var started: TradeIntent {
+        var next = self
+        if next.autoRules == nil, next.riskUSD == nil, next.stopPct == nil { next.autoRules = true }
+        return next
+    }
+
     public var command: String {
         func n(_ d: Decimal) -> String { NSDecimalNumber(decimal: d).stringValue }
         var parts = ["\(side == .long ? "long" : "short") \(asset.hasPrefix("xyz:") ? String(asset.dropFirst(4)) : asset)"]
@@ -110,6 +119,9 @@ public enum IntentParser {
         // A ticker on the main exchange, else the same ticker on a HIP-3 one («xyz:TSLA»).
         func market(_ ticker: String) -> String? {
             if known.contains(ticker) { return ticker }
+            // Coins priced in fractions of a cent trade by the thousand: PEPE is «kPEPE», BONK «kBONK».
+            if known.contains("k" + ticker) { return "k" + ticker }
+            if ticker.hasPrefix("K"), known.contains("k" + ticker.dropFirst()) { return "k" + ticker.dropFirst() }   // «KPEPE»
             return known.sorted().first { $0.hasSuffix(":" + ticker) }
         }
         if let m = q.firstMatch(of: /\$([a-z][a-z0-9]{1,9})\b/) {
@@ -122,7 +134,9 @@ public enum IntentParser {
             for word in text.split(whereSeparator: { !$0.isLetter && !$0.isNumber }) {
                 let ticker = word.uppercased()
                 guard ticker.count >= 2, !notTickers.contains(ticker) else { continue }
-                let name = word == ticker ? market(ticker) : known.contains(ticker) && !everydayWords.contains(ticker) ? ticker : nil
+                // «kPEPE» as Hyperliquid spells it, «kpepe», «KPEPE»: the thousand-unit market.
+                let thousand = ticker.hasPrefix("K") && known.contains("k" + ticker.dropFirst()) ? "k" + ticker.dropFirst() : nil
+                let name = word == ticker ? market(ticker) : known.contains(ticker) && !everydayWords.contains(ticker) ? ticker : thousand
                 if let name {
                     next.asset = name; hit = true
                     break
