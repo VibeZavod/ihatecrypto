@@ -656,50 +656,6 @@ extension Workspace {
     }
 }
 
-/// A plan the rules stop (S04): what fits instead, one click away.
-struct FixChoices: View {
-    @Environment(Workspace.self) private var ws
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("CHOOSE AN OPTION").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
-            HStack(alignment: .top, spacing: 12) {
-                if let fit = ws.fittingRisk {
-                    card(badge: "Recommended", title: "Risk \(Fmt.usd(fit.risk))",
-                         detail: "notional \(Fmt.usd(fit.sizing.notional)) · margin \(Fmt.usd(fit.sizing.margin)) — everything fits", recommended: true) {
-                        Task { await ws.send("risk $\(fit.risk)") }
-                    }
-                }
-                card(badge: "at your own risk", title: "Raise the limit",
-                     detail: "now at most \(Fmt.pct(ws.policy.maxRiskPct)) per trade · in Settings", recommended: false) { ws.openSettings(.general) }
-            }
-        }
-        .frame(width: 470, alignment: .leading)
-        .transition(.opacity)
-    }
-
-    private func card(badge: String, title: String, detail: String, recommended: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(badge.uppercased()).font(.ui(9.5, .heavy)).tracking(0.5)
-                    .foregroundStyle(recommended ? Brand.onAccent : .secondary)
-                    .padding(.horizontal, 7).padding(.vertical, 3)
-                    .background(Capsule().fill(recommended ? Brand.accent : Color.primary.opacity(0.07)))
-                Text(title).font(.ui(17, .heavy))
-                Text(detail).font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(14)
-            .frame(maxWidth: .infinity, minHeight: 116, alignment: .topLeading)
-            .background(RoundedRectangle(cornerRadius: 20).fill(Brand.card))
-            .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(recommended ? Brand.accent : Brand.cardBorder,
-                                                                       style: StrokeStyle(lineWidth: recommended ? 2 : 1, dash: recommended ? [] : [5, 4])))
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .modifier(HoverLift(radius: 20))
-    }
-}
-
 /// Confirm and Cancel under a board waiting for «do it»: the same path as typing «do it» or «cancel» in the chat,
 /// so the signer, the guard and Jev see exactly what they would.
 struct PendingButtons: View {

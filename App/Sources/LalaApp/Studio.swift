@@ -992,8 +992,8 @@ struct StudioCanvas: View {
                     .padding(.bottom, 10)
                     .transition(.opacity)
             }
-            // The model's ways to go on, under the block its answer opened.
-            if let steps = ws.nextSteps, steps.canvas == ws.canvasID { NextStepsBoard(steps: steps).padding(.bottom, 10) }
+            // The model's ways to go on, under the block its answer opened; with a plan they go under the plan, in its list.
+            if nodes.isEmpty, let steps = ws.nextSteps, steps.canvas == ws.canvasID { NextStepsBoard(steps: steps).padding(.bottom, 10) }
             // The rail's buttons put their boards here too.
             if ws.showReceive { ReceiveBoard() }
             if ws.showFavorites { FavoritesBoard().transition(.opacity) }
@@ -1053,7 +1053,21 @@ struct StudioCanvas: View {
                            buildKey: String(describing: ws.intent) + route.steps.map(\.label).joined())
                 Label(route.footer, systemImage: "signature").font(.ui(10)).foregroundStyle(.secondary)
                     .frame(maxWidth: 470, alignment: .leading)
-                if nodes.contains(where: { $0.status == .blocked }), ws.assembly == nil { FixChoices() }
+                // One list of ways on: what fits (checked by the code), the model's ideas, raising the limit.
+                let blocked = nodes.contains { $0.status == .blocked }
+                let ideas = ws.nextSteps.flatMap { $0.canvas == ws.canvasID ? $0 : nil }
+                if blocked || ideas != nil, ws.assembly == nil {
+                    let fit = blocked ? ws.fittingRisk.map { f in
+                        ChatRouter.Option(title: ws.say("Risk \(Fmt.usd(f.risk))", "Риск \(Fmt.usd(f.risk))"),
+                                          comment: ws.say("Notional \(Fmt.usd(f.sizing.notional)), margin \(Fmt.usd(f.sizing.margin)) — everything fits.",
+                                                          "Позиция \(Fmt.usd(f.sizing.notional)), маржа \(Fmt.usd(f.sizing.margin)) — всё проходит."),
+                                          command: "risk $\(f.risk)", recommended: true)
+                    } : nil
+                    let overLimit = blocked && (ws.evaluation.sizing.map { s in (ws.equity ?? 0) > 0 && s.lossAtStopUSD / ws.equity! * 100 > ws.policy.maxRiskPct } ?? false)
+                    if fit != nil || overLimit || !(ideas?.options.isEmpty ?? true) {
+                        NextStepsBoard(steps: ideas, fit: fit, overLimit: overLimit)
+                    }
+                }
                 if let choices = ws.takeChoices, ws.assembly == nil {
                     TakeChoices(choices: choices, risk: ws.evaluation.sizing?.lossAtStopUSD)
                         .transition(.opacity)

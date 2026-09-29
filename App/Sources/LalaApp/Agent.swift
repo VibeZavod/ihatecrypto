@@ -200,31 +200,53 @@ extension Workspace {
     }
 }
 
-/// The model's ways to go on, as cards: one marked Recommended, then «or write your own».
+/// The ways to go on, as cards, one list per canvas: under a plan the rules stop, first what the code found that
+/// fits, then the model's ideas, then raising the limit when the limit is what stops it; one of them Recommended.
 struct NextStepsBoard: View {
     @Environment(Workspace.self) private var ws
-    let steps: NextSteps
+    let steps: NextSteps?
+    /// A plan the rules stop: what the code checked fits (the risk that passes every rule and the money).
+    var fit: ChatRouter.Option?
+    /// The risk limit is what stops the plan: Settings can raise it, at the user's own risk.
+    var overLimit = false
 
     var body: some View {
+        // The code's fix is checked against the rules, so it's the one recommended when there is one.
+        let ideas = (steps?.options ?? []).filter { $0.command != fit?.command }.map { o in
+            fit == nil ? o : ChatRouter.Option(title: o.title, comment: o.comment, command: o.command)
+        }
         VStack(alignment: .leading, spacing: 8) {
             Text("WHAT NEXT").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
-            ForEach(Array(steps.options.enumerated()), id: \.offset) { _, option in
-                Button { Task { await ws.pick(option) } } label: { card(option) }
-                    .buttonStyle(.plain)
-                    .pointerStyle(.link)
-                    .modifier(HoverLift(radius: 18))
-                    .disabled(ws.busy)
-                    .help(option.command)
+            if let fit {
+                button(fit, help: fit.command) { Task { await ws.send(fit.command) } }
             }
-            Text("Or write your own in the chat.").font(.ui(10)).foregroundStyle(.secondary)
+            ForEach(Array(ideas.enumerated()), id: \.offset) { _, option in
+                button(option, help: option.command) { Task { await ws.pick(option) } }
+            }
+            if overLimit {
+                button(ChatRouter.Option(title: ws.say("Raise the limit", "Поднять лимит"),
+                                         comment: ws.say("Now at most \(Fmt.pct(ws.policy.maxRiskPct)) per trade, in Settings — at your own risk.",
+                                                         "Сейчас не больше \(Fmt.pct(ws.policy.maxRiskPct)) на сделку, в настройках — на свой риск."), command: ""),
+                       icon: "slider.horizontal.3", help: "Settings › General") { ws.openSettings(.general) }
+            }
+            Text(ws.say("Or write your own in the chat.", "Или напиши свой вариант в чат.")).font(.ui(10)).foregroundStyle(.secondary)
         }
         .frame(width: 470, alignment: .leading)
         .transition(.opacity)
     }
 
-    private func card(_ o: ChatRouter.Option) -> some View {
+    private func button(_ o: ChatRouter.Option, icon: String? = nil, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) { card(o, icon: icon) }
+            .buttonStyle(.plain)
+            .pointerStyle(.link)
+            .modifier(HoverLift(radius: 18))
+            .disabled(ws.busy)
+            .help(help)
+    }
+
+    private func card(_ o: ChatRouter.Option, icon: String? = nil) -> some View {
         HStack(alignment: .top, spacing: 12) {
-            Image(systemName: NextSteps.icon(o.command))
+            Image(systemName: icon ?? NextSteps.icon(o.command))
                 .font(.system(size: 14, weight: .semibold)).foregroundStyle(Brand.accentInk)
                 .frame(width: 32, height: 32)
                 .background(Circle().fill(Brand.accent.opacity(0.12)))
