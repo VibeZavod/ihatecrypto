@@ -16,11 +16,15 @@ public struct ChatGPTSubscription: LLMProvider {
 
     public var info: ProviderInfo {
         ProviderInfo(
-            id: "chatgpt", name: "ChatGPT (subscription)", kind: .subscription, defaultModel: "gpt-6-sol",
+            id: "chatgpt", name: "ChatGPT (subscription)", kind: .subscription, defaultModel: "gpt-6.1-sol",
             note: "Plus or Pro. Same sign-in as Codex CLI, OpenClaw and OpenCode; usage counts against the subscription limits.",
             signInLabel: "Sign in with ChatGPT", existingLoginLabel: "Use the Codex CLI login"
         )
     }
+
+    /// The backend doesn't list its models: the ones checked through this sign-in (GPT-6.1 Sol read 994 of 1,000 test
+    /// messages right on 2026-09-30, as GPT-6 Sol did, at the same speed), newest first.
+    public func models(_ credential: Credential?) async throws -> [String] { ["gpt-6.1-sol", "gpt-6-sol"] }
 
     public func existingLogin() -> Credential? {
         let path = NSString(string: Self.codexAuthFile).expandingTildeInPath

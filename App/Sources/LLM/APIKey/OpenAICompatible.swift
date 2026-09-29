@@ -18,7 +18,7 @@ public struct OpenAICompatible: LLMProvider {
         .init(info: ProviderInfo(id: "deepseek", name: "DeepSeek API", kind: .apiKey, defaultModel: "deepseek-flash",
                                  note: "Key from platform.deepseek.com.", takesKey: true),
               baseURL: "https://api.deepseek.com"),
-        .init(info: ProviderInfo(id: "openai", name: "OpenAI API", kind: .apiKey, defaultModel: "gpt-6-sol",
+        .init(info: ProviderInfo(id: "openai", name: "OpenAI API", kind: .apiKey, defaultModel: "gpt-6.1-sol",
                                  note: "Key from platform.openai.com, billed separately from a ChatGPT subscription.", takesKey: true),
               baseURL: "https://api.openai.com/v1"),
         .init(info: ProviderInfo(id: "anthropic", name: "Anthropic API", kind: .apiKey, defaultModel: "claude-haiku-4-5",
