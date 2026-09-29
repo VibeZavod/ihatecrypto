@@ -35,16 +35,27 @@ final class Workspace {
     var marketsError: String?
     var solana: Solana.Balance?
     var solanaError: String?
-    /// The user's say on a token, by mint: true shows it, false hides it; no entry follows Holding.looksReal.
+    /// The user's say on a token, by Holding.id: true shows it, false hides it; no entry follows Holding.looksReal.
     /// Not per wallet: a scam token hidden once stays hidden on every wallet.
     var tokenChoices: [String: Bool] = UserDefaults.standard.dictionary(forKey: "tokenChoices") as? [String: Bool] ?? [:] {
         didSet { UserDefaults.standard.set(tokenChoices, forKey: "tokenChoices") }
     }
-    func tokenShown(_ t: Solana.Holding) -> Bool { tokenChoices[t.mint] ?? t.looksReal }
-    /// The Solana tokens on show, and the ones tucked away (hidden by the user or looking like scam airdrops).
-    var shownTokens: [Solana.Holding] { (solana?.tokens ?? []).filter(tokenShown) }
-    var tuckedTokens: [Solana.Holding] { (solana?.tokens ?? []).filter { !tokenShown($0) } }
-    var shownTokensUSD: Decimal { shownTokens.reduce(0) { $0 + ($1.usd ?? 0) } }
+    func tokenShown(_ t: Holding) -> Bool { tokenChoices[t.id] ?? t.looksReal }
+    /// Tokens on the other networks (Holdings.swift): ERC-20s on Base, Arbitrum, Ethereum and Robinhood Chain, ETH on
+    /// Arbitrum and Ethereum, Hyperliquid's spot side and NEAR tokens.
+    var otherTokens: [Holding] = []
+    /// Every token beyond the balances read one by one, Solana's first. Stock tokens the Robinhood card already shows
+    /// are left out here.
+    var holdings: [Holding] {
+        let stocks = Set((robinhood?.stocks ?? []).map { $0.address.lowercased() })
+        return (solana?.tokens ?? []) + otherTokens.filter { !($0.chain == "robinhood" && stocks.contains($0.contract)) }
+    }
+    /// The tokens on show, and the ones tucked away (hidden by the user or looking like scam airdrops).
+    var shownTokens: [Holding] { holdings.filter(tokenShown) }
+    var tuckedTokens: [Holding] { holdings.filter { !tokenShown($0) } }
+    /// What the tokens on show are worth, the networks' own coins apart: those are gas, like SOL.
+    var shownTokensUSD: Decimal { shownTokens.filter { !$0.native }.reduce(0) { $0 + ($1.usd ?? 0) } }
+    var shownNativeUSD: Decimal { shownTokens.filter(\.native).reduce(0) { $0 + ($1.usd ?? 0) } }
     var hl: Hyperliquid.Balance?
     var hlError: String?
     var quote: BridgeQuote?
@@ -257,7 +268,7 @@ final class Workspace {
     var gasETH: Decimal { (base?.eth ?? 0) + (robinhood?.eth ?? 0) }
     var gasETHUSD: Decimal { gasETH * (markets["ETH"]?.markPx ?? 0) }
     /// Everything the wallet holds, gas included: the balance on screen.
-    var total: Decimal? { equity.map { $0 + solUSD + gasETHUSD } }
+    var total: Decimal? { equity.map { $0 + solUSD + gasETHUSD + shownNativeUSD } }
     /// Hyperliquid's HLP vault: what is in it and, while a deposit is locked, until when.
     var hlp: (equity: Decimal, lockedUntil: Date?) = (0, nil)
     /// On Base, at the Hyperliquid (EVM) address: idle USDC, USDC supplied to Aave, ETH for gas.
@@ -894,10 +905,26 @@ final class Workspace {
         async let b: Void = loadBase()
         async let r: Void = loadRobinhood()
         async let t: Void = refreshTokens()
-        _ = await (m, s, h, b, r, t)
+        async let o: Void = loadHoldings()
+        _ = await (m, s, h, b, r, t, o)
         await refreshQuote()
         updatedAt = Date()
         recordEquity()
+    }
+
+    /// Every token on the other networks, read at once and assigned together (each assignment after an await is a
+    /// redraw). What the app counts elsewhere is skipped: USDC, Aave's aUSDC and the Morpho vault on Base, USDC on
+    /// Arbitrum, USDG on Robinhood Chain, and ETH on Base and Robinhood (gas, counted with gasETH).
+    func loadHoldings() async {
+        let me = hlAddress, nearAccount = nearAddress, evm = isEVMAddress(hlAddress)
+        async let base = evm ? await Holdings.evm("base", address: me, native: false, skip: [EVMRPC.baseUSDC, AaveV3.baseAUSDC, MorphoVault.gauntletUSDCPrime]) : []
+        async let arbitrum = evm ? await Holdings.evm("arbitrum", address: me, native: true, skip: [EVMRPC.arbitrumUSDC]) : []
+        async let ethereum = evm ? await Holdings.evm("ethereum", address: me, native: true, skip: []) : []
+        async let robinhood = evm ? await Holdings.evm("robinhood", address: me, native: false, skip: [EVMRPC.robinhoodUSDG]) : []
+        async let spot = evm ? await Holdings.hyperliquidSpot(user: me) : []
+        async let near = nearAccount != nil ? await Holdings.near(account: nearAccount ?? "") : []
+        let found = await base + arbitrum + ethereum + robinhood + spot + near
+        if found != otherTokens { otherTokens = found }
     }
 
     /// Base balances at our EVM address and Aave's rate; quiet on errors (the rest of the portfolio still shows).

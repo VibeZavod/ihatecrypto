@@ -184,7 +184,7 @@ extension Workspace {
         var facts: [String] = []
         if let s = solana { facts.append("Solana: \(Fmt.num(s.usdc)) USDC, \(Fmt.num(s.sol, maxFraction: 4)) SOL.") }
         if !shownTokens.isEmpty {
-            facts.append("Other tokens on Solana: " + shownTokens.map { "\(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol)\($0.usd.map { " ≈ \(Fmt.usd($0))" } ?? "")" }.joined(separator: ", ") + ".")
+            facts.append("Other tokens: " + shownTokens.map { "\(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol) on \($0.chain)\($0.usd.map { " ≈ \(Fmt.usd($0))" } ?? "")" }.joined(separator: ", ") + ".")
         }
         if let t = total { facts.append("Portfolio total: \(Fmt.usd(t)), gas included (\(Fmt.usd(solUSD + gasETHUSD)) in SOL and ETH for fees).") }
         let week = equitySeries()

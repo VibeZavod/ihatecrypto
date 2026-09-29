@@ -40,6 +40,7 @@ extension Workspace {
         arbitrumUSDC = nil
         robinhood = nil
         tokenBalances = [:]
+        otherTokens = []
         updatedAt = nil
         schedules = UserDefaults.standard.data(forKey: Self.scoped("schedules", id)).flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) } ?? []
         tasks = UserDefaults.standard.data(forKey: Self.scoped("tasks", id)).flatMap { try? JSONDecoder().decode([ScheduledTask].self, from: $0) } ?? []

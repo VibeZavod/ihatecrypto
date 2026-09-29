@@ -1401,14 +1401,17 @@ struct StudioCursor: View {
 
 // MARK: Portfolio frame
 
-/// The Solana tokens besides USDC, the most valuable first. The ones the user hid, and airdrops that look like scams,
-/// are tucked under «N hidden» instead of shown.
-struct SolanaTokens: View {
+/// Tokens beyond the balances read one by one: Solana's inside the Solana card, the other networks' in a card of their
+/// own. The ones the user hid, and airdrops that look like scams, are tucked under «N hidden» instead of shown.
+struct TokenList: View {
     @Environment(Workspace.self) private var ws
+    /// Solana's tokens, or the other networks'.
+    let solana: Bool
     @State private var showTucked = false
 
     var body: some View {
-        let shown = ws.shownTokens, tucked = ws.tuckedTokens
+        let mine = { (t: Holding) in (t.chain == "solana") == solana }
+        let shown = ws.shownTokens.filter(mine), tucked = ws.tuckedTokens.filter(mine)
         if !shown.isEmpty || !tucked.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(shown) { HoldingRow(token: $0, shown: true) }
@@ -1426,9 +1429,11 @@ struct SolanaTokens: View {
 /// One token: its icon, symbol, value and amount. The eye hides it (on hover) or shows a tucked one.
 struct HoldingRow: View {
     @Environment(Workspace.self) private var ws
-    let token: Solana.Holding
+    let token: Holding
     let shown: Bool
     @State private var hover = false
+    /// The network's badge on the icon, outside Solana's own card.
+    static let chainLogos = ["base": "base", "arbitrum": "arb", "ethereum": "eth", "robinhood": "robinhood", "hyperliquid": "hype", "near": "near"]
 
     var body: some View {
         HStack(spacing: 8) {
@@ -1437,11 +1442,15 @@ struct HoldingRow: View {
                     .overlay(Text(token.symbol.prefix(1)).font(.ui(9, .bold)).foregroundStyle(Brand.solanaInk))
             }
             .frame(width: 20, height: 20).clipShape(Circle())
+            .overlay(alignment: .bottomTrailing) {
+                if let logo = Self.chainLogos[token.chain] { TokenLogo(name: logo, size: 10).offset(x: 3, y: 3) }
+            }
+            .help(token.chain.capitalized)
             Text(token.symbol).font(.ui(12, .semibold)).lineLimit(1)
             if !token.verified { Text("unverified").font(.ui(9)).foregroundStyle(.secondary) }
             Spacer(minLength: 4)
             if hover || !shown {
-                Button { withAnimation(.snappy) { ws.tokenChoices[token.mint] = !shown } } label: { Image(systemName: shown ? "eye.slash" : "eye") }
+                Button { withAnimation(.snappy) { ws.tokenChoices[token.id] = !shown } } label: { Image(systemName: shown ? "eye.slash" : "eye") }
                     .buttonStyle(.hoverIcon).help(shown ? "Hide \(token.symbol): it leaves the portfolio and its total" : "Show \(token.symbol) in the portfolio")
             }
             VStack(alignment: .trailing, spacing: 0) {
@@ -1523,7 +1532,7 @@ struct StudioPortfolio: View {
                         Text(ws.solana.map { Fmt.num($0.usdc) } ?? "—").font(.ui(13, .bold)).monospacedDigit()
                     }
                 }
-                SolanaTokens()
+                TokenList(solana: true)
             }
             .padding(11)
             .background(RoundedRectangle(cornerRadius: 16).fill(Brand.solanaTint))
@@ -1618,6 +1627,17 @@ struct StudioPortfolio: View {
             if ws.near > 0 {
                 place("near", "NEAR", ws.markets["NEAR"] != nil ? "≈ \(Fmt.usd(ws.nearUSD))" : "native NEAR",
                       "\(Fmt.num(ws.near, maxFraction: 4)) NEAR", tint: Color(light: 0xE6FBF3, dark: 0x0E2A20), ink: Color(light: 0x05785A, dark: 0x00EC97))
+            }
+
+            // Tokens on Base, Arbitrum, Ethereum, Robinhood Chain, Hyperliquid's spot side and NEAR.
+            if ws.holdings.contains(where: { $0.chain != "solana" }) {
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Tokens · other networks").font(.ui(12, .semibold))
+                    TokenList(solana: false)
+                }
+                .padding(11)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .background(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.cardBorder))
             }
 
             // ETH that pays the fees on Base and Robinhood Chain: small, but the user's money.

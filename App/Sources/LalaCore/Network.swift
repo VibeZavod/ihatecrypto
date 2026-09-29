@@ -126,23 +126,6 @@ public enum Solana {
         public var tokens: [Holding] = []
     }
 
-    /// A token other than USDC in the wallet, with Jupiter's symbol, icon and price when it knows them.
-    public struct Holding: Sendable, Identifiable, Equatable {
-        public var id: String { mint }
-        public let mint: String
-        public let amount: Decimal
-        public var symbol: String
-        public var icon: URL?
-        public var price: Decimal?
-        public var verified = false
-        public var liquidity: Decimal?
-
-        public var usd: Decimal? { price.map { $0 * amount } }
-        /// Airdropped look-alikes are unverified with no real pool behind them: they stay out of sight until the user
-        /// asks. A token the user bought has a pool (or Jupiter's check) and shows.
-        public var looksReal: Bool { verified || ((liquidity ?? 0) >= 10_000 && (usd ?? 0) >= 0.01) }
-    }
-
     public static func balance(owner: String) async throws -> Balance {
         struct RPCError: Decodable { let message: String }
         struct Lamports: Decodable { struct R: Decodable { let value: UInt64 }; let result: R?; let error: RPCError? }
@@ -191,17 +174,15 @@ public enum Solana {
     }
 
     static func holdings(_ amounts: [String: Decimal], jupiter data: Data?) -> [Holding] {
-        let found = (data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [[String: Any]]) ?? []
+        let found = Holdings.json(data) as? [[String: Any]] ?? []
         let byMint = Dictionary(found.compactMap { t in (t["id"] as? String).map { ($0, t) } }) { a, _ in a }
-        // Through the number's text: a JSON double's decimalValue turns 1.88 into 1.8799999….
-        func number(_ v: Any?) -> Decimal? { ((v as? NSNumber)?.stringValue ?? v as? String).flatMap { Decimal(string: $0) } }
         return amounts.compactMap { mint, amount -> Holding? in
             let t = byMint[mint] ?? [:]
             let tags = t["tags"] as? [String] ?? []
             if tags.contains("jup-lend-earn") { return nil }
-            return Holding(mint: mint, amount: amount, symbol: t["symbol"] as? String ?? String(mint.prefix(4)) + "…",
-                           icon: (t["icon"] as? String).flatMap(URL.init(string:)), price: number(t["usdPrice"]),
-                           verified: t["isVerified"] as? Bool == true || tags.contains("verified"), liquidity: number(t["liquidity"]))
+            return Holding(chain: "solana", contract: mint, amount: amount, symbol: t["symbol"] as? String ?? String(mint.prefix(4)) + "…",
+                           icon: (t["icon"] as? String).flatMap(URL.init(string:)), price: Holdings.number(t["usdPrice"]),
+                           verified: t["isVerified"] as? Bool == true || tags.contains("verified"), liquidity: Holdings.number(t["liquidity"]))
         }
         .sorted { ($0.usd ?? 0, $0.symbol) > ($1.usd ?? 0, $1.symbol) }
     }
