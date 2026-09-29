@@ -93,23 +93,26 @@ enum Brand {
 struct TokenLogo: View {
     let name: String
     var size: CGFloat = 28
+    /// A disc edge to edge, for a logo on a white disc: a square logo (Solana's) is cut to the disc, so no white shows
+    /// beside it and no corner sticks out.
+    var round = false
 
     var body: some View {
         if let (color, sign) = Self.drawn[name] {
             Circle().fill(Color(hex: color)).frame(width: size, height: size)
                 .overlay(Text(sign).font(.ui(size * 0.55, .bold)).foregroundStyle(.white))
         } else if name == "hype" {
-            RoundedRectangle(cornerRadius: size * 0.3).fill(Brand.hl).frame(width: size, height: size)
-                .overlay(logo(size: size * 0.72))
+            (round ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.3))).fill(Brand.hl).frame(width: size, height: size)
+                .overlay(logo(size: size * 0.72, round: false))
         } else {
-            logo(size: size)
+            logo(size: size, round: round)
         }
     }
 
-    @ViewBuilder private func logo(size: CGFloat) -> some View {
+    @ViewBuilder private func logo(size: CGFloat, round: Bool) -> some View {
         if let image = Self.image(name) {
             Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
-                .frame(width: size, height: size).clipShape(RoundedRectangle(cornerRadius: size * 0.28))
+                .frame(width: size, height: size).clipShape(round ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.28)))
         } else {
             Circle().fill(.quaternary).frame(width: size, height: size)
                 .overlay(Text(name.prefix(1).uppercased()).font(.ui(size * 0.45, .bold)))
