@@ -2005,7 +2005,8 @@ struct FloatingChat: View {
 
             ScrollViewReader { proxy in
                 ScrollView {
-                    LazyVStack(alignment: .leading, spacing: 14) {
+                    // Not lazy: a lazy stack anchored at the bottom dropped the first message when it replaced the intro.
+                    VStack(alignment: .leading, spacing: 14) {
                         ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing, thinking: ws.thinking, step: ws.agentStep)
                         if ws.messages.count <= 1 {
                             Text("Your portfolio is on the canvas. Tell me what to do with your money — in any language — and I’ll build the plan next to it. Nothing moves without your signature.")
