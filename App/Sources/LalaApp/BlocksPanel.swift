@@ -7,7 +7,7 @@ struct AddBlockButton: View {
 
     var body: some View {
         Button { withAnimation(.snappy) { open.toggle() } } label: {
-            Label("Add block", systemImage: open ? "xmark" : "plus").font(.ui(13, .semibold))
+            Label(open ? "Close blocks" : "Add block", systemImage: open ? "xmark" : "plus").font(.ui(13, .semibold))
                 .padding(.horizontal, 14).frame(height: 36).contentShape(Capsule())
         }
         .buttonStyle(.plain)
