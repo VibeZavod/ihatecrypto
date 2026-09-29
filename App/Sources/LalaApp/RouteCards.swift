@@ -329,6 +329,8 @@ struct RouteCard: View {
     /// A long route's small card: its label, the coin for its state, its title, its numbers as rows and its drawing;
     /// the rest opens on a click.
     var compact = false
+    /// The tooltip; the block library says what a pick does instead.
+    var hint = "Details · right-click for more"
     @State private var hover = false
 
     var body: some View {
@@ -381,7 +383,7 @@ struct RouteCard: View {
         .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .onHover { hover = $0 }
         .pointerStyle(.link)
-        .help("Details · right-click for more")
+        .help(hint)
         .accessibilityElement(children: .combine)
     }
 

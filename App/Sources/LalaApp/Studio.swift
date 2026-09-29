@@ -164,6 +164,8 @@ struct StudioView: View {
     @State private var railFoldedForRoom = false
     /// Counts the orange waves around the window's edge (EdgePulse); each new value runs one.
     @State private var edgePulse = 0
+    /// The block library under «Add block» (BlocksPanel.swift).
+    @State private var showBlocks = false
     static let spring = Animation.spring(response: 0.42, dampingFraction: 0.82)
     static let minChat: CGFloat = 320
     /// Room the canvas keeps for the chat when it fits its boards: the default chat width and its margins.
@@ -205,6 +207,10 @@ struct StudioView: View {
                     let place = Self.clamp(CGSize(width: chatX + moving.width, height: chatY + moving.height), room: room)
                     // Docked, the canvas keeps clear of the chat; moved away, the chat floats over it.
                     let docked = place.width > -40 && place.height > -40
+                    // «Add block» keeps to the canvas's top right; a chat reaching the top there pushes it to the chat's left.
+                    let chatLeft = geo.size.width - 16 - width + place.width
+                    let chatTop = geo.size.height - 16 - height + place.height
+                    let blocksEdge = chatTop < 70 && chatLeft + width > geo.size.width - 200 ? geo.size.width - chatLeft + 12 : 16
                     ZStack(alignment: .topTrailing) {
                         FloatingChat(
                             compact: !chatOpen,
@@ -229,6 +235,17 @@ struct StudioView: View {
                         .offset(place)
                         .padding(16)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+                        // Over the chat while open: a pick closes it and the chat shows the block's words.
+                        if mode == "plan", !ws.showSchedule {
+                            VStack(alignment: .trailing, spacing: 10) {
+                                AddBlockButton(open: $showBlocks)
+                                if showBlocks {
+                                    BlocksPanel { withAnimation(.snappy) { showBlocks = false } }
+                                        .frame(maxHeight: max(200, geo.size.height - 78), alignment: .top)
+                                }
+                            }
+                            .padding(.top, 16).padding(.trailing, blocksEdge)
+                        }
                     }
                     // @AppStorage changes skip withAnimation, so the spring is tied to the values themselves.
                     .animation(Self.spring, value: chatOpen)
