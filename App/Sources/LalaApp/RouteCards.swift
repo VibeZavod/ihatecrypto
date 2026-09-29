@@ -7,9 +7,10 @@ import SwiftUI
 /// What a route step does, read from its label («BRIDGE · RELAY», «INTO · KAMINO LEND», «FROM · SOLANA»…): it picks
 /// the drawing at the bottom of its card. A trade plan's steps have their own: the rules' checklist, Jev's magnifier,
 /// the price line the position rides, the shield of its stop and take, and the two ways it can end. A price alert the
-/// plan waits for («WHEN · PRICE FALLS TO») draws the price reaching its level, with the bell.
+/// plan waits for («WHEN · PRICE FALLS TO») draws the price reaching its level, with the bell; a task for later
+/// («LATER · SCHEDULE») a calendar with its day marked; the best rates one amount branching into three vaults.
 enum StepKind: Equatable {
-    case wallet, bridge, swap, buy, deposit, stake, send, check, jev, long, short, protect, result
+    case wallet, bridge, swap, buy, deposit, stake, send, check, jev, long, short, protect, result, schedule, split
     case alert(up: Bool)
 
     init(_ step: ActivityBubble) {
@@ -22,6 +23,8 @@ enum StepKind: Equatable {
         else if label.hasPrefix("OPEN SHORT") { self = .short }
         else if label.hasPrefix("PROTECT") { self = .protect }
         else if label.hasPrefix("RESULT") { self = .result }
+        else if label.hasPrefix("LATER") { self = .schedule }
+        else if label.contains("BEST RATES") { self = .split }
         else if label.contains("BRIDGE") || label.hasPrefix("RELAY") { self = .bridge }
         else if label.hasPrefix("SWAP") { self = .swap }
         else if label.hasPrefix("BUY") || label.hasPrefix("SELL") { self = .buy }
@@ -60,15 +63,34 @@ enum StepState: Equatable {
 }
 
 extension RouteFill {
-    /// The color on a light card: the lines of a step still to come and the ring of the step a move is on
-    /// (Solana's own tint is too pale for either).
-    var accent: Color { self == .solana ? Color(hex: 0x8B6AE8) : self == .check ? Color.secondary : color }
+    /// The color on a faint card: the lines of a step still to come and the ring of the step a move is on. Solana's own
+    /// tint is too pale for either; in dark mode a dark place (Hyperliquid, Relay, Kamino…) takes its light tint, or
+    /// its lines and ring would vanish into the canvas.
+    var accent: Color {
+        switch self {
+        case .solana: Color(hex: 0x8B6AE8)
+        case .check: .secondary
+        case .relay: Color(light: 0x4615C8, dark: 0x9C84FF)
+        case .hyperliquid: Color(light: 0x072723, dark: 0x97FCE4)
+        case .hlp: Color(light: 0x0D3B35, dark: 0x97FCE4)
+        case .jupiter: Color(light: 0x131D27, dark: 0xC7F284)
+        case .kamino: Color(light: 0x082A56, dark: 0x6FA0F0)
+        case .jito: Color(light: 0x1F9D6A, dark: 0x4CD6A0)
+        case .aave: Color(light: 0x2B2D3C, dark: 0xB8BBD9)
+        case .morpho: Color(light: 0x1D4FC4, dark: 0x7FA2FF)
+        case .base: Color(light: 0x0052FF, dark: 0x6E9BFF)
+        case .arbitrum: Color(light: 0x213147, dark: 0x8FB4E3)
+        case .robinhood: Color(light: 0x3A4A00, dark: 0xC9F24B)
+        case .near: Color(light: 0x10231C, dark: 0x97FCE4)
+        }
+    }
 }
 
 /// A card's colors, from its place and its state: a step still to come is its place's color, faint.
 struct CardLook {
     let fill: RouteFill
     let state: StepState
+    var kind: StepKind?
 
     var pale: Bool { state == .next }
     var ink: Color { pale || !fill.dark ? .primary : .white }
@@ -76,6 +98,9 @@ struct CardLook {
     var line: Color { ink.opacity(0.78) }
     var label: Color {
         if pale { return fill.accent }
+        // A long reads green and a short red at a glance.
+        if kind == .long { return profit }
+        if kind == .short { return loss }
         switch fill {
         case .check: return .secondary
         case .solana: return Color(light: 0x6E5A9A, dark: 0xC9B8FF)
@@ -86,9 +111,9 @@ struct CardLook {
     }
     /// The ticker on a buy's price tag: Jupiter's lime on Jupiter, the ink elsewhere.
     var tag: Color { !pale && fill == .jupiter ? Color(hex: 0xC7F284) : drawing }
-    /// The take's and a profit's green, the stop's and a loss's red: lighter on a dark card.
-    var profit: Color { fill.dark && !pale ? Color(hex: 0x7EEBC0) : Color(hex: 0x1F9D6A) }
-    var loss: Color { fill.dark && !pale ? Color(hex: 0xFF8A7A) : Color(hex: 0xD9443A) }
+    /// The take's and a profit's green, the stop's and a loss's red: lighter on a dark card, which every card is in dark mode.
+    var profit: Color { fill.dark && !pale ? Color(hex: 0x7EEBC0) : Color(light: 0x1F9D6A, dark: 0x7EEBC0) }
+    var loss: Color { fill.dark && !pale ? Color(hex: 0xFF8A7A) : Color(light: 0xD9443A, dark: 0xFF8A7A) }
     /// Filled shapes in the drawing (a wallet, a vault, a tag) are the card's own color, so the lines read on it; on a
     /// check's grey card they are paper.
     var body: Color { pale || fill == .check ? Brand.card : fill.color }
@@ -130,9 +155,10 @@ struct RouteCards: View {
     /// it passes the plan itself: the cards are laid out again when the plan changes, not when a price does.
     var buildKey: String?
 
-    static let cardWidth: CGFloat = 236, cardHeight: CGFloat = 228, gap: CGFloat = 40, perRow = 3
+    /// Every card is square, as the user asked.
+    static let cardWidth: CGFloat = 236, cardHeight: CGFloat = 236, gap: CGFloat = 40, perRow = 3
     /// Four to a row: a plan of six or seven cards, the portfolio beside it, fits the window with its buttons in view.
-    static let smallWidth: CGFloat = 196, smallHeight: CGFloat = 244, smallGap: CGFloat = 26, smallPerRow = 4
+    static let smallWidth: CGFloat = 220, smallHeight: CGFloat = 220, smallGap: CGFloat = 26, smallPerRow = 4
     /// Over three steps the cards are the small ones.
     static func compact(_ count: Int) -> Bool { count > perRow }
     /// What the route takes across: a row of cards and the arrows between them.
@@ -334,8 +360,8 @@ struct RouteCard: View {
     @State private var hover = false
 
     var body: some View {
-        let look = CardLook(fill: step.fill ?? .solana, state: state)
         let kind = StepKind(step)
+        let look = CardLook(fill: step.fill ?? .solana, state: state, kind: kind)
         let w = compact ? RouteCards.smallWidth : width
         let radius: CGFloat = compact ? 14 : 20
         ZStack(alignment: .topLeading) {
@@ -547,34 +573,20 @@ struct StepTitle: View {
 struct StateChip: View {
     let state: StepState
     let fill: RouteFill
-    /// A small card's chip: the coin on its state's halo, no word.
+    /// A small card's chip: the same coin and word, a size smaller (the coin alone didn't say what it meant).
     var compact = false
 
     var body: some View {
         let (text, ink, halo) = look
-        if compact {
+        HStack(spacing: compact ? 4 : 5) {
             ZStack {
                 Circle().fill(halo)
-                LalaLogo(size: 13, mood: state.mood)
+                LalaLogo(size: compact ? 13 : 15, mood: state.mood)
             }
-            .frame(width: 18, height: 18)
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(text)
-        } else {
-            chip(text, ink, halo)
+            .frame(width: compact ? 17 : 19, height: compact ? 17 : 19)
+            Text(text).font(.ui(compact ? 10.5 : 11, .bold)).lineLimit(1).fixedSize()
         }
-    }
-
-    private func chip(_ text: String, _ ink: Color, _ halo: Color) -> some View {
-        HStack(spacing: 5) {
-            ZStack {
-                Circle().fill(halo)
-                LalaLogo(size: 15, mood: state.mood)
-            }
-            .frame(width: 19, height: 19)
-            Text(text).font(.ui(11, .bold)).lineLimit(1).fixedSize()
-        }
-        .padding(.leading, 3).padding(.trailing, 9).padding(.vertical, 3)
+        .padding(.leading, 3).padding(.trailing, compact ? 8 : 9).padding(.vertical, 3)
         .foregroundStyle(ink)
         .background(Capsule().fill(state == .touch ? Color.black : Color.white))
         .accessibilityElement(children: .ignore)
@@ -691,6 +703,8 @@ struct StepScene: View {
         case .protect: (150, 64, 1.4)
         case .result: (90, 60, 1.4)
         case .alert(let up): (236, up ? 58 : 74, 1.4)
+        case .schedule: (130, 66, 1.4)
+        case .split: (84, 36, 1.4)
         }
     }
 
@@ -698,7 +712,7 @@ struct StepScene: View {
         func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
         let ink = GraphicsContext.Shading.color(look.drawing)
         // A small card's lines are a little heavier, as on the brand board, so they still read.
-        let line = StrokeStyle(lineWidth: (k < 0.6 ? 4 : 3) * k, lineCap: .round, lineJoin: .round)
+        let line = StrokeStyle(lineWidth: (k < 0.7 ? 3.5 : 3) * k, lineCap: .round, lineJoin: .round)
         let thin = StrokeStyle(lineWidth: 1.6 * k, lineCap: .round)
         let fill = GraphicsContext.Shading.color(look.body)
         func stroke(_ path: Path, _ style: StrokeStyle? = nil, opacity: Double = 1) {
@@ -779,10 +793,37 @@ struct StepScene: View {
             var tick = Path(); tick.move(to: p(238, 80)); tick.addLine(to: p(246, 88)); tick.addLine(to: p(260, 74))
             context.stroke(tick, with: .color(good), style: line)
         case (.long, false), (.short, false):
-            // The price line the position rides: up for a long, down for a short.
+            // The price line the position rides: up and green for a long, down and red for a short, faintly filled under.
             let ys: [CGFloat] = kind == .long ? [112, 84, 98, 30] : [30, 58, 44, 112]
+            let side = kind == .long ? good : bad
             var price = Path(); price.move(to: p(-4, ys[0])); price.addLine(to: p(90, ys[1])); price.addLine(to: p(140, ys[2])); price.addLine(to: p(344, ys[3]))
-            stroke(price)
+            var under = price; under.addLine(to: p(344, 130)); under.addLine(to: p(-4, 130)); under.closeSubpath()
+            context.fill(under, with: .color(side.opacity(0.18)))
+            context.stroke(price, with: .color(side), style: line)
+        case (.schedule, false):
+            // A calendar page, the day it runs marked.
+            let page = Path(roundedRect: CGRect(x: 196 * k, y: 20 * k, width: 104 * k, height: 104 * k), cornerRadius: 12 * k)
+            context.fill(page, with: fill); stroke(page)
+            var top = Path()
+            top.move(to: p(196, 46)); top.addLine(to: p(300, 46))
+            top.move(to: p(224, 10)); top.addLine(to: p(224, 30)); top.move(to: p(272, 10)); top.addLine(to: p(272, 30))
+            stroke(top)
+            for (x, y) in [(222.0, 68.0), (248, 68), (274, 68), (222, 96), (248, 96)] { context.fill(circle(x, y, 3.2), with: .color(look.drawing.opacity(0.55))) }
+            stroke(circle(274, 96, 10))
+            context.fill(circle(274, 96, 3.6), with: ink)
+        case (.split, false):
+            // One amount branching into three vaults.
+            var branches = Path()
+            branches.move(to: p(-4, 62)); branches.addLine(to: p(232, 62))
+            branches.move(to: p(130, 62)); branches.addCurve(to: p(232, 26), control1: p(176, 62), control2: p(186, 26))
+            branches.move(to: p(130, 62)); branches.addCurve(to: p(232, 98), control1: p(176, 62), control2: p(186, 98))
+            stroke(branches)
+            for y in [13.0, 49, 85] {
+                let vault = Path(roundedRect: CGRect(x: 236 * k, y: y * k, width: 72 * k, height: 26 * k), cornerRadius: 6 * k)
+                context.fill(vault, with: fill); stroke(vault)
+                var slot = Path(); slot.move(to: p(258, y)); slot.addLine(to: p(286, y))
+                stroke(slot, StrokeStyle(lineWidth: 4 * k, lineCap: .round))
+            }
         case (.protect, true):
             var shield = Path()
             shield.move(to: p(230, 10)); shield.addLine(to: p(290, 30)); shield.addLine(to: p(290, 64))
