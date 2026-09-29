@@ -18,13 +18,38 @@ public struct ChatGPTSubscription: LLMProvider {
         ProviderInfo(
             id: "chatgpt", name: "ChatGPT (subscription)", kind: .subscription, defaultModel: "gpt-6.1-sol",
             note: "Plus or Pro. Same sign-in as Codex CLI, OpenClaw and OpenCode; usage counts against the subscription limits.",
-            signInLabel: "Sign in with ChatGPT", existingLoginLabel: "Use the Codex CLI login"
+            signInLabel: "Sign in with ChatGPT", existingLoginLabel: "Use the Codex CLI login",
+            // All answer through this sign-in (checked 2026-09-30). 6.1 Sol read 1,000 test messages as well as 6 Sol, as fast.
+            models: ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]
         )
     }
 
-    /// The backend doesn't list its models: the ones checked through this sign-in (GPT-6.1 Sol read 994 of 1,000 test
-    /// messages right on 2026-09-30, as GPT-6 Sol did, at the same speed), newest first.
-    public func models(_ credential: Credential?) async throws -> [String] { ["gpt-6.1-sol", "gpt-6-sol"] }
+    /// The models this subscription offers, live from the Codex backend (the list Codex CLI shows), recommended first;
+    /// the checked ones when it can't be read. Tokens are never refreshed here: that happens only with a request.
+    public func models(_ credential: Credential?) async throws -> [String] {
+        let access: (token: String, account: String)?
+        switch credential {
+        case .oauth(let t) where t.expires > Date(): access = t.accountID.map { (t.access, $0) }
+        case .external(let path): access = (try? CodexAuthFile.read(path)).map { ($0.access, $0.accountID) }
+        default: access = nil
+        }
+        guard let access, let data = try? await HTTP.get(Self.models + "?client_version=0.200.0", headers: [
+            "Authorization": "Bearer \(access.token)", "chatgpt-account-id": access.account, "originator": "codex_cli_rs",
+        ]) else { return info.models }
+        let live = Self.listed(data)
+        return live.isEmpty ? info.models : live
+    }
+
+    static let models = "https://chatgpt.com/backend-api/codex/models"
+
+    /// The models a Codex backend reply lists for people to pick («visibility: list»), by its priority.
+    static func listed(_ data: Data) -> [String] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rows = json["models"] as? [[String: Any]] else { return [] }
+        return rows.filter { $0["visibility"] as? String == "list" }
+            .sorted { ($0["priority"] as? Int ?? .max) < ($1["priority"] as? Int ?? .max) }
+            .compactMap { $0["slug"] as? String }
+    }
 
     public func existingLogin() -> Credential? {
         let path = NSString(string: Self.codexAuthFile).expandingTildeInPath

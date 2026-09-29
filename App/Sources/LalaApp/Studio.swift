@@ -2427,6 +2427,7 @@ struct ChatModelMenu: View {
             if open { open = false; return }
             guard Date.now.timeIntervalSince(closedAt) > 0.3 else { return }
             linked = Set(LLMCatalog.all.map(\.info.id).filter { Keychain.load($0) != nil })
+            Task { await ws.refreshLiveModels() }
             let twoWay = ModelCompany.all.filter { $0.ids.count > 1 }
             expanded = (twoWay.first { $0.ids.contains(ws.providerID) } ?? twoWay.first)?.name
             open = true
@@ -2490,6 +2491,7 @@ struct ChatModelMenu: View {
                    disclosure: ways.count > 1 ? isOpen : nil) {
             if ways.count > 1 { expanded = c.name } else if let only = ways.first { pick(only) }
         }
+        if ways.count == 1, let only = ways.first { models(only).padding(.leading, 26) }
         if isOpen {
             ForEach(ways) { info in
                 MenuRow(title: info.name, detail: info.unavailable == nil ? detail(info) : "not open to apps yet — use the API key",
@@ -2498,6 +2500,26 @@ struct ChatModelMenu: View {
                     .opacity(info.unavailable != nil ? 0.5 : 1)
                     .help(info.unavailable ?? info.note)
                     .padding(.leading, 26)
+                models(info).padding(.leading, 52)
+            }
+        }
+    }
+
+    /// Under the way in that's in use: its models, the one in use checked; a pick switches this canvas to it.
+    @ViewBuilder private func models(_ info: ProviderInfo) -> some View {
+        if info.id == ws.providerID, connected(info) {
+            let current = ws.modelChoices[info.id] ?? info.defaultModel
+            // A model typed in Settings stays listed while it's in use.
+            let checked = ws.liveModels[info.id] ?? info.models
+            let list = checked.contains(current) || current.isEmpty ? checked : [current] + checked
+            ForEach(list, id: \.self) { id in
+                MenuRow(title: LLMCatalog.displayName(model: id), detail: id == info.defaultModel ? "recommended" : nil,
+                        checked: id == current) {
+                    ws.model = id
+                    ws.saveCanvas()
+                    open = false
+                }
+                .help(id)
             }
         }
     }

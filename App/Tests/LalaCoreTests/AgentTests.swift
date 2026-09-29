@@ -357,3 +357,19 @@ private final class Script: LLMClient, @unchecked Sendable {
     // Nothing fits $3 of money: no fix.
     #expect(Plan.fix(big, market: m, equity: 3, policy: policy, openRisk: nil, available: 1) == nil)
 }
+
+@Test func aLongChainFitsAndAnUnreadableReplyGetsASecondTry() async throws {
+    // Three token charts by contract ran past a flat 200 characters.
+    let a = "0xab093def657f15df31b33922a95e047add645b29"
+    let chain = "chart token \(a) on robinhood then chart token \(a) on robinhood then chart token \(a) on robinhood"
+    #expect(chain.count > 200 && ChatRouter.maxCommand(chain) >= chain.count)
+    // Not JSON, then fine: the model is told what's wrong and answers again.
+    let model = Script(["Sure! I'll show the chart.", #"{"route":"command","command":"chart SOL"}"#])
+    let reading = try await ChatRouter.route("покажи чарт сола", context: .init(), client: model, model: "m")
+    #expect(reading.route == .command("chart SOL"))
+    #expect(model.sent[1].last?.text.contains("doesn't fit the format") == true)
+    // Twice unreadable: an Unreadable error, nothing run.
+    await #expect(throws: ChatRouter.Unreadable.self) {
+        try await ChatRouter.route("?", context: .init(), client: Script(Array(repeating: "no json", count: ChatRouter.rounds + 1)), model: "m")
+    }
+}

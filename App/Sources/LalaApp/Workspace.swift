@@ -486,13 +486,25 @@ final class Workspace {
         }
     }
 
+    /// A subscription's models as it lists them now (ChatGPT's Codex backend), for the chat's menu. API keys keep the
+    /// checked list there: their /models lists everything, image and speech models too.
+    var liveModels: [String: [String]] = [:]
+
+    func refreshLiveModels() async {
+        let p = provider, id = p.info.id
+        guard p.info.kind == .subscription, let list = try? await p.models(credential), !list.isEmpty else { return }
+        if liveModels[id] != Array(list.prefix(4)) { liveModels[id] = Array(list.prefix(4)) }
+    }
+
     func loadModels() async {
         do {
             availableModels = try await provider.models(credential)
-            if availableModels.isEmpty { llmStatus = "This provider does not list its models; type the name." }
         } catch {
             llmStatus = error.localizedDescription
         }
+        // Not listed live (no key yet, a subscription): the models checked for it.
+        if availableModels.isEmpty { availableModels = provider.info.models }
+        if availableModels.isEmpty { llmStatus = "This provider does not list its models; type the name." }
     }
 
     var market: Market? {
@@ -796,7 +808,7 @@ final class Workspace {
     private func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent, offered: [ChatRouter.Option] = []) async {
         busy = true
         var reading: ChatRouter.Reading?
-        var failure = ""
+        var failure = "", unreadable = false
         let context = routerContext(offered: offered)
         // The model's lookups run here, on this canvas's data; the chat shows which one is under way.
         let lookup: @Sendable (ChatRouter.Lookup) async -> String = { [weak self] l in await self?.agentLookup(l) ?? "" }
@@ -826,6 +838,7 @@ final class Workspace {
                                                      markets: markets.isEmpty ? nil : Set(markets.keys), lookup: lookup, check: check)
             } catch {
                 failure = error.localizedDescription
+                unreadable = error is ChatRouter.Unreadable
                 FileHandle.standardError.write(Data("LALA router: \(error)\n".utf8))
             }
         }
@@ -848,6 +861,9 @@ final class Workspace {
             return
         }
         switch reading?.route {
+        case nil where unreadable:
+            reply(say("\(model) answered, but not in a form ihatecrypto can read, so nothing ran. Say it another way, or pick another model above.",
+                      "\(model) ответил, но не в том виде, который ihatecrypto может прочитать, поэтому ничего не запускал. Скажи иначе или выбери другую модель сверху."), note: model)
         case nil:
             reply(say("I couldn’t reach \(model) (\(failure.prefix(140))), so I didn’t act on this — nothing moved. Send it again, or pick another model above.",
                       "Не достучался до \(model) (\(failure.prefix(140))), поэтому ничего не сделал — ничего не ушло. Отправь ещё раз или выбери другую модель сверху."), note: model)

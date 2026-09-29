@@ -124,9 +124,14 @@ private func jwt(_ claims: [String: Any]) -> String {
 
 @Test func modelIdsReadAsNames() {
     let names = [
-        "gpt-6-sol": "GPT 6 SOL", "gpt-6.1-sol": "GPT 6.1 SOL", "claude-haiku-4-5": "Claude Haiku 4.5", "deepseek-flash": "DeepSeek Flash",
+        "gpt-6-sol": "GPT 6 SOL", "gpt-6.1-sol": "GPT 6.1 SOL", "gpt-6-astra": "GPT 6 Astra", "claude-opus-5-5": "Claude Opus 5.5", "claude-fable-5-1": "Claude Fable 5.1", "grok-4.7": "Grok 4.7", "claude-haiku-4-5": "Claude Haiku 4.5", "deepseek-flash": "DeepSeek Flash",
         "deepseek/deepseek-v4.1-flash": "DeepSeek V4.1 Flash", "gemini-3.8-flash": "Gemini 3.8 Flash",
         "grok-4.3": "Grok 4.3", "qwen3.5:9b": "Qwen3.5 9B", "gpt-6-pro": "GPT 6 Pro",
     ]
     for (id, name) in names { #expect(LLMCatalog.displayName(model: id) == name) }
+}
+
+@Test func theCodexBackendsListReadsItsPickableModelsInOrder() {
+    let json = #"{"models":[{"slug":"gpt-6-sol","visibility":"list","priority":3},{"slug":"gpt-reserve","visibility":"hide","priority":4},{"slug":"gpt-6.1-sol","visibility":"list","priority":1},{"slug":"gpt-6-astra","visibility":"list","priority":2}]}"#
+    #expect(ChatGPTSubscription.listed(Data(json.utf8)) == ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol"])
 }

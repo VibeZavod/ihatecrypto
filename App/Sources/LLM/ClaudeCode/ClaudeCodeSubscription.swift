@@ -10,9 +10,11 @@ public struct ClaudeCodeSubscription: LLMProvider {
 
     public var info: ProviderInfo {
         ProviderInfo(
-            id: "claude-code", name: "Claude (subscription via Claude Code)", kind: .subscription, defaultModel: "claude-haiku-4-5",
+            id: "claude-code", name: "Claude (subscription via Claude Code)", kind: .subscription, defaultModel: "claude-opus-5-5",
             note: "Runs the installed Claude Code with no tools. Anthropic doesn't officially allow third-party sign-in — a gray area.",
-            existingLoginLabel: "Use the installed Claude Code"
+            existingLoginLabel: "Use the installed Claude Code",
+            // All answer through `claude -p` (checked 2026-09-30).
+            models: ["claude-opus-5-5", "claude-sonnet-5-5", "claude-fable-5-1", "claude-haiku-4-5"]
         )
     }
 

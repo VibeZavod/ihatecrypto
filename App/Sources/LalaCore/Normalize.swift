@@ -278,9 +278,18 @@ public enum ChatRouter {
             let full = try await client.complete(LLMRequest(model: model, messages: messages, wantsJSON: true))
             // A model sometimes writes its lookup and then guesses the answer after it: only the first object counts.
             let reply = firstObject(in: full) ?? full
-            guard let json = JSONText.object(in: reply) else { throw LLMError("The model did not reply with JSON: \(reply.prefix(120))") }
+            // A reply that isn't the JSON asked for goes back once more, saying what's wrong, before the chat gives up on it.
             let next: Step
-            do { next = try step(json) } catch { throw LLMError("The model's reply doesn't fit (\(error)): \(reply.prefix(300))") }
+            do {
+                guard let json = JSONText.object(in: reply) else { throw LLMError("it isn't a JSON object") }
+                next = try step(json)
+            } catch {
+                guard round < rounds else { throw Unreadable(reply: String(reply.prefix(300))) }
+                messages.append(LLMMessage(.assistant, reply))
+                messages.append(LLMMessage(.user, "That reply doesn't fit the format (\(error.localizedDescription)). Answer again with ONE "
+                                           + "JSON object exactly as described; several steps go in one «command» joined by « then »."))
+                continue
+            }
             switch next {
             case .done(var reading):
                 if let markets, round < rounds, case .command(let c) = reading.route, let bad = unparsed(c, markets: markets) {
@@ -478,6 +487,12 @@ public enum ChatRouter {
         text.matches(of: /0x[0-9a-fA-F]{40}|[0-9a-f]{64}|[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.near|[1-9A-HJ-NP-Za-km-z]{32,44}/).map { String($0.0) }
     }
 
+    /// The model's answer, twice not in the format asked for: nothing is run.
+    public struct Unreadable: LocalizedError {
+        public let reply: String
+        public var errorDescription: String? { "The model's answer didn't fit the format: \(reply)" }
+    }
+
     /// «withdraw 5 USDC to Solana then deposit 5 USDC to kamino»: the steps of a command run now, in order. nil for one
     /// command, and for a scheduled task's or a price alert's steps (they follow their «…:»).
     public static func steps(_ command: String) -> [String]? {
@@ -525,7 +540,8 @@ public enum ChatRouter {
     }
 
     /// A command is one short line; a paid request carries its JSON body (a question for Grok's X search runs past 200).
-    static func maxCommand(_ c: String) -> Int { c.hasPrefix("pay ") ? 2000 : 200 }
+    /// A chain of steps has room for each («chart token 0x… on base» three times ran past 200 and the answer was dropped).
+    static func maxCommand(_ c: String) -> Int { c.hasPrefix("pay ") ? 2000 : steps(c) != nil ? 1200 : 200 }
 
     static func decode(_ json: Data) throws -> Route {
         struct Answer: Decodable { let route: String; let command: String?; let reply: String? }

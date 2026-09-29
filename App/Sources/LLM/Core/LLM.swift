@@ -50,11 +50,16 @@ public struct ProviderInfo: Sendable, Identifiable {
     public var existingLoginLabel: String?
     /// Why this option cannot be used right now; nil when it can.
     public var unavailable: String?
+    /// The current models this way in offers, checked, the recommended one first: the chat's menu and Settings pick
+    /// from them. Any other id can still be typed in Settings.
+    public var models: [String]
 
     public init(
         id: String, name: String, kind: ProviderKind, defaultModel: String, note: String,
-        takesKey: Bool = false, signInLabel: String? = nil, existingLoginLabel: String? = nil, unavailable: String? = nil
+        takesKey: Bool = false, signInLabel: String? = nil, existingLoginLabel: String? = nil, unavailable: String? = nil,
+        models: [String] = []
     ) {
+        self.models = models
         self.id = id
         self.name = name
         self.kind = kind
@@ -111,7 +116,7 @@ extension LLMProvider {
         throw LLMError("\(info.name): sign-in isn't supported.")
     }
     public func existingLogin() -> Credential? { nil }
-    public func models(_ credential: Credential?) async throws -> [String] { [] }
+    public func models(_ credential: Credential?) async throws -> [String] { info.models }
 }
 
 public struct LLMError: LocalizedError {
