@@ -44,6 +44,8 @@ final class Workspace {
     /// Tokens on the other networks (Holdings.swift): ERC-20s on Base, Arbitrum, Ethereum and Robinhood Chain, ETH on
     /// Arbitrum and Ethereum, Hyperliquid's spot side and NEAR tokens.
     var otherTokens: [Holding] = []
+    /// Aave and Morpho off Base, with money in them (Lending.swift).
+    var lendingElsewhere: [LendingPosition] = []
     /// A read of the other networks' tokens is under way (refresh starts one and doesn't wait for it).
     @ObservationIgnored var holdingsLoading = false
     /// Every token beyond the balances read one by one, Solana's first. Stock tokens the Robinhood card already shows
@@ -430,7 +432,7 @@ final class Workspace {
     var equity: Decimal? {
         guard solana != nil || hl != nil else { return nil }
         return (solana?.usdc ?? 0) + shownTokensUSD + (hl?.accountValue ?? 0) + lend.reduce(0) { $0 + $1.usdc } + dexBalances.values.reduce(0) { $0 + $1.accountValue }
-            + (base.map { $0.usdc + $0.aave + $0.morpho } ?? 0) + (arbitrumUSDC ?? 0) + robinhoodTotal + kamino + hlp.equity + nearUSD
+            + (base.map { $0.usdc + $0.aave + $0.morpho } ?? 0) + lendingElsewhereUSD + (arbitrumUSDC ?? 0) + robinhoodTotal + kamino + hlp.equity + nearUSD
     }
     /// The plan with what the user left to the rules filled in.
     var resolved: (intent: TradeIntent, notes: [String]) { Plan.resolve(intent, market: market, equity: equity, policy: policy) }
@@ -922,15 +924,21 @@ final class Workspace {
         holdingsLoading = true
         defer { holdingsLoading = false }
         let me = hlAddress, nearAccount = nearAddress, evm = isEVMAddress(hlAddress)
+        // Aave's aUSDC and Morpho's vault shares off Base are read as lending positions, not as tokens.
+        async let lending: Void = loadLending()
         async let base = evm ? await Holdings.evm("base", address: me, native: false, skip: [EVMRPC.baseUSDC, AaveV3.baseAUSDC, MorphoVault.gauntletUSDCPrime]) : []
-        async let arbitrum = evm ? await Holdings.evm("arbitrum", address: me, native: true, skip: [EVMRPC.arbitrumUSDC]) : []
-        async let ethereum = evm ? await Holdings.evm("ethereum", address: me, native: true, skip: []) : []
+        async let arbitrum = evm ? await Holdings.evm("arbitrum", address: me, native: true,
+                                                      skip: [EVMRPC.arbitrumUSDC, AaveV3.arbitrum.aUSDC, MorphoVault.arbitrum.address]) : []
+        async let ethereum = evm ? await Holdings.evm("ethereum", address: me, native: true, skip: [AaveV3.ethereum.aUSDC, MorphoVault.ethereum.address]) : []
+        async let polygon = evm ? await Holdings.evm("polygon", address: me, native: true, skip: [AaveV3.polygon.aUSDC]) : []
         async let robinhood = evm ? await Holdings.evm("robinhood", address: me, native: false, skip: [EVMRPC.robinhoodUSDG]) : []
         async let spot = evm ? await Holdings.hyperliquidSpot(user: me) : []
         async let near = nearAccount != nil ? await Holdings.near(account: nearAccount ?? "") : []
         // A network that didn't answer keeps its tokens from the last read instead of dropping out of the total.
         let read: [(chain: String, tokens: [Holding]?)] = [("base", await base), ("arbitrum", await arbitrum), ("ethereum", await ethereum),
-                                                           ("robinhood", await robinhood), ("hyperliquid", await spot), ("near", await near)]
+                                                           ("polygon", await polygon), ("robinhood", await robinhood), ("hyperliquid", await spot),
+                                                           ("near", await near)]
+        _ = await lending
         let found = read.flatMap { r in r.tokens ?? otherTokens.filter { $0.chain == r.chain } }
         if found != otherTokens { otherTokens = found }
     }

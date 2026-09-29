@@ -1433,7 +1433,7 @@ struct HoldingRow: View {
     let shown: Bool
     @State private var hover = false
     /// The network's badge on the icon, outside Solana's own card.
-    static let chainLogos = ["base": "base", "arbitrum": "arb", "ethereum": "eth", "robinhood": "robinhood", "hyperliquid": "hype", "near": "near"]
+    static let chainLogos = ["base": "base", "arbitrum": "arb", "ethereum": "eth", "polygon": "pol", "robinhood": "robinhood", "hyperliquid": "hype", "near": "near"]
 
     var body: some View {
         HStack(spacing: 8) {
@@ -1624,6 +1624,8 @@ struct StudioPortfolio: View {
                 place("morpho", "Morpho · Base", "earning" + (ws.morphoAPY.map { " \(Fmt.num($0))%" } ?? ""), "\(Fmt.num(b.morpho)) USDC",
                       tint: Color(light: 0xE6EEFF, dark: 0x0F1C3A), ink: Color(hex: 0x2F6FEB))
             }
+            // Aave and Morpho on Arbitrum, Polygon and Ethereum.
+            ForEach(ws.lendingElsewhere) { LendingRow(position: $0) }
             if ws.near > 0 {
                 place("near", "NEAR", ws.markets["NEAR"] != nil ? "≈ \(Fmt.usd(ws.nearUSD))" : "native NEAR",
                       "\(Fmt.num(ws.near, maxFraction: 4)) NEAR", tint: Color(light: 0xE6FBF3, dark: 0x0E2A20), ink: Color(light: 0x05785A, dark: 0x00EC97))

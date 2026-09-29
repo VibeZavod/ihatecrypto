@@ -78,7 +78,8 @@ extension Workspace {
             let asset = l.arg.uppercased().contains("SOL") ? "SOL" : "USDC"
             let options = await loadYields(asset)
             let held = lend.filter { $0.usdc > 0 }.map { "Jupiter Lend \($0.vault) \(Fmt.num($0.usdc))" } + (kamino > 0 ? ["Kamino \(Fmt.usd(kamino))"] : [])
-                + (base.map { [$0.aave > 0 ? "Aave \(Fmt.num($0.aave)) USDC" : nil, $0.morpho > 0 ? "Morpho \(Fmt.num($0.morpho)) USDC" : nil].compactMap { $0 } } ?? [])
+                + (base.map { [$0.aave > 0 ? "Aave · Base \(Fmt.num($0.aave)) USDC" : nil, $0.morpho > 0 ? "Morpho · Base \(Fmt.num($0.morpho)) USDC" : nil].compactMap { $0 } } ?? [])
+                + lendingElsewhere.map { "\($0.place) \(Fmt.num($0.usdc)) USDC" }
             return (options.isEmpty ? ["The rate sources didn't answer."] : options.prefix(16).map { o in
                 "\(o.place) (\(o.asset)): \(Fmt.num(o.apy.rounded(2, .plain)))% a year" + (o.tvlUSD.map { ", \(Fmt.usd(($0 / 1_000_000).rounded(1, .plain)))M deposited" } ?? "")
                     + (o.note.isEmpty ? "" : "; \(o.note)") + (o.how.map { "; form: \($0)" } ?? "; ihatecrypto can't deposit there")
