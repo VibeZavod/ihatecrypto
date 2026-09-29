@@ -3,6 +3,7 @@ import EVMChain
 import Foundation
 import LalaCore
 import SwiftUI
+import TradeExecution
 
 /// The ways to go on the model offered with an answer: cards on the canvas it was given on. A card runs its English
 /// command through the same parsers, checks and confirmations as a typed one.
@@ -78,7 +79,7 @@ extension Workspace {
             let options = await loadYields(asset)
             let held = lend.filter { $0.usdc > 0 }.map { "Jupiter Lend \($0.vault) \(Fmt.num($0.usdc))" } + (kamino > 0 ? ["Kamino \(Fmt.usd(kamino))"] : [])
                 + (base.map { [$0.aave > 0 ? "Aave \(Fmt.num($0.aave)) USDC" : nil, $0.morpho > 0 ? "Morpho \(Fmt.num($0.morpho)) USDC" : nil].compactMap { $0 } } ?? [])
-            return (options.isEmpty ? ["The rate sources didn't answer."] : options.prefix(10).map { o in
+            return (options.isEmpty ? ["The rate sources didn't answer."] : options.prefix(16).map { o in
                 "\(o.place) (\(o.asset)): \(Fmt.num(o.apy.rounded(2, .plain)))% a year" + (o.tvlUSD.map { ", \(Fmt.usd(($0 / 1_000_000).rounded(1, .plain)))M deposited" } ?? "")
                     + (o.note.isEmpty ? "" : "; \(o.note)") + (o.how.map { "; form: \($0)" } ?? "; ihatecrypto can't deposit there")
             }) .joined(separator: "\n")
@@ -94,16 +95,45 @@ extension Workspace {
         }
     }
 
-    /// The rates for the bubbles and the model: the vaults' own, and Aave on Base read from the pool.
+    /// The rates for the bubbles and the model: the vaults' own, and every Aave market and Morpho vault, read from the
+    /// pools and vaults themselves (one that doesn't answer is left out).
     func loadYields(_ asset: String?) async -> [Yields.Option] {
         var options = await Yields.options(for: asset)
-        if asset != "SOL", aaveAPY == nil { aaveAPY = try? await AaveV3.verifyBase() }
-        if asset != "SOL", let apy = aaveAPY {
-            options.append(Yields.Option(asset: "USDC", place: "Aave · Base", apy: apy, tvlUSD: nil, how: "lend 2 USDC on Aave",
-                                         note: "on Base: bridged from Solana with a little ETH for gas"))
-            options.sort { $0.apy > $1.apy }
+        guard asset != "SOL" else { return options }
+        let lending = await withTaskGroup(of: Yields.Option?.self) { group in
+            for m in AaveV3.markets {
+                group.addTask {
+                    guard let apy = try? await AaveV3.verify(m) else { return nil }
+                    return Yields.Option(asset: "USDC", place: m.place, apy: apy, tvlUSD: nil,
+                                         how: "lend 2 USDC on Aave" + (m.chain == "base" ? "" : " on \(m.chainName)"), note: Self.lendingNote(m.chain))
+                }
+            }
+            for v in MorphoVault.vaults {
+                group.addTask {
+                    guard let apy = await MorphoRates.netAPY(v) else { return nil }
+                    return Yields.Option(asset: "USDC", place: v.place, apy: apy, tvlUSD: nil,
+                                         how: "deposit 2 USDC into Morpho" + (v.chain == "base" ? "" : " on \(v.chainName)"),
+                                         note: "\(v.name); " + Self.lendingNote(v.chain))
+                }
+            }
+            var out: [Yields.Option] = []
+            for await o in group { if let o { out.append(o) } }
+            return out
         }
+        if let a = lending.first(where: { $0.place == "Aave · Base" }) { aaveAPY = a.apy }
+        if let m = lending.first(where: { $0.place == "Morpho · Base" }) { morphoAPY = m.apy }
+        options += lending
+        options.sort { $0.apy > $1.apy }
         return options
+    }
+
+    /// What getting to a lending network takes, for the rates list.
+    nonisolated static func lendingNote(_ chain: String) -> String {
+        switch chain {
+        case "ethereum": "on Ethereum: gas there and back costs dollars, so only large amounts pay"
+        case "polygon": "on Polygon: bridged from Solana with a little POL for gas"
+        default: "on \(WalletCommand.placeName(chain)): bridged from Solana with a little ETH for gas"
+        }
     }
 
     /// Opens the block the model's answer points to. Only display commands, and only addresses the user wrote or a
