@@ -177,6 +177,8 @@ struct StudioView: View {
             // The canvas fills the window: the boards show around and through the glass rail, not cut at its edge.
             if mode == "history" {
                 HistoryView { withAnimation(.snappy) { mode = "plan" } }.padding(.leading, railEdge)
+            } else if ws.showSchedule {
+                ScheduleCanvas().padding(.leading, railEdge).transition(.opacity)
             } else {
                 // The canvas's scale follows the window alone: moving or resizing the chat, which floats
                 // above everything, never shifts or rescales the boards.
@@ -972,7 +974,6 @@ struct StudioCanvas: View {
             if ws.showReceive { ReceiveBoard() }
             if ws.showFavorites { FavoritesBoard().transition(.opacity) }
             if ws.showHistory { HistoryBoard().transition(.opacity) }
-            if ws.showSchedule { ScheduleOverview().transition(.opacity) }
             // Moves already done on this canvas stay above the current one.
             EarlierBoards()
             // A move waiting for its signature or running has its own title and status: no «Plan · waiting» over it.
@@ -2937,13 +2938,15 @@ struct RailActions: View {
     }
 
     private var schedule: some View {
-        tile("Schedule", "calendar", on: ws.showSchedule, help: "Scheduled tasks and recurring buys, next first") { ws.showSchedule.toggle() }
+        let on = ws.showSchedule
+        return tile("Schedule", "calendar", on: on, help: "Its own canvas: what runs on its own and when it ran") { ws.showSchedule = !on }
     }
 
     @ViewBuilder
     private func tile(_ title: String, _ icon: String, on: Bool, accent: Bool = false, help: String, action: @escaping () -> Void) -> some View {
         let tap = {
-            withAnimation(StudioView.spring) { action() }
+            // Every button but Schedule's own goes back to the plan canvas.
+            withAnimation(StudioView.spring) { ws.showSchedule = false; action() }
             mode = "plan"
         }
         if compact {

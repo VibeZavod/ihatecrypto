@@ -149,7 +149,9 @@ final class Workspace {
     /// The latest of the history and the favorites on the canvas, opened by the rail's buttons.
     var showHistory = false
     var showFavorites = false
+    /// The Schedule canvas in place of the plan (Tasks.swift), and the item it shows in detail: «task:<id>», «buy:SOL», «perp:BTC».
     var showSchedule = false
+    var scheduleItem: String?
     /// Where the chat is in the window, so scrolling over it isn't taken by the canvas.
     @ObservationIgnored var chatFrame: CGRect = .zero
     /// The same for the rail, which floats over the canvas too.
@@ -469,6 +471,8 @@ final class Workspace {
         thinking = true
         defer { thinking = false }
         finishedAction = nil
+        // The answer goes on the plan canvas; scheduling opens the Schedule canvas again.
+        showSchedule = false
         // The cards of the last answer go with any new message; the model still knows them («да», «второй»).
         let offered = nextSteps?.options ?? []
         nextSteps = nil
@@ -1042,7 +1046,8 @@ final class Workspace {
                 for p in positions where !before.contains(p.coin) && waitingEntries.contains(p.coin) {
                     notify(.orders, say("Limit filled: \(IntentParser.pretty(p.coin))", "Лимитка исполнилась: \(IntentParser.pretty(p.coin))"),
                            say("\(p.size > 0 ? "Long" : "Short") \(Fmt.num(abs(p.size), maxFraction: 6)) at \(Fmt.price(p.entry)); its stop and take are on the exchange.",
-                               "\(p.size > 0 ? "Лонг" : "Шорт") \(Fmt.num(abs(p.size), maxFraction: 6)) по \(Fmt.price(p.entry)); стоп и тейк стоят на бирже."))
+                               "\(p.size > 0 ? "Лонг" : "Шорт") \(Fmt.num(abs(p.size), maxFraction: 6)) по \(Fmt.price(p.entry)); стоп и тейк стоят на бирже."),
+                           schedule: "perp:\(p.coin)")
                 }
             }
             // The HLP deposit's 4-day lock ended: say so once per lock.

@@ -511,7 +511,7 @@ extension Workspace {
             // Jupiter or Solana switched off: this run is skipped, the schedule stays.
             if let off = Modules.current.refusal(.jupiter, ru: modulesRussian) {
                 schedules[index].advance()
-                notify(.moves, say("Scheduled \(asset.symbol) buy skipped", "Регулярная покупка \(asset.symbol) пропущена"), off)
+                notify(.moves, say("Scheduled \(asset.symbol) buy skipped", "Регулярная покупка \(asset.symbol) пропущена"), off, schedule: "buy:\(asset.symbol)")
                 continue
             }
             let usdc = schedules[index].usdc
@@ -526,9 +526,11 @@ extension Workspace {
             defer { waiting.cancel() }
             do {
                 let line = try await executor(wallet).swap(asset, buy: true, amount: usdc, equity: equity)
-                notify(.moves, say("\(asset.symbol) purchase", "Покупка \(asset.symbol)"), line)
+                notify(.moves, say("\(asset.symbol) purchase", "Покупка \(asset.symbol)"), line, schedule: "buy:\(asset.symbol)")
             } catch {
-                reply("Scheduled \(asset.symbol) purchase failed: \(error.localizedDescription). Next one: \(Fmt.date(schedules[index].next)).")
+                let text = "Scheduled \(asset.symbol) purchase failed: \(error.localizedDescription). Next one: \(Fmt.date(schedules[index].next))."
+                reply(text)
+                notify(.moves, say("\(asset.symbol) purchase failed", "Покупка \(asset.symbol) не прошла"), text, schedule: "buy:\(asset.symbol)")
             }
             executing = false
         }
@@ -558,9 +560,19 @@ extension Workspace {
             exitRules[coin] = rules
             switch action {
             case .stopToBreakeven?:
+                let title = say("Partial profit taken on \(coin)", "Частичная прибыль по \(coin)"), body = say("Stop moved to breakeven.", "Стоп перенесён в безубыток.")
+                // Its own activity before the move: `manage` writes into the current one, not into the user's last request.
+                beginActivity(.automatic, title: title, coin: coin, schedule: "perp:\(coin)")
                 await manage(.stopToBreakeven, coin: coin)
-                notify(.positions, say("Partial profit taken on \(coin)", "Частичная прибыль по \(coin)"), say("Stop moved to breakeven.", "Стоп перенесён в безубыток."))
-            case .stopTo(let price)?: await manage(.stopTo(price), coin: coin)
+                updateActivity { $0.lines.append(body) }
+                notify(.positions, title, body, record: false)
+            case .stopTo(let price)?:
+                let title = say("Trailing stop on \(coin)", "Трейлинг-стоп по \(coin)")
+                // Moves in a row are one record, a line each: a trend would otherwise fill the history.
+                if let last = activities.last, last.schedule == "perp:\(coin)", last.title == title { currentActivity = last.id }
+                else { beginActivity(.automatic, title: title, coin: coin, schedule: "perp:\(coin)") }
+                await manage(.stopTo(price), coin: coin)
+                updateActivity { $0.lines.append("\(Fmt.time(Date())) · " + say("stop moved to \(Fmt.price(price))", "стоп передвинут на \(Fmt.price(price))")) }
             case nil: break
             }
         }
@@ -574,7 +586,7 @@ extension Workspace {
         let text = say("\(coin) position closed outside ihatecrypto (stop, take-profit or by hand) at \(Fmt.price(close.price)): \(close.pnl >= 0 ? "profit" : "loss") \(Fmt.usd(abs(close.pnl))).",
                        "Позиция \(coin) закрылась вне ihatecrypto (стоп, тейк или вручную) по \(Fmt.price(close.price)): \(close.pnl >= 0 ? "прибыль" : "убыток") \(Fmt.usd(abs(close.pnl))).")
         reply(text, note: "exchange")
-        notify(.positions, "\(coin)", text)
+        notify(.positions, "\(coin)", text, schedule: "perp:\(coin)")
     }
 
     /// «stop to breakeven», «close half» — for the history.
@@ -592,9 +604,10 @@ extension Workspace {
     /// A macOS notification (shown while the window is in the background); `kind` can be turned off in Settings.
     /// `record`: what LALA did on its own (guardian, schedules, arrivals) is an activity too; a move the user
     /// confirmed already has one.
-    func notify(_ kind: Notice, _ title: String, _ body: String, record: Bool = true) {
+    /// `schedule`: the Schedule canvas item it ran for («buy:SOL», «perp:BTC»).
+    func notify(_ kind: Notice, _ title: String, _ body: String, record: Bool = true, schedule: String? = nil) {
         if record {
-            beginActivity(.automatic, title: title)
+            beginActivity(.automatic, title: title, schedule: schedule)
             updateActivity { $0.lines.append(body) }
         }
         // Asked the first time something actually happens, never at launch. Needs an app bundle:

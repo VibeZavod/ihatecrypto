@@ -280,6 +280,8 @@ struct ContentView: View {
             case "history": ws.showHistory = true
             case "favorites": ws.showFavorites = true
             case "schedule": ws.showSchedule = true
+            // `schedule:task:<id>`, `schedule:buy:SOL`, `schedule:perp:BTC`: that item in detail.
+            case let item? where item.hasPrefix("schedule:"): ws.scheduleItem = String(item.dropFirst(9)); ws.showSchedule = true
             case "settings": ws.openSettings()
             case let place?: ws.detail = place
             case nil: break

@@ -18,6 +18,10 @@ struct Activity: Codable, Identifiable, Sendable {
     var coin: String?
     var bubbles: [ActivityBubble] = []
     var lines: [String] = []
+    /// What ran on its own, for the Schedule canvas: «task:<id>», «buy:SOL», «perp:BTC». Optional, so older files still load.
+    var schedule: String?
+    /// The canvas a scheduled task ran on.
+    var canvas: UUID?
 }
 
 /// A canvas bubble frozen in time: enough to draw it again the same way in the history.
@@ -39,8 +43,8 @@ struct ActivityBubble: Codable, Hashable, Sendable {
 
 extension Workspace {
     /// Starts a new activity; replies that follow are added to it.
-    func beginActivity(_ kind: Activity.Kind, request: String? = nil, title: String? = nil, coin: String? = nil) {
-        activities.append(Activity(kind: kind, request: request, title: title, coin: coin))
+    func beginActivity(_ kind: Activity.Kind, request: String? = nil, title: String? = nil, coin: String? = nil, schedule: String? = nil) {
+        activities.append(Activity(kind: kind, request: request, title: title, coin: coin, schedule: schedule))
         currentActivity = activities.last?.id
     }
 
