@@ -997,7 +997,7 @@ extension Workspace {
             return MoveRoute(title: "Buy \(label) · \(Fmt.num(usdc)) USDC on \(name)", footer: footer, steps: [
                 step("sol", "FROM · SOLANA", "\(Fmt.num(usdc)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana),
                 way,
-                step(logo, "TO · \(name.uppercased())", label, "at the best price found", fill),
+                step(logo, "BUY · ON \(name.uppercased())", label, "at the best price found", fill),
             ], warning: token.hasPrefix("0x") ? "A token by its contract is anyone’s coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose." : nil)
         }
         return MoveRoute(title: "Sell \(sell.map { Fmt.num($0) } ?? "all") \(label) on \(name) → Solana", footer: footer, steps: [
