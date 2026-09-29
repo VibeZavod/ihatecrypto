@@ -69,7 +69,7 @@ if prompt == "--route" {
     }
     for m in args.dropFirst(2) {
         message = m
-        context.replyLanguage = m.contains(/[а-яА-ЯёЁ]/) ? "Russian" : "English"
+        context.replyLanguage = ChatLanguage.auto.name(recentUserMessages: [m])
         let started = Date()
         do {
             let checkContext = context

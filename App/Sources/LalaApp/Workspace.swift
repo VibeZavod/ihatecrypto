@@ -565,18 +565,17 @@ final class Workspace {
         let before = intent
 
         // A confirmation from the debug API would only fail at the signer and lose the card: keep it for the window.
-        if SignerClient.untrusted, activeWallet?.isTest != true, pendingAction != nil || pendingAllocation != nil,
-           text.lowercased().contains(/^(?:делай|да|давай|подтверждаю|го|do\s+it|go|yes|confirm|sign)\b/) {
+        if SignerClient.untrusted, activeWallet?.isTest != true, pendingAction != nil || pendingAllocation != nil, ChatWords.confirms(text) {
             reply(say("That «do it» came from the debug API, which can’t confirm money moves. In the window, press Confirm on the card or type «do it» yourself.",
                       "Это «do it» пришло из отладочного API, а он не подтверждает переводы. В окне нажми Confirm на карточке или напиши «делай» сам."), note: "debug API")
             return
         }
 
         // «делай» / «do it» right after a plan that waits for it carries it out; anything else drops it.
-        let confirms = text.lowercased().contains(/^(?:делай|да|давай|подтверждаю|раскладывай|го|do\s+it|go|yes|confirm|sign)\b/)
+        let confirms = ChatWords.confirms(text)
         // Anything but a confirmation, or the amount a step asked for, takes over from the steps that waited for it.
         if !confirms, awaitingAmount == nil || WalletCommand.amountAnswer(text) == nil { taskQueue = nil }
-        let declines = text.lowercased().wholeMatch(of: /\s*(?:no|nope|cancel|stop|нет|не\s+надо|отмена|отмени\w*|стоп|nein|abbrechen|non|annuler|cancelar|não|nao|nie|anuluj)[.!\s]*/) != nil
+        let declines = ChatWords.declines(text)
         if let pending = pendingAllocation {
             pendingAllocation = nil
             if confirms { await move(pending, confirmed: true); return }
@@ -611,7 +610,7 @@ final class Workspace {
                 await handleWallet(waiting.with(amount: value))
                 return
             }
-            if text.lowercased().wholeMatch(of: /\s*(?:да|yes|yep|ok|okay|давай|угу|sure|go)[.!\s]*/) != nil {
+            if ChatWords.confirms(text) {
                 reply(say("How much? Just the number, for example “1”.", "Сколько? Просто число, например «1»."))
                 return
             }
@@ -626,7 +625,7 @@ final class Workspace {
         let client = llmClient()
         // «да» with nothing waiting answers LALA's last question: the model reads it with the chat. Without a model
         // there is nothing to answer.
-        if client == nil, text.lowercased().wholeMatch(of: /\s*(?:делай|да|давай|подтверждаю|го|do\s+it|go|yes|yep|ok|okay|confirm|sign)[.!\s]*/) != nil {
+        if client == nil, ChatWords.confirms(text) {
             reply(say("Nothing is waiting for a confirmation right now. Tell me what to do — for example “deposit 1 USDC into Jupiter”.",
                       "Сейчас нечего подтверждать. Скажи, что сделать — например «положи 1 USDC в Jupiter»."))
             return

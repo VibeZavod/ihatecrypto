@@ -325,3 +325,14 @@ private final class Script: LLMClient, @unchecked Sendable {
     let r3 = Plan.resolve(three, market: m, equity: 29, policy: RiskPolicy()).intent
     #expect(Plan.evaluate(r3, market: m).problem == nil)
 }
+
+@Test func spanishIsReadAndConfirmsLikeTheOthers() {
+    #expect(ChatLanguage.auto.name(recentUserMessages: ["compra sol por 3 dólares"]) == "Spanish")
+    #expect(ChatLanguage.auto.name(recentUserMessages: ["largo en bitcoin con apalancamiento 3"]) == "Spanish")
+    #expect(ChatLanguage.auto.name(recentUserMessages: ["long btc 3x"]) == "English")
+    #expect(ChatLanguage.auto.name(recentUserMessages: ["лонг эфира"]) == "Russian")
+    #expect(ChatLanguage.en.name(recentUserMessages: ["compra sol"]) == "English")
+    for yes in ["sí", "Sí, hazlo", "dale", "si", "ok", "Ок", "vale!", "do it", "делай", "да"] { #expect(ChatWords.confirms(yes), "\(yes)") }
+    for notYes in ["si quieres compra sol", "ok but lower the risk", "long eth"] { #expect(!ChatWords.confirms(notYes), "\(notYes)") }
+    for no in ["no", "No gracias", "cancela", "déjalo", "нет", "cancel"] { #expect(ChatWords.declines(no), "\(no)") }
+}
