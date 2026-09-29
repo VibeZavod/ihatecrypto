@@ -52,10 +52,15 @@ curl -s https://api.relay.link/chains | python3 -c "import json,sys; [print(c['i
 - [ ] `App/Sources/LalaCore/Holdings.swift`: хост в `blockscout[...]` или ветка чтения через RPC. Затем добавить в `Workspace.loadHoldings` (кортеж `read`).
 - [ ] При необходимости `Workspace.<net>USDC` для карточек (по образцу `tempoUSDC`).
 
+**Блоки — обязательно, всегда (правило пользователя)**
+- [ ] `App/Sources/LalaCore/Blocks.swift`: у сети своя группа в `BlockCatalog.groups` (её имя = имя сети) и в ней все варианты: мост туда и обратно, перевод на сохранённый адрес, ежемесячный перевод («every month on the 1st: …»), каждый протокол или сервис сети (свопы, депозиты, платные API). Образец — группа «Tempo».
+- [ ] У каждого блока: `fill` — `RouteFill` сети, `logo` — логотип сети или протокола, `form` — что делает и сколько стоит, `example` — рабочая команда.
+- [ ] Каждый `example` проверен вживую без денег: для денежных ходов — котировка или оценка газа, для платных API — `LalaWalletCheck move "pay …"` без `--yes` должен напечатать `Price:`. Не прошёл — в блоки не попадает (у Tempo так выпали fal/OpenAI со спонсированной комиссией и StableStudio с отложенным ответом).
+- [ ] В общую форму «BRIDGE · RELAY» (группа Move money) дописать сеть. `BlocksTests.everyBlockExampleParses` зелёный.
+
 **Чат и команды**
 - [ ] `App/Sources/LalaCore/PositionCommand.swift`: слова сети в `network(_:)` и `network(in:)` (англ. и рус.: «темпо», «полигон»), регулярка `solanaTo`, условие `evmToSolana`, `placeName`.
 - [ ] `App/Sources/LalaCore/Normalize.swift`: формы «MOVING MONEY», `save … on <net>`, текст `places` (где живут деньги и как ходят). Если есть новые lookup-и, описать их в системном промпте.
-- [ ] `App/Sources/LalaCore/Blocks.swift`: сеть в форме «BRIDGE · RELAY». Каждой новой форме — свой блок, пример должен парситься (`BlocksTests`).
 - [ ] `App/Sources/Wallet/Check/LocalSigner.swift` (CLI `LalaWalletCheck move`): сеть через `EVMNetwork.named`, никакого `?? .robinhood`.
 - [ ] `App/Sources/LLM/Check/main.swift`: новые lookup-и в `lookup` для `--route`.
 
@@ -64,9 +69,10 @@ curl -s https://api.relay.link/chains | python3 -c "import json,sys; [print(c['i
 1. `cd App && swift build && swift build --build-tests && swift test --skip-build`: все наборы зелёные. Новые тесты кладутся в `App/Tests/LalaCoreTests/<Net>Tests.swift` (разбор команд в обе стороны, по-русски и по-английски, `ModuleNetwork(place:)`, `refusal`) и в `EVMTests` (selector/decoder).
 2. Модель на живых фразах: `swift run -q LalaLLMCheck chatgpt --route "переведи 5 USDC из соланы в <сеть>" "верни всё с <сеть> на солану" "сохрани 0x… как Shop в <сеть>"`. Каждая строка должна дать `✓ parses` с правильным направлением.
 3. Живые проверки без денег: `cast estimate` на transfer, approve и прочие вызовы от адреса с балансом; котировка Relay в обе стороны; `LalaWalletCheck move "<команда>"` без `--yes`.
-4. UI-сценарий в `App/Tools/uitest-scenarios.json`: бридж рисует маршрут `SOLANA → RELAY → <NET>`. Прогон: `python3 App/Tools/uitest.py <слово>` (нужен Settings › Debugging › Local debug API).
-5. Скриншот Settings › Modules: `open -g ~/Applications/ihatecrypto.app --args -openPlace settings -settingsTab modules`, затем `screencapture -l <windowID>` (id окна через `CGWindowListCopyWindowInfo`). Убедиться, что иконка видна в тёмной теме.
-6. Реальные деньги — только после Confirm/Touch ID пользователя или с тестового кошелька в рамках выданного бюджета (память `lala-uitest`). Сам никогда не подписывай с основного кошелька.
+4. Библиотека блоков: открыть «Add block» и увидеть группу сети с логотипами (скриншот).
+5. UI-сценарий в `App/Tools/uitest-scenarios.json`: бридж рисует маршрут `SOLANA → RELAY → <NET>`. Прогон: `python3 App/Tools/uitest.py <слово>` (нужен Settings › Debugging › Local debug API).
+6. Скриншот Settings › Modules: `open -g ~/Applications/ihatecrypto.app --args -openPlace settings -settingsTab modules`, затем `screencapture -l <windowID>` (id окна через `CGWindowListCopyWindowInfo`). Убедиться, что иконка видна в тёмной теме.
+7. Реальные деньги — только после Confirm/Touch ID пользователя или с тестового кошелька в рамках выданного бюджета (память `lala-uitest`). Сам никогда не подписывай с основного кошелька.
 
 ## 4. Коммит и сборка (в репозитории параллельно работают другие сессии)
 

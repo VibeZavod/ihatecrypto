@@ -97,3 +97,14 @@ private func challenge(_ request: String, extra: String = "") -> String {
     #expect(ids("BTC price USD").first == "coingecko" && ids("coingecko") == ["coingecko"] && ids("fax") == ["agentfax"])
     #expect(ids("paid api service").count == 2)   // nothing but service words: everything, unranked
 }
+
+// A service's answer on the canvas: Brave's hits as rows wherever they sit, <strong> gone; plain values otherwise.
+@Test func serviceAnswerReadsResultsAndValues() {
+    let brave = #"{"success":true,"data":{"type":"search","query":{"original":"memorycowmoo"},"web":{"results":[{"title":"<strong>Memory</strong> cow Moo","url":"https://x.com/memorycowmoo","description":"Moo &amp; more"},{"title":"Second","url":"https://example.com/2"}]}}}"#
+    let a = MPP.Answer(Data(brave.utf8))
+    #expect(a.items == [.init(title: "Memory cow Moo", url: "https://x.com/memorycowmoo", detail: "Moo & more"), .init(title: "Second", url: "https://example.com/2", detail: nil)])
+    let price = MPP.Answer(Data(#"{"bitcoin":{"usd":83570.5}}"#.utf8))
+    #expect(price.items.isEmpty && price.facts == [.init(key: "bitcoin.usd", value: "83570.5")])
+    #expect(MPP.Answer(Data("queued".utf8)).text == "queued")
+    #expect(MPP.Answer(Data(#"{"images":[{"url":"https://cdn.example/a.png","width":1024}]}"#.utf8)).items.first?.isImage == true)
+}

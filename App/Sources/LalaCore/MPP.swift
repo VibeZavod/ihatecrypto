@@ -146,6 +146,114 @@ public enum MPP {
         return text.count > limit ? String(text.prefix(limit)) + "…" : text
     }
 
+    // MARK: The service's answer
+
+    /// What a service answered, for the canvas: its list of results (search hits, flights, images) when it has one, else
+    /// its plain values, else its text.
+    public struct Answer: Equatable, Sendable {
+        public struct Item: Equatable, Sendable {
+            public let title: String
+            public let url: String?
+            public let detail: String?
+            public var isImage: Bool { url.map { $0.lowercased().contains(/\.(?:png|jpe?g|webp|gif)(?:\?|$)/) } ?? false }
+        }
+        public struct Fact: Equatable, Sendable { public let key: String; public let value: String }
+
+        public var items: [Item] = []
+        public var facts: [Fact] = []
+        public var text: String?
+
+        public init(_ data: Data) {
+            guard let json = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed) else {
+                let t = String(decoding: data.prefix(1500), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+                text = t.isEmpty ? nil : t
+                return
+            }
+            // The list is the array of objects with the most titles and links in it, wherever it sits («data.web.results»).
+            var best: [[String: Any]] = [], bestScore = 0
+            func walk(_ x: Any, depth: Int) {
+                guard depth < 7 else { return }
+                if let list = x as? [Any] {
+                    let rows = list.compactMap { $0 as? [String: Any] }
+                    let score = rows.filter { Self.pick($0, Self.titleKeys) != nil || Self.link($0) != nil }.count
+                    if score > bestScore { (best, bestScore) = (rows, score) }
+                    list.forEach { walk($0, depth: depth + 1) }
+                } else if let d = x as? [String: Any] {
+                    d.keys.sorted().forEach { walk(d[$0]!, depth: depth + 1) }
+                }
+            }
+            walk(json, depth: 0)
+            items = best.prefix(10).compactMap { row in
+                let url = Self.link(row)
+                // A row without a title or text (a flight: price, airline, times) shows its plain values instead.
+                let shown = Set(Self.titleKeys + Self.detailKeys + Self.linkKeys)
+                let facts = row.keys.sorted().filter { !shown.contains($0) }.compactMap { k in Self.scalar(row[k]).map { "\(k) \($0)" } }
+                let named = Self.pick(row, Self.titleKeys) ?? url.flatMap { URL(string: $0)?.host() }
+                guard let title = named ?? facts.first else { return nil }
+                let rest = named == nil ? facts.dropFirst() : facts[...]
+                return Item(title: title, url: url, detail: Self.pick(row, Self.detailKeys) ?? (rest.isEmpty ? nil : rest.prefix(3).joined(separator: " · ")))
+            }
+            guard items.isEmpty else { return }
+            func flatten(_ x: Any, _ path: String, depth: Int) {
+                guard facts.count < 12, depth < 4 else { return }
+                if let d = x as? [String: Any] {
+                    for k in d.keys.sorted() where !["success", "type", "object", "status"].contains(k) { flatten(d[k]!, path.isEmpty ? k : "\(path).\(k)", depth: depth + 1) }
+                } else if let v = Self.scalar(x) {
+                    facts.append(Fact(key: path, value: v))
+                }
+            }
+            flatten(json, "", depth: 0)
+            if facts.isEmpty { text = MPP.shown(data, limit: 1500) }
+        }
+
+        static let titleKeys = ["title", "name", "headline", "label", "subject", "display_name", "full_name", "question"]
+        static let detailKeys = ["description", "snippet", "summary", "content", "text", "body", "answer", "extra_snippets"]
+
+        static func pick(_ row: [String: Any], _ keys: [String]) -> String? {
+            keys.lazy.compactMap { k in (row[k] as? String).map(Self.plain) ?? (row[k] as? [String])?.first.map(Self.plain) }.first { !$0.isEmpty }
+        }
+
+        static let linkKeys = ["url", "link", "href", "permalink", "profile_url", "image_url"]
+        static func link(_ row: [String: Any]) -> String? { linkKeys.lazy.compactMap { row[$0] as? String }.first { $0.hasPrefix("http") } }
+
+        /// A number, a short string or a yes/no; nil for objects, lists and long text.
+        static func scalar(_ x: Any?) -> String? {
+            switch x {
+            case let n as NSNumber: CFGetTypeID(n) == CFBooleanGetTypeID() ? (n.boolValue ? "yes" : "no") : n.stringValue
+            case let s as String where !s.isEmpty && s.count <= 120: plain(s)
+            default: nil
+            }
+        }
+
+        /// Search engines mark matches with <strong>: the canvas shows the words.
+        static func plain(_ s: String) -> String {
+            s.replacing(/<[^>]+>/, with: "").replacingOccurrences(of: "&amp;", with: "&").replacingOccurrences(of: "&quot;", with: "\"")
+                .replacingOccurrences(of: "&#39;", with: "'").replacingOccurrences(of: "&lt;", with: "<").replacingOccurrences(of: "&gt;", with: ">")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+        }
+    }
+
+    /// The user's question answered from what the service sent: 1–3 sentences in their language, the best results as
+    /// links. The model sees only the service's data, cut to 6,000 characters.
+    public static func reply(to ask: String, service: String, data: Data, language: String, client: any LLMClient, model: String) async throws -> String {
+        let prompt = """
+        The user asked their crypto app: «\(ask.prefix(600))»
+        To answer it, the app paid a web service, \(service), which sent back (JSON, maybe cut):
+        \(shown(data, limit: 6000))
+        Answer the user in \(language) in 1–3 short sentences, from this data only: what they wanted to know, naming the one \
+        to three most relevant results as markdown links [title](url) when there are any. If the data doesn't answer it (no \
+        results, an error), say so plainly and what to ask instead. Plain text: no JSON, no headings, no preamble.
+        """
+        let text = try await client.complete(LLMRequest(model: model, messages: [LLMMessage(.user, prompt)]))
+        return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// The service's name in the directory («Brave Search») for its address; nil when it isn't listed.
+    public static func serviceName(_ url: String) async -> String? {
+        guard let host = URL(string: url)?.host()?.lowercased(), let services = await directory() else { return nil }
+        return services.first { (($0["serviceUrl"] as? String).flatMap { URL(string: $0)?.host()?.lowercased() }) == host }?["name"] as? String
+    }
+
     // MARK: Directory
 
     /// The services that take MPP payments (mpp.dev's directory) matching the words, with their endpoints and prices,

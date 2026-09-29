@@ -150,7 +150,9 @@ final class Workspace {
     /// The English command the pending action was understood as, for the confirm button.
     var pendingText: String?
     /// A paid API's price as its 402 named it, for the «pay …» card waiting for Confirm (Payments.swift).
-    var payment: (command: WalletCommand, challenge: MPP.Challenge)?
+    var payment: PaymentQuote?
+    /// What the paid (or free) service sent back, on the canvas.
+    var serviceAnswer: ServiceAnswer?
     /// What Merkl owes the wallet, asked for before a «claim rewards» card (Rewards.swift).
     var rewards: [Merkl.Reward]?
     /// A move left waiting on a canvas the user switched away from: it waits there, for a quarter of an hour.

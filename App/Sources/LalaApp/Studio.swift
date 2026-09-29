@@ -1054,10 +1054,11 @@ struct StudioCanvas: View {
             RunningBoard()
             PendingAddressBoard()
             TransferBoard()
+            if let answer = ws.serviceAnswer { ServiceAnswerBoard(answer: answer) }
             if nodes.isEmpty {
                 if ws.yieldOptions == nil, ws.allocationPreview == nil, ws.rebalancePlan == nil {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
-                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, ws.nextSteps == nil, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil,
+                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, ws.nextSteps == nil, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil, ws.serviceAnswer == nil,
                               (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty { placeholder }
                 }
             } else {

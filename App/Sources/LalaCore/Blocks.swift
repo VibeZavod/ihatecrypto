@@ -20,7 +20,7 @@ public enum BlockCatalog {
         public var automatic = false
     }
 
-    public static let groups = ["Trade", "Triggers", "Move money", "Buy and sell", "Earn"]
+    public static let groups = ["Trade", "Triggers", "Move money", "Buy and sell", "Earn", "Tempo"]
 
     public static let all: [Block] = [
         Block(group: "Trade", label: "OPEN LONG · HYPERLIQUID", title: "Long or short", form: "long|short ASSET · risk $N · stop N% · take N% · leverage Nx",
@@ -45,8 +45,6 @@ public enum BlockCatalog {
               example: "withdraw 1 USDC to Solana", fill: "hyperliquid", logo: "hype"),
         Block(group: "Move money", label: "TO · ADDRESS BOOK", title: "Send", form: "send N USDC|SOL|NEAR to NAME from the address book",
               example: "send 1 USDC to Bybit", fill: "solana", logo: "usdc"),
-        Block(group: "Move money", label: "PAY · MPP", title: "Pay for a service", form: "pay GET|POST URL [JSON] · the service names the price, paid in USDC on Tempo",
-              example: #"pay POST https://coingecko.mpp.paywithlocus.com/coingecko/simple-price {"ids":"bitcoin","vs_currencies":"usd"}"#, fill: "tempo", logo: "tempo"),
 
         Block(group: "Buy and sell", label: "SWAP · JUPITER", title: "Tokens on Solana", form: "buy|sell SOL, BTC, ETH, JUP, BONK… for N USDC",
               example: "buy SOL for 2 USDC", fill: "jupiter", logo: "jup"),
@@ -71,5 +69,32 @@ public enum BlockCatalog {
               example: "stake 0.01 SOL", fill: "jito", logo: "jitosol"),
         Block(group: "Earn", label: "INTO · BEST RATES", title: "The best rates", form: "spread N USDC across the best rates · rebalance USDC",
               example: "spread USDC across the best rates", fill: "jupiter", logo: "usdc"),
+
+        // Tempo: its money moves, then services paid per request in USDC there (MPP). Each example is a real endpoint
+        // from mpp.dev's directory with the body its docs give, priced live by its 402 (2026-09-30); the card shows the price
+        // before paying. Tempo's own proxies (*.mpp.tempo.xyz: fal, OpenAI, Anthropic) take only sponsored transactions
+        // the service sends, which the signer doesn't make yet, and StableStudio's pictures come later behind a sign-in.
+        Block(group: "Tempo", label: "BRIDGE · TO TEMPO", title: "USDC to Tempo", form: "move N USDC from Solana to Tempo · and back to Solana",
+              example: "move 2 USDC from Solana to Tempo", fill: "tempo", logo: "tempo"),
+        Block(group: "Tempo", label: "SEND · ON TEMPO", title: "Send on Tempo", form: "send N USDC to NAME saved on Tempo · fee ≈ $0.001 in USDC",
+              example: "send 5 USDC to Mom", fill: "tempo", logo: "tempo"),
+        Block(group: "Tempo", label: "EVERY MONTH · 1ST", title: "Monthly transfer", form: "every month on the 1st…28th [at HH:MM]: send N USDC to NAME",
+              example: "every month on the 1st at 10:00: send 20 USDC to Mom", fill: "tempo", logo: "tempo"),
+        Block(group: "Tempo", label: "PAY · WEB SEARCH", title: "Search the web", form: "Brave Search · $0.035 a search · web, news, images, video",
+              example: #"pay POST https://brave.mpp.paywithlocus.com/brave/web-search {"q":"Tempo MPP payments"}"#, fill: "tempo", logo: "tempo"),
+        Block(group: "Tempo", label: "PAY · CRYPTO PRICE", title: "Crypto prices", form: "CoinGecko · $0.06 a request · prices, markets, coin data",
+              example: #"pay POST https://coingecko.mpp.paywithlocus.com/coingecko/simple-price {"ids":"bitcoin","vs_currencies":"usd"}"#, fill: "tempo", logo: "tempo"),
+        Block(group: "Tempo", label: "PAY · WEATHER", title: "Weather", form: "OpenWeather · $0.006 · now, 5 days, air quality by lat/lon",
+              example: #"pay POST https://openweather.mpp.paywithlocus.com/openweather/current-weather {"lat":55.7558,"lon":37.6173}"#, fill: "tempo", logo: "tempo"),
+        Block(group: "Tempo", label: "PAY · TRANSLATE", title: "Translate", form: "DeepL · priced per text · 30+ languages",
+              example: #"pay POST https://deepl.mpp.paywithlocus.com/deepl/translate {"text":["Hello from ihatecrypto"],"target_lang":"RU"}"#, fill: "tempo", logo: "tempo"),
+        Block(group: "Tempo", label: "PAY · EMAIL", title: "Send an email", form: "StableEmail · $0.02 a letter · to, subject, text",
+              example: #"pay POST https://stableemail.dev/api/send {"to":["you@example.com"],"subject":"Hi","text":"Sent from ihatecrypto"}"#, fill: "tempo", logo: "tempo"),
+        Block(group: "Tempo", label: "PAY · PHONE CALL", title: "AI phone call", form: "StablePhone · $0.54 a call · a number and what to say",
+              example: #"pay POST https://stablephone.dev/api/call {"phone_number":"+14155551234","task":"Ask if the table for two at 8 pm is still free."}"#,
+              fill: "tempo", logo: "tempo"),
+        Block(group: "Tempo", label: "PAY · FLIGHTS", title: "Cheapest flights", form: "StableTravel · $0.02 · Google Flights by airports and date",
+              example: "pay GET https://stabletravel.dev/api/google-flights/search?departure_id=SVO&arrival_id=IST&outbound_date=2026-10-15&type=2",
+              fill: "tempo", logo: "tempo"),
     ]
 }
