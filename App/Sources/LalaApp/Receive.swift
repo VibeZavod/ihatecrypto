@@ -7,6 +7,8 @@ import WalletCore
 /// Where to send money into LALA: the wallet's own addresses, which network each takes, and how balances update.
 struct ReceiveBoard: View {
     @Environment(Workspace.self) private var ws
+    /// Solana's USDC and SOL when the board opened: a deposit that lands after turns the card Done.
+    @State private var start: (usdc: Decimal, sol: Decimal)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -17,6 +19,7 @@ struct ReceiveBoard: View {
                 Button { withAnimation(StudioView.spring) { ws.showReceive = false } } label: { Image(systemName: "xmark") }
                     .buttonStyle(.hoverIcon).help("Close")
             }
+            RouteCards(steps: [topUp])
             if isSolanaAddress(ws.solanaAddress) {
                 ReceiveCard(logo: "sol", network: "Solana", badge: "recommended", address: ws.solanaAddress,
                             what: "USDC or SOL on the Solana network. USDC is what ihatecrypto trades with; keep ≈ 0.02 SOL for fees.",
@@ -41,6 +44,18 @@ struct ReceiveBoard: View {
         .background(RoundedRectangle(cornerRadius: 26).fill(Brand.card).shadow(color: .black.opacity(0.08), radius: 18, y: 10))
         .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Brand.accent.opacity(0.5), lineWidth: 1.5))
         .transition(.opacity)
+        .onAppear { start = ws.solana.map { ($0.usdc, $0.sol) } }
+    }
+
+    /// The deposit being waited for: Watching until Solana's USDC or SOL goes up, then what landed.
+    private var topUp: ActivityBubble {
+        let now = ws.solana
+        let usdc = start.flatMap { s in now.map { $0.usdc - s.usdc } }.flatMap { $0 > 0 ? $0 : nil }
+        let sol = start.flatMap { s in now.map { $0.sol - s.sol } }.flatMap { $0 > 0 ? $0 : nil }
+        let landed = [usdc.map { "+\(Fmt.num($0)) USDC" }, sol.map { "+\(Fmt.num($0, maxFraction: 6)) SOL" }].compactMap { $0 }
+        return ActivityBubble(kind: "step", label: "TOP UP · SOLANA", title: landed.first ?? "USDC or SOL",
+                              lines: [landed.isEmpty ? "watching for a deposit to land" : "landed on your Solana address"] + landed.dropFirst(),
+                              status: landed.isEmpty ? "watching" : "passed", logo: "sol", fill: .solana)
     }
 }
 

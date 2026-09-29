@@ -80,6 +80,14 @@ enum StepState: Equatable {
 }
 
 extension RouteFill {
+    /// A place's color by its name, as the rates and the portfolio name it («Kamino Lend», «Aave on Base», «HLP»).
+    static func place(_ name: String) -> RouteFill {
+        let n = name.lowercased()
+        let byName: [(String, RouteFill)] = [("kamino", .kamino), ("jupiter", .jupiter), ("jito", .jito), ("hlp", .hlp), ("hyperliquid", .hyperliquid),
+                                             ("morpho", .morpho), ("aave", .aave), ("base", .base), ("arbitrum", .arbitrum), ("near", .near)]
+        return byName.first { n.contains($0.0) }?.1 ?? .solana
+    }
+
     /// The color on a faint card: the lines of a step still to come and the ring of the step a move is on. Solana's own
     /// tint is too pale for either; in dark mode a dark place (Hyperliquid, Relay, Kamino…) takes its light tint, or
     /// its lines and ring would vanish into the canvas.

@@ -592,10 +592,16 @@ struct ScheduleBoard: View {
                 Spacer()
                 StatusChip(text: short == nil ? "running" : "runs short", tint: short == nil ? Brand.profit : Brand.jevInk)
             }
-            HStack(alignment: .top, spacing: 10) {
-                fact("EACH PURCHASE", "Jupiter quote, address check, simulation and signature — like a manual one")
-                fact("A MONTH", "≈ \(Fmt.usd(schedule.usdc * 30 / Decimal(max(schedule.days, 1))))")
-            }
+            RouteCards(steps: [
+                ActivityBubble(kind: "step", label: "EVERY \(period.uppercased()) · BUY", title: "\(Fmt.usd(schedule.usdc)) → \(schedule.symbol)",
+                               lines: ["next\t\(schedule.next <= Date() ? "now" : Fmt.date(schedule.next))",
+                                       "a month\t≈ \(Fmt.usd(schedule.usdc * 30 / Decimal(max(schedule.days, 1))))"], logo: "jup", fill: .jupiter),
+                ActivityBubble(kind: "step", label: "FROM · SOLANA", title: "\(Fmt.num(schedule.usdc)) USDC",
+                               lines: [balance.map { "free\t\(Fmt.num($0)) USDC" } ?? "USDC on Solana"], logo: "sol", fill: .solana),
+                ActivityBubble(kind: "step", label: "BUY · JUPITER", title: schedule.symbol,
+                               lines: ["Jupiter quote, address check, simulation and signature — like a manual one"],
+                               logo: TokenLogo.name(forAsset: schedule.symbol) ?? "jup", fill: .jupiter),
+            ])
             VStack(spacing: 0) {
                 ForEach(runs.indices, id: \.self) { i in
                     let run = runs[i], enough = (run.left ?? 0) >= 0
@@ -624,21 +630,12 @@ struct ScheduleBoard: View {
             }
         }
         .padding(16)
-        .frame(width: 470)
+        .frame(width: RouteCards.width(3) + 32)
         .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.06), radius: 14, y: 8))
         .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.cardBorder))
     }
 
     private var period: String { schedule.days == 1 ? "day" : schedule.days == 7 ? "week" : schedule.days == 30 ? "month" : "\(schedule.days) days" }
-
-    private func fact(_ label: String, _ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.ui(9.5, .heavy)).tracking(0.5).foregroundStyle(.secondary)
-            Text(text).font(.ui(12.5, .semibold)).fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(10).frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Brand.solanaTint))
-    }
 }
 
 extension Workspace {
@@ -772,13 +769,33 @@ extension Workspace {
             } else {
                 "One Solana signature, checked and simulated before it’s signed. Say “do it” or press Confirm; anything else cancels."
             }
-            return MoveRoute(title: readable(command.summary.prefix(1).uppercased() + command.summary.dropFirst()), footer: footer, steps: [from, to])
+            return MoveRoute(title: readable(command.summary.prefix(1).uppercased() + command.summary.dropFirst()), footer: footer, steps: around(command, [from, to]))
         }
         }
     }
 
     private func step(_ logo: String, _ label: String, _ title: String, _ line: String, _ fill: RouteFill) -> ActivityBubble {
         ActivityBubble(kind: "step", label: label, title: title, lines: [line], logo: logo, fill: fill)
+    }
+
+    /// An exact approve on an EVM chain as a step of its own: this much, for this contract, nothing more.
+    private func approve(_ amount: String, for spender: String, logo: String, _ fill: RouteFill, line: String? = nil) -> ActivityBubble {
+        step(logo, "APPROVE · EXACT", amount, line ?? "exactly this · only \(spender) may take it", fill)
+    }
+
+    /// What a move between two places has besides its ends: a stock token sold on Robinhood Chain is approved exactly
+    /// first, and HLP keeps a deposit for 4 days.
+    private func around(_ command: WalletCommand, _ ends: [ActivityBubble]) -> [ActivityBubble] {
+        switch command {
+        case .sellStock(let s, let x):
+            let name = s.hasPrefix("0x") ? (favoriteToken(s)?.symbol ?? tokenLabel(s)) : s.uppercased()
+            return [approve(x.map { "\(Fmt.num($0, maxFraction: 6)) \(name)" } ?? "all \(name)", for: "Uniswap", logo: "uni", .robinhood)] + ends
+        case .hlp(true, _):
+            let out = Calendar.current.date(byAdding: .day, value: 4, to: Date()) ?? Date()
+            return ends + [step("hype", "LOCKED · 4 DAYS", ends.last?.title ?? "USDC", "HLP lets it out from \(Fmt.date(out))", .hlp)]
+        default:
+            return ends
+        }
     }
 
     /// Any wallet command without a drawn route still gets its card with Confirm: a pending move is never invisible.
@@ -796,7 +813,8 @@ extension Workspace {
                          footer: "One NEAR transaction: exactly this NEAR, wrapped and sent to the 1Click deposit address the quote names, checked before signing. USDC arrives on your own Solana address in ≈ 30–40 s. Say “do it” or press Confirm.",
                          steps: [
             step("near", "FROM · NEAR", "\(Fmt.num(amount, maxFraction: 4)) NEAR", usd.map { "≈ \(Fmt.usd($0)) · ≈ 0.09 NEAR stays for storage and gas, most of it back after" } ?? "", .near),
-            step("near", "SWAP · NEAR INTENTS", "1Click", "≈ 30–40 s · the quote is checked", .relay),
+            step("near", "SWAP · NEAR INTENTS", "1Click", "the quote is checked before signing", .relay),
+            step("sol", "ARRIVES · ≈ 30–40 S", "→ Solana", "1Click sends the USDC over", .near),
             step("sol", "TO · SOLANA", usd.map { "≈ \(Fmt.num($0.rounded(2, .plain))) USDC" } ?? "USDC",
                  "your own address ✓", .solana),
         ])
@@ -859,9 +877,11 @@ extension Workspace {
                               "sends ≈ \(Fmt.num(max(short, needGas ? Decimal(string: "0.5")! : 0) + (needGas ? Decimal(string: "0.14")! : Decimal(string: "0.03")!))) USDC", .solana))
             steps.append(step("relay", "BRIDGE · RELAY", "\(Fmt.num(max(short, needGas ? Decimal(string: "0.5")! : 0))) USDC → Base",
                               needGas ? "+ $0.03 of ETH for gas · ≈ 2 s" : "≈ 2 s", .relay))
+            if needGas { steps.append(step("base", "GAS · COMES ALONG", "≈ $0.03 of ETH", "there’s no ETH on Base yet · it comes with the bridge", .base)) }
         } else {
             steps.append(step("base", "ON BASE", "\(Fmt.num(onBase)) USDC", "already there, gas too", .base))
         }
+        steps.append(approve("\(Fmt.num(amount)) USDC", for: morpho ? "Morpho" : "Aave", logo: morpho ? "morpho" : "aave", morpho ? .morpho : .aave))
         steps.append(morpho ? step("morpho", "MORPHO · \(MorphoVault.name.uppercased())", "\(Fmt.num(amount)) USDC", apy, .morpho)
                             : step("aave", "AAVE V3 · BASE", "\(Fmt.num(amount)) USDC", apy, .aave))
         return MoveRoute(title: morpho ? "Morpho · deposit \(Fmt.num(amount)) USDC on Base" : "Aave · lend \(Fmt.num(amount)) USDC on Base",
@@ -956,6 +976,7 @@ extension Workspace {
                             + " Say “do it” or press Confirm.", steps: [
             step("sol", "FROM · SOLANA", "\(Fmt.num(usdc)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana),
             step("relay", "BRIDGE · RELAY", "USDG → Robinhood", "+ ETH for gas when there's none", .relay),
+            approve("≈ \(Fmt.num(usdc)) USDG", for: "Uniswap", logo: "uni", .robinhood, line: "exactly what arrives · only Uniswap may take it"),
             step("robinhood", "BUY · UNISWAP", symbol,
                  price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 2)) \(symbol) worth ≈ \(Fmt.usd(usdc)) · 1 \(symbol) = \(tokenPrice($0))" } ?? "at the pool price", .robinhood),
         ], warning: contract ? "A token by its contract is anyone's coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose."
@@ -977,6 +998,8 @@ extension Workspace {
                              usdc != nil ? "USDC to \(name), then Uniswap with an exact approve" : "Uniswap on \(name), then Relay's bridge to Solana", .relay)
         default: bestWay(swapQuote.flatMap { q in q.command == command ? q.ways : nil })
         }
+        // Relay + Uniswap approves exactly what it swaps: shown once that's the way (picked, or leaving more now).
+        let viaUniswap = (routeWays[Self.wayKey(place, token)] ?? swapQuote.flatMap { q in q.command == command ? q.ways.first?.way : nil }) == "uniswap"
         let footer = "Relay’s swap is one Solana signature; the other way bridges USDC over Relay and swaps on Uniswap with an exact approve, the swap paying only this wallet. "
             + (token.hasPrefix("0x") ? "A token by its contract must trade on \(name) with $50k+ of liquidity. " : "The ticker is taken from Uniswap’s token list, its contract checked on-chain. ")
             + "Say “do it” or press Confirm."
@@ -984,11 +1007,13 @@ extension Workspace {
             return MoveRoute(title: "Buy \(label) · \(Fmt.num(usdc)) USDC on \(name)", footer: footer, steps: [
                 step("sol", "FROM · SOLANA", "\(Fmt.num(usdc)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana),
                 way,
+            ] + (viaUniswap ? [approve("≈ \(Fmt.num(usdc)) USDC", for: "Uniswap", logo: "uni", fill, line: "exactly what arrives · only Uniswap may take it")] : []) + [
                 step(logo, "BUY · ON \(name.uppercased())", label, "at the best price found", fill),
             ], warning: token.hasPrefix("0x") ? "A token by its contract is anyone’s coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose." : nil)
         }
         return MoveRoute(title: "Sell \(sell.map { Fmt.num($0) } ?? "all") \(label) on \(name) → Solana", footer: footer, steps: [
             step(logo, "FROM · \(name.uppercased())", "\(sell.map { Fmt.num($0) } ?? "all") \(label)", "ETH for gas comes along when there’s none", fill),
+        ] + (viaUniswap ? [approve("\(sell.map { Fmt.num($0) } ?? "all") \(label)", for: "Uniswap", logo: "uni", fill)] : []) + [
             way,
             step("sol", "TO · SOLANA", "USDC", "your wallet", .solana),
         ])
@@ -1062,6 +1087,7 @@ extension Workspace {
                          steps: [
             step("sol", "FROM · SOLANA", solana.map { "\(Fmt.num($0.usdc)) USDC" } ?? "—", "sends what's missing there", .solana),
             step("relay", "BRIDGE · RELAY", "USDC → \(name)", "+ \(coin) for gas when there's none · ≈ 2 s", .relay),
+            approve("\(Fmt.num(amount)) USDC", for: protocolName, logo: morpho ? "morpho" : "aave", morpho ? .morpho : .aave),
             morpho ? step("morpho", "MORPHO · \(name.uppercased())", "\(Fmt.num(amount)) USDC", "rate from the vault", .morpho)
                    : step("aave", "AAVE V3 · \(name.uppercased())", "\(Fmt.num(amount)) USDC", "rate from the pool", .aave),
         ])
@@ -1079,6 +1105,7 @@ extension Workspace {
                                               : "Two \(name) transactions: an exact approve and Relay’s deposit")
                                 + " — checked field by field before signing. Say “do it” or press Confirm.", steps: [
                 from,
+                approve("\(moving) USDC", for: "Relay", logo: "relay", .relay),
                 step("relay", "BRIDGE · RELAY", "\(moving) USDC", "a few seconds", .relay),
                 step("sol", "TO · SOLANA", solana.map { Fmt.num($0.usdc) } ?? "—", "your own address ✓", .solana),
             ])
@@ -1099,6 +1126,7 @@ extension Workspace {
                          footer: (place == "aave" || place == "morpho" ? "Three Base transactions: withdraw from \(place == "aave" ? "Aave" : "Morpho"), an exact approve and Relay’s deposit" : "Two Base transactions: an exact approve and Relay’s deposit")
                             + " — checked field by field before signing. Say “do it” or press Confirm.", steps: [
             from,
+            approve(moving.map { "\(Fmt.num($0)) \(place == "robinhood" ? "USDG" : "USDC")" } ?? "all of it", for: "Relay", logo: "relay", .relay),
             step("relay", "BRIDGE · RELAY", moving.map { "\(Fmt.num($0)) USDC" } ?? "—", "≈ $0.02 · a few seconds", .relay),
             step("sol", "TO · SOLANA", solana.map { s in moving.map { "\(Fmt.num(s.usdc)) → \(Fmt.num(s.usdc + $0))" } ?? Fmt.num(s.usdc) } ?? "—",
                  "your own address ✓", .solana),
@@ -1148,9 +1176,41 @@ struct RunningBoard: View {
         for (i, step) in steps.enumerated() {
             let place = step.label.components(separatedBy: "·").last?.trimmingCharacters(in: .whitespaces)
                 .split(separator: " ").first.map { $0.lowercased() } ?? ""
-            if !place.isEmpty, said.contains(place) { current = i }
+            // A place, not a number: «LOCKED · 4 DAYS» or «ARRIVES · ≈ 30–40 S» mustn't light up at any «4» in a report.
+            if place.first?.isLetter == true, said.contains(place) { current = i }
         }
         return current
+    }
+}
+
+/// Closing an open position, waiting for «do it»: the price line runs to its flag with what it comes to, and the USDC
+/// goes back to the trading balance.
+struct PositionMoveBoard: View {
+    @Environment(Workspace.self) private var ws
+
+    var body: some View {
+        if case .position(.close(let share), let coin)? = ws.pendingAction, let p = ws.positions.first(where: { $0.coin == coin }) {
+            let name = coin.hasPrefix("xyz:") ? String(coin.dropFirst(4)) : coin
+            let side = p.size > 0 ? "long" : "short"
+            let pnl = p.unrealizedPnl * share
+            let steps = [
+                ActivityBubble(kind: "step", label: "CLOSE · \(name.uppercased()) \(side.uppercased())", title: "\(pnl < 0 ? "−" : "+")\(Fmt.usd(abs(pnl)))",
+                               lines: ["share\t\(Fmt.pct(share * 100))", "size\t\(Fmt.num(abs(p.size) * share, maxFraction: 6)) \(name)", "entry\t\(Fmt.price(p.entry))"]
+                                   + (ws.markets[coin].map { ["now\t≈ \(Fmt.price($0.markPx))"] } ?? []),
+                               logo: TokenLogo.name(forAsset: coin) ?? "hype", fill: .hyperliquid),
+                ActivityBubble(kind: "step", label: "TO · HYPERLIQUID", title: "USDC", lines: ["back to the trading balance"], logo: "hype", fill: .hyperliquid),
+            ]
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Text("Close \(share == 1 ? "" : Fmt.pct(share * 100) + " of ")\(name) \(side)").font(.ui(14, .semibold))
+                    StatusChip(text: "waiting for the signature", tint: Brand.profit).fixedSize()
+                    Spacer(minLength: 12)
+                    PendingButtons()
+                }
+                RouteCards(steps: steps, build: true)
+            }
+            .transition(.opacity)
+        }
     }
 }
 

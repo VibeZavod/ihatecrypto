@@ -400,10 +400,10 @@ private struct TaskDetail: View {
                 Spacer(minLength: 8)
                 StatusChip(text: task.every.map { "every \($0.words)" } ?? "once", tint: Brand.accentInk)
             }
-            HStack(alignment: .top, spacing: 10) {
-                fact("NEXT RUN", Fmt.date(task.next))
-                fact("THEN", task.every.map { "again every \($0.words)" } ?? "done, it’s removed")
-            }
+            RouteCards(steps: [ActivityBubble(kind: "step", label: task.every.map { "EVERY \($0.words.uppercased()) · RUN" } ?? "LATER · SCHEDULE",
+                                              title: Fmt.date(task.next),
+                                              lines: ["then\t\(task.every.map { "again every \($0.words)" } ?? "done, it’s removed")"] + task.steps.map(ScheduleCanvas.readable),
+                                              fill: .check)])
             VStack(alignment: .leading, spacing: 0) {
                 ForEach(Array(task.steps.enumerated()), id: \.offset) { i, step in
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
@@ -432,12 +432,4 @@ private struct TaskDetail: View {
         .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.cardBorder))
     }
 
-    private func fact(_ label: String, _ text: String) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(label).font(.ui(9.5, .heavy)).tracking(0.5).foregroundStyle(.secondary)
-            Text(text).font(.ui(12.5, .semibold)).fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(10).frame(maxWidth: .infinity, alignment: .topLeading)
-        .background(RoundedRectangle(cornerRadius: 14).fill(Brand.solanaTint))
-    }
 }

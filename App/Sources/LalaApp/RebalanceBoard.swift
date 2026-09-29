@@ -15,22 +15,19 @@ struct RebalanceBoard: View {
                     Text("Rebalance USDC · max \(Fmt.pct(r.maxShare)) per protocol").font(.ui(14, .semibold))
                     StatusChip(text: waiting ? "waiting for the signature" : "nothing to move", tint: waiting ? Brand.profit : .secondary).fixedSize()
                 }
-                ForEach(Array(r.plan.moves.enumerated()), id: \.offset) { _, move in
-                    VStack(alignment: .leading, spacing: 8) {
-                        HStack(spacing: 10) {
-                            end(move.from, move.fromAPY, label: "FROM")
-                            Image(systemName: "arrow.right").font(.system(size: 13, weight: .bold)).foregroundStyle(.secondary)
-                            end(move.to, move.toAPY, label: "TO")
-                            Spacer(minLength: 0)
-                        }
-                        Text("\(Fmt.num(move.amount, maxFraction: 2)) USDC · +\(Fmt.usd(move.yearlyGain)) a year · costs ≈ \(Fmt.usd(move.cost))"
-                             + (move.paybackDays.map { " · pays back in \(Fmt.num($0.rounded(0, .up))) days" } ?? ""))
-                            .font(.ui(12, .semibold)).monospacedDigit()
-                    }
-                    .padding(12)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .background(RoundedRectangle(cornerRadius: 18).fill(Brand.card))
-                    .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.cardBorder))
+                if !r.plan.moves.isEmpty {
+                    // The rebalance, then each move out of one place and into the next, as route cards.
+                    RouteCards(steps: [ActivityBubble(kind: "step", label: "REBALANCE · USDC", title: "+\(Fmt.usd(r.plan.yearlyGain)) a year",
+                                                      lines: ["max per place\t\(Fmt.pct(r.maxShare))", "costs\t≈ \(Fmt.usd(r.plan.cost))"],
+                                                      logo: "usdc", fill: .check)]
+                        + r.plan.moves.flatMap { m in [
+                            ActivityBubble(kind: "step", label: "FROM · \(m.from.uppercased())", title: "\(Fmt.num(m.amount, maxFraction: 2)) USDC",
+                                           lines: ["rate\t\(Fmt.num(m.fromAPY.rounded(2, .plain)))%"], logo: Workspace.logo(for: m.from), fill: .place(m.from)),
+                            ActivityBubble(kind: "step", label: "INTO · \(m.to.uppercased())", title: "\(Fmt.num(m.amount, maxFraction: 2)) USDC",
+                                           lines: ["rate\t\(Fmt.num(m.toAPY.rounded(2, .plain)))%", "a year\t+\(Fmt.usd(m.yearlyGain))", "costs\t≈ \(Fmt.usd(m.cost))"]
+                                               + (m.paybackDays.map { ["pays back\t\(Fmt.num($0.rounded(0, .up))) days"] } ?? []),
+                                           logo: Workspace.logo(for: m.to), fill: .place(m.to)),
+                        ] }, build: true)
                 }
                 if !r.plan.moves.isEmpty {
                     Label("Together ≈ +\(Fmt.usd(r.plan.yearlyGain)) a year for ≈ \(Fmt.usd(r.plan.cost)). Each move goes through Solana: out of one place, into the next, checked and simulated like the single commands.",
@@ -43,18 +40,8 @@ struct RebalanceBoard: View {
                 ForEach(r.plan.notes, id: \.self) { Label($0, systemImage: "info.circle").font(.ui(10)).foregroundStyle(.secondary) }
                 if waiting { PendingButtons() }
             }
-            .frame(width: 470, alignment: .leading)
+            .frame(minWidth: 470, alignment: .leading)
             .transition(.opacity)
-        }
-    }
-
-    private func end(_ place: String, _ apy: Decimal, label: String) -> some View {
-        HStack(spacing: 8) {
-            TokenLogo(name: Workspace.logo(for: place), size: 26)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("\(label) · \(place.uppercased())").font(.ui(9, .heavy)).tracking(0.4).foregroundStyle(.secondary).lineLimit(1)
-                Text("\(Fmt.num(apy.rounded(2, .plain)))%").font(.ui(17, .heavy)).monospacedDigit()
-            }
         }
     }
 }

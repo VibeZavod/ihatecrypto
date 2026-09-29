@@ -1038,6 +1038,7 @@ struct StudioCanvas: View {
             }
             RebalanceBoard()
             WithdrawBoard()
+            PositionMoveBoard()
             RunningBoard()
             PendingAddressBoard()
             TransferBoard()
@@ -1883,6 +1884,15 @@ extension Workspace {
                 lines.append("both wait on the exchange")
             }
             steps.append(card("PROTECT", sizing?.takePrice != nil ? "Stop + take" : "Stop", lines, state(s.status), logo: "hype", .hyperliquid))
+        }
+        // What Confirm does: the simulation first, then Touch ID for every signature.
+        let signing = nodes.filter { $0.signature != nil }.count
+        if sizing != nil, signing > 0 {
+            steps.append(card(prepared == nil ? "SIMULATION · ON CONFIRM" : "SIMULATION · PASSED", prepared == nil ? "Shows first" : "As planned",
+                              prepared.map { Array($0.changes.prefix(3)) } ?? ["every balance, before and after", "nothing is signed before it"],
+                              prepared == nil ? "info" : "passed", .check))
+            steps.append(card("SIGN · TOUCH ID", "\(signing) signature\(signing == 1 ? "" : "s")",
+                              prepared?.steps ?? ["one Touch ID covers them all"], "info", .check))
         }
         if let s = sizing {
             var lines = [row("at the stop", "−\(Fmt.usd(s.lossAtStopUSD))")]
@@ -2982,65 +2992,36 @@ struct AllocationBoard: View {
     private var unit: String { preview.asset }
     private func amount(_ d: Decimal) -> String { Fmt.num(d, maxFraction: unit == "SOL" ? 6 : 2) + " " + unit }
 
+    /// The spread as route cards: out of Solana, split across the best rates, into each place with its rate; what's
+    /// skipped and why under them.
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack(spacing: 10) {
-                TokenLogo(name: unit == "SOL" ? "sol" : "usdc", size: 30)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("TAKE FROM · SOLANA").font(.ui(9.5, .heavy)).tracking(0.5).foregroundStyle(Brand.solanaInk)
-                    Text("\(amount(preview.free)) free").font(.ui(16, .bold))
-                }
-                Spacer()
-                Text("max \(Fmt.pct(preview.maxShare)) per protocol").font(.ui(10)).foregroundStyle(Brand.solanaInk)
-            }
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 20).fill(Brand.solanaTint))
-
-            ForEach(preview.slices, id: \.place) { slice in
-                HStack(spacing: 12) {
-                    TokenLogo(name: logo(slice.place), size: 34)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("DEPOSIT").font(.ui(9.5, .heavy)).tracking(0.5).opacity(0.8)
-                        Text(slice.place).font(.ui(15, .bold))
-                        Text(amount(slice.amount)).font(.ui(10)).opacity(0.85)
-                    }
-                    Spacer()
-                    Text("\(Fmt.num(slice.apy.rounded(2, .plain)))%").font(.ui(22, .heavy)).monospacedDigit()
-                }
-                .foregroundStyle(ink(slice.place))
-                .padding(14)
-                .background(ArrowCard(radius: 20, tip: 14).fill(fill(slice.place)))
-            }
+        VStack(alignment: .leading, spacing: 10) {
+            RouteCards(steps: steps, build: true)
             ForEach(preview.skipped, id: \.place) { s in
-                HStack(alignment: .top, spacing: 12) {
-                    TokenLogo(name: logo(s.place), size: 26).opacity(0.6)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("\(s.place) · \(Fmt.num(s.apy.rounded(2, .plain)))% — skipped").font(.ui(13, .semibold))
-                        Text(s.reason).font(.ui(10)).foregroundStyle(.secondary)
-                    }
-                }
-                .padding(12)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 30).strokeBorder(Brand.dots, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+                Label("\(s.place) · \(Fmt.num(s.apy.rounded(2, .plain)))% — skipped: \(s.reason)", systemImage: "minus.circle")
+                    .font(.ui(10)).foregroundStyle(.secondary)
             }
-            HStack {
-                Text("≈ \(amount(preview.yearly)) a year\(preview.yearlyUSD.map { " (≈ \(Fmt.usd($0)))" } ?? "")").font(.ui(16, .bold))
-                Spacer()
-                if preview.leftover > 0 { Text("stays free: \(amount(preview.leftover))").font(.ui(10)).foregroundStyle(Color(hex: 0xB9C1DC)) }
-            }
-            .foregroundStyle(.white)
-            .padding(14)
-            .background(RoundedRectangle(cornerRadius: 20).fill(Brand.outcome))
+        }
+    }
+
+    private var steps: [ActivityBubble] {
+        let placed = preview.slices.reduce(Decimal(0)) { $0 + $1.amount }
+        let year = "≈ \(amount(preview.yearly))" + (preview.yearlyUSD.map { " (≈ \(Fmt.usd($0)))" } ?? "")
+        return [
+            ActivityBubble(kind: "step", label: "FROM · SOLANA", title: amount(placed),
+                           lines: ["free\t\(amount(preview.free))"] + (preview.leftover > 0 ? ["stays free\t\(amount(preview.leftover))"] : []),
+                           logo: unit == "SOL" ? "sol" : "usdc", fill: .solana),
+            ActivityBubble(kind: "step", label: "INTO · BEST RATES", title: "\(preview.slices.count) place\(preview.slices.count == 1 ? "" : "s")",
+                           lines: ["a year\t\(year)", "max per place\t\(Fmt.pct(preview.maxShare))"], logo: "usdc", fill: .jupiter),
+        ] + preview.slices.map { slice in
+            ActivityBubble(kind: "step", label: "INTO · \(slice.place.uppercased())", title: amount(slice.amount),
+                           lines: ["rate\t\(Fmt.num(slice.apy.rounded(2, .plain)))% a year"], logo: logo(slice.place), fill: .place(slice.place))
         }
     }
 
     private func logo(_ place: String) -> String {
         place.contains("Jupiter") ? "jup" : place.contains("Kamino") ? "kamino" : place.contains("Jito") ? "jitosol" : place.contains("HLP") ? "hype" : "usdc"
     }
-    private func fill(_ place: String) -> Color {
-        place.contains("Jupiter") ? Color(hex: 0x131D27) : place.contains("Kamino") ? Color(hex: 0x082A56) : place.contains("Jito") ? Color(hex: 0x1F9D6A) : Brand.hl
-    }
-    private func ink(_ place: String) -> Color { place.contains("Jupiter") ? Color(hex: 0xC7F284) : .white }
 }
 
 /// Under the balance: five ways onto the canvas, each with its own icon. Top up, in the accent colour, spans the first
