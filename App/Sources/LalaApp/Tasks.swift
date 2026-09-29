@@ -73,6 +73,10 @@ extension Workspace {
         thinking = true
         var rest: [String] = []
         for (k, step) in steps.enumerated() {
+            // The move before this step is done: let it go first, so the canvas keeps it as an earlier move. Cleared only
+            // after, the next step's card was saved over it with its «Done» (a Base → Robinhood bridge vanished under
+            // «Buy AI», and «Buy MOO» showed Done though it never ran).
+            if confirmed { finishedAction = nil }
             guard await runCanonical(step, userText: step, before: intent) else {
                 reply(say("ihatecrypto can’t do “\(step)” — the steps stop here.", "ihatecrypto не умеет «\(step)» — на этом шаги останавливаются."))
                 break
