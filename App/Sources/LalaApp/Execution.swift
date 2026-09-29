@@ -17,6 +17,10 @@ import WalletCore
 final class SignerActivity {
     static let shared = SignerActivity()
     var waiting = 0
+    /// What the Ledger waits for from the person now («Open the Solana app…», «Review … and approve»).
+    var ledger: String?
+    /// A signature waits on the person: Touch ID, the Mac's password or the Ledger's buttons.
+    var atDevice: Bool { waiting > 0 || ledger != nil }
 }
 
 nonisolated struct XPCTradeSigner: TradeSigner {
@@ -97,7 +101,8 @@ extension Workspace {
     func executor(_ wallet: TradeWallet) -> Executor {
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "LALA")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return Executor(wallet: wallet, signer: XPCTradeSigner(), journal: Journal(url: folder.appending(path: "journal.jsonl"))) { [weak self] text in
+        let signer: any TradeSigner = ledgerActive ? ledgerSigner(wallet) : XPCTradeSigner()
+        return Executor(wallet: wallet, signer: signer, journal: Journal(url: folder.appending(path: "journal.jsonl"))) { [weak self] text in
             Task { @MainActor in
                 self?.reply(text, note: "execution")
                 self?.runningAction?.lines.append(text)
@@ -548,6 +553,10 @@ extension Workspace {
     /// The signer makes an agent key and signs its approval with the main key; the approval goes to Hyperliquid,
     /// and only when the exchange accepts it do orders switch to the agent.
     func enableAgent() async {
+        guard !ledgerActive else {
+            reply("The trading key belongs to ihatecrypto's own wallets. On a Ledger each order is approved on the device.")
+            return
+        }
         executing = true
         defer { executing = false }
         do {
@@ -594,9 +603,10 @@ extension Workspace {
             executing = true
             let waiting = Task { @MainActor [weak self] in
                 try await Task.sleep(for: .seconds(4))
-                guard let self, SignerActivity.shared.waiting > 0 else { return }
+                guard let self, SignerActivity.shared.atDevice else { return }
                 notify(.signature, say("Scheduled \(asset.symbol) buy", "Регулярная покупка \(asset.symbol)"),
-                       say("Waiting for Touch ID — confirm it on the sensor.", "Ждёт Touch ID — подтверди на датчике."), record: false)
+                       ledgerActive ? say("Waiting for your Ledger — approve it on the device.", "Ждёт Ledger — подтверди на устройстве.")
+                                    : say("Waiting for Touch ID — confirm it on the sensor.", "Ждёт Touch ID — подтверди на датчике."), record: false)
             }
             defer { waiting.cancel() }
             do {
@@ -796,7 +806,7 @@ struct ConfirmSheet: View {
                     .controlSize(.large)
                 } else if ws.signerWallet != nil {
                     Button { Task { await ws.confirmExecution() } } label: {
-                        Label("Sign · Touch ID", systemImage: "touchid").font(.ui(14, .bold))
+                        Label(ws.ledgerActive ? "Sign · Ledger" : "Sign · Touch ID", systemImage: ws.ledgerActive ? "hand.point.up.left.fill" : "touchid").font(.ui(14, .bold))
                             .padding(.horizontal, 6)
                     }
                     .keyboardShortcut(.defaultAction)

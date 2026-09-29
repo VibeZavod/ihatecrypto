@@ -327,7 +327,7 @@ enum Signer {
         case .signHyperliquidUser(let action, let mainnet, let recipients):
             let verdict = HLGuard.check(action, owner: try address("evm"), recipients: Set(recipients))
             guard verdict.ok else { return refused(verdict) }
-            let (type, fields) = try userAction(action)
+            let (type, fields) = try HLSigner.userAction(action)
             try approve(recipients)
             var r = SignerReply(ok: true)
             r.signature = try withKey("evm", reason: prompt("sign a Hyperliquid transfer", verdict)) {
@@ -472,32 +472,5 @@ enum Signer {
         claimed.filter { account, owner in
             mints.contains { (try? SPL.associatedAccount(owner: owner, mint: $0)) == account }
         }
-    }
-
-    /// Hyperliquid user-signed actions the signer knows, with their EIP-712 fields after hyperliquidChain.
-    static let userSchemas: [String: (type: String, fields: [(String, String)])] = [
-        "usdClassTransfer": ("UsdClassTransfer", [("amount", "string"), ("toPerp", "bool"), ("nonce", "uint64")]),
-        "spotSend": ("SpotSend", [("destination", "string"), ("token", "string"), ("amount", "string"), ("time", "uint64")]),
-        "sendAsset": ("SendAsset", [("destination", "string"), ("sourceDex", "string"), ("destinationDex", "string"),
-                                    ("token", "string"), ("amount", "string"), ("fromSubAccount", "string"), ("nonce", "uint64")]),
-        "withdraw3": ("Withdraw", [("destination", "string"), ("amount", "string"), ("time", "uint64")]),
-        "usdSend": ("UsdSend", [("destination", "string"), ("amount", "string"), ("time", "uint64")]),
-    ]
-
-    static func userAction(_ action: MsgPack) throws -> (String, [EIP712.Field]) {
-        guard case .map(let pairs) = action else { throw WalletError("Unrecognized action.") }
-        let values = Dictionary(pairs, uniquingKeysWith: { a, _ in a })
-        guard case .string(let kind)? = values["type"], let schema = userSchemas[kind] else {
-            throw WalletError("Signing this Hyperliquid action isn't supported.")
-        }
-        let fields: [EIP712.Field] = try schema.fields.map { name, type in
-            switch (type, values[name]) {
-            case ("string", .string(let s)?): return EIP712.Field(name, type, .string(s))
-            case ("bool", .bool(let b)?): return EIP712.Field(name, type, .bool(b))
-            case ("uint64", .uint(let n)?): return EIP712.Field(name, type, .uint(n))
-            default: throw WalletError("The action has no \(name) field of type \(type).")
-            }
-        }
-        return (schema.type, fields)
     }
 }

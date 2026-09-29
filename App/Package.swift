@@ -10,7 +10,7 @@ let package = Package(
         // For the Xcode project (project.yml) that builds LALA.app and its signing service.
         .library(name: "LalaKit", targets: [
             "LalaCore", "LLMCore", "LLMCatalog", "WalletCore", "TxGuard", "GuardJev", "SignerAPI", "HyperliquidSigning", "SolanaChain",
-            "TradeExecution", "ExecutionCore", "DeFiJupiterLend", "EVMChain", "DeFiKamino", "DeFiYields",
+            "TradeExecution", "ExecutionCore", "DeFiJupiterLend", "EVMChain", "DeFiKamino", "DeFiYields", "Ledger",
         ]),
         .library(name: "LalaSignerKit", targets: ["SignerAPI", "WalletCore", "TxGuard", "HyperliquidSigning", "SolanaChain", "EVMChain"]),
     ],
@@ -59,11 +59,14 @@ let package = Package(
         .target(name: "SignerAPI", dependencies: ["WalletCore", "HyperliquidSigning"], path: "Sources/Signer/API"),
         .executableTarget(name: "LalaSigner", dependencies: ["SignerAPI", "WalletCore", "TxGuard", "HyperliquidSigning", "SolanaChain", "EVMChain"],
                           path: "Sources/Signer/Service"),
+        // A Ledger over USB (or its emulator over TCP): the Ethereum and Solana apps sign what the guard let through.
+        .target(name: "Ledger", dependencies: ["WalletCore", "EVMChain", "SolanaChain", "HyperliquidSigning", "TxGuard", "TradeExecution"],
+                path: "Sources/Wallet/Ledger"),
         // Jev (TypeSafe via OpenRouter) as an extra classifier for untrusted text; it can only add problems.
         .target(name: "GuardJev", dependencies: ["TxGuard"], path: "Sources/Guard/Jev"),
         .executableTarget(
             name: "LalaWalletCheck",
-            dependencies: ["WalletCore", "HyperliquidSigning", "SolanaChain", "JupiterSwap", "OneClickKit", "LalaCore", "ExecutionCore", "TxGuard", "GuardJev", "DeFiJupiterLend", "RelayBridge", "EVMChain", "TradeExecution", "DeFiKamino", "DeFiYields"],
+            dependencies: ["WalletCore", "HyperliquidSigning", "SolanaChain", "JupiterSwap", "OneClickKit", "LalaCore", "ExecutionCore", "TxGuard", "GuardJev", "DeFiJupiterLend", "RelayBridge", "EVMChain", "TradeExecution", "DeFiKamino", "DeFiYields", "Ledger"],
             path: "Sources/Wallet/Check"
         ),
 
@@ -72,7 +75,7 @@ let package = Package(
         .executableTarget(
             name: "LalaApp",
             dependencies: ["LalaCore", "LLMCore", "LLMCatalog", "WalletCore", "TxGuard", "GuardJev", "SignerAPI", "HyperliquidSigning", "SolanaChain",
-                           "TradeExecution", "ExecutionCore", "DeFiJupiterLend", "EVMChain", "DeFiKamino", "DeFiYields"],
+                           "TradeExecution", "ExecutionCore", "DeFiJupiterLend", "EVMChain", "DeFiKamino", "DeFiYields", "Ledger"],
             // Chain logos are bundled by the Xcode project (LALA.app); `swift run` shows lettered circles instead.
             exclude: ["Logos"],
             swiftSettings: [.defaultIsolation(MainActor.self)]
@@ -80,7 +83,7 @@ let package = Package(
 
         .testTarget(name: "LalaCoreTests", dependencies: ["LalaCore", "LLMCore"]),
         .testTarget(name: "DeFiTests", dependencies: ["DeFiYields"]),
-        .testTarget(name: "WalletTests", dependencies: ["WalletCore", "HyperliquidSigning", "SolanaChain", "ExecutionCore", "TxGuard", "EVMChain", "TradeExecution", "SignerAPI"]),
+        .testTarget(name: "WalletTests", dependencies: ["WalletCore", "HyperliquidSigning", "SolanaChain", "ExecutionCore", "TxGuard", "EVMChain", "TradeExecution", "SignerAPI", "Ledger"]),
         .testTarget(
             name: "LLMTests",
             dependencies: ["LLMCore", "LLMAPIKey", "LLMOpenRouter", "LLMChatGPT", "LLMClaudeCode", "LLMCatalog"]

@@ -1320,7 +1320,23 @@ struct RunningBoard: View {
                 if !run.steps.isEmpty {
                     RouteCards(steps: run.steps, current: Self.currentStep(run.steps, run.lines))
                 }
-                if SignerActivity.shared.waiting > 0 {
+                if let prompt = SignerActivity.shared.ledger {
+                    // The Ledger's turn: what to do on the device, in the words of the step it is on.
+                    HStack(spacing: 12) {
+                        LedgerGlyph(size: 34).colorInvert()
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(ws.say("Confirm on your Ledger: \(run.title)", "Подтверди на Ledger: \(run.title)")).font(.ui(13, .semibold)).lineLimit(1)
+                            Text(prompt).font(.ui(10.5)).opacity(0.85).lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "hand.point.up.left.fill").font(.system(size: 20, weight: .medium))
+                    }
+                    .foregroundStyle(Color.white)
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .frame(maxWidth: 560, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Color.black))
+                    .transition(.opacity)
+                } else if SignerActivity.shared.waiting > 0 {
                     // What is being signed, with the coin: the system's own window says it in the signer's words.
                     HStack(spacing: 10) {
                         LalaLogo(size: 30, mood: .waiting)
@@ -1346,7 +1362,7 @@ struct RunningBoard: View {
             }
             .frame(width: max(470, RouteCards.width(run.steps.count)), alignment: .leading)
             .transition(.opacity)
-            .animation(.snappy, value: SignerActivity.shared.waiting > 0)
+            .animation(.snappy, value: SignerActivity.shared.atDevice)
         }
     }
 

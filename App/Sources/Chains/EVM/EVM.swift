@@ -69,14 +69,19 @@ public struct EVMTransaction: Sendable {
                 .bytes(to), .uint(value), .bytes(data), .list([])]
     }
 
+    /// 0x02 ‖ rlp(fields): the unsigned transaction, as a hardware wallet reads it.
+    public func unsignedPayload() throws -> Data { Data([0x02]) + RLP.list(try fields()).encoded }
+
     /// keccak256(0x02 ‖ rlp(fields)) — what the key signs.
-    public func signingHash() throws -> Data {
-        Keccak.hash256(Data([0x02]) + RLP.list(try fields()).encoded)
-    }
+    public func signingHash() throws -> Data { Keccak.hash256(try unsignedPayload()) }
 
     /// Raw signed transaction and its hash (the transaction id).
     public func signed(privateKey: Data) throws -> (raw: Data, hash: String) {
-        let signature = try EVMSigner.sign(digest: try signingHash(), privateKey: privateKey)
+        try signed(with: try EVMSigner.sign(digest: try signingHash(), privateKey: privateKey))
+    }
+
+    /// The transaction with a signature made elsewhere (a Ledger), v = 27 or 28.
+    public func signed(with signature: EVMSignature) throws -> (raw: Data, hash: String) {
         let raw = Data([0x02]) + RLP.list(try fields() + [
             .uint(UInt64(signature.v - 27)), .uint(bigEndian: signature.r), .uint(bigEndian: signature.s),
         ]).encoded

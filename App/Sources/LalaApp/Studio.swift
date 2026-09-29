@@ -1008,6 +1008,7 @@ struct StudioCanvas: View {
             if nodes.isEmpty, let steps = ws.nextSteps, steps.canvas == ws.canvasID { NextStepsBoard(steps: steps).padding(.bottom, 10) }
             // The rail's buttons put their boards here too.
             if ws.showReceive { ReceiveBoard() }
+            LedgerBoard()
             if ws.showFavorites { FavoritesBoard().transition(.opacity) }
             if ws.showHistory { HistoryBoard().transition(.opacity) }
             // Moves already done on this canvas stay above the current one.
@@ -1058,7 +1059,7 @@ struct StudioCanvas: View {
             if nodes.isEmpty {
                 if ws.yieldOptions == nil, ws.allocationPreview == nil, ws.rebalancePlan == nil {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
-                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, ws.nextSteps == nil, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil, ws.serviceAnswer == nil,
+                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, ws.nextSteps == nil, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
                               (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty { placeholder }
                 }
             } else {
@@ -1907,8 +1908,8 @@ extension Workspace {
             steps.append(card(prepared == nil ? "SIMULATION · ON CONFIRM" : "SIMULATION · PASSED", prepared == nil ? "Shows first" : "As planned",
                               prepared.map { Array($0.changes.prefix(3)) } ?? ["every balance, before and after", "nothing is signed before it"],
                               prepared == nil ? "info" : "passed", .check))
-            steps.append(card("SIGN · TOUCH ID", "\(signing) signature\(signing == 1 ? "" : "s")",
-                              prepared?.steps ?? ["one Touch ID covers them all"], "info", .check))
+            steps.append(card(ledgerActive ? "SIGN · LEDGER" : "SIGN · TOUCH ID", "\(signing) signature\(signing == 1 ? "" : "s")",
+                              prepared?.steps ?? [ledgerActive ? "each one approved on the device" : "one Touch ID covers them all"], "info", .check))
         }
         if let s = sizing {
             var lines = [row("at the stop", "−\(Fmt.usd(s.lossAtStopUSD))")]
@@ -1917,7 +1918,8 @@ extension Workspace {
             steps.append(card("RESULT · ESTIMATE", "−\(Fmt.usd(s.lossAtStopUSD))" + (s.profitAtTakeUSD.map { " / +\(Fmt.usd($0))" } ?? ""), lines, "info", .check))
         }
         let signatures = nodes.filter { $0.signature != nil }.count
-        let footer = "Execute shows the simulation first, then \(signatures) signature\(signatures == 1 ? "" : "s") — nothing is signed before your Touch ID."
+        let footer = "Execute shows the simulation first, then \(signatures) signature\(signatures == 1 ? "" : "s") — nothing is signed before "
+            + (ledgerActive ? "you approve it on your Ledger." : "your Touch ID.")
         return (steps, footer)
     }
 }

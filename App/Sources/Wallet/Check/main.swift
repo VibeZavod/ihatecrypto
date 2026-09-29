@@ -37,6 +37,7 @@ import WalletCore
 //   return <USDC> [--yes]         HyperCore spot USDC → Solana USDC through 1Click (spotSend to the deposit address)
 //   reconcile                     check every signed-but-unfinished entry of the journal on chain
 //   hl-sig                        testnet signature check with a random key
+//   ledger [sign] [--speculos]    a Ledger's app and address; `sign`: the moves' requests signed on it (see LedgerCheck.swift)
 
 setvbuf(stdout, nil, _IONBF, 0) // show every line even if the process dies
 let args = Array(CommandLine.arguments.dropFirst())
@@ -90,6 +91,7 @@ do {
     case "close-near": try await closeNear(to: args.dropFirst().first { !$0.hasPrefix("--") } ?? "")
     case "sweep-evm": try await sweepEVM(to: args.dropFirst().first { !$0.hasPrefix("--") } ?? "")
     case "sweep-hyperliquid": try await sweepHyperliquid(to: args.dropFirst().first { !$0.hasPrefix("--") } ?? "")
+    case "ledger": try await ledgerCheck(Array(args.dropFirst()))
     case "browser-test-page": try await writeBrowserTestPage(args.dropFirst().first ?? "/tmp/lala-test.html")
     default: print("Unknown command: \(command)"); exit(2)
     }

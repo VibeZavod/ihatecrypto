@@ -266,7 +266,7 @@ struct RouteCards: View {
     private func state(_ i: Int) -> StepState {
         if let outcome { return outcome ? .done : .failed }
         if asItWas { return .plain }
-        if let current { return i < current ? .done : i > current ? .next : SignerActivity.shared.waiting > 0 ? .touch : .now }
+        if let current { return i < current ? .done : i > current ? .next : SignerActivity.shared.atDevice ? .touch : .now }
         // A plan's step says its own: a rule stops it, it wants a look, or a check has passed.
         switch steps[i].status {
         case "blocked": return .blocked
@@ -639,7 +639,7 @@ struct StateChip: View {
         case .ready: ("Ready", Color(hex: 0x7A5B00), Color(hex: 0xFFD23F))
         case .done: ("Done", Color(hex: 0x177A52), Color(hex: 0x7EEBC0))
         case .now: ("Now", fill == .solana ? Color(hex: 0x6A4FD0) : fill.color, Color(hex: 0xB7A6FF))
-        case .touch: ("Touch ID", .white, Color(hex: 0xFFD23F))
+        case .touch: (SignerActivity.shared.ledger != nil ? "Ledger" : "Touch ID", .white, Color(hex: 0xFFD23F))
         case .next: ("Next", Color(hex: 0x6A6A72), Color(hex: 0xD9D9DE))
         case .failed: ("Failed", Color(hex: 0xB42A20), Color(hex: 0xFFB3A8))
         case .blocked: ("Stopped", Color(hex: 0xB42A20), Color(hex: 0xFFB3A8))

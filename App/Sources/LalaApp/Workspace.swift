@@ -80,6 +80,8 @@ final class Workspace {
     var activeWalletID: String? = UserDefaults.standard.string(forKey: "activeWalletID") {
         didSet { UserDefaults.standard.set(activeWalletID, forKey: "activeWalletID") }
     }
+    /// «Connect your Ledger» on the canvas while it runs or until closed (Ledger.swift).
+    var ledgerConnect: LedgerConnect?
     /// The in-app dApp browser; its wallet is the signer's.
     @ObservationIgnored let browser = Browser()
     /// A chart, an explorer or a transaction opened beside the canvas (WebPanel.swift), not in a browser.
@@ -688,6 +690,8 @@ final class Workspace {
             await lockSigner()
             return
         }
+        // «connect ledger», «use my Ledger»: an exact app command, read before the model like a wallet switch.
+        if await ledgerCommand(text) { return }
         // «переключись на кошелёк Main»: the wallet by its name; the signer asks for Touch ID.
         if let target = walletSwitch(text) {
             if let target { await switchWallet(target) } else {
@@ -1320,20 +1324,31 @@ final class Workspace {
     func loadSigner() async {
         guard SignerClient.isAvailable, let status = try? await SignerClient().send(.status) else { return }
         // The switch first, before anything can wait: the old wallet's card, rules and positions go at once.
-        signerHasWallet = status.hasWallet
-        wallets = status.wallets ?? []
-        if status.activeWallet != activeWalletID { walletChanged(to: status.activeWallet) }
+        // A connected Ledger is one more wallet in the list; while it is the active one, its addresses are «ours» and
+        // every move is signed on it (Ledger.swift). The signer's own choice stays as it was underneath.
+        let ledger = LedgerAccount.saved
+        let onLedger = ledger != nil && LedgerAccount.active
+        signerHasWallet = status.hasWallet == true || ledger != nil
+        wallets = (status.wallets ?? []) + (ledger.map { [$0.wallet] } ?? [])
+        let active = onLedger ? LedgerAccount.id : status.activeWallet
+        if active != activeWalletID { walletChanged(to: active) }
         // A phrase wallet imported before NEAR: the signer derives the address once (one unlock), then keeps it.
         // A key wallet has no NEAR account at all. The rest is assigned together after it: every assignment after an
         // await is one more redraw of the window.
         let phrase = activeWallet?.kind ?? "phrase" == "phrase"
-        let near = status.hasWallet == true && status.nearAddress == nil && phrase ? try? await SignerClient().send(.nearAddress).nearAddress : status.nearAddress
+        let near = onLedger ? nil : status.hasWallet == true && status.nearAddress == nil && phrase ? try? await SignerClient().send(.nearAddress).nearAddress : status.nearAddress
         let nearChanged = nearAddress != near
         nearAddress = near
-        agentAddress = status.agentAddress
-        agentActive = status.agentActive ?? false
+        // The trading key is the signer's, for its own wallet: on a Ledger each order is approved on the device.
+        agentAddress = onLedger ? nil : status.agentAddress
+        agentActive = onLedger ? false : status.agentActive ?? false
         sessionLength = status.sessionLength ?? SignerSession.standard
-        if status.hasWallet == true, status.solanaAddress != nil || status.evmAddress != nil {
+        if let ledger, onLedger {
+            let solana = ledger.solana ?? "", evm = ledger.evm ?? ""
+            signerWallet = TradeWallet(solana: solana, evm: evm)
+            if solanaAddress != solana { solanaAddress = solana }
+            if hlAddress.lowercased() != evm.lowercased() { hlAddress = evm }
+        } else if status.hasWallet == true, status.solanaAddress != nil || status.evmAddress != nil {
             // A key wallet leaves the other chain's address empty: its balances show nothing, its commands say why.
             let solana = status.solanaAddress ?? "", evm = status.evmAddress ?? ""
             signerWallet = TradeWallet(solana: solana, evm: evm)

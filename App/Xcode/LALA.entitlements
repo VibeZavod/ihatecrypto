@@ -5,5 +5,8 @@
 	<!-- Hardened runtime: the chat's microphone (speech to text in the field). -->
 	<key>com.apple.security.device.audio-input</key>
 	<true/>
+	<!-- A Ledger over USB (Ledger.swift): the app reads its addresses and asks it to sign. -->
+	<key>com.apple.security.device.usb</key>
+	<true/>
 </dict>
 </plist>

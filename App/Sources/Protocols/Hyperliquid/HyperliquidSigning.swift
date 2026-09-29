@@ -163,8 +163,13 @@ public enum HLSigner {
     public static func signL1(
         _ action: MsgPack, privateKey: Data, vault: String? = nil, nonce: UInt64, expiresAfter: UInt64? = nil, mainnet: Bool
     ) throws -> EVMSignature {
+        try EVMSigner.sign(digest: try l1Parts(action, vault: vault, nonce: nonce, expiresAfter: expiresAfter, mainnet: mainnet).digest, privateKey: privateKey)
+    }
+
+    /// The typed data an L1 action is signed as, in the two hashes a Ledger signs.
+    public static func l1Parts(_ action: MsgPack, vault: String? = nil, nonce: UInt64, expiresAfter: UInt64? = nil, mainnet: Bool) throws -> EIP712.Parts {
         let hash = try actionHash(action, vault: vault, nonce: nonce, expiresAfter: expiresAfter)
-        let digest = try EIP712.digest(
+        return try EIP712.parts(
             domain: [
                 .init("name", "string", .string("Exchange")),
                 .init("version", "string", .string("1")),
@@ -177,7 +182,6 @@ public enum HLSigner {
                 .init("connectionId", "bytes32", .bytes32(hash)),
             ]
         )
-        return try EVMSigner.sign(digest: digest, privateKey: privateKey)
     }
 
     /// Transfers, withdrawals, approving an agent: signed by the main wallet with the action fields themselves.
@@ -185,7 +189,11 @@ public enum HLSigner {
     public static func signUserAction(
         _ type: String, fields: [EIP712.Field], privateKey: Data, mainnet: Bool
     ) throws -> EVMSignature {
-        let digest = try EIP712.digest(
+        try EVMSigner.sign(digest: try userParts(type, fields: fields, mainnet: mainnet).digest, privateKey: privateKey)
+    }
+
+    public static func userParts(_ type: String, fields: [EIP712.Field], mainnet: Bool) throws -> EIP712.Parts {
+        try EIP712.parts(
             domain: [
                 .init("name", "string", .string("HyperliquidSignTransaction")),
                 .init("version", "string", .string("1")),
@@ -195,7 +203,35 @@ public enum HLSigner {
             type: "HyperliquidTransaction:\(type)",
             message: [.init("hyperliquidChain", "string", .string(mainnet ? "Mainnet" : "Testnet"))] + fields
         )
-        return try EVMSigner.sign(digest: digest, privateKey: privateKey)
+    }
+
+    /// Hyperliquid user-signed actions a signer knows, with their EIP-712 fields after hyperliquidChain.
+    static let userSchemas: [String: (type: String, fields: [(String, String)])] = [
+        "usdClassTransfer": ("UsdClassTransfer", [("amount", "string"), ("toPerp", "bool"), ("nonce", "uint64")]),
+        "spotSend": ("SpotSend", [("destination", "string"), ("token", "string"), ("amount", "string"), ("time", "uint64")]),
+        "sendAsset": ("SendAsset", [("destination", "string"), ("sourceDex", "string"), ("destinationDex", "string"),
+                                    ("token", "string"), ("amount", "string"), ("fromSubAccount", "string"), ("nonce", "uint64")]),
+        "withdraw3": ("Withdraw", [("destination", "string"), ("amount", "string"), ("time", "uint64")]),
+        "usdSend": ("UsdSend", [("destination", "string"), ("amount", "string"), ("time", "uint64")]),
+    ]
+
+    /// The EIP-712 type and fields of a user-signed action, read from the action itself: what is signed is what the
+    /// guard checked.
+    public static func userAction(_ action: MsgPack) throws -> (String, [EIP712.Field]) {
+        guard case .map(let pairs) = action else { throw WalletError("Unrecognized action.") }
+        let values = Dictionary(pairs, uniquingKeysWith: { a, _ in a })
+        guard case .string(let kind)? = values["type"], let schema = userSchemas[kind] else {
+            throw WalletError("Signing this Hyperliquid action isn't supported.")
+        }
+        let fields: [EIP712.Field] = try schema.fields.map { name, type in
+            switch (type, values[name]) {
+            case ("string", .string(let s)?): return EIP712.Field(name, type, .string(s))
+            case ("bool", .bool(let b)?): return EIP712.Field(name, type, .bool(b))
+            case ("uint64", .uint(let n)?): return EIP712.Field(name, type, .uint(n))
+            default: throw WalletError("The action has no \(name) field of type \(type).")
+            }
+        }
+        return (schema.type, fields)
     }
 
     /// Moves USDC between the HyperCore spot and perp balances. Returns the action to send with the signature.
@@ -233,8 +269,12 @@ public enum HLSigner {
 
     /// Relay's binding of a Hyperliquid deposit to an order: EIP-712 «RelayNonceMapping», signed by the depositor.
     public static func relayNonceMappingDigest(wallet: String, depositor: String, id: Data, nonce: UInt64) throws -> Data {
+        try relayNonceMappingParts(wallet: wallet, depositor: depositor, id: id, nonce: nonce).digest
+    }
+
+    public static func relayNonceMappingParts(wallet: String, depositor: String, id: Data, nonce: UInt64) throws -> EIP712.Parts {
         guard id.count == 32 else { throw WalletError("Invalid Relay mapping id.") }
-        return try EIP712.digest(
+        return try EIP712.parts(
             domain: [.init("name", "string", .string("RelayNonceMapping")), .init("version", "string", .string("2")),
                      .init("chainId", "uint256", .uint(1)), .init("verifyingContract", "address", .address("0x0000000000000000000000000000000000000000"))],
             type: "NonceMapping",

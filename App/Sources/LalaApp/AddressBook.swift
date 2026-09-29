@@ -668,7 +668,10 @@ extension Workspace {
     /// Another of the user's own wallets, by its name («send 4 USDC to Test»): its Solana address. The signer asks for
     /// Touch ID the first time money goes there, like for any new address.
     func ownWallet(_ name: String) -> SavedAddress? {
-        wallets.first { $0.id != activeWalletID && $0.label.lowercased() == name.lowercased() }.flatMap { w in
+        // «my Ledger», «на леджер»: the Ledger by what it is, whatever the user named it.
+        let key = name.lowercased().replacing(/^(?:my|мой|моему|мою)\s+/, with: "")
+        let ledger = key.contains(/^(?:ledger|л[еэ]дж[еэ]р\w*)$/)
+        return wallets.first { $0.id != activeWalletID && ($0.label.lowercased() == key || ledger && $0.kind == "ledger") }.flatMap { w in
             w.solana.map { SavedAddress(name: w.label, address: $0, network: .solana, category: "Your wallet", icon: .logo("sol")) }
         }
     }

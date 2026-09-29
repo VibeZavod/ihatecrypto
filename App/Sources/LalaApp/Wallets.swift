@@ -57,8 +57,13 @@ extension Workspace {
             return
         }
         do {
-            let reply = try await SignerClient().send(.setActiveWallet(id: wallet.id))
-            guard reply.ok else { throw WalletError(reply.error ?? "The signer refused.") }
+            // To the Ledger: no Touch ID, the device asks for its buttons on each move. Back from it: the signer is
+            // asked only when another of its wallets is wanted than the one it had.
+            if wallet.kind != "ledger", try await SignerClient().send(.status).activeWallet != wallet.id {
+                let reply = try await SignerClient().send(.setActiveWallet(id: wallet.id))
+                guard reply.ok else { throw WalletError(reply.error ?? "The signer refused.") }
+            }
+            LedgerAccount.active = wallet.kind == "ledger"
             await loadSigner()
             self.reply("Now signing with «\(wallet.label)»: \(Self.describe(wallet)).", note: note)
             await refresh()
@@ -70,7 +75,7 @@ extension Workspace {
     /// «Main · phrase: Solana AN5b…e8cL, EVM 0x1523…F656» — what a wallet can sign for.
     static func describe(_ w: SignerWallet) -> String {
         func short(_ s: String) -> String { "\(s.prefix(4))…\(s.suffix(4))" }
-        let kind = w.kind == "phrase" ? "recovery phrase" : w.kind == "solana" ? "Solana key only" : "EVM key only"
+        let kind = w.kind == "phrase" ? "recovery phrase" : w.kind == "ledger" ? "Ledger, confirm on the device" : w.kind == "solana" ? "Solana key only" : "EVM key only"
         let parts = [w.solana.map { "Solana \(short($0))" }, w.evm.map { "EVM \(short($0))" }, w.near.map { "NEAR \(short($0))" }].compactMap { $0 }
         return "\(kind) · " + parts.joined(separator: ", ")
     }
@@ -148,6 +153,12 @@ private struct WalletMenu: View {
             ForEach(ws.wallets) { w in row(w) }
             if let error { Text(error).font(.ui(10)).foregroundStyle(.red).padding(.horizontal, 10).fixedSize(horizontal: false, vertical: true) }
             Divider().padding(.vertical, 6)
+            if LedgerAccount.saved == nil {
+                MenuRow(title: "Connect Ledger…", detail: "keys stay on the device · you approve each move on it", icon: "cable.connector") {
+                    close()
+                    Task { await ws.connectLedger() }
+                }
+            }
             if !ws.wallets.contains(where: \.isTest) {
                 MenuRow(title: "New test wallet…", detail: "signs without Touch ID · for a few dollars", icon: "flask") {
                     UserDefaults.standard.set(true, forKey: "newWalletTest")
@@ -165,15 +176,20 @@ private struct WalletMenu: View {
     private func row(_ w: SignerWallet) -> some View {
         let active = w.id == ws.activeWalletID
         return HStack(spacing: 10) {
-            Image(systemName: w.isTest ? "flask.fill" : "lock.fill").font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(w.isTest ? Color.orange : Color.secondary).frame(width: 18)
+            Group {
+                if w.kind == "ledger" { LedgerGlyph(size: 16) } else {
+                    Image(systemName: w.isTest ? "flask.fill" : "lock.fill").font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(w.isTest ? Color.orange : Color.secondary)
+                }
+            }
+            .frame(width: 18)
             VStack(alignment: .leading, spacing: 1) {
                 if renaming == w.id {
                     TextField("Name", text: $name).textFieldStyle(.roundedBorder).font(.ui(12)).onSubmit { rename(w) }
                 } else {
                     Text(w.label).font(.ui(13, .semibold))
                 }
-                Text((w.isTest ? "Test · no Touch ID · " : "Touch ID · ") + short(w)).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
+                Text((w.kind == "ledger" ? "On the device · " : w.isTest ? "Test · no Touch ID · " : "Touch ID · ") + short(w)).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
             if active { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Brand.accentInk) }

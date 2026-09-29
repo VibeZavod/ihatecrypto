@@ -104,6 +104,9 @@ final class Browser {
 
     /// Every call from a page. `origin` comes from WebKit, not from the page, so a page cannot claim another's.
     func handle(_ method: String, _ params: [String: Any], origin: String, host: String) async throws -> Any {
+        if workspace?.ledgerActive == true {
+            throw SiteError((method == "eth" ? "4100|" : "") + "The browser signs with ihatecrypto's own wallets for now: switch from the Ledger to use a site.")
+        }
         guard let owner = workspace?.signerWallet?.solana else {
             throw SiteError("The ihatecrypto wallet isn't in secure storage: save the key via “Addresses from phrase…”.")
         }

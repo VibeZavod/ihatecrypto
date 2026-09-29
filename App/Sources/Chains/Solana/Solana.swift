@@ -129,6 +129,16 @@ public enum SolanaTransaction {
     /// Signs a transaction someone else built (Jupiter). Refuses unless our key is the fee payer, account 0.
     public static func sign(_ wire: Data, privateKey: Data) throws -> (signature: String, wire: Data) {
         let signer = try Curve25519.Signing.PrivateKey(rawRepresentation: privateKey)
+        let (message, slot) = try unsigned(wire, payer: signer.publicKey.rawRepresentation)
+        let signature = try signer.signature(for: message)
+        var signed = wire
+        signed.replaceSubrange(slot, with: signature)
+        return (Base58.encode(signature), signed)
+    }
+
+    /// The message our key signs and where in `wire` its 64-byte signature goes. Refuses unless `payer` (a 32-byte
+    /// public key) is the fee payer, account 0, and the only signer.
+    public static func unsigned(_ wire: Data, payer: Data) throws -> (message: Data, slot: Range<Data.Index>) {
         var offset = 0
         let signatureCount = try readCompact(wire, &offset)
         let signaturesStart = offset
@@ -143,12 +153,8 @@ public enum SolanaTransaction {
         var keyOffset = m - message.startIndex
         _ = try readCompact(message, &keyOffset)
         let feePayer = message.subdata(in: (message.startIndex + keyOffset)..<(message.startIndex + keyOffset + 32))
-        guard feePayer == signer.publicKey.rawRepresentation else { throw WalletError("The fee payer isn't our wallet") }
-
-        let signature = try signer.signature(for: message)
-        var signed = wire
-        signed.replaceSubrange((wire.startIndex + signaturesStart)..<(wire.startIndex + signaturesStart + 64), with: signature)
-        return (Base58.encode(signature), signed)
+        guard feePayer == payer else { throw WalletError("The fee payer isn't our wallet") }
+        return (message, (wire.startIndex + signaturesStart)..<(wire.startIndex + signaturesStart + 64))
     }
 
     static func compact(_ n: Int) -> Data {
