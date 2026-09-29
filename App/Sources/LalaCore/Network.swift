@@ -122,6 +122,25 @@ public enum Solana {
     public struct Balance: Sendable {
         public let sol: Decimal
         public let usdc: Decimal
+        /// Every other token in the wallet, the most valuable first; scam airdrops included (see Holding.looksReal).
+        public var tokens: [Holding] = []
+    }
+
+    /// A token other than USDC in the wallet, with Jupiter's symbol, icon and price when it knows them.
+    public struct Holding: Sendable, Identifiable, Equatable {
+        public var id: String { mint }
+        public let mint: String
+        public let amount: Decimal
+        public var symbol: String
+        public var icon: URL?
+        public var price: Decimal?
+        public var verified = false
+        public var liquidity: Decimal?
+
+        public var usd: Decimal? { price.map { $0 * amount } }
+        /// Airdropped look-alikes are unverified with no real pool behind them: they stay out of sight until the user
+        /// asks. A token the user bought has a pool (or Jupiter's check) and shows.
+        public var looksReal: Bool { verified || ((liquidity ?? 0) >= 10_000 && (usd ?? 0) >= 0.01) }
     }
 
     public static func balance(owner: String) async throws -> Balance {
@@ -129,7 +148,7 @@ public enum Solana {
         struct Lamports: Decodable { struct R: Decodable { let value: UInt64 }; let result: R?; let error: RPCError? }
         struct Tokens: Decodable {
             struct Amount: Decodable { let amount: String; let decimals: Int }
-            struct Info: Decodable { let tokenAmount: Amount }
+            struct Info: Decodable { let mint: String; let tokenAmount: Amount }
             struct Parsed: Decodable { let info: Info }
             struct DataField: Decodable { let parsed: Parsed }
             struct Account: Decodable { let data: DataField }
@@ -139,21 +158,52 @@ public enum Solana {
             let error: RPCError?
         }
         async let lamportsData = HTTP.post(rpc, json: ["jsonrpc": "2.0", "id": 1, "method": "getBalance", "params": [owner]])
-        async let tokensData = HTTP.post(rpc, json: [
-            "jsonrpc": "2.0", "id": 2, "method": "getTokenAccountsByOwner",
-            "params": [owner, ["mint": usdcMint], ["encoding": "jsonParsed"]],
-        ])
+        // Both token programs: meme coins (POKEMON…) are Token-2022 and don't show under the classic one.
+        func accounts(_ program: String) -> [String: Any] {
+            ["jsonrpc": "2.0", "id": 2, "method": "getTokenAccountsByOwner", "params": [owner, ["programId": program], ["encoding": "jsonParsed"]]]
+        }
+        async let classicData = HTTP.post(rpc, json: accounts("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"))
+        async let token2022Data = HTTP.post(rpc, json: accounts("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"))
         let lamports = try JSONDecoder().decode(Lamports.self, from: try await lamportsData)
-        let tokens = try JSONDecoder().decode(Tokens.self, from: try await tokensData)
-        guard let l = lamports.result, let t = tokens.result else {
-            throw NetError(message: "Solana RPC: \(lamports.error?.message ?? tokens.error?.message ?? "empty response")")
+        let classic = try JSONDecoder().decode(Tokens.self, from: try await classicData)
+        let token2022 = try JSONDecoder().decode(Tokens.self, from: try await token2022Data)
+        guard let l = lamports.result, let c = classic.result, let t = token2022.result else {
+            throw NetError(message: "Solana RPC: \(lamports.error?.message ?? classic.error?.message ?? token2022.error?.message ?? "empty response")")
         }
         var usdc = Decimal()
-        for item in t.value {
-            let a = item.account.data.parsed.info.tokenAmount
-            usdc += try dec(a.amount) / pow(10, a.decimals)
+        var others: [String: Decimal] = [:]
+        for item in c.value + t.value {
+            let info = item.account.data.parsed.info
+            let amount = try dec(info.tokenAmount.amount) / pow(10, info.tokenAmount.decimals)
+            if info.mint == usdcMint { usdc += amount } else if amount > 0 { others[info.mint, default: 0] += amount }
         }
-        return Balance(sol: Decimal(l.value) / 1_000_000_000, usdc: usdc)
+        return Balance(sol: Decimal(l.value) / 1_000_000_000, usdc: usdc, tokens: await holdings(others))
+    }
+
+    /// Names, icons and prices from Jupiter, in one request. Jupiter Lend's share tokens are left out: the Jupiter Lend
+    /// row counts them. Without Jupiter the tokens still show, by mint and unpriced.
+    // ponytail: one search takes up to 100 mints; a wallet flooded with more airdrops shows the rest unpriced.
+    static func holdings(_ amounts: [String: Decimal]) async -> [Holding] {
+        guard !amounts.isEmpty else { return [] }
+        let mints = amounts.keys.sorted()
+        let data = try? await HTTP.get("https://lite-api.jup.ag/tokens/v2/search?query=" + mints.prefix(100).joined(separator: ","))
+        return holdings(amounts, jupiter: data)
+    }
+
+    static func holdings(_ amounts: [String: Decimal], jupiter data: Data?) -> [Holding] {
+        let found = (data.flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [[String: Any]]) ?? []
+        let byMint = Dictionary(found.compactMap { t in (t["id"] as? String).map { ($0, t) } }) { a, _ in a }
+        // Through the number's text: a JSON double's decimalValue turns 1.88 into 1.8799999….
+        func number(_ v: Any?) -> Decimal? { ((v as? NSNumber)?.stringValue ?? v as? String).flatMap { Decimal(string: $0) } }
+        return amounts.compactMap { mint, amount -> Holding? in
+            let t = byMint[mint] ?? [:]
+            let tags = t["tags"] as? [String] ?? []
+            if tags.contains("jup-lend-earn") { return nil }
+            return Holding(mint: mint, amount: amount, symbol: t["symbol"] as? String ?? String(mint.prefix(4)) + "…",
+                           icon: (t["icon"] as? String).flatMap(URL.init(string:)), price: number(t["usdPrice"]),
+                           verified: t["isVerified"] as? Bool == true || tags.contains("verified"), liquidity: number(t["liquidity"]))
+        }
+        .sorted { ($0.usd ?? 0, $0.symbol) > ($1.usd ?? 0, $1.symbol) }
     }
 }
 

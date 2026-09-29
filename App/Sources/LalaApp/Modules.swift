@@ -518,7 +518,7 @@ struct PortfolioRing: View {
 
     var body: some View {
         let slices = PortfolioSplit.slices([
-            ("Solana", (ws.solana?.usdc ?? 0) + (ws.solana.flatMap { s in ws.markets["SOL"].map { s.sol * $0.markPx } } ?? 0)),
+            ("Solana", (ws.solana?.usdc ?? 0) + ws.shownTokensUSD + (ws.solana.flatMap { s in ws.markets["SOL"].map { s.sol * $0.markPx } } ?? 0)),
             ("Hyperliquid", ws.hlTotal ?? 0),
             ("Jupiter Lend", ws.lendTotal),
             ("Kamino", ws.kamino),

@@ -1399,6 +1399,60 @@ struct StudioCursor: View {
 
 // MARK: Portfolio frame
 
+/// The Solana tokens besides USDC, the most valuable first. The ones the user hid, and airdrops that look like scams,
+/// are tucked under «N hidden» instead of shown.
+struct SolanaTokens: View {
+    @Environment(Workspace.self) private var ws
+    @State private var showTucked = false
+
+    var body: some View {
+        let shown = ws.shownTokens, tucked = ws.tuckedTokens
+        if !shown.isEmpty || !tucked.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(shown) { HoldingRow(token: $0, shown: true) }
+                if !tucked.isEmpty {
+                    Button(showTucked ? "Collapse" : "\(tucked.count) hidden · show") { withAnimation(.snappy) { showTucked.toggle() } }
+                        .buttonStyle(.plain).font(.ui(10, .semibold)).foregroundStyle(.secondary)
+                        .help("Tokens you hid, and airdrops that look like scams: unverified, with no real pool")
+                    if showTucked { ForEach(tucked) { HoldingRow(token: $0, shown: false) } }
+                }
+            }
+        }
+    }
+}
+
+/// One token: its icon, symbol, value and amount. The eye hides it (on hover) or shows a tucked one.
+struct HoldingRow: View {
+    @Environment(Workspace.self) private var ws
+    let token: Solana.Holding
+    let shown: Bool
+    @State private var hover = false
+
+    var body: some View {
+        HStack(spacing: 8) {
+            AsyncImage(url: token.icon) { $0.resizable().scaledToFill() } placeholder: {
+                Circle().fill(Brand.solanaInk.opacity(0.15))
+                    .overlay(Text(token.symbol.prefix(1)).font(.ui(9, .bold)).foregroundStyle(Brand.solanaInk))
+            }
+            .frame(width: 20, height: 20).clipShape(Circle())
+            Text(token.symbol).font(.ui(12, .semibold)).lineLimit(1)
+            if !token.verified { Text("unverified").font(.ui(9)).foregroundStyle(.secondary) }
+            Spacer(minLength: 4)
+            if hover || !shown {
+                Button { withAnimation(.snappy) { ws.tokenChoices[token.mint] = !shown } } label: { Image(systemName: shown ? "eye.slash" : "eye") }
+                    .buttonStyle(.hoverIcon).help(shown ? "Hide \(token.symbol): it leaves the portfolio and its total" : "Show \(token.symbol) in the portfolio")
+            }
+            VStack(alignment: .trailing, spacing: 0) {
+                Text(token.usd.map(Fmt.usd) ?? "no price").font(.ui(12, .bold)).monospacedDigit()
+                Text(Fmt.num(token.amount, maxFraction: 4)).font(.ui(9)).foregroundStyle(.secondary).monospacedDigit()
+            }
+        }
+        .opacity(shown ? 1 : 0.6)
+        .contentShape(Rectangle())
+        .onHover { hover = $0 }
+    }
+}
+
 struct StudioPortfolio: View {
     @Environment(Workspace.self) private var ws
     let onFrame: (String, CGRect) -> Void
@@ -1453,17 +1507,20 @@ struct StudioPortfolio: View {
                 EquitySparkline(points: ws.equitySeries(), height: 30)
             }
             PortfolioRing()
-            HStack(spacing: 10) {
-                TokenLogo(name: "sol", size: 34)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("Solana").font(.ui(14, .semibold))
-                    Text(ws.solana.map { "\(Fmt.num($0.sol, maxFraction: 4)) SOL" } ?? "no address").font(.ui(10)).foregroundStyle(Brand.solanaInk)
+            VStack(alignment: .leading, spacing: 8) {
+                HStack(spacing: 10) {
+                    TokenLogo(name: "sol", size: 34)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Solana").font(.ui(14, .semibold))
+                        Text(ws.solana.map { "\(Fmt.num($0.sol, maxFraction: 4)) SOL" } ?? "no address").font(.ui(10)).foregroundStyle(Brand.solanaInk)
+                    }
+                    Spacer()
+                    HStack(spacing: 4) {
+                        TokenLogo(name: "usdc", size: 15)
+                        Text(ws.solana.map { Fmt.num($0.usdc) } ?? "—").font(.ui(13, .bold)).monospacedDigit()
+                    }
                 }
-                Spacer()
-                HStack(spacing: 4) {
-                    TokenLogo(name: "usdc", size: 15)
-                    Text(ws.solana.map { Fmt.num($0.usdc) } ?? "—").font(.ui(13, .bold)).monospacedDigit()
-                }
+                SolanaTokens()
             }
             .padding(11)
             .background(RoundedRectangle(cornerRadius: 16).fill(Brand.solanaTint))

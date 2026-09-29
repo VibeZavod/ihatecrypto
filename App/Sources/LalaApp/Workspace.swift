@@ -35,6 +35,16 @@ final class Workspace {
     var marketsError: String?
     var solana: Solana.Balance?
     var solanaError: String?
+    /// The user's say on a token, by mint: true shows it, false hides it; no entry follows Holding.looksReal.
+    /// Not per wallet: a scam token hidden once stays hidden on every wallet.
+    var tokenChoices: [String: Bool] = UserDefaults.standard.dictionary(forKey: "tokenChoices") as? [String: Bool] ?? [:] {
+        didSet { UserDefaults.standard.set(tokenChoices, forKey: "tokenChoices") }
+    }
+    func tokenShown(_ t: Solana.Holding) -> Bool { tokenChoices[t.mint] ?? t.looksReal }
+    /// The Solana tokens on show, and the ones tucked away (hidden by the user or looking like scam airdrops).
+    var shownTokens: [Solana.Holding] { (solana?.tokens ?? []).filter(tokenShown) }
+    var tuckedTokens: [Solana.Holding] { (solana?.tokens ?? []).filter { !tokenShown($0) } }
+    var shownTokensUSD: Decimal { shownTokens.reduce(0) { $0 + ($1.usd ?? 0) } }
     var hl: Hyperliquid.Balance?
     var hlError: String?
     var quote: BridgeQuote?
@@ -396,10 +406,10 @@ final class Workspace {
         m?.atrPct = atr[intent.asset]
         return m
     }
-    /// Capital the risk rules measure against: USDC on Solana, the Hyperliquid account and vaults.
+    /// Capital the risk rules measure against: USDC on Solana and the tokens on show there, the Hyperliquid account and vaults.
     var equity: Decimal? {
         guard solana != nil || hl != nil else { return nil }
-        return (solana?.usdc ?? 0) + (hl?.accountValue ?? 0) + lend.reduce(0) { $0 + $1.usdc } + dexBalances.values.reduce(0) { $0 + $1.accountValue }
+        return (solana?.usdc ?? 0) + shownTokensUSD + (hl?.accountValue ?? 0) + lend.reduce(0) { $0 + $1.usdc } + dexBalances.values.reduce(0) { $0 + $1.accountValue }
             + (base.map { $0.usdc + $0.aave + $0.morpho } ?? 0) + (arbitrumUSDC ?? 0) + robinhoodTotal + kamino + hlp.equity + nearUSD
     }
     /// The plan with what the user left to the rules filled in.

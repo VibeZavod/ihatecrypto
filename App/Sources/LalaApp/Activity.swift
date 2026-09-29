@@ -183,6 +183,9 @@ extension Workspace {
     func answerFacts(_ stories: [TradeHistory.Story]) -> [String] {
         var facts: [String] = []
         if let s = solana { facts.append("Solana: \(Fmt.num(s.usdc)) USDC, \(Fmt.num(s.sol, maxFraction: 4)) SOL.") }
+        if !shownTokens.isEmpty {
+            facts.append("Other tokens on Solana: " + shownTokens.map { "\(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol)\($0.usd.map { " ≈ \(Fmt.usd($0))" } ?? "")" }.joined(separator: ", ") + ".")
+        }
         if let e = equity { facts.append("Portfolio total: \(Fmt.usd(e)).") }
         let week = equitySeries()
         if week.count > 2, let first = week.first, let last = week.last {
