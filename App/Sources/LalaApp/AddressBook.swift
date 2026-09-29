@@ -163,6 +163,7 @@ extension AddressCheck.Network {
         case .base: "base"
         case .robinhood: "robinhood"
         case .near: "near"
+        case .tempo: "tempo"
         }
     }
 }
@@ -607,7 +608,7 @@ extension Workspace {
             } else if !address.hasPrefix("0x") {
                 network = .solana
             } else {
-                reply("Which network is this 0x address on — Ethereum, Arbitrum, Base or Hyperliquid? For example “save … as \(name) on Arbitrum”.", note: note)
+                reply("Which network is this 0x address on — Ethereum, Arbitrum, Base, Tempo or Hyperliquid? For example “save … as \(name) on Arbitrum”.", note: note)
                 return
             }
             if let problem = AddressCheck.problem(address, network: network) { reply(problem, note: note); return }
@@ -688,7 +689,7 @@ extension Workspace {
             return
         }
         guard entry.network != .ethereum else {
-            reply("“\(entry.name)” is on Ethereum mainnet, where one transfer costs dollars in gas; ihatecrypto sends USDC on Solana, Base, Arbitrum and Hyperliquid.", note: note)
+            reply("“\(entry.name)” is on Ethereum mainnet, where one transfer costs dollars in gas; ihatecrypto sends USDC on Solana, Base, Arbitrum, Tempo and Hyperliquid.", note: note)
             return
         }
         if !entry.memo.isEmpty, entry.network == .solana {
@@ -719,6 +720,7 @@ extension Workspace {
             case .arbitrum: .arbitrum(entry.address)
             case .hyperliquid: .hyperliquid(entry.address)
             case .robinhood: .robinhood(entry.address)
+            case .tempo: .tempo(entry.address)
             default: .base(entry.address)
             }
             let text = try await executor(wallet).sendUSDC(amount, to: destination, label: entry.name)
@@ -741,7 +743,7 @@ struct TransferBoard: View {
     var body: some View {
         if case .transfer(let entry, let amount)? = ws.pendingAction {
             let solana = entry.network == .solana, hyper = entry.network == .hyperliquid
-            let from = solana ? ws.solana?.usdc : hyper ? ws.hl?.withdrawable : entry.network == .arbitrum ? ws.arbitrumUSDC : ws.base?.usdc
+            let from = solana ? ws.solana?.usdc : hyper ? ws.hl?.withdrawable : entry.network == .arbitrum ? ws.arbitrumUSDC : entry.network == .tempo ? ws.tempoUSDC : ws.base?.usdc
             let ends = AddressCheck.ends(entry.address)
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {

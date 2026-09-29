@@ -36,15 +36,17 @@ public enum BlockCatalog {
 
         Block(group: "Triggers", label: "WHEN · PRICE FALLS TO", title: "Price alert", form: "when ASSET is above|below PRICE: a trade or a move",
               example: "alert me when SOL is below 115", fill: "check", logo: "sol"),
-        Block(group: "Triggers", label: "LATER · SCHEDULE", title: "Later or on repeat", form: "in N days: … · at HH:MM: … · every week: …",
+        Block(group: "Triggers", label: "LATER · SCHEDULE", title: "Later or on repeat", form: "in N days: … · at HH:MM: … · every week: … · every month on the 1st: …",
               example: "in 1 week: rebalance USDC", fill: "check", logo: nil),
 
-        Block(group: "Move money", label: "BRIDGE · RELAY", title: "Between networks", form: "move N USDC from Solana to Base|Arbitrum|Polygon|Ethereum|Robinhood, and back",
+        Block(group: "Move money", label: "BRIDGE · RELAY", title: "Between networks", form: "move N USDC from Solana to Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo, and back",
               example: "move 5 USDC from Solana to Base", fill: "relay", logo: "relay"),
         Block(group: "Move money", label: "FROM · HYPERLIQUID", title: "Back to Solana", form: "withdraw N USDC to Solana",
               example: "withdraw 1 USDC to Solana", fill: "hyperliquid", logo: "hype"),
         Block(group: "Move money", label: "TO · ADDRESS BOOK", title: "Send", form: "send N USDC|SOL|NEAR to NAME from the address book",
               example: "send 1 USDC to Bybit", fill: "solana", logo: "usdc"),
+        Block(group: "Move money", label: "PAY · MPP", title: "Pay for a service", form: "pay GET|POST URL [JSON] · the service names the price, paid in USDC on Tempo",
+              example: #"pay POST https://coingecko.mpp.paywithlocus.com/coingecko/simple-price {"ids":"bitcoin","vs_currencies":"usd"}"#, fill: "tempo", logo: "tempo"),
 
         Block(group: "Buy and sell", label: "SWAP · JUPITER", title: "Tokens on Solana", form: "buy|sell SOL, BTC, ETH, JUP, BONK… for N USDC",
               example: "buy SOL for 2 USDC", fill: "jupiter", logo: "jup"),

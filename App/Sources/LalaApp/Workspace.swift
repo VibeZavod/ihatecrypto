@@ -146,6 +146,8 @@ final class Workspace {
     enum PendingAction { case wallet(WalletCommand), position(PositionCommand, coin: String), address(SavedAddress), transfer(SavedAddress, Decimal) }
     /// The English command the pending action was understood as, for the confirm button.
     var pendingText: String?
+    /// A paid API's price as its 402 named it, for the «pay …» card waiting for Confirm (Payments.swift).
+    var payment: (command: WalletCommand, challenge: MPP.Challenge)?
     /// A move left waiting on a canvas the user switched away from: it waits there, for a quarter of an hour.
     var parkedPending: [UUID: (action: PendingAction, text: String?, at: Date)] = [:]
     /// A deposit or buy that came without an amount: the next reply that is just a number fills it.
@@ -311,6 +313,8 @@ final class Workspace {
     var base: (usdc: Decimal, aave: Decimal, morpho: Decimal, eth: Decimal)?
     /// USDC on Arbitrum at our EVM address (money in transit or left from a transfer).
     var arbitrumUSDC: Decimal?
+    /// USDC on Tempo, read with the other networks' tokens: what pays for services (MPP) and Tempo transfers.
+    var tempoUSDC: Decimal? { otherTokens.first { $0.chain == "tempo" && $0.contract == EVMRPC.tempoUSDC }?.amount ?? (otherTokens.isEmpty ? nil : 0) }
     /// Robinhood Chain at our EVM address: USDG, ETH for gas, the Stock Tokens bought through LALA (StocksUI.swift).
     /// A tuple isn't Equatable, so @Observable would redraw on every refresh's assignment: the setter skips an unchanged one.
     var robinhood: (usdg: Decimal, eth: Decimal, stocks: [StockHolding])? {
@@ -1096,11 +1100,12 @@ final class Workspace {
         async let ethereum = evm ? await Holdings.evm("ethereum", address: me, native: true, skip: [AaveV3.ethereum.aUSDC, MorphoVault.ethereum.address]) : []
         async let polygon = evm ? await Holdings.evm("polygon", address: me, native: true, skip: [AaveV3.polygon.aUSDC]) : []
         async let robinhood = evm ? await Holdings.evm("robinhood", address: me, native: false, skip: [EVMRPC.robinhoodUSDG]) : []
+        async let tempo = evm ? await Holdings.evm("tempo", address: me, native: false, skip: []) : []
         async let spot = evm ? await Holdings.hyperliquidSpot(user: me) : []
         async let near = nearAccount != nil ? await Holdings.near(account: nearAccount ?? "") : []
         // A network that didn't answer keeps its tokens from the last read instead of dropping out of the total.
         let read: [(chain: String, tokens: [Holding]?)] = [("base", await base), ("arbitrum", await arbitrum), ("ethereum", await ethereum),
-                                                           ("polygon", await polygon), ("robinhood", await robinhood), ("hyperliquid", await spot),
+                                                           ("polygon", await polygon), ("robinhood", await robinhood), ("tempo", await tempo), ("hyperliquid", await spot),
                                                            ("near", await near)]
         _ = await lending
         let found = read.flatMap { r in r.tokens ?? otherTokens.filter { $0.chain == r.chain } }

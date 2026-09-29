@@ -1405,7 +1405,7 @@ struct HoldingRow: View {
     let shown: Bool
     @State private var hover = false
     /// The network's badge on the icon, outside Solana's own card.
-    static let chainLogos = ["base": "base", "arbitrum": "arb", "ethereum": "eth", "polygon": "pol", "robinhood": "robinhood", "hyperliquid": "hype", "near": "near"]
+    static let chainLogos = ["base": "base", "arbitrum": "arb", "ethereum": "eth", "polygon": "pol", "robinhood": "robinhood", "hyperliquid": "hype", "near": "near", "tempo": "tempo"]
 
     var body: some View {
         HStack(spacing: 8) {

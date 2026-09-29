@@ -4,7 +4,7 @@ import Foundation
 /// also from the chat). A protocol works only while it, its kind and every network it needs are on. Off means the
 /// assistant never plans a move through it; money already there still shows.
 public enum ModuleNetwork: String, CaseIterable, Sendable {
-    case solana, hyperliquid, base, near, arbitrum, robinhood, polygon, ethereum
+    case solana, hyperliquid, base, near, arbitrum, robinhood, polygon, ethereum, tempo
 
     public var name: String {
         switch self {
@@ -16,10 +16,11 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .robinhood: "Robinhood Chain"
         case .polygon: "Polygon"
         case .ethereum: "Ethereum"
+        case .tempo: "Tempo"
         }
     }
 
-    /// A place as commands and the address book name it: «base», «arbitrum», «robinhood», «solana», «hyperliquid», «near».
+    /// A place as commands and the address book name it: «base», «arbitrum», «robinhood», «solana», «hyperliquid», «near», «tempo».
     public init?(place: String) {
         let p = place.lowercased()
         guard let n = Self.allCases.first(where: { p.hasPrefix($0.rawValue) }) ?? (p.hasPrefix("hl") ? .hyperliquid : nil) else { return nil }
@@ -37,6 +38,7 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .robinhood: "Stock tokens · USDG · Uniswap"
         case .polygon: "Aave · USDC"
         case .ethereum: "Aave · Morpho · mainnet gas costs dollars"
+        case .tempo: "USDC transfers · pay for services (MPP) · fees in USDC"
         }
     }
 
@@ -51,6 +53,7 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .robinhood: "robinhood"
         case .polygon: "pol"
         case .ethereum: "eth"
+        case .tempo: "tempo"
         }
     }
 }
@@ -129,7 +132,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
         switch self {
         case .hlPerps: "BTC, ETH, SOL and more"
         case .xyz: "Oil, metals, stocks"
-        case .relay: "Solana ⇄ Base · Arbitrum · Polygon · Ethereum · Robinhood"
+        case .relay: "Solana ⇄ Base · Arbitrum · Polygon · Ethereum · Robinhood · Tempo"
         case .uniswap: "Robinhood · Base · Arbitrum"
         case .aave: "Base · Arbitrum · Polygon · Ethereum"
         case .morpho: "Base · Arbitrum · Ethereum"
@@ -239,6 +242,7 @@ public struct Modules: Equatable, Sendable {
         case .allocate, .rebalance:
             // Each vault is checked by the planner; with the whole kind off there's nothing to plan.
             return isOn(.earn) ? nil : ru ? "\(ModuleKind.earn.name) выключены в Settings › Modules." : "\(ModuleKind.earn.name) is off in Settings › Modules."
+        case .pay: return refusal(network: .tempo, ru: ru)
         case .sendTo, .yields, .receive, .stopSchedules: return nil
         }
     }

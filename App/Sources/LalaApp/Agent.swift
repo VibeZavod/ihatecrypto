@@ -22,7 +22,7 @@ struct NextSteps {
             : c.hasPrefix("short") ? "arrow.down.right" : c.hasPrefix("withdraw") || c.hasPrefix("unstake") ? "arrow.uturn.backward"
             : c.hasPrefix("move") || c.hasPrefix("send") ? "arrow.left.arrow.right" : c.hasPrefix("where") ? "percent"
             : c.contains("lend") || c.hasPrefix("deposit") || c.hasPrefix("stake") || c.hasPrefix("spread") || c.hasPrefix("rebalance") ? "building.columns"
-            : c.hasPrefix("what") ? "flame" : c.hasPrefix("profit") ? "dollarsign.circle" : "arrow.right.circle"
+            : c.hasPrefix("what") ? "flame" : c.hasPrefix("profit") ? "dollarsign.circle" : c.hasPrefix("pay") ? "creditcard" : "arrow.right.circle"
     }
 }
 
@@ -91,8 +91,14 @@ extension Workspace {
             func line(_ m: (coin: String, price: Decimal, change: Decimal)) -> String { "\(IntentParser.pretty(m.coin)) \(Fmt.price(m.price)) \(signedPct(m.change))" }
             return list.isEmpty ? "Markets aren't loaded yet."
                 : "Up the most today: " + list.prefix(6).map(line).joined(separator: ", ") + ".\nDown the most: " + list.suffix(6).reversed().map(line).joined(separator: ", ") + "."
+        case "services":
+            agentStep = say("Looking for a service that takes payment", "Ищу сервис с оплатой")
+            return await MPP.search(l.arg) + "\nUSDC on Tempo now: \(tempoUSDC.map { Fmt.num($0) } ?? "unknown"); what's short comes from Solana (\(solana.map { Fmt.num($0.usdc) } ?? "?") USDC)."
+        case "service":
+            agentStep = say("Reading the service's docs", "Читаю документацию сервиса")
+            return await MPP.service(l.arg)
         default:
-            return "There is no «\(l.tool)» lookup. Lookups: portfolio, market <ASSET>, token <ADDRESS or NAME>, rates <USDC|SOL>, movers."
+            return "There is no «\(l.tool)» lookup. Lookups: portfolio, market <ASSET>, token <ADDRESS or NAME>, rates <USDC|SOL>, movers, services <WORDS>, service <ID>."
         }
     }
 

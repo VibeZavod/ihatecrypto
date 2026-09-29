@@ -157,8 +157,16 @@ public enum WalletCommand: Equatable, Sendable {
     case robinhoodToSolana(Decimal?)
     /// USDC from the Solana wallet to our own address on «base», «arbitrum» or «robinhood» (USDG there); nil = ask.
     case solanaTo(String, Decimal?)
+    /// A paid API on Tempo (MPP): the request as the service documents it; the price comes from its 402 answer and
+    /// is paid in USDC on Tempo only after Confirm. `method` «GET» or «POST»; `body` JSON or nil.
+    case pay(method: String, url: String, body: String?)
 
     public static func parse(_ text: String) -> WalletCommand? {
+        // «pay POST https://… {"q": 1}»: the URL and the body kept as written.
+        if let m = text.firstMatch(of: /(?is)^\s*pay\s+(?:(get|post|put|patch|delete)\s+)?(https:\/\/[^\s{}\[\]]+)(?:\s+(?:with\s+)?([\{\[].*[\}\]]))?\s*$/) {
+            let body = m.3.map(String.init)
+            return .pay(method: m.1.map { $0.uppercased() } ?? (body == nil ? "GET" : "POST"), url: String(m.2), body: body)
+        }
         let q = text.lowercased()
         let amount = (q.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|usdg|\$|долл|dollars?|bucks|бакс)/)?.1)
             .flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
@@ -229,7 +237,7 @@ public enum WalletCommand: Equatable, Sendable {
         // Out of the Solana wallet: «move 3 USDC from Solana to Robinhood», «переведи 3 USDC из соланы в робингуд».
         // «из соланы в aave на арбитрум» is a deposit into Aave there, not an idle transfer: it's read further down.
         if !q.contains(/\baave\b|ааве|morpho|морфо/),
-           let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(base|бейс\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*)/) {
+           let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(base|бейс\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)/) {
             return .solanaTo(Self.network(String(m.1)) ?? "robinhood", amount)
         }
         if q.contains(/robinhood|робин[гх]уд/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
@@ -324,7 +332,7 @@ public enum WalletCommand: Equatable, Sendable {
         if q.contains(/arbitrum|арбитрум/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .arbitrumToSolana(amount)
         }
-        if let net = Self.network(in: q), net == "polygon" || net == "ethereum",
+        if let net = Self.network(in: q), net == "polygon" || net == "ethereum" || net == "tempo",
            q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .evmToSolana(net, amount)
         }
@@ -409,7 +417,7 @@ extension WalletCommand {
     }
 
     public static func placeName(_ place: String) -> String {
-        ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood Chain", "polygon": "Polygon", "ethereum": "Ethereum"][place] ?? place.capitalized
+        ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood Chain", "polygon": "Polygon", "ethereum": "Ethereum", "tempo": "Tempo"][place] ?? place.capitalized
     }
 
     /// The EVM network a word names: «арбитрум» → «arbitrum», «полигон» → «polygon», «эфириум» or «mainnet» → «ethereum».
@@ -417,12 +425,13 @@ extension WalletCommand {
         let w = word.lowercased()
         return w.hasPrefix("b") || w.hasPrefix("бейс") ? "base" : w.hasPrefix("arb") || w.hasPrefix("арб") ? "arbitrum"
             : w.hasPrefix("rob") || w.hasPrefix("роб") ? "robinhood" : w.hasPrefix("pol") || w.hasPrefix("пол") ? "polygon"
-            : w.hasPrefix("eth") || w.hasPrefix("эфир") || w.hasPrefix("main") || w.hasPrefix("мейн") ? "ethereum" : nil
+            : w.hasPrefix("eth") || w.hasPrefix("эфир") || w.hasPrefix("main") || w.hasPrefix("мейн") ? "ethereum"
+            : w.hasPrefix("temp") || w.hasPrefix("темп") ? "tempo" : nil
     }
 
     /// The first EVM network the text names, if any.
     static func network(in q: String) -> String? {
-        q.firstMatch(of: /\b(base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*)\b/).flatMap { network(String($0.1)) }
+        q.firstMatch(of: /\b(base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|tempo|темпо\w*)\b/).flatMap { network(String($0.1)) }
     }
 
     /// «1», «1 USDC», «$1.5», «да, 2», «ok 3» — a short reply that is only an amount.
@@ -470,6 +479,7 @@ extension WalletCommand {
         case .buyOn(let place, let t, let u): return "buy \(t.hasPrefix("0x") ? "the token \(t)" : t.uppercased()) on \(Self.placeName(place)) for \(n(u)) USDC"
         case .sellOn(let place, let t, let x): return "sell \(n(x)) \(t.hasPrefix("0x") ? "of the token \(t)" : t.uppercased()) on \(Self.placeName(place)) for USDC on Solana"
         case .solanaTo(let place, let x): return "move \(n(x)) USDC from Solana to \(Self.placeName(place))"
+        case .pay(let method, let url, _): return "pay for \(method) \(url) in USDC on Tempo"
         }
     }
 }

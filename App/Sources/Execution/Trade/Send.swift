@@ -20,6 +20,7 @@ extension Executor {
         case robinhood(String)
         /// Another Hyperliquid account: USDC from the perp balance, no bridge.
         case hyperliquid(String)
+        case tempo(String)
     }
 
     public func sendUSDC(_ amount: Decimal, to destination: Destination, label: String) async throws -> String {
@@ -31,7 +32,18 @@ extension Executor {
         case .arbitrum(let recipient): return try await sendEVMUSDC(units, on: .arbitrum, to: recipient, label: label)
         case .robinhood(let recipient): return try await sendEVMUSDC(units, on: .robinhood, to: recipient, label: label)
         case .hyperliquid(let recipient): return try await sendHyperliquidUSDC(amount, to: recipient, label: label)
+        case .tempo(let recipient): return try await sendEVMUSDC(units, on: .tempo, to: recipient, label: label)
         }
+    }
+
+    /// A payment for a service on Tempo (MPP «charge», push mode): USDC to the payee named in the service's challenge,
+    /// with the memo it asked for; what's missing comes from Solana first. The hash is the proof the service checks.
+    public func payTempo(_ units: UInt64, to payee: String, memo: Data?, label: String) async throws -> String {
+        guard units > 0 else { throw ExecutionError("Nothing to pay.") }
+        let net = EVMNetwork.tempo
+        try await ensureEVM(net, usdc: units)
+        let data = try memo.map { try ERC20.transfer(to: payee, amount: units, memo: $0) } ?? ERC20.transfer(to: payee, amount: units)
+        return try await sendEVM(net.rpc, to: net.usdc, data: data, note: "Pay \(Self.usdc(units)) USDC to \(label)", recipients: [payee])
     }
 
     private func sendEVMUSDC(_ units: UInt64, on net: EVMNetwork, to recipient: String, label: String) async throws -> String {

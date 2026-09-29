@@ -51,6 +51,7 @@ public struct ScheduledTask: Codable, Equatable, Sendable, Identifiable {
 
     /// The router's forms: `in N <minutes|hours|days|weeks|months>: …`, `at HH:MM: …`, `tomorrow [at HH:MM]: …`,
     /// `on YYYY-MM-DD [at HH:MM]: …`, `every <hour|day|week|month|N hours|N days|N weeks|N months> [at HH:MM]: …`,
+    /// `every month on the <1st…28th> [at HH:MM]: …`,
     /// `every <monday…sunday> [at HH:MM]: …` (09:00 when no time is said),
     /// steps joined by « then ». nil for anything else.
     public static func parse(_ text: String, now: Date = Date()) -> ScheduledTask? {
@@ -99,6 +100,12 @@ public struct ScheduledTask: Codable, Equatable, Sendable, Identifiable {
            let w = weekdays.firstIndex(of: String(m.1)),
            let next = cal.nextDate(after: now, matching: DateComponents(hour: clock?.0 ?? 9, minute: clock?.1 ?? 0, weekday: w + 1), matchingPolicy: .nextTime) {
             return ScheduledTask(steps: steps, next: next, every: .days(7))
+        }
+        // «every month on the 1st at 10:00»: that day of each month, 1–28 so every month has it; 09:00 when no time is said.
+        if let m = head.wholeMatch(of: /every\s+month\s+on\s+(?:the\s+|day\s+)?(\d{1,2})(?:st|nd|rd|th)?(?:\s+at\s+\d{1,2}:\d\d)?/),
+           let day = Int(m.1), (1...28).contains(day),
+           let next = cal.nextDate(after: now, matching: DateComponents(day: day, hour: clock?.0 ?? 9, minute: clock?.1 ?? 0), matchingPolicy: .nextTime) {
+            return ScheduledTask(steps: steps, next: next, every: .months(1))
         }
         if let m = head.wholeMatch(of: /every\s+(?:(\d+)\s+)?(hour|day|week|month)s?(?:\s+at\s+\d{1,2}:\d\d)?/) {
             let n = m.1.flatMap { Int($0) } ?? 1

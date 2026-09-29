@@ -687,7 +687,7 @@ struct MoveRoute {
 
 /// A route step's color, by place; kept by name, so a saved route draws the same.
 enum RouteFill: String, Codable, Hashable, Sendable {
-    case solana, relay, hyperliquid, hlp, jupiter, kamino, jito, aave, morpho, base, arbitrum, robinhood, near
+    case solana, relay, hyperliquid, hlp, jupiter, kamino, jito, aave, morpho, base, arbitrum, robinhood, near, tempo
     /// A plan's checks and its result: no place of their own, a grey card.
     case check
 
@@ -706,6 +706,7 @@ enum RouteFill: String, Codable, Hashable, Sendable {
         case .arbitrum: Color(hex: 0x213147)
         case .robinhood: Color(hex: 0x3A4A00)
         case .near: Color(hex: 0x10231C)
+        case .tempo: Color(hex: 0x111111)
         case .check: Color(light: 0xF7F7F8, dark: 0x26262B)
         }
     }
@@ -734,6 +735,7 @@ extension Workspace {
         case .sendNear(let name, let asked): nearOutRoute(to: name, amount: asked, close: false)
         case .closeNear(let name): nearOutRoute(to: name, amount: nil, close: true)
         case .sendSol(let name, let amount): solOutRoute(to: name, amount: amount)
+        case .pay: payRoute(command)
         default: ends(command).map { from, to in
             let footer = if case .sellStock = command {
                 "Two Robinhood Chain transactions: an exact approve and the Uniswap swap, which may only pay this wallet. Say “do it” or press Confirm; anything else cancels."
@@ -1002,16 +1004,16 @@ extension Workspace {
 
     /// Solana → Relay → our own address on Base, Arbitrum or Robinhood Chain.
     private func outRoute(to place: String, amount: Decimal) -> MoveRoute {
-        let name = ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood Chain"][place] ?? place
+        let name = WalletCommand.placeName(place)
         let stable = place == "robinhood" ? "USDG" : "USDC"
-        let there = place == "base" ? base?.usdc : place == "arbitrum" ? arbitrumUSDC : robinhood?.usdg
-        let fill: RouteFill = place == "base" ? .base : place == "arbitrum" ? .arbitrum : .robinhood
+        let there = place == "base" ? base?.usdc : place == "arbitrum" ? arbitrumUSDC : place == "tempo" ? tempoUSDC : robinhood?.usdg
+        let fill: RouteFill = place == "base" ? .base : place == "arbitrum" ? .arbitrum : place == "tempo" ? .tempo : .robinhood
         return MoveRoute(title: "Move \(Fmt.num(amount)) USDC · Solana → \(name)",
                          footer: "One Solana signature for the Relay bridge, checked and simulated before it’s signed; it pays only your own address on \(name). Say “do it” or press Confirm.",
                          steps: [
             step("sol", "FROM · SOLANA", solana.map { "\(Fmt.num($0.usdc)) → \(Fmt.num(max(0, $0.usdc - amount)))" } ?? "\(Fmt.num(amount)) USDC", "USDC on Solana", .solana),
-            step("relay", "BRIDGE · RELAY", "\(Fmt.num(amount)) USDC", "a few seconds · + ETH for gas when there's none", .relay),
-            step(place == "arbitrum" ? "arb" : place, "TO · \(name.uppercased())", there.map { "\(Fmt.num($0)) → \(Fmt.num($0 + amount)) \(stable)" } ?? "\(Fmt.num(amount)) \(stable)",
+            step("relay", "BRIDGE · RELAY", "\(Fmt.num(amount)) USDC", place == "tempo" ? "a few seconds · fees there come out of the USDC" : "a few seconds · + ETH for gas when there's none", .relay),
+            step(ModuleNetwork(place: place)?.logo ?? place, "TO · \(name.uppercased())", there.map { "\(Fmt.num($0)) → \(Fmt.num($0 + amount)) \(stable)" } ?? "\(Fmt.num(amount)) \(stable)",
                  "your own address ✓", fill),
         ])
     }
@@ -1041,7 +1043,7 @@ extension Workspace {
             let what = place == "aave" ? "Aave" : "Morpho", moving = amount.map { Fmt.num($0) } ?? "all"
             let from = lending
                 ? step(place, "FROM · \(what.uppercased()) ON \(name.uppercased())", "\(moving) USDC", "with the interest", place == "aave" ? .aave : .morpho)
-                : step(network == "polygon" ? "pol" : network == "arbitrum" ? "arb" : "eth", "FROM · \(name.uppercased())", "\(moving) USDC", "idle USDC", .relay)
+                : step(ModuleNetwork(place: network)?.logo ?? "eth", "FROM · \(name.uppercased())", "\(moving) USDC", "idle USDC", .relay)
             return MoveRoute(title: lending ? "\(what) · withdraw \(moving) USDC on \(name) to Solana" : "\(name) · \(moving) USDC to Solana",
                              footer: (lending ? "Three \(name) transactions: withdraw from \(what), an exact approve and Relay’s deposit"
                                               : "Two \(name) transactions: an exact approve and Relay’s deposit")
@@ -1173,6 +1175,7 @@ extension Workspace {
         if let missing = missingKey(for: command) { reply(missing, note: note); return }   // a key wallet without this chain (Wallets.swift)
         if let off = moduleRefusal(command) { reply(off, note: note); return }   // switched off in Settings › Modules
         if case .sendTo(let name, let amount) = command { prepareTransfer(amount, to: name, note: note); return }
+        if case .pay = command { await preparePayment(command, note: note); return }
         if case .receive = command {
             withAnimation(StudioView.spring) { showReceive = true }
             let sol = isSolanaAddress(solanaAddress) ? "Solana \(AddressCheck.ends(solanaAddress).start) … \(AddressCheck.ends(solanaAddress).end)" : nil

@@ -15,6 +15,7 @@ public enum Relay {
         public static let robinhood: UInt64 = 4663
         public static let ethereum: UInt64 = 1
         public static let polygon: UInt64 = 137
+        public static let tempo: UInt64 = 4217
     }
 
     /// Relay's depository on Hyperliquid (protocol.v2.depository in /chains, checked 2026-09-25).

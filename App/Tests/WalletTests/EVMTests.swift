@@ -199,8 +199,8 @@ import WalletCore
 }
 
 @Test func signableNetworks() {
-    // Polygon and Ethereum join Base, Arbitrum and Robinhood Chain; nothing else is signed.
-    #expect(EVMRPC.signable == [1, 137, 42161, 8453, 4663])
+    // Polygon, Ethereum and Tempo join Base, Arbitrum and Robinhood Chain; nothing else is signed.
+    #expect(EVMRPC.signable == [1, 137, 42161, 8453, 4663, 4217])
     #expect(EVMRPC.polygon.chainId == 137 && EVMRPC.ethereum.chainId == 1)
 }
 
@@ -222,4 +222,16 @@ import WalletCore
     // Arbitrum: ≈ $0.08 is well under it.
     let arbitrum = EVMPlace(name: "Aave · Arbitrum", protocolName: "Aave", apy: 3, supplied: 0, roundTripUSD: Decimal(string: "0.08")!)
     #expect(arbitrum.tooCostly(yearly: 15 * 3 / 100) == nil)
+}
+
+// Tempo: a payment with a memo is checked like any transfer (its payee must be approved), and fees are in USDC units.
+@Test func tempoTransferWithMemoAndFees() throws {
+    let payee = "0x060b0fb0be9d90557577b3aee480711067149ff0"
+    let data = try ERC20.transfer(to: payee, amount: 60_000, memo: Data(repeating: 0xab, count: 32))
+    #expect(data.count == 4 + 96 && data.prefix(4).hex == "95777d59")
+    #expect(EVMCall.decode(data) == .transfer(to: payee, amount: ABI.uint(60_000)))
+    #expect(throws: (any Error).self) { try ERC20.transfer(to: payee, amount: 1, memo: Data([1])) }
+    #expect(try Tempo.setUserToken(EVMRPC.tempoUSDC).hex == "e7897444" + String(repeating: "0", count: 24) + EVMRPC.tempoUSDC.dropFirst(2))
+    #expect(Tempo.feeUnits(1_000_000_000_000) == 1 && Tempo.feeUnits(1_000_000_000_001) == 2 && Tempo.feeUnits(0) == 0)
+    #expect(EVMRPC.signable.contains(EVMRPC.tempo.chainId))
 }

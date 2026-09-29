@@ -8,9 +8,14 @@ import SwiftUI
 /// the drawing at the bottom of its card. A trade plan's steps have their own: the rules' checklist, Jev's magnifier,
 /// the price line the position rides, the shield of its stop and take, and the two ways it can end. A price alert the
 /// plan waits for («WHEN · PRICE FALLS TO») draws the price reaching its level, with the bell; a task for later
-/// («LATER · SCHEDULE») a calendar with its day marked; the best rates one amount branching into three vaults.
+/// («LATER · SCHEDULE») a calendar with its day marked; the best rates one amount branching into three vaults. The
+/// steps that used to hide in a footer have theirs too: a recurring buy's loop, the wait for a bridge (an hourglass),
+/// the exact approve (a key), gas that comes along (a pump), the simulation, the Touch ID signature, HLP's lockup, a
+/// position closed at its flag, a top up landing in the tray, a rebalance's ring; rewards and predictions are drawn
+/// for when the app has them.
 enum StepKind: Equatable {
     case wallet, bridge, swap, buy, deposit, stake, send, check, jev, long, short, protect, result, schedule, split
+    case recurring, wait, approve, gas, simulate, sign, lock, close, claim, receive, rebalance, predict
     case alert(up: Bool)
 
     init(_ step: ActivityBubble) {
@@ -25,6 +30,18 @@ enum StepKind: Equatable {
         else if label.hasPrefix("RESULT") { self = .result }
         else if label.hasPrefix("LATER") { self = .schedule }
         else if label.contains("BEST RATES") { self = .split }
+        else if label.hasPrefix("EVERY") { self = .recurring }
+        else if label.hasPrefix("ARRIVES") { self = .wait }
+        else if label.hasPrefix("APPROVE") { self = .approve }
+        else if label.hasPrefix("GAS") { self = .gas }
+        else if label.hasPrefix("SIMULATION") { self = .simulate }
+        else if label.hasPrefix("SIGN ") || label.hasPrefix("SIGN·") { self = .sign }
+        else if label.contains("LOCKED") { self = .lock }
+        else if label.hasPrefix("CLOSE") { self = .close }
+        else if label.hasPrefix("CLAIM") { self = .claim }
+        else if label.hasPrefix("TOP UP") { self = .receive }
+        else if label.hasPrefix("REBALANCE") { self = .rebalance }
+        else if label.hasPrefix("PREDICTION") { self = .predict }
         else if label.contains("BRIDGE") || label.hasPrefix("RELAY") { self = .bridge }
         else if label.hasPrefix("SWAP") { self = .swap }
         else if label.hasPrefix("BUY") || label.hasPrefix("SELL") { self = .buy }
@@ -35,7 +52,7 @@ enum StepKind: Equatable {
     }
 
     /// «TO · SOLANA» lands in one of the user's own places; «TO · TEST» is a saved address, someone else's or another wallet.
-    private static let places = ["SOLANA", "BASE", "ARBITRUM", "HYPERLIQUID", "ROBINHOOD", "NEAR", "USDC", "USDG", "POLYGON", "ETHEREUM"]
+    private static let places = ["SOLANA", "BASE", "ARBITRUM", "HYPERLIQUID", "ROBINHOOD", "NEAR", "USDC", "USDG", "POLYGON", "ETHEREUM", "TEMPO"]
 }
 
 /// Where a step is: waiting for Confirm, done, the one a running move is on (or waiting for Touch ID there), still
@@ -82,6 +99,7 @@ extension RouteFill {
         case .arbitrum: Color(light: 0x213147, dark: 0x8FB4E3)
         case .robinhood: Color(light: 0x3A4A00, dark: 0xC9F24B)
         case .near: Color(light: 0x10231C, dark: 0x97FCE4)
+        case .tempo: Color(light: 0x111111, dark: 0xE8E8E8)
         }
     }
 }
@@ -718,6 +736,12 @@ struct StepScene: View {
         case .alert(let up): (236, up ? 58 : 74, 1.4)
         case .schedule: (130, 66, 1.4)
         case .split: (84, 36, 1.4)
+        case .recurring: (170, 62, 1.2)
+        case .approve: (140, 60, 1.4)
+        case .simulate, .predict: (118, 66, 1.4)
+        case .close: (212, 36, 1.3)
+        case .rebalance: (130, 70, 1.4)
+        case .wait, .gas, .sign, .lock, .claim, .receive: (130, 66, 1.4)
         }
     }
 
@@ -837,6 +861,122 @@ struct StepScene: View {
                 var slot = Path(); slot.move(to: p(258, y)); slot.addLine(to: p(286, y))
                 stroke(slot, StrokeStyle(lineWidth: 4 * k, lineCap: .round))
             }
+        case (.recurring, false):
+            // Three quarters of a loop round the coin, its arrow at the end, and the runs so far fading out.
+            let r: CGFloat = 46, c = r * 0.5523
+            var loop = Path(); loop.move(to: p(170, 16))
+            loop.addCurve(to: p(216, 62), control1: p(170 + c, 16), control2: p(216, 62 - c))
+            loop.addCurve(to: p(170, 108), control1: p(216, 62 + c), control2: p(170 + c, 108))
+            loop.addCurve(to: p(124, 62), control1: p(170 - c, 108), control2: p(124, 62 + c))
+            loop.move(to: p(116, 70)); loop.addLine(to: p(124, 60)); loop.addLine(to: p(132, 70))
+            stroke(loop)
+            for (x, o) in [(250.0, 1.0), (276, 0.6), (302, 0.3)] { context.fill(circle(x, 62, 6), with: .color(look.drawing.opacity(o))) }
+        case (.wait, false):
+            // An hourglass: the bridge is carrying the money over.
+            var glass = Path(); glass.move(to: p(210, 16))
+            glass.addCurve(to: p(236, 70), control1: p(210, 56), control2: p(236, 60))
+            glass.addCurve(to: p(210, 124), control1: p(236, 80), control2: p(210, 84))
+            glass.addLine(to: p(270, 124))
+            glass.addCurve(to: p(244, 70), control1: p(270, 84), control2: p(244, 80))
+            glass.addCurve(to: p(270, 16), control1: p(244, 60), control2: p(270, 56))
+            glass.closeSubpath()
+            context.fill(glass, with: fill); stroke(glass)
+            var ends = Path(); ends.move(to: p(202, 16)); ends.addLine(to: p(278, 16)); ends.move(to: p(202, 124)); ends.addLine(to: p(278, 124)); stroke(ends)
+            var sand = Path(); sand.move(to: p(226, 36)); sand.addLine(to: p(254, 36)); stroke(sand, StrokeStyle(lineWidth: 2 * k, lineCap: .round), opacity: 0.5)
+            var heap = Path(); heap.move(to: p(222, 124)); heap.addQuadCurve(to: p(258, 124), control: p(240, 100)); heap.closeSubpath()
+            context.fill(heap, with: .color(look.drawing.opacity(0.5)))
+        case (.approve, false):
+            // A key cut for one lock: this much, for this contract.
+            context.fill(circle(226, 60, 20), with: fill); stroke(circle(226, 60, 20))
+            stroke(circle(226, 60, 6))
+            var shaft = Path(); shaft.move(to: p(246, 60)); shaft.addLine(to: p(332, 60))
+            shaft.move(to: p(300, 60)); shaft.addLine(to: p(300, 76)); shaft.move(to: p(316, 60)); shaft.addLine(to: p(316, 72))
+            stroke(shaft)
+        case (.gas, false):
+            // A fuel pump with ETH's diamond in its window.
+            let pump = Path(roundedRect: CGRect(x: 200 * k, y: 22 * k, width: 64 * k, height: 104 * k), cornerRadius: 8 * k)
+            context.fill(pump, with: fill); stroke(pump)
+            stroke(Path(roundedRect: CGRect(x: 212 * k, y: 36 * k, width: 40 * k, height: 30 * k), cornerRadius: 4 * k))
+            var diamond = Path(); diamond.move(to: p(232, 40)); diamond.addLine(to: p(241, 51)); diamond.addLine(to: p(232, 62)); diamond.addLine(to: p(223, 51)); diamond.closeSubpath()
+            context.fill(diamond, with: ink)
+            var hose = Path(); hose.move(to: p(264, 46)); hose.addLine(to: p(280, 46)); hose.addQuadCurve(to: p(292, 58), control: p(292, 46))
+            hose.addLine(to: p(292, 92)); hose.addQuadCurve(to: p(300, 100), control: p(292, 100)); hose.addQuadCurve(to: p(308, 92), control: p(308, 100))
+            hose.addLine(to: p(308, 56)); hose.addLine(to: p(296, 44))
+            stroke(hose)
+        case (.simulate, false):
+            // A window where the move plays out first, a green tick when it comes out as planned.
+            let screen = Path(roundedRect: CGRect(x: 186 * k, y: 16 * k, width: 128 * k, height: 88 * k), cornerRadius: 10 * k)
+            context.fill(screen, with: fill); stroke(screen)
+            var bar = Path(); bar.move(to: p(186, 36)); bar.addLine(to: p(314, 36)); stroke(bar, StrokeStyle(lineWidth: 2 * k, lineCap: .round))
+            for x in [200.0, 210, 220] { context.fill(circle(x, 26, 2.6), with: ink) }
+            var tick = Path(); tick.move(to: p(226, 68)); tick.addLine(to: p(240, 82)); tick.addLine(to: p(272, 50))
+            context.stroke(tick, with: .color(good), style: StrokeStyle(lineWidth: 5 * k, lineCap: .round, lineJoin: .round))
+            var stand = Path(); stand.move(to: p(250, 104)); stand.addLine(to: p(250, 118)); stand.move(to: p(226, 120)); stand.addLine(to: p(274, 120)); stroke(stand)
+        case (.sign, false):
+            // A fingerprint: Touch ID signs it.
+            var outer = Path(); outer.move(to: p(200, 70)); outer.addCurve(to: p(246, 22), control1: p(204, 46), control2: p(222, 22))
+            outer.addCurve(to: p(292, 66), control1: p(272, 22), control2: p(290, 42))
+            stroke(outer, nil, opacity: 0.55)
+            var ridges = Path()
+            ridges.move(to: p(212, 104)); ridges.addCurve(to: p(244, 36), control1: p(204, 70), control2: p(220, 36)); ridges.addCurve(to: p(278, 88), control1: p(268, 36), control2: p(282, 58))
+            ridges.move(to: p(224, 108)); ridges.addCurve(to: p(244, 52), control1: p(218, 82), control2: p(224, 52)); ridges.addCurve(to: p(264, 96), control1: p(262, 52), control2: p(268, 70))
+            ridges.move(to: p(238, 112)); ridges.addCurve(to: p(246, 68), control1: p(234, 92), control2: p(236, 68)); ridges.addCurve(to: p(252, 102), control1: p(254, 68), control2: p(256, 82))
+            stroke(ridges)
+        case (.lock, false):
+            // A padlock: the vault keeps it for its lockup.
+            var shackle = Path(); shackle.move(to: p(212, 60)); shackle.addLine(to: p(212, 42))
+            shackle.addCurve(to: p(268, 42), control1: p(212, 14), control2: p(268, 14)); shackle.addLine(to: p(268, 60))
+            stroke(shackle)
+            let case_ = Path(roundedRect: CGRect(x: 194 * k, y: 58 * k, width: 92 * k, height: 66 * k), cornerRadius: 12 * k)
+            context.fill(case_, with: fill); stroke(case_)
+            context.fill(circle(240, 84, 7), with: ink)
+            var slot = Path(); slot.move(to: p(240, 88)); slot.addLine(to: p(240, 104)); stroke(slot, StrokeStyle(lineWidth: 5 * k, lineCap: .round))
+        case (.close, false):
+            // The price line runs to a flag: the position is closed there.
+            var price = Path(); price.move(to: p(-4, 104)); price.addLine(to: p(70, 78)); price.addLine(to: p(120, 90)); price.addLine(to: p(196, 46)); stroke(price)
+            var pole = Path(); pole.move(to: p(252, 124)); pole.addLine(to: p(252, 22)); stroke(pole)
+            var flag = Path(); flag.move(to: p(252, 24)); flag.addLine(to: p(308, 24)); flag.addLine(to: p(296, 40)); flag.addLine(to: p(308, 56)); flag.addLine(to: p(252, 56)); flag.closeSubpath()
+            context.fill(flag, with: fill); stroke(flag)
+            var tick = Path(); tick.move(to: p(266, 40)); tick.addLine(to: p(273, 47)); tick.addLine(to: p(286, 34))
+            context.stroke(tick, with: .color(good), style: line)
+        case (.claim, false):
+            // A gift box: rewards to collect.
+            let box = Path(roundedRect: CGRect(x: 202 * k, y: 58 * k, width: 92 * k, height: 66 * k), cornerRadius: 8 * k)
+            let lid = Path(roundedRect: CGRect(x: 194 * k, y: 42 * k, width: 108 * k, height: 20 * k), cornerRadius: 6 * k)
+            context.fill(box, with: fill); stroke(box); context.fill(lid, with: fill); stroke(lid)
+            var ribbon = Path(); ribbon.move(to: p(248, 42)); ribbon.addLine(to: p(248, 124))
+            ribbon.move(to: p(248, 42)); ribbon.addCurve(to: p(248, 42), control1: p(232, 18), control2: p(212, 30))
+            ribbon.addCurve(to: p(248, 42), control1: p(284, 30), control2: p(264, 18))
+            stroke(ribbon)
+            var sparks = Path(); sparks.move(to: p(170, 14)); sparks.addLine(to: p(170, 28)); sparks.move(to: p(163, 21)); sparks.addLine(to: p(177, 21))
+            sparks.move(to: p(318, 22)); sparks.addLine(to: p(318, 32)); sparks.move(to: p(313, 27)); sparks.addLine(to: p(323, 27))
+            stroke(sparks, StrokeStyle(lineWidth: 2.2 * k, lineCap: .round), opacity: 0.65)
+        case (.receive, false):
+            // An arrow into the tray: money coming in from outside.
+            var arrow = Path(); arrow.move(to: p(244, 12)); arrow.addLine(to: p(244, 66))
+            arrow.move(to: p(228, 50)); arrow.addLine(to: p(244, 66)); arrow.addLine(to: p(260, 50))
+            stroke(arrow)
+            var tray = Path(); tray.move(to: p(192, 80)); tray.addLine(to: p(220, 80)); tray.addLine(to: p(230, 96)); tray.addLine(to: p(258, 96))
+            tray.addLine(to: p(268, 80)); tray.addLine(to: p(296, 80)); tray.addLine(to: p(296, 124)); tray.addLine(to: p(192, 124)); tray.closeSubpath()
+            context.fill(tray, with: fill); stroke(tray)
+        case (.rebalance, false):
+            // The ring of where the money is, most of it on one side, and the arrow that turns it.
+            let center = p(250, 62), r = 40 * k
+            var most = Path(); most.addArc(center: center, radius: r, startAngle: .degrees(-90), endAngle: .degrees(125), clockwise: false)
+            var rest = Path(); rest.addArc(center: center, radius: r, startAngle: .degrees(128), endAngle: .degrees(267), clockwise: false)
+            context.stroke(most, with: ink, style: StrokeStyle(lineWidth: 14 * k, lineCap: .butt))
+            context.stroke(rest, with: .color(look.drawing.opacity(0.4)), style: StrokeStyle(lineWidth: 14 * k, lineCap: .butt))
+            var turn = Path(); turn.move(to: p(190, 30)); turn.addQuadCurve(to: p(236, 6), control: p(208, 6))
+            turn.move(to: p(228, 0)); turn.addLine(to: p(237, 6)); turn.addLine(to: p(228, 13))
+            stroke(turn, StrokeStyle(lineWidth: 2.5 * k, lineCap: .round, lineJoin: .round))
+        case (.predict, false):
+            // A ticket torn in two: YES and NO.
+            let ticket = Path(roundedRect: CGRect(x: 186 * k, y: 24 * k, width: 140 * k, height: 78 * k), cornerRadius: 10 * k)
+            context.fill(ticket, with: fill); stroke(ticket)
+            var tear = Path(); tear.move(to: p(256, 32)); tear.addLine(to: p(256, 94))
+            stroke(tear, StrokeStyle(lineWidth: 2 * k, lineCap: .round, dash: [3 * k, 5 * k]))
+            context.draw(Text("YES").font(.ui(20 * k, .heavy)).foregroundStyle(good), at: p(221, 63), anchor: .center)
+            context.draw(Text("NO").font(.ui(20 * k, .heavy)).foregroundStyle(bad), at: p(291, 63), anchor: .center)
         case (.protect, true):
             var shield = Path()
             shield.move(to: p(230, 10)); shield.addLine(to: p(290, 30)); shield.addLine(to: p(290, 64))

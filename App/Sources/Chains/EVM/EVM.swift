@@ -114,6 +114,29 @@ public enum ERC20 {
     public static func allowance(owner: String, spender: String) throws -> Data {
         Data([0xdd, 0x62, 0xed, 0x3e]) + (try ABI.address(owner)) + (try ABI.address(spender))
     }
+
+    /// transferWithMemo(address,uint256,bytes32): Tempo's TIP-20 transfer carrying a reference the payee asked for.
+    public static func transfer(to: String, amount: UInt64, memo: Data) throws -> Data {
+        guard memo.count == 32 else { throw WalletError("A memo is 32 bytes.") }
+        return Data([0x95, 0x77, 0x7d, 0x59]) + (try ABI.address(to)) + ABI.uint(amount) + memo
+    }
+}
+
+/// Tempo's fee rules: a plain transfer of a TIP-20 stablecoin pays its fee in that coin; any other call pays in the
+/// account's chosen fee token, else pathUSD — which this wallet doesn't hold. So before its first other call (an approve,
+/// Relay's deposit) the wallet picks USDC once; that call itself pays in the coin it picks.
+public enum Tempo {
+    /// The FeeManager precompile.
+    public static let feeManager = "0xfeec000000000000000000000000000000000000"
+
+    /// setUserToken(address)
+    public static func setUserToken(_ token: String) throws -> Data { Data([0xe7, 0x89, 0x74, 0x44]) + (try ABI.address(token)) }
+
+    /// userTokens(address): the fee token `owner` chose; the zero address when none.
+    public static func userToken(_ owner: String) throws -> Data { Data([0xed, 0x49, 0x8f, 0xa8]) + (try ABI.address(owner)) }
+
+    /// A fee in a 6-decimal stablecoin's units from gas × price in attodollars: ceil(x / 10¹²).
+    public static func feeUnits(_ attodollars: UInt64) -> UInt64 { (attodollars + 999_999_999_999) / 1_000_000_000_000 }
 }
 
 /// 32-byte ABI words.
@@ -194,9 +217,14 @@ public struct EVMRPC: Sendable {
     /// Ethereum mainnet: a supply costs dollars of gas here, so the planners weigh it before choosing it.
     public static let ethereum = EVMRPC(url: URL(string: "https://eth.drpc.org")!, chainId: 1)
     public static let ethereumUSDC = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
+    /// Tempo, Stripe's payments chain: no coin of its own, fees come out of a USD stablecoin (Tempo.feeManager), and
+    /// eth_getBalance answers a placeholder (4242…42) for every address, so it's never read there (checked 2026-09-30).
+    public static let tempo = EVMRPC(url: URL(string: "https://rpc.mainnet.tempo.xyz")!, chainId: 4217)
+    /// «Bridged USDC (Stargate)», 6 decimals: the USDC Relay delivers and MPP services charge in.
+    public static let tempoUSDC = "0x20c000000000000000000000b9537d11c60e8b50"
 
     /// The only networks the signer signs for: the app's signing process and the CLI check the same list.
-    public static let signable: Set<UInt64> = [1, 137, 42161, 8453, 4663]
+    public static let signable: Set<UInt64> = [1, 137, 42161, 8453, 4663, 4217]
 
     /// eth_call: the raw return value.
     public func read(_ to: String, _ data: Data) async throws -> Data {
@@ -357,7 +385,8 @@ public enum EVMCall: Equatable, Sendable {
         switch selector {
         case "095ea7b3": if let s = address(0), let a = word(1) { return .approve(spender: s, amount: a) }
         case "39509351": if let s = address(0), let a = word(1) { return .increaseAllowance(spender: s, amount: a) }
-        case "a9059cbb": if let t = address(0), let a = word(1) { return .transfer(to: t, amount: a) }
+        // Tempo's transferWithMemo pays like transfer: the same recipient check applies.
+        case "a9059cbb", "95777d59": if let t = address(0), let a = word(1) { return .transfer(to: t, amount: a) }
         case "23b872dd": if let f = address(0), let t = address(1), let a = word(2) { return .transferFrom(from: f, to: t, amount: a) }
         case "a22cb465": if let o = address(0), let b = word(1) { return .setApprovalForAll(operator: o, approved: b.last == 1) }
         case "d505accf", "8fcbaf0c": return .permit

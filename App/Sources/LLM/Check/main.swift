@@ -44,7 +44,7 @@ if prompt == "--verify", args.count >= 4 {
 if prompt == "--route" {
     var context = ChatRouter.Context()
     context.favorites = ["AI (Artificial Inu) = 0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18 on Robinhood Chain"]
-    context.addressBook = ["Bybit"]
+    context.addressBook = ["Bybit", "Mom"]
     context.balances = ["Solana 22.38 USDC, 0.0297 SOL", "Hyperliquid $7.47"]
     context.plan = env["LALA_ROUTE_PLAN"]
     context.capital = "$29.85"
@@ -58,7 +58,8 @@ if prompt == "--route" {
     // Real token lookups; the app's own data (portfolio, markets, rates) is what the context above says.
     let balances = context.balances.joined(separator: "; ")
     let lookup: @Sendable (ChatRouter.Lookup) async -> String = { l in
-        l.tool == "token" ? await TokenResearch.report(l.arg) : l.tool == "portfolio" ? "Balances: \(balances). No open positions." : "Not available in this check."
+        l.tool == "token" ? await TokenResearch.report(l.arg) : l.tool == "portfolio" ? "Balances: \(balances). No open positions."
+            : l.tool == "services" ? await MPP.search(l.arg) : l.tool == "service" ? await MPP.service(l.arg) : "Not available in this check."
     }
     var message = ""
     func verdict(_ c: String, found: [String] = []) -> String {

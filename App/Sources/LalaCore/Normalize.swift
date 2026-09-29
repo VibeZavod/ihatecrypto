@@ -120,12 +120,15 @@ public enum ChatRouter {
       deposit N USDC into Morpho [on <Base|Arbitrum|Ethereum>] | withdraw USDC from Morpho [on <network>]   (no network = Base; name it only when the user does)
       where to keep <USDC|SOL> | spread [N] <USDC|SOL> across the best rates [max N% per protocol]   (N = at most that much; none = all that is free)
       rebalance USDC [max N% per protocol]   (moves money ALREADY in vaults to better rates: «переложи», «перекинь депозиты», «перебалансируй», «rebalance». «spread» / «разложи» / «распредели» is only for FREE USDC on Solana)
-    MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from <Base|Arbitrum|Polygon|Ethereum> to Solana
-      move N USDC from Solana to <Base|Arbitrum|Polygon|Ethereum|Robinhood>   (arrives as USDG on Robinhood Chain)
+    MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from <Base|Arbitrum|Polygon|Ethereum|Tempo> to Solana
+      move N USDC from Solana to <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo>   (arrives as USDG on Robinhood Chain)
       send N USDC to <NAME from the address book> | top up (where to send money into ihatecrypto)
       send N NEAR to <NAME from the address book> | send all NEAR to <NAME> | close the NEAR account into <NAME>
       send N SOL to <NAME from the address book>
-    ADDRESSES AND WATCHLIST: save <ADDRESS> as <NAME> [on solana|base|arbitrum|ethereum|hyperliquid|near] | add <NAME> to favorites | remove <NAME> from favorites   (NAME from the address book, not a ticker)
+    PAYING FOR A SERVICE (MPP on Tempo, the x402 way: an API that charges per request — search, data, email, phone calls, mailed letters,
+      images, flights…): pay <GET|POST> <URL> [<JSON body>]   (the URL and body exactly as the services lookup and the service's docs give them;
+      the price comes from the service and shows on a card; paid in USDC on Tempo, bridged from Solana when short, only after Confirm)
+    ADDRESSES AND WATCHLIST: save <ADDRESS> as <NAME> [on solana|base|arbitrum|ethereum|tempo|hyperliquid|near] | add <NAME> to favorites | remove <NAME> from favorites   (NAME from the address book, not a ticker)
       watch token <CONTRACT or MINT> [on robinhood|base|arbitrum|ethereum|solana] | remove token <SYMBOL> from favorites
     MARKET: chart <ASSET> [week|month] | what's moving | alert me when <ASSET> is above|below|at <PRICE> | cancel alerts
       (at: no side said, «алерт на 2600» — ihatecrypto picks it from the price)
@@ -139,6 +142,7 @@ public enum ChatRouter {
     LATER OR ON REPEAT (COMMAND is one form above, or several joined by " then "; the time is the user's local time):
       in N <minutes|hours|days|weeks|months>: COMMAND | at HH:MM: COMMAND | tomorrow [at HH:MM]: COMMAND | on YYYY-MM-DD [at HH:MM]: COMMAND
       every <hour|day|week|month|N hours|N days|N weeks|N months> [at HH:MM]: COMMAND | every <monday…sunday> [at HH:MM]: COMMAND | cancel scheduled tasks
+      every month on the <1st…28th> [at HH:MM]: COMMAND   («каждое 1-е число переводи маме 20 USDC» = every month on the 1st: send 20 USDC to Mom)
       when <ASSET> is above|below|at <PRICE>: COMMAND   (once, when the price gets there: a price alert that then prepares COMMAND; a trade plan or a money move waits for their Confirm, with a notification. «поставь алерт на 2680 и пришли лонг ×3 на аппрув» = when ETH is below 2680: long ETH leverage 3x. Build it from the blocks on the canvas when they point at them («на этот план», «вот это»): the plan written in the long|short form from its fields, or the move waiting for Confirm)
       («через неделю переложи депозиты в лучшие ставки» = in 1 week: rebalance USDC; «каждый день в 9 продавай SOL и клади USDC в vault» = every day at 09:00: sell SOL then lend USDC. Recurring BUYS keep their own form above. A step no form can do makes the whole request "clarify": say which step ihatecrypto can't do yet.)
     """
@@ -148,9 +152,10 @@ public enum ChatRouter {
     static let places = """
     Where their money lives, all at their own addresses: the Solana wallet (USDC and SOL, the hub); Hyperliquid (perp margin \
     and the HLP vault); Jupiter Lend and Kamino on Solana; Aave on Base, Arbitrum, Polygon and Ethereum; Morpho on Base, \
-    Arbitrum and Ethereum; idle USDC on those networks; Robinhood Chain (USDG, stock tokens, tokens by contract); NEAR. \
+    Arbitrum and Ethereum; idle USDC on those networks; Robinhood Chain (USDG, stock tokens, tokens by contract); NEAR; \
+    Tempo (USDC for transfers and for paying services per request, MPP; fees come out of the USDC, no gas coin). \
     Ethereum's gas costs dollars: only large amounts are worth it there, and «spread»/«rebalance» weigh that by themselves.
-    How money moves: through Solana. Solana ⇄ Base, Arbitrum, Polygon, Ethereum and Robinhood Chain over Relay; Hyperliquid → Solana; a trade \
+    How money moves: through Solana. Solana ⇄ Base, Arbitrum, Polygon, Ethereum, Robinhood Chain and Tempo over Relay; Hyperliquid → Solana; a trade \
     plan brings USDC from Solana to Hyperliquid by itself; NEAR ⇄ Solana USDC through NEAR Intents (buy NEAR / sell NEAR); every vault is entered from Solana and left back to Solana \
     in ONE command — Aave and Morpho too: «withdraw USDC from Aave on Arbitrum» withdraws there and bridges to Solana by itself, so never \
     split it into two steps. Selling stock tokens or tokens by contract leaves USDG on Robinhood Chain; «move USDG from Robinhood \
@@ -193,9 +198,12 @@ public enum ChatRouter {
     By name it lists the matches and gives the deepest one in full, so look up another only when they mean a different one.
       rates <USDC|SOL>        where the money can earn now: each vault ihatecrypto can use and its yearly rate
       movers                  the Hyperliquid markets that moved most today
+      services <WORDS>        paid APIs that take MPP payments on Tempo (mpp.dev's directory): what each does, its endpoints and prices
+      service <ID>            one of them in full: every endpoint, its price and the docs with the request's fields
     Look things up whenever the answer depends on data you don't have below: a pasted address or a token's name → token; \
     how they're doing, what they hold or did → portfolio; a price or «should I long X» → market, plus portfolio for the size; \
-    where to earn → rates. Never say you have no data about something before looking it up.
+    where to earn → rates; paying for something, a service or an API («оплати», «купи звонок», «отправь письмо почтой») → services, \
+    then service for the fields. Never say you have no data about something before looking it up.
 
     When you know enough, the final answer: {"route": "command" | "plan" | "chat" | "clarify", "command": "...", \
     "reply": "...", "show": "...", "options": [...]}

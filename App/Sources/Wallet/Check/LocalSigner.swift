@@ -109,7 +109,7 @@ func moveMoney(_ text: String) async throws {
     print("Command: \(command)")
     // Read-only commands and the allocation plan run without --yes; the plan executes only with it.
     switch command {
-    case .yields, .allocate, .rebalance: break
+    case .yields, .allocate, .rebalance, .pay: break
     default: guard send else { print("Add --yes."); return }
     }
     let signer = try LocalSigner()
@@ -146,7 +146,18 @@ func moveMoney(_ text: String) async throws {
     case .sellOn(let place, let token, let amount): print(try await executor.sellOn(place == "arbitrum" ? .arbitrum : .base, token, amount: amount))
     case .robinhoodToSolana(let amount): print(try await executor.evmToSolana(.robinhood, usdc: amount))
     case .solanaTo(let place, let amount):
-        print(try await executor.solanaToEVM(place == "base" ? .base : place == "arbitrum" ? .arbitrum : .robinhood, usdc: amount ?? 1))
+        guard let n = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't move money to \(place).") }
+        print(try await executor.solanaToEVM(n, usdc: amount ?? 1))
+    case .pay(let method, let url, let body):
+        // Without --yes: the service's price only. With it: paid on Tempo, then the answer.
+        let (status, headers, data) = try await MPP.call(method, url, body)
+        guard status == 402 else { print("\(status), unpaid:\n\(MPP.shown(data))"); return }
+        let c = try MPP.challenge(headers["www-authenticate"] ?? "").get()
+        print("Price: \(Fmt.num(c.usdc, maxFraction: 6)) USDC to \(c.payee) (\(c.realm))\(c.purpose.map { " for «\($0)»" } ?? ""), memo \(c.memo.map { "0x" + $0.hex } ?? "none")")
+        guard send else { print("Add --yes to pay it."); return }
+        let hash = try await executor.payTempo(c.amount, to: c.payee, memo: c.memo, label: c.realm)
+        let (paid, _, answer) = try await MPP.call(method, url, body, credential: (c.field, MPP.credential(c, hash: hash, payer: signer.wallet.evm)))
+        print("Paid: \(EVMNetwork.tempo.explorer)/tx/\(hash)\n\(paid):\n\(MPP.shown(answer))")
     case .receive: print("Solana (USDC, SOL): \(signer.wallet.solana)\nBase / EVM (USDC, ETH): \(signer.wallet.evm)")
     case .rebalance(let share):
         let (text, ready, _) = try await executor.rebalance(maxShare: share ?? 50, execute: send)

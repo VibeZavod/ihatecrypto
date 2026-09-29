@@ -22,6 +22,8 @@ public struct EVMNetwork: Sendable {
     public let topupUSD: Decimal
     /// The coin gas is paid in.
     public var gasCoin = "ETH"
+    /// A network with no coin of its own (Tempo): fees come out of this stablecoin, so there's no gas to bring.
+    public var feeToken: String?
 
     public static let base = EVMNetwork(name: "Base", key: "base", rpc: .base, usdc: EVMRPC.baseUSDC, relayChain: Relay.Chain.base,
                                         explorer: "https://basescan.org", gasFloor: 5_000_000_000_000, topupUSD: Decimal(string: "0.03")!)
@@ -44,7 +46,17 @@ public struct EVMNetwork: Sendable {
     public static let ethereum = EVMNetwork(name: "Ethereum", key: "ethereum", rpc: .ethereum, usdc: EVMRPC.ethereumUSDC, relayChain: Relay.Chain.ethereum,
                                             explorer: "https://etherscan.io", gasFloor: 800_000_000_000_000, topupUSD: Decimal(string: "2.5")!)
 
-    public static let all = [base, arbitrum, robinhood, polygon, ethereum]
+    /// Tempo: fees in USDC itself (≈ $0.001 a call at 0.6 gwei-attodollars, 2026-09-30); a transfer is the only thing
+    /// ihatecrypto does there besides the bridge — to a saved address, or to pay a service (MPP).
+    public static let tempo = EVMNetwork(name: "Tempo", key: "tempo", rpc: .tempo, usdc: EVMRPC.tempoUSDC, relayChain: Relay.Chain.tempo,
+                                         explorer: "https://explore.tempo.xyz", gasFloor: 0, topupUSD: 0, gasCoin: "USDC",
+                                         feeToken: EVMRPC.tempoUSDC)
+
+    public static let all = [base, arbitrum, robinhood, polygon, ethereum, tempo]
+
+    /// What to leave for fees when everything goes: a cent pays ten Tempo calls.
+    // ponytail: fixed cent; read the base fee if Tempo's fees ever pass $0.001 a call.
+    var feeReserve: UInt64 { feeToken == nil ? 0 : 10_000 }
 
     /// nil for a network LALA doesn't move money on: never guessed.
     static func of(chainId: UInt64) -> EVMNetwork? { all.first { $0.rpc.chainId == chainId } }
@@ -109,8 +121,11 @@ extension Executor {
         let me = wallet.evm
         func show(_ u: UInt64) -> String { Fmt.num(Decimal(u) / 1_000_000, maxFraction: 6) }
         let floor = max(net.gasFloor, heavier?.floor ?? 0), topupUSD = max(net.topupUSD, heavier?.topupUSD ?? 0)
+        // Where fees come out of the stablecoin, the fees ride on the USDC wanted and there's no coin to read.
+        let want = want + net.feeReserve
+        func gasThere() async throws -> UInt64 { net.feeToken == nil ? try await net.rpc.balance(me) : floor }
         var there = try await net.rpc.tokenBalance(net.usdc, owner: me)
-        var gas = try await net.rpc.balance(me)
+        var gas = try await gasThere()
         guard there < want || gas < floor else { return }
         let short = Decimal(want > there ? want - there : 0) / 1_000_000
         let needGas = gas < floor
@@ -129,7 +144,7 @@ extension Executor {
             }
             try await Task.sleep(for: .seconds(2))
             there = try await net.rpc.tokenBalance(net.usdc, owner: me)
-            gas = try await net.rpc.balance(me)
+            gas = try await gasThere()
         }
         report("On \(net.name) in \(Int(Date().timeIntervalSince(started))) s: \(show(there)) \(stable) and gas.")
     }
@@ -157,7 +172,9 @@ extension Executor {
         let base = net.rpc, usdc = net.usdc, me = wallet.evm, chain = net.relayChain
         func show(_ u: UInt64) -> String { Fmt.num(Decimal(u) / 1_000_000, maxFraction: 6) }
         let have = try await base.tokenBalance(usdc, owner: me)
-        let amount = requested.map { min(NSDecimalNumber(decimal: ($0 * 1_000_000).rounded(0, .down)).uint64Value, have) } ?? have
+        // On Tempo the fees come out of this USDC: a cent of it stays.
+        let spendable = have > net.feeReserve ? have - net.feeReserve : 0
+        let amount = requested.map { min(NSDecimalNumber(decimal: ($0 * 1_000_000).rounded(0, .down)).uint64Value, spendable) } ?? spendable
         guard amount >= 500_000 else { throw ExecutionError("\(show(have)) USDC on \(net.name) — below the half-dollar a bridge is worth.") }
 
         let quote = try await Relay.quote(user: me, recipient: wallet.solana, originChain: chain, destinationChain: Relay.Chain.solana,
@@ -233,10 +250,21 @@ extension Executor {
     /// there, the journal written before sending.
     func sendEVM(_ rpc: EVMRPC, to: String, data: Data, note: String, recipients: [String] = []) async throws -> String {
         guard let net = EVMNetwork.of(chainId: rpc.chainId) else { throw ExecutionError("ihatecrypto doesn't move money on network \(rpc.chainId). Nothing was signed.") }
+        if let token = net.feeToken, to.lowercased() != Tempo.feeManager {
+            // Only a plain transfer of the fee coin pays its fee in that coin by itself.
+            let paysInToken = if case .transfer = EVMCall.decode(data) { to.lowercased() == token } else { false }
+            if !paysInToken { try await chooseFeeToken(net, token) }
+        }
         let estimate = try await rpc.estimateGas(from: wallet.evm, to: to, value: 0, data: data)
         let (tip, maxFee) = try await rpc.fees()
         let gasLimit = estimate + estimate / 4
-        guard gasLimit * maxFee <= (try await rpc.balance(wallet.evm)) else { throw ExecutionError("Not enough \(net.gasCoin) on \(net.name) for gas: \(note).") }
+        if let token = net.feeToken {
+            guard Tempo.feeUnits(gasLimit * maxFee) <= (try await rpc.tokenBalance(token, owner: wallet.evm)) else {
+                throw ExecutionError("Not enough \(net.gasCoin) on \(net.name) for the fee: \(note).")
+            }
+        } else {
+            guard gasLimit * maxFee <= (try await rpc.balance(wallet.evm)) else { throw ExecutionError("Not enough \(net.gasCoin) on \(net.name) for gas: \(note).") }
+        }
         let nonce = try await rpc.nonce(wallet.evm)
         let raw = try await signer.signEVM(chainId: rpc.chainId, nonce: nonce, maxPriorityFee: tip, maxFee: maxFee, gasLimit: gasLimit, to: to, data: data,
                                            recipients: recipients)
@@ -250,5 +278,11 @@ extension Executor {
         try journal.append(.init(chain: net.key, id: hash, kind: .confirmed))
         report("\(note): done. \(net.explorer)/tx/\(hash)")
         return hash
+    }
+
+    /// Tempo: the wallet's fee token set to `token` once, before a call that isn't a plain transfer of it.
+    private func chooseFeeToken(_ net: EVMNetwork, _ token: String) async throws {
+        guard ABI.address(in: try await net.rpc.read(Tempo.feeManager, try Tempo.userToken(wallet.evm)), word: 0)?.lowercased() != token else { return }
+        _ = try await sendEVM(net.rpc, to: Tempo.feeManager, data: try Tempo.setUserToken(token), note: "Pay \(net.name) fees in \(net.gasCoin) from now on")
     }
 }

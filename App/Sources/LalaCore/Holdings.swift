@@ -40,6 +40,7 @@ public enum Holdings {
     /// counted as gas). `skip`: contracts the app counts elsewhere (USDC, Aave's aUSDC, the Morpho vault…), lowercased.
     /// nil when the network couldn't be read in full: the caller keeps what it had instead of showing a shorter list.
     public static func evm(_ chain: String, address: String, native: Bool, skip: Set<String>) async -> [Holding]? {
+        if chain == "tempo" { return await tempo(address) }
         guard let host = blockscout[chain] else { return [] }
         async let pages = tokenPages(host, address: address)
         async let account: [String: Any]?? = native
@@ -59,6 +60,28 @@ public enum Holdings {
         for start in stride(from: 0, to: min(unpriced.count, 600), by: 30) {
             let chunk = unpriced[start..<min(start + 30, unpriced.count)]
             out = dexPrices(out, try? await HTTP.get("https://api.dexscreener.com/tokens/v1/\(chain)/" + chunk.joined(separator: ",")))
+        }
+        return out
+    }
+
+    /// Tempo's dollars, read from its node (it has no Blockscout): USDC — what Relay brings and services charge — and
+    /// pathUSD and USDT0, Tempo's other stablecoins. Tempo has no coin of its own. nil when the node didn't answer.
+    /// With the icons Relay publishes for them (its /chains, 2026-09-30).
+    static let tempoStables = [("0x20c000000000000000000000b9537d11c60e8b50", "USDC", "https://assets.relay.link/icons/currencies/usdc.png"),
+                               ("0x20c0000000000000000000000000000000000000", "pathUSD", "https://assets.relay.link/icons/currencies/pathUSD.png"),
+                               ("0x20c00000000000000000000014f22ca97301eb73", "USDT0", "https://coin-images.coingecko.com/coins/images/53705/large/usdt0.jpg")]
+    static func tempo(_ address: String) async -> [Holding]? {
+        let owner = address.lowercased().replacingOccurrences(of: "0x", with: "")
+        guard owner.count == 40 else { return [] }
+        var out: [Holding] = []
+        for (contract, symbol, icon) in tempoStables {
+            let call: [String: Any] = ["jsonrpc": "2.0", "id": 1, "method": "eth_call",
+                                       "params": [["to": contract, "data": "0x70a08231" + String(repeating: "0", count: 24) + owner], "latest"]]
+            guard let hex = (await retrying({ json(try await HTTP.post("https://rpc.mainnet.tempo.xyz", json: call)) as? [String: Any] }))?["result"] as? String else { return nil }
+            let units = hex.dropFirst(2).reduce(Decimal(0)) { $0 * 16 + Decimal(Int(String($1), radix: 16) ?? 0) }
+            if units > 0 {
+                out.append(Holding(chain: "tempo", contract: contract, amount: units / 1_000_000, symbol: symbol, icon: URL(string: icon), price: 1, verified: true))
+            }
         }
         return out
     }
