@@ -379,14 +379,14 @@ struct RouteCard: View {
                         if state != .plain, kind != .result { StateChip(state: state, fill: look.fill, compact: true) }
                     }
                     StepTitle(step: step, ink: look.ink, size: 18)
-                    VStack(alignment: .leading, spacing: 3) {
-                        ForEach(Array(step.lines.filter { !$0.isEmpty }.prefix(4).enumerated()), id: \.offset) { i, line in
-                            StepLine(line: line, look: look, alert: state == .blocked && i == 0)
-                        }
+                    // As many rows as fit above the drawing on the square card; the rest open with a click.
+                    ViewThatFits(in: .vertical) {
+                        rows(4, look); rows(3, look); rows(2, look); rows(1, look)
                     }
                     .padding(.top, 2)
                 }
                 .padding(.horizontal, 13).padding(.top, 12)
+                .frame(height: RouteCards.smallHeight * 0.67, alignment: .top)
             } else {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(alignment: .top) {
@@ -411,6 +411,15 @@ struct RouteCard: View {
         .pointerStyle(.link)
         .help(hint)
         .accessibilityElement(children: .combine)
+    }
+
+    /// A small card's first rows: what stops the step first, in red.
+    private func rows(_ n: Int, _ look: CardLook) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            ForEach(Array(step.lines.filter { !$0.isEmpty }.prefix(n).enumerated()), id: \.offset) { i, line in
+                StepLine(line: line, look: look, alert: state == .blocked && i == 0)
+            }
+        }
     }
 
     /// The step's name on its price tag, and what its title's first token is.
