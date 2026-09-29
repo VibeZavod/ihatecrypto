@@ -642,17 +642,47 @@ struct ScheduleBoard: View {
 }
 
 extension Workspace {
-    /// For a plan the rules stop: the risk LALA suggests instead and what the trade looks like with it.
-    var fittingRisk: (risk: Decimal, sizing: Sizing)? {
-        let i = resolved.intent
-        guard let m = market else { return nil }
+    /// Why a plan can't go, in a few words for its status and a sentence for the chat. nil when nothing stops it (or a
+    /// detail is still missing: that has its own «By the book»).
+    var planBlocker: (short: String, sentence: String)? {
+        guard intent != TradeIntent(), !managesPosition, missingDetails == nil else { return nil }
+        let b = blocks, e = evaluation
+        if let s = e.sizing, s.notional < 10, e.problem != nil {
+            return (say("order under the $10 minimum", "ордер меньше $10"),
+                    say("The order is \(Fmt.usd(s.notional)), under Hyperliquid’s $10 minimum.", "Ордер \(Fmt.usd(s.notional)) — меньше минимума Hyperliquid $10."))
+        }
+        if let p = e.problem { return (say("the position can’t be placed", "позицию не выставить"), p) }
+        if let source = b.first(where: { $0.id == "source" }), source.status == .blocked, let short = source.lines.last {
+            return (say("not enough USDC", "не хватает USDC"), say("\(short) on Solana", "\(short.replacingOccurrences(of: "Short by", with: "Не хватает")) на Solana"))
+        }
+        if let s = e.sizing, let equity, equity > 0, s.lossAtStopUSD / equity * 100 > policy.maxRiskPct {
+            return (say("risk over the \(Fmt.pct(policy.maxRiskPct)) limit", "риск выше лимита \(Fmt.pct(policy.maxRiskPct))"),
+                    say("At the stop \(Fmt.usd(s.lossAtStopUSD)) is lost, over the limit of \(Fmt.pct(policy.maxRiskPct)) of capital (\(Fmt.usd(equity * policy.maxRiskPct / 100))).",
+                        "На стопе теряется \(Fmt.usd(s.lossAtStopUSD)) — больше лимита \(Fmt.pct(policy.maxRiskPct)) капитала (\(Fmt.usd(equity * policy.maxRiskPct / 100)))."))
+        }
+        guard let stopped = b.first(where: { $0.status == .blocked }) else { return nil }
+        let line = stopped.lines.first { $0.hasPrefix("✗") }.map { String($0.dropFirst(2)) } ?? stopped.lines.first ?? stopped.title
+        return (say("a rule stops it", "его стопорит правило"), line)
+    }
+
+    /// For a plan the rules stop: the one change that passes every rule, the $10 minimum and the money (Plan.fix), as a
+    /// card or button says it.
+    var planFix: (title: String, detail: String, command: String)? {
+        guard planBlocker != nil, let m = market else { return nil }
         // ponytail: Solana USDC less a bridge-fee cushion plus what is free on Hyperliquid; the confirm step re-quotes exactly.
         let available = max(0, (solana?.usdc ?? 0) - Decimal(string: "0.1")!) + (hl.map { $0.withdrawable + (m.dex.flatMap { dexBalances[$0]?.withdrawable } ?? 0) } ?? 0)
-        guard let r = Plan.fittingRisk(i, market: m, equity: equity, policy: policy,
-                                       openRisk: HyperliquidAccount.riskAtStops(positions: positions, orders: orders), available: available) else { return nil }
-        var j = i
-        j.riskUSD = r
-        return Plan.evaluate(j, market: m).sizing.map { (r, $0) }
+        guard let f = Plan.fix(intent, market: m, equity: equity, policy: policy,
+                               openRisk: HyperliquidAccount.riskAtStops(positions: positions, orders: orders), available: available) else { return nil }
+        // Said as what changes in the trade, not as a sum: «Risk $0.33» read like something to pay.
+        let s = f.sizing, now = evaluation.sizing
+        let title = f.command.hasSuffix("USDC")
+            ? say("Put \(f.command) in the trade", "Вложить \(f.command) в сделку")
+            : (now.map { s.notional > $0.notional } ?? true)
+                ? say("Raise the order to \(Fmt.usd(s.notional))", "Поднять ордер до \(Fmt.usd(s.notional))")
+                : say("Cut the order to \(Fmt.usd(s.notional))", "Уменьшить ордер до \(Fmt.usd(s.notional))")
+        let was = now.map { " " + say("instead of", "вместо") + " \(Fmt.usd($0.lossAtStopUSD))" } ?? ""
+        return (title, say("At the stop −\(Fmt.usd(s.lossAtStopUSD))\(was), margin \(Fmt.usd(s.margin)) — passes every rule.",
+                           "На стопе −\(Fmt.usd(s.lossAtStopUSD))\(was), маржа \(Fmt.usd(s.margin)) — проходит все правила."), f.command)
     }
 }
 

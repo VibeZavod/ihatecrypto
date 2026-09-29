@@ -1057,12 +1057,7 @@ struct StudioCanvas: View {
                 let blocked = nodes.contains { $0.status == .blocked }
                 let ideas = ws.nextSteps.flatMap { $0.canvas == ws.canvasID ? $0 : nil }
                 if blocked || ideas != nil, ws.assembly == nil {
-                    let fit = blocked ? ws.fittingRisk.map { f in
-                        ChatRouter.Option(title: ws.say("Risk \(Fmt.usd(f.risk))", "Риск \(Fmt.usd(f.risk))"),
-                                          comment: ws.say("Notional \(Fmt.usd(f.sizing.notional)), margin \(Fmt.usd(f.sizing.margin)) — everything fits.",
-                                                          "Позиция \(Fmt.usd(f.sizing.notional)), маржа \(Fmt.usd(f.sizing.margin)) — всё проходит."),
-                                          command: "risk $\(f.risk)", recommended: true)
-                    } : nil
+                    let fit = blocked ? ws.planFix.map { ChatRouter.Option(title: $0.title, comment: $0.detail, command: $0.command, recommended: true) } : nil
                     let overLimit = blocked && (ws.evaluation.sizing.map { s in (ws.equity ?? 0) > 0 && s.lossAtStopUSD / ws.equity! * 100 > ws.policy.maxRiskPct } ?? false)
                     if fit != nil || overLimit || !(ideas?.options.isEmpty ?? true) {
                         NextStepsBoard(steps: ideas, fit: fit, overLimit: overLimit)
@@ -1112,7 +1107,7 @@ struct StudioCanvas: View {
         guard hasRoute else { return board.map { $0.outcome.map { $0.ok ? "executed" : "failed" } ?? "saved canvas" } ?? "waiting for a task" }
         if let a = ws.assembly { return "building · \(a.shown) of \(a.total)" }
         if ws.managesPosition { return ws.positions.contains { $0.coin == ws.intent.asset } ? "position open" : "done · position closed" }
-        if nodes.contains(where: { $0.status == .blocked }) { return "stopped by the rules" }
+        if nodes.contains(where: { $0.status == .blocked }) { return ws.planBlocker.map { ws.say("stopped: ", "стоп: ") + $0.short } ?? "stopped by the rules" }
         return ws.planIsReady ? "ready to sign" : "needs details"
     }
 
@@ -1769,13 +1764,22 @@ struct PlanButtons: View {
         HStack(spacing: 8) {
             Button("Cancel") { withAnimation(StudioView.spring) { ws.clearPlan() } }
                 .buttonStyle(.bordered).controlSize(.large)
+            // Stopped, with a change that passes every rule: the button makes it, and Confirm comes back.
+            if !ready, let fix = ws.planFix {
+                Button { Task { await ws.send(fix.command) } } label: {
+                    Label(fix.title, systemImage: "wand.and.stars").font(.ui(13, .semibold)).padding(.horizontal, 6)
+                }
+                .buttonStyle(.borderedProminent).controlSize(.large).tint(Brand.accent)
+                .help((ws.planBlocker?.sentence ?? "") + " " + fix.detail)
+            } else {
             Button { Task { await ws.prepareExecution() } } label: {
                 Label(ws.signerWallet == nil ? "Preview" : "Confirm", systemImage: ready ? "touchid" : "lock.fill").font(.ui(13, .semibold)).padding(.horizontal, 6)
             }
             // A disabled prominent button still reads blue on macOS 26: grey and locked says it can't go yet.
             .buttonStyle(.borderedProminent).controlSize(.large).tint(ready ? nil : .gray)
             .disabled(!ready || ws.previewWallet == nil || ws.executing || ws.preparing)
-            .help(ready ? "Shows the simulation, then Touch ID signs" : ws.missingDetails.map { "Needs \($0) first" } ?? "A rule on the canvas stops this plan")
+            .help(ready ? "Shows the simulation, then Touch ID signs" : ws.missingDetails.map { "Needs \($0) first" } ?? ws.planBlocker?.sentence ?? "A rule on the canvas stops this plan")
+            }
         }
         .disabled(ws.busy)
     }
@@ -2187,16 +2191,24 @@ private struct ChatActions: View {
                 }
                 HStack {
                     if ws.executing || ws.preparing { ProgressView().controlSize(.small) }
-                    Button { Task { await ws.prepareExecution() } } label: {
-                        primary(ws.signerWallet == nil ? "Preview" : "Execute", enabled: ready)
+                    if !ready, !ws.preparing, !ws.executing, let fix = ws.planFix {
+                        Button { Task { await ws.send(fix.command) } } label: { primary(fix.title, enabled: true) }
+                            .buttonStyle(.plain)
+                            .help(fix.detail)
+                    } else {
+                        Button { Task { await ws.prepareExecution() } } label: {
+                            primary(ws.signerWallet == nil ? "Preview" : "Execute", enabled: ready)
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!ready || ws.previewWallet == nil || ws.executing || ws.preparing)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(!ready || ws.previewWallet == nil || ws.executing || ws.preparing)
                 }
                 // A grey Execute says why, and the missing details are one tap away.
                 if !ready, !ws.preparing, !ws.executing {
                     HStack(spacing: 8) {
-                        Label(ws.missingDetails.map { "Execute needs \($0)." } ?? "A rule on the canvas stops this plan.", systemImage: "lock.fill")
+                        Label(ws.missingDetails.map { "Execute needs \($0)." }
+                              ?? ws.planBlocker.map { $0.sentence + (ws.planFix == nil ? "" : ws.say(" The button above changes that; then Execute.", " Кнопка выше это исправит, потом Execute.")) }
+                              ?? "A rule on the canvas stops this plan.", systemImage: "lock.fill")
                             .font(.ui(10, .semibold)).foregroundStyle(.orange)
                         Spacer(minLength: 4)
                         if ws.missingDetails != nil {

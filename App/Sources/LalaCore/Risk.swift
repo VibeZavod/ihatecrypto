@@ -216,6 +216,44 @@ extension Plan {
 extension Plan {
     /// For a plan the rules stop: the largest risk, in whole cents and below what was asked, that passes every rule,
     /// the $10 minimum and fits the money available. nil when nothing smaller works either.
+    /// A stopped plan's one change that passes every rule, the $10 minimum and the money, as the chat's form («risk $0.32»,
+    /// «5 USDC») with the trade it makes. Too small: the least risk — or money, when the user named the money — that reaches
+    /// the minimum order. Too big: the largest that fits. nil when no such change is found.
+    public static func fix(_ raw: TradeIntent, market m: Market, equity: Decimal?, policy: RiskPolicy,
+                           openRisk: Decimal?, available: Decimal?) -> (command: String, sizing: Sizing)? {
+        func passes(_ j: TradeIntent) -> Sizing? {
+            let r = resolve(j, market: m, equity: equity, policy: policy).intent
+            let e = evaluate(r, market: m)
+            guard e.problem == nil, let s = e.sizing, s.notional >= minNotional else { return nil }
+            if let available, s.margin + s.feesUSD > available { return nil }
+            return RiskRules.check(r, s, market: m, equity: equity, policy: policy, openRisk: openRisk).contains { $0.level == .block } ? nil : s
+        }
+        let resolved = resolve(raw, market: m, equity: equity, policy: policy).intent
+        guard let s0 = evaluate(resolved, market: m).sizing, passes(raw) == nil else { return nil }
+        let byMoney = raw.amountUSDC != nil && raw.riskUSD == nil
+        let tooSmall = s0.notional < minNotional
+        // ponytail: walks 3% steps up or 5% down (at most 60); a closed form would need fees and size steps inverted.
+        if byMoney, let money = raw.amountUSDC {
+            var a = tooSmall ? (minNotional / (resolved.leverage ?? 1)).rounded(1, .up) : money
+            for _ in 0..<60 where a > 0 {
+                var j = raw
+                j.amountUSDC = a
+                if let s = passes(j) { return a == money ? nil : ("\(Fmt.num(a)) USDC", s) }
+                a = (tooSmall ? a * Decimal(string: "1.03")! : a * Decimal(string: "0.95")!).rounded(1, tooSmall ? .up : .down)
+            }
+            return nil
+        }
+        guard let risk = resolved.riskUSD else { return nil }
+        var r = tooSmall ? (risk * minNotional / max(s0.notional, Decimal(string: "0.01")!)).rounded(2, .up) : risk
+        for _ in 0..<60 where r > 0 {
+            var j = raw
+            j.riskUSD = r
+            if let s = passes(j) { return r == risk ? nil : ("risk $\(Fmt.num(r))", s) }
+            r = (tooSmall ? r * Decimal(string: "1.03")! : r * Decimal(string: "0.95")!).rounded(2, tooSmall ? .up : .down)
+        }
+        return nil
+    }
+
     public static func fittingRisk(_ i: TradeIntent, market m: Market, equity: Decimal?, policy: RiskPolicy,
                                    openRisk: Decimal?, available: Decimal?) -> Decimal? {
         guard let asked = i.riskUSD else { return nil }

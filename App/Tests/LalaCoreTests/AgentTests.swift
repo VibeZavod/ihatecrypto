@@ -336,3 +336,24 @@ private final class Script: LLMClient, @unchecked Sendable {
     for notYes in ["si quieres compra sol", "ok but lower the risk", "long eth"] { #expect(!ChatWords.confirms(notYes), "\(notYes)") }
     for no in ["no", "No gracias", "cancela", "déjalo", "нет", "cancel"] { #expect(ChatWords.declines(no), "\(no)") }
 }
+
+@Test func aStoppedPlanGetsTheOneChangeThatPasses() throws {
+    var m = Market(name: "SOL", markPx: 120, szDecimals: 2, maxLeverage: 20)
+    m.atrPct = 2
+    var policy = RiskPolicy()
+    policy.maxRiskPct = Decimal(string: "3.5")!
+    // An $9.5 order: the least risk that reaches the $10 minimum.
+    let small = try #require(IntentParser.apply("long SOL risk $0.3 stop 3% leverage 2x", to: TradeIntent(), markets: ["SOL"]))
+    let up = try #require(Plan.fix(small, market: m, equity: 29, policy: policy, openRisk: nil, available: 26))
+    #expect(up.command.hasPrefix("risk $") && up.sizing.notional >= 10 && up.sizing.notional < 11)
+    // Money named, «3 USDC at 2×» is $6: the least money that reaches it.
+    let money = try #require(IntentParser.apply("long SOL 3 USDC leverage 2x", to: TradeIntent(), markets: ["SOL"])).started
+    let more = try #require(Plan.fix(money, market: m, equity: 29, policy: policy, openRisk: nil, available: 26))
+    #expect(more.command.hasSuffix("USDC") && more.sizing.notional >= 10)
+    // Risk $5 of $29 breaks 3.5%: the largest risk that fits.
+    let big = try #require(IntentParser.apply("long SOL risk $5 stop 3%", to: TradeIntent(), markets: ["SOL"]))
+    let down = try #require(Plan.fix(big, market: m, equity: 29, policy: policy, openRisk: nil, available: 26))
+    #expect(down.command.hasPrefix("risk $") && down.sizing.lossAtStopUSD <= Decimal(string: "1.02")!)
+    // Nothing fits $3 of money: no fix.
+    #expect(Plan.fix(big, market: m, equity: 3, policy: policy, openRisk: nil, available: 1) == nil)
+}
