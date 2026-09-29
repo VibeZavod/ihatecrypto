@@ -419,7 +419,7 @@ struct StepTitle: View {
         if let contract = step.title.firstMatch(of: /0x[0-9a-fA-F]{40}/).map({ String($0.0) }), let token = ws.favoriteToken(contract) {
             TokenIcon(token: token, size: 20)
         } else if let name = Self.logo(part) {
-            TokenLogo(name: name, size: 20, round: true).background(Circle().fill(.white))
+            TokenLogo(name: name, size: 20, round: true)
         }
     }
 
@@ -754,7 +754,7 @@ struct StepDetails: View {
             HStack(spacing: 12) {
                 Circle().strokeBorder(on ? Brand.accent : Brand.cardBorder, lineWidth: 2).frame(width: 18, height: 18)
                     .overlay { if on { Circle().fill(Brand.accent).frame(width: 8, height: 8) } }
-                HStack(spacing: -7) { ForEach(logos, id: \.self) { TokenLogo(name: $0, size: 24, round: true).background(Circle().fill(.white)) } }
+                HStack(spacing: -7) { ForEach(logos, id: \.self) { TokenLogo(name: $0, size: 24, round: true) } }
                     .frame(width: 42, alignment: .leading)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.ui(13, .bold))

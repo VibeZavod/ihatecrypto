@@ -58,7 +58,7 @@ struct ReceiveCard: View {
             if let qr = QR.image(address) {
                 Image(nsImage: qr).interpolation(.none).resizable().frame(width: 104, height: 104)
                     .padding(6).background(RoundedRectangle(cornerRadius: 12).fill(.white))
-                    .overlay(alignment: .center) { TokenLogo(name: logo, size: 26, round: true).background(Circle().fill(.white)) }
+                    .overlay(alignment: .center) { TokenLogo(name: logo, size: 26, round: true) }
                     .help("Scan with the exchange or wallet app")
             }
             VStack(alignment: .leading, spacing: 6) {

@@ -93,8 +93,8 @@ enum Brand {
 struct TokenLogo: View {
     let name: String
     var size: CGFloat = 28
-    /// A disc edge to edge, for a logo on a white disc: a square logo (Solana's) is cut to the disc, so no white shows
-    /// beside it and no corner sticks out.
+    /// A disc edge to edge on white: a square logo (Solana's) is cut to the disc, so no white shows beside it and no
+    /// corner sticks out; a transparent one sits on the white.
     var round = false
 
     var body: some View {
@@ -111,8 +111,13 @@ struct TokenLogo: View {
 
     @ViewBuilder private func logo(size: CGFloat, round: Bool) -> some View {
         if let image = Self.image(name) {
-            Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
-                .frame(width: size, height: size).clipShape(round ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.28)))
+            let picture = Image(nsImage: image).resizable().interpolation(.high).aspectRatio(contentMode: .fit).frame(width: size, height: size)
+            if round {
+                // The white half a point inside: under the whole disc its edge showed as a hairline rim.
+                picture.clipShape(Circle()).background(Circle().fill(.white).padding(0.5))
+            } else {
+                picture.clipShape(RoundedRectangle(cornerRadius: size * 0.28))
+            }
         } else {
             Circle().fill(.quaternary).frame(width: size, height: size)
                 .overlay(Text(name.prefix(1).uppercased()).font(.ui(size * 0.45, .bold)))
