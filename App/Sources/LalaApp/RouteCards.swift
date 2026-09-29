@@ -197,7 +197,11 @@ struct RouteCards: View {
                 StepDetails(step: steps[i], index: i, count: steps.count, state: state(i), footer: footer, pending: editable(i) ? pending : nil,
                             wayKey: wayKey(i), hint: steps.lazy.flatMap(\.lines).first { $0.hasPrefix("free") },
                             notch: (frames[i]?.midX ?? 40), close: { withAnimation(.snappy(duration: 0.2)) { open = nil } },
-                            ask: { sendToChat(i) })
+                            ask: { sendToChat(i) },
+                            // Round the ring: right from the last step is the first, left from the first the last.
+                            go: { d in withAnimation(.snappy(duration: 0.2)) { open = (i + d + steps.count) % steps.count } })
+                    // Each step its own details: an amount typed for one doesn't carry to the next.
+                    .id(i)
                     .transition(.opacity)
             }
         }
@@ -892,6 +896,8 @@ struct StepDetails: View {
     let notch: CGFloat
     let close: () -> Void
     let ask: () -> Void
+    /// To the step before (−1) or after (+1), round the ring.
+    let go: (Int) -> Void
     @State private var amount = ""
     @State private var way: String?
     @State private var problem: String?
@@ -949,6 +955,16 @@ struct StepDetails: View {
                 Button("Open \(place.capitalized)") { ws.toggleDetail(place) }
                     .buttonStyle(.bordered).controlSize(.small)
                     .help("The place's own details")
+            }
+            if count > 1 {
+                // The arrow keys too, unless an amount is being typed here: there they move the cursor.
+                let keys = pending?.editableAmount == nil
+                Button { go(-1) } label: { Image(systemName: "chevron.left").font(.system(size: 12, weight: .bold)).frame(width: 30, height: 30) }
+                    .buttonStyle(.hoverIcon).help("Step \((index + count - 1) % count + 1)")
+                    .keyboardShortcut(keys ? KeyboardShortcut(.leftArrow, modifiers: []) : nil)
+                Button { go(1) } label: { Image(systemName: "chevron.right").font(.system(size: 12, weight: .bold)).frame(width: 30, height: 30) }
+                    .buttonStyle(.hoverIcon).help("Step \((index + 1) % count + 1)")
+                    .keyboardShortcut(keys ? KeyboardShortcut(.rightArrow, modifiers: []) : nil)
             }
             Button(action: close) { Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).frame(width: 30, height: 30) }
                 .buttonStyle(.hoverIcon).help("Close")
