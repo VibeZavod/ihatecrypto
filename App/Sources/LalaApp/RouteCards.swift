@@ -80,6 +80,9 @@ struct CardLook {
     }
     /// The ticker on a buy's price tag: Jupiter's lime on Jupiter, the ink elsewhere.
     var tag: Color { !pale && fill == .jupiter ? Color(hex: 0xC7F284) : drawing }
+    /// The take's and a profit's green, the stop's and a loss's red: lighter on a dark card.
+    var profit: Color { fill.dark && !pale ? Color(hex: 0x7EEBC0) : Color(hex: 0x1F9D6A) }
+    var loss: Color { fill.dark && !pale ? Color(hex: 0xFF8A7A) : Color(hex: 0xD9443A) }
     /// Filled shapes in the drawing (a wallet, a vault, a tag) are the card's own color, so the lines read on it; on a
     /// check's grey card they are paper.
     var body: Color { pale || fill == .check ? Brand.card : fill.color }
@@ -97,9 +100,10 @@ struct CardLook {
 // MARK: The route
 
 /// A money move's route, or a trade plan's: one card per step in its place's color, arrows between them, rows of three
-/// that wrap with an arrow back to the start of the next row; a longer route is the same cards smaller, seven to a row. Each card says its state with the coin's face, opens its details on a
-/// click and has Why / Edit / Send to chat / Copy on a right click. A new route is laid out by the assistant's coin
-/// cursor, card by card; the cards fade in where they stand and never move.
+/// that wrap with an arrow back to the start of the next row; a longer route is the same cards smaller, four to a row.
+/// Each card says its state with the coin's face, opens its details on a click and has Why / Edit / Send to chat /
+/// Copy on a right click. A new route is laid out by the assistant's coin cursor, card by card; the cards fade in
+/// where they stand and never move.
 struct RouteCards: View {
     @Environment(Workspace.self) private var ws
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -108,6 +112,8 @@ struct RouteCards: View {
     var current: Int?
     /// A move carried out (true) or failed (false); nil while it waits or runs.
     var outcome: Bool?
+    /// A board shown as it was, its move gone stale: no state on its cards, only Refresh above them.
+    var asItWas = false
     /// The route's own note (what's signed, how it's checked): «Why this way?» quotes it.
     var footer: String?
     /// The move waiting for Confirm: its amount, and the way of a Base or Arbitrum trade, change in a step's details.
@@ -119,7 +125,8 @@ struct RouteCards: View {
     var buildKey: String?
 
     static let cardWidth: CGFloat = 236, cardHeight: CGFloat = 228, gap: CGFloat = 40, perRow = 3
-    static let smallWidth: CGFloat = 168, smallHeight: CGFloat = 200, smallGap: CGFloat = 26, smallPerRow = 7
+    /// Four to a row: a plan of six or seven cards, the portfolio beside it, fits the window with its buttons in view.
+    static let smallWidth: CGFloat = 196, smallHeight: CGFloat = 244, smallGap: CGFloat = 26, smallPerRow = 4
     /// Over three steps the cards are the small ones.
     static func compact(_ count: Int) -> Bool { count > perRow }
     /// What the route takes across: a row of cards and the arrows between them.
@@ -196,6 +203,7 @@ struct RouteCards: View {
 
     private func state(_ i: Int) -> StepState {
         if let outcome { return outcome ? .done : .failed }
+        if asItWas { return .plain }
         if let current { return i < current ? .done : i > current ? .next : SignerActivity.shared.waiting > 0 ? .touch : .now }
         // A plan's step says its own: a rule stops it, it wants a look, or a check has passed.
         switch steps[i].status {
@@ -233,7 +241,7 @@ struct RouteCards: View {
     /// Confirm keeps waiting (a message in the chat would cancel it).
     private func why(_ i: Int) {
         let s = steps[i]
-        let facts = ([ws.readable(s.title)] + s.lines.filter { !$0.isEmpty }).joined(separator: " · ")
+        let facts = ([ws.readable(s.title)] + s.lines.filter { !$0.isEmpty }.map(\.rowText)).joined(separator: " · ")
         ws.reply(ws.say("Why this way — \(StepDetails.pretty(s.label)): \(facts).", "Почему так — \(StepDetails.pretty(s.label)): \(facts).")
                  + (footer.map { " " + $0 } ?? ""), note: "from the route")
     }
@@ -245,7 +253,7 @@ struct RouteCards: View {
 
     private func copy(_ i: Int) {
         let s = steps[i]
-        let text = ([name(i)] + s.lines.filter { !$0.isEmpty } + (footer.map { [$0] } ?? [])).joined(separator: "\n")
+        let text = ([name(i)] + s.lines.filter { !$0.isEmpty }.map(\.rowText) + (footer.map { [$0] } ?? [])).joined(separator: "\n")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
     }
@@ -311,8 +319,8 @@ struct RouteCard: View {
     var isOpen = false
     /// The history draws the same card narrower.
     var width = RouteCards.cardWidth
-    /// A long route's small card: its label, the coin for its state, its title, three lines of its numbers and its
-    /// drawing; the rest opens on a click.
+    /// A long route's small card: its label, the coin for its state, its title, its numbers as rows and its drawing;
+    /// the rest opens on a click.
     var compact = false
     @State private var hover = false
 
@@ -327,21 +335,23 @@ struct RouteCard: View {
                 .opacity(look.pale ? 0.55 : 1)
                 .frame(maxHeight: .infinity, alignment: .bottom)
             if compact {
-                VStack(alignment: .leading, spacing: 3) {
+                VStack(alignment: .leading, spacing: 4) {
                     HStack(alignment: .top, spacing: 4) {
-                        Text(step.label).font(.ui(9.5, .heavy)).tracking(0.6).foregroundStyle(look.label)
+                        Text(step.label).font(.ui(10, .heavy)).tracking(0.6).foregroundStyle(look.label)
                             .lineLimit(2).minimumScaleFactor(0.8).fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 0)
                         // What the result comes to is an estimate, not a step with a state.
                         if state != .plain, kind != .result { StateChip(state: state, fill: look.fill, compact: true) }
                     }
-                    StepTitle(step: step, ink: look.ink, size: 14)
-                    ForEach(Array(step.lines.filter { !$0.isEmpty }.prefix(3).enumerated()), id: \.offset) { _, line in
-                        Text(line).font(.ui(10)).monospacedDigit().foregroundStyle(look.line)
-                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    StepTitle(step: step, ink: look.ink, size: 18)
+                    VStack(alignment: .leading, spacing: 3) {
+                        ForEach(Array(step.lines.filter { !$0.isEmpty }.prefix(4).enumerated()), id: \.offset) { i, line in
+                            StepLine(line: line, look: look, alert: state == .blocked && i == 0)
+                        }
                     }
+                    .padding(.top, 2)
                 }
-                .padding(.horizontal, 12).padding(.top, 10)
+                .padding(.horizontal, 13).padding(.top, 12)
             } else {
                 VStack(alignment: .leading, spacing: 5) {
                     HStack(alignment: .top) {
@@ -352,9 +362,7 @@ struct RouteCard: View {
                     Text(step.label).font(.ui(10, .heavy)).tracking(0.7).foregroundStyle(look.label)
                         .lineLimit(1).minimumScaleFactor(0.75).padding(.top, 4)
                     StepTitle(step: step, ink: look.ink)
-                    if let line = step.lines.first(where: { !$0.isEmpty }) {
-                        Text(line).font(.ui(11)).foregroundStyle(look.line).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-                    }
+                    if let line = step.lines.first(where: { !$0.isEmpty }) { StepLine(line: line, look: look, size: 11) }
                 }
                 .padding(16)
             }
@@ -447,6 +455,42 @@ struct LogoBadge: View {
             TokenLogo(name: logo, size: inner)
         }
     }
+}
+
+/// One of a card's lines. «entry\t≈ 119.31» is a row, the label quiet on the left and the value bold on the right, red
+/// for the stop and a loss, green for the take and a profit, so a card reads at a glance; anything else is a sentence,
+/// red when it's what stops the step.
+struct StepLine: View {
+    let line: String
+    let look: CardLook
+    var size: CGFloat = 11.5
+    var alert = false
+
+    var body: some View {
+        let parts = line.split(separator: "\t", maxSplits: 1).map(String.init)
+        if parts.count == 2 {
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                Text(parts[0]).font(.ui(size)).foregroundStyle(look.line).lineLimit(1)
+                Spacer(minLength: 4)
+                Text(parts[1]).font(.ui(size, .semibold)).monospacedDigit().foregroundStyle(tint(parts[0], parts[1]) ?? look.ink)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+            }
+        } else {
+            Text(line).font(.ui(size, alert ? .semibold : .regular)).foregroundStyle(alert ? look.loss : look.line)
+                .lineLimit(3).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    private func tint(_ label: String, _ value: String) -> Color? {
+        if label.contains("stop") || value.hasPrefix("−") { return look.loss }
+        if label.contains("take") || value.hasPrefix("+") { return look.profit }
+        return nil
+    }
+}
+
+extension String {
+    /// A card row «entry\t≈ 119.31» as one phrase: «entry ≈ 119.31».
+    var rowText: String { replacingOccurrences(of: "\t", with: " ") }
 }
 
 /// «2 USDC → Base»: each side with its token's or place's logo when there's one.
@@ -650,9 +694,7 @@ struct StepScene: View {
             context.stroke(path, with: .color(look.drawing.opacity(opacity)), style: style ?? line)
         }
         func circle(_ x: CGFloat, _ y: CGFloat, _ r: CGFloat) -> Path { Path(ellipseIn: CGRect(x: (x - r) * k, y: (y - r) * k, width: 2 * r * k, height: 2 * r * k)) }
-        // The take's green and the stop's red, lighter on a dark card.
-        let good = look.fill.dark && !look.pale ? Color(hex: 0x7EEBC0) : Color(hex: 0x1F9D6A)
-        let bad = look.fill.dark && !look.pale ? Color(hex: 0xFF8A7A) : Color(hex: 0xD9443A)
+        let good = look.profit, bad = look.loss
         switch (kind, front) {
         case (.wallet, true):
             var wallet = Path()
@@ -793,7 +835,7 @@ struct StepDetails: View {
             if pending != nil, wayKey != nil { ways }
             if pending == nil {
                 VStack(alignment: .leading, spacing: 4) {
-                    ForEach(step.lines.filter { !$0.isEmpty }, id: \.self) { Text($0).font(.ui(12)) }
+                    ForEach(step.lines.filter { !$0.isEmpty }, id: \.self) { Text($0.rowText).font(.ui(12)) }
                     if let footer { Text(footer).font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
                 }
             }

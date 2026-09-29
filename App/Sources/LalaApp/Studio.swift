@@ -985,6 +985,17 @@ struct StudioCanvas: View {
                     StatusChip(text: statusText(nodes), tint: statusTint(nodes))
                     // An open position is on its market for good: nothing to pick until it closes.
                     if hasRoute, !ws.managesPosition { MarketPicker() }
+                    Spacer(minLength: 12)
+                    // Top right: a live plan's Cancel and Confirm; a board shown as it was (its move gone stale) only Refresh.
+                    if hasRoute, !ws.managesPosition {
+                        PlanButtons()
+                    } else if !hasRoute, let b = board, b.outcome == nil, let request = b.messages.last(where: \.fromUser)?.text {
+                        Button { Task { await ws.send(request) } } label: {
+                            Label("Refresh", systemImage: "arrow.clockwise").font(.ui(13, .semibold)).padding(.horizontal, 6)
+                        }
+                        .buttonStyle(.bordered).controlSize(.large).disabled(ws.busy)
+                        .help("Asks “\(request)” again for fresh numbers")
+                    }
                 }
             }
             // Only this canvas's own position, or one the user tapped (a tap opens its chart), not every open one:
@@ -1693,6 +1704,28 @@ struct StudioNode: Identifiable {
     }
 }
 
+/// A trade plan's Cancel and Confirm, at the top right of its route. Confirm opens the simulation and Touch ID signs;
+/// while a rule stops the plan or a detail is missing it is grey and says why.
+struct PlanButtons: View {
+    @Environment(Workspace.self) private var ws
+
+    var body: some View {
+        let ready = ws.planIsReady
+        HStack(spacing: 8) {
+            Button("Cancel") { withAnimation(StudioView.spring) { ws.clearPlan() } }
+                .buttonStyle(.bordered).controlSize(.large)
+            Button { Task { await ws.prepareExecution() } } label: {
+                Label(ws.signerWallet == nil ? "Preview" : "Confirm", systemImage: ready ? "touchid" : "lock.fill").font(.ui(13, .semibold)).padding(.horizontal, 6)
+            }
+            // A disabled prominent button still reads blue on macOS 26: grey and locked says it can't go yet.
+            .buttonStyle(.borderedProminent).controlSize(.large).tint(ready ? nil : .gray)
+            .disabled(!ready || ws.previewWallet == nil || ws.executing || ws.preparing)
+            .help(ready ? "Shows the simulation, then Touch ID signs" : ws.missingDetails.map { "Needs \($0) first" } ?? "A rule on the canvas stops this plan")
+        }
+        .disabled(ws.busy)
+    }
+}
+
 extension Workspace {
     /// The trade plan as route cards, in the order it happens: the money from Solana (or already on Hyperliquid), the
     /// bridge, the rules and Jev's check, the position, its stop and take, and what it comes to. A step a rule stops,
@@ -1712,23 +1745,33 @@ extension Workspace {
         }
         var steps: [ActivityBubble] = []
         let sizing = evaluation.sizing
+        let name = IntentParser.pretty(intent.asset).components(separatedBy: " (").first ?? intent.asset
+        // Rows are «label\tvalue» (StepLine): the eye finds the number without reading a sentence.
+        func row(_ label: String, _ value: String) -> String { "\(label)\t\(value)" }
         // «Not needed»: the margin is on Hyperliquid already, and the route starts there.
         let bridge = node(.bridge).flatMap { $0.status == .info ? nil : $0 }
         if let source = node(.source) {
             if let bridge {
-                let send = quote?.amountIn ?? intent.amountUSDC
-                // How much leaves the wallet and what stays; what stops it (short of money) first.
-                let wallet = solana.map { s in send.map { "wallet \(Fmt.num(s.usdc)) → \(Fmt.num(s.usdc - $0)) USDC" } ?? "wallet \(Fmt.num(s.usdc)) USDC" }
-                let lines = source.status == .blocked ? Array(source.lines.suffix(1)) + [wallet].compactMap { $0 } : [wallet].compactMap { $0 }
-                steps.append(card("FROM · SOLANA", send.map { "\(Fmt.num($0)) USDC" } ?? "USDC", lines.isEmpty ? source.lines : lines,
+                // What goes over: the quote's, the amount asked for, or — while a rule stops the plan and nothing is
+                // quoted — what the margin and fees come to, so the card always says how much.
+                let free = hl?.withdrawable ?? 0
+                let need = sizing.map { max(0, $0.margin + $0.feesUSD - free).rounded(2, .up) }
+                let send = quote?.amountIn ?? intent.amountUSDC ?? need
+                let approx = quote == nil && intent.amountUSDC == nil ? "≈ " : ""
+                var lines = solana.map { s in [row("wallet", send.map { "\(Fmt.num(s.usdc)) → \(Fmt.num(max(0, s.usdc - $0)))" } ?? Fmt.num(s.usdc))] } ?? []
+                if source.status == .blocked, let short = source.lines.last { lines.insert(short, at: 0) }
+                steps.append(card("FROM · SOLANA", send.map { "\(approx)\(Fmt.num($0)) USDC" } ?? "USDC", lines.isEmpty ? source.lines : lines,
                                   state(source.status), logo: "sol", .solana))
                 // Its amount waits for the position's checks: nothing for the user to do here.
                 let oneClick = bridge.label.contains("1Click") && !bridge.label.contains("Relay")
-                let lines2 = quote.map { q in
-                    ["send \(Fmt.num(q.amountIn)) → get \(Fmt.num(q.amountOut)) USDC",
-                     "fee ≈ \(Fmt.usd(q.amountIn - q.reserve - q.amountOut))" + (q.time.firstMatch(of: /\d+\s*s\b/).map { " · ≈ \($0.0)" } ?? ""),
-                     q.opening ? "incl. Hyperliquid's one-time account fee" : nil].compactMap { $0 }
-                } ?? bridge.lines
+                var lines2: [String]
+                if let q = quote {
+                    lines2 = [row("sends", "\(Fmt.num(q.amountIn)) USDC"), row("arrives", "\(Fmt.num(q.amountOut)) USDC"),
+                              row("fee", Fmt.usd(q.amountIn - q.reserve - q.amountOut) + (q.time.firstMatch(of: /\d+\s*s\b/).map { " · \($0.0)" } ?? ""))]
+                    if q.opening { lines2.append("incl. Hyperliquid's one-time account fee") }
+                } else {
+                    lines2 = (send.map { [row("sends", "≈ \(Fmt.num($0)) USDC")] } ?? []) + ["quoted once the position passes the checks"]
+                }
                 steps.append(card(oneClick ? "BRIDGE · 1CLICK" : "BRIDGE · RELAY", "→ Hyperliquid", lines2,
                                   bridge.status == .needsInput ? "info" : state(bridge.status), logo: oneClick ? "usdc" : "relay", .relay))
             } else {
@@ -1737,44 +1780,52 @@ extension Workspace {
             }
         }
         if let r = node(.risk) {
-            // The loss at the stop is the result card's; the checks themselves here.
-            steps.append(card("CHECK RULES", r.title, r.lines.filter { !$0.hasPrefix("If the stop") }, state(r.status, check: true), .check))
+            var lines: [String] = []
+            if let s = sizing {
+                let pct = equity.flatMap { $0 > 0 ? (s.lossAtStopUSD / $0 * 100).rounded(1, .plain) : nil }
+                lines.append(row("risk", Fmt.usd(s.lossAtStopUSD) + (pct.map { " · \(Fmt.num($0))%" } ?? "")))
+                lines.append(row("limit", "\(Fmt.num(policy.maxRiskPct))% a trade"))
+                if let profit = s.profitAtTakeUSD, s.lossAtStopUSD > 0 { lines.append(row("reward/risk", "1:\(Fmt.num((profit / s.lossAtStopUSD).rounded(1, .plain)))")) }
+            }
+            // A rule it breaks, in its own words, first.
+            lines.insert(contentsOf: r.lines.filter { $0.hasPrefix("✗") }, at: 0)
+            steps.append(card("CHECK RULES", r.title, lines.isEmpty ? r.lines : lines, state(r.status, check: true), .check))
         }
         if let j = node(.jev) {
             steps.append(card("JEV CHECKS", j.status == .warning ? "Has doubts" : "Matches request", j.lines,
                               j.status == .warning ? "attention" : "passed", .check))
         }
         if let p = node(.position) {
-            let name = IntentParser.pretty(intent.asset).components(separatedBy: " (").first ?? intent.asset
+            let leverage = "\(Fmt.num(intent.leverage ?? 1))×"
             var lines = p.lines
             if let s = sizing, let m = market {
-                lines = ["\(Fmt.num(s.size, maxFraction: m.szDecimals)) \(name) at \(intent.entryPx == nil ? "≈ " : "limit ")\(Fmt.price(s.entry))",
-                         "size \(Fmt.usd(s.notional)) · margin \(Fmt.usd(s.margin))",
-                         "liquidation ≈ \(Fmt.price(s.liquidationPrice))"]
+                lines = [row("amount", "\(Fmt.num(s.size, maxFraction: m.szDecimals)) \(name)"),
+                         row(intent.entryPx == nil ? "entry" : "limit", "\(intent.entryPx == nil ? "≈ " : "")\(Fmt.price(s.entry))"),
+                         row("margin", Fmt.usd(s.margin)),
+                         row("liquidation", "≈ \(Fmt.price(s.liquidationPrice))")]
             }
-            // What stops it goes first: it's the line the card shows.
+            // What stops it goes first, in red.
             if p.status == .blocked, let problem = evaluation.problem ?? p.lines.last { lines.insert(problem, at: 0) }
-            steps.append(card("OPEN \(p.long ? "LONG" : "SHORT") · HYPERLIQUID", "\(name) \(Fmt.num(intent.leverage ?? 1))×",
+            // The size and the leverage are the title: the first thing read.
+            steps.append(card("OPEN \(p.long ? "LONG" : "SHORT") · \(name.uppercased())", sizing.map { "\(Fmt.usd($0.notional)) · \(leverage)" } ?? "\(name) \(leverage)",
                               lines, state(p.status), logo: TokenLogo.name(forAsset: intent.asset) ?? "hype", .hyperliquid))
         }
         if let s = node(.protection) {
             var lines = s.lines
             if let z = sizing, let stop = intent.stopPct {
-                lines = ["stop \(Fmt.price(z.stopPrice)) · −\(Fmt.pct(stop)) · −\(Fmt.usd(z.lossAtStopUSD))"]
-                if let tp = z.takePrice, let profit = z.profitAtTakeUSD {
-                    let pct = (abs(tp - z.entry) / z.entry * 100).rounded(1, .plain)
-                    lines.append("take \(Fmt.price(tp)) · +\(Fmt.pct(pct)) · +\(Fmt.usd(profit))")
+                lines = [row("stop", "\(Fmt.price(z.stopPrice)) · −\(Fmt.pct(stop))")]
+                if let tp = z.takePrice {
+                    lines.append(row("take", "\(Fmt.price(tp)) · +\(Fmt.pct((abs(tp - z.entry) / z.entry * 100).rounded(1, .plain)))"))
                 }
-                lines.append("both on the exchange, on the mark price")
+                lines.append("both wait on the exchange")
             }
             steps.append(card("PROTECT", sizing?.takePrice != nil ? "Stop + take" : "Stop", lines, state(s.status), logo: "hype", .hyperliquid))
         }
         if let s = sizing {
-            let take = s.profitAtTakeUSD.map { " or +\(Fmt.usd($0))" } ?? ""
-            var lines = ["at the stop / at the take"]
-            if let profit = s.profitAtTakeUSD, s.lossAtStopUSD > 0 { lines.append("reward/risk 1:\(Fmt.num((profit / s.lossAtStopUSD).rounded(1, .plain)))") }
-            lines.append("fees ≈ \(Fmt.usd(s.feesUSD)) included")
-            steps.append(card("RESULT · ESTIMATE", "−\(Fmt.usd(s.lossAtStopUSD))\(take)", lines, "info", .check))
+            var lines = [row("at the stop", "−\(Fmt.usd(s.lossAtStopUSD))")]
+            if let profit = s.profitAtTakeUSD { lines.append(row("at the take", "+\(Fmt.usd(profit))")) }
+            lines.append(row("fees", "≈ \(Fmt.usd(s.feesUSD)) incl."))
+            steps.append(card("RESULT · ESTIMATE", "−\(Fmt.usd(s.lossAtStopUSD))" + (s.profitAtTakeUSD.map { " / +\(Fmt.usd($0))" } ?? ""), lines, "info", .check))
         }
         let signatures = nodes.filter { $0.signature != nil }.count
         let footer = "Execute shows the simulation first, then \(signatures) signature\(signatures == 1 ? "" : "s") — nothing is signed before your Touch ID."

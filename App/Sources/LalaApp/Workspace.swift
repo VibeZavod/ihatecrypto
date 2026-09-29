@@ -630,10 +630,7 @@ final class Workspace {
             return
         }
         if lower.wholeMatch(of: /\s*(?:clear|reset|remove|drop)\s+(?:the\s+)?plan|(?:очисти|сбрось|убери|удали)\s+план\w*\s*[.!]?\s*/) != nil {
-            intent = TradeIntent()
-            executed = nil
-            takeChoices = nil
-            reply(say("The plan is cleared. Tell me what to do next.", "План очищен. Скажи, что дальше."))
+            clearPlan()
             return
         }
         if text.lowercased().wholeMatch(of: /\s*(?:lock|lock\s+(?:it|the\s+wallet|signing)|заблокируй\w*|блокир\w*)\s*[.!]?\s*/) != nil {
@@ -877,10 +874,7 @@ final class Workspace {
             newCanvas()
             return true
         case "clear the plan":
-            intent = TradeIntent()
-            executed = nil
-            takeChoices = nil
-            reply(say("The plan is cleared. Tell me what to do next.", "План очищен. Скажи, что дальше."), note: note)
+            clearPlan(note: note)
             return true
         case "lock":
             await lockSigner()
@@ -962,6 +956,14 @@ final class Workspace {
         var next = next
         if next == TradeIntent() { next.autoRules = true }
         return next
+    }
+
+    /// «clear the plan», typed, read by the model or the plan's Cancel.
+    func clearPlan(note: String? = nil) {
+        intent = TradeIntent()
+        executed = nil
+        takeChoices = nil
+        reply(say("The plan is cleared. Tell me what to do next.", "План очищен. Скажи, что дальше."), note: note)
     }
 
     /// After every message about the plan: the plan checked item by item and the next step (TradeAdvice.swift).

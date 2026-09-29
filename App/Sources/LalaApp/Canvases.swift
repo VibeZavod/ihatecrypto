@@ -521,21 +521,12 @@ struct SavedBoard: View {
                 Label("\(o.ok ? "Executed" : "Failed") · \(Fmt.date(o.at))", systemImage: o.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
                     .font(.ui(13, .semibold)).foregroundStyle(o.ok ? Brand.profit : Brand.loss)
             } else {
-                HStack(spacing: 10) {
-                    Label("As it was · \(Fmt.date(canvas.boardAt ?? canvas.updated))", systemImage: "clock.arrow.circlepath")
-                        .font(.ui(10)).foregroundStyle(.secondary)
-                    // The same request again, through the chat: live numbers, and a money move still waits for Confirm.
-                    if let request = canvas.messages.last(where: \.fromUser)?.text {
-                        Button { Task { await ws.send(request) } } label: {
-                            Label("Refresh", systemImage: "arrow.clockwise").font(.ui(10, .semibold))
-                        }
-                        .buttonStyle(.bordered).controlSize(.small).disabled(ws.busy)
-                        .help("Asks “\(request)” again for fresh numbers")
-                    }
-                }
+                // Its Refresh is at the header's top right, where a live board has Cancel and Confirm.
+                Label("As it was · \(Fmt.date(canvas.boardAt ?? canvas.updated))", systemImage: "clock.arrow.circlepath")
+                    .font(.ui(10)).foregroundStyle(.secondary)
             }
             if !canvas.bubbles.isEmpty, canvas.bubbles.allSatisfy({ $0.kind == "step" }) {
-                RouteCards(steps: canvas.bubbles, outcome: canvas.outcome?.ok)
+                RouteCards(steps: canvas.bubbles, outcome: canvas.outcome?.ok, asItWas: canvas.outcome == nil)
             } else {
                 LazyVGrid(columns: [GridItem(.fixed(220), alignment: .top), GridItem(.fixed(220), alignment: .top)], alignment: .leading, spacing: 14) {
                     ForEach(canvas.bubbles, id: \.self) { HistoryBubble(bubble: $0) }
@@ -714,13 +705,14 @@ struct PendingButtons: View {
     var confirm = "Confirm"
 
     var body: some View {
+        // Cancel first, Confirm last: the macOS order, and at a board's top right Confirm sits at the corner.
         HStack(spacing: 8) {
+            Button("Cancel") { Task { await ws.send("cancel") } }
+                .buttonStyle(.bordered).controlSize(.large)
             Button { Task { await ws.send("do it") } } label: {
                 Label(confirm, systemImage: "touchid").font(.ui(13, .semibold)).padding(.horizontal, 6)
             }
             .buttonStyle(.borderedProminent).controlSize(.large)
-            Button("Cancel") { Task { await ws.send("cancel") } }
-                .buttonStyle(.bordered).controlSize(.large)
         }
         .disabled(ws.busy)
     }
@@ -1184,11 +1176,12 @@ struct WithdrawBoard: View {
                     HStack(spacing: 8) {
                         Text(route.title).font(.ui(14, .semibold)).lineLimit(2).truncationMode(.middle)
                         StatusChip(text: "waiting for the signature", tint: Brand.profit).fixedSize()
+                        Spacer(minLength: 12)
+                        PendingButtons()
                     }
                     RouteCards(steps: route.steps, footer: route.footer, pending: command, build: true)
                     Label(route.footer, systemImage: "signature").font(.ui(10)).foregroundStyle(.secondary)
                         .frame(maxWidth: 470, alignment: .leading)
-                    PendingButtons()
                 }
                 if let warning = route.warning {
                     Label(warning, systemImage: "exclamationmark.triangle").font(.ui(10)).foregroundStyle(Brand.jevInk)
