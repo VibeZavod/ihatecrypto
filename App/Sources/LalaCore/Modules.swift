@@ -59,7 +59,7 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
 }
 
 public enum ModuleKind: String, CaseIterable, Sendable {
-    case swaps, earn, perps, stocks, bridges
+    case swaps, earn, perps, stocks, bridges, payments
 
     public var name: String {
         switch self {
@@ -68,6 +68,7 @@ public enum ModuleKind: String, CaseIterable, Sendable {
         case .perps: "Perps"
         case .stocks: "Stocks & oil"
         case .bridges: "Bridges"
+        case .payments: "Payments"
         }
     }
 
@@ -78,12 +79,13 @@ public enum ModuleKind: String, CaseIterable, Sendable {
         case .perps: "Long or short with leverage"
         case .stocks: "Commodities and tokenized shares"
         case .bridges: "Move money between networks"
+        case .payments: "Pay for services per request"
         }
     }
 }
 
 public enum ModuleProtocol: String, CaseIterable, Sendable {
-    case jupiter, uniswap, jupiterLend, kamino, jitoSOL, aave, morpho, hlp, hlPerps, xyz, robinhoodStocks, relay, oneClick
+    case jupiter, uniswap, jupiterLend, kamino, jitoSOL, aave, morpho, hlp, hlPerps, xyz, robinhoodStocks, relay, oneClick, mpp
 
     public var kind: ModuleKind {
         switch self {
@@ -92,6 +94,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
         case .hlPerps: .perps
         case .xyz, .robinhoodStocks: .stocks
         case .relay, .oneClick: .bridges
+        case .mpp: .payments
         }
     }
 
@@ -106,6 +109,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
         case .aave, .morpho: []
         case .hlp, .hlPerps, .xyz: [.hyperliquid]
         case .oneClick: [.near]
+        case .mpp: [.tempo]
         }
     }
 
@@ -124,6 +128,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
         case .robinhoodStocks: "Robinhood Stock Tokens"
         case .relay: "Relay"
         case .oneClick: "NEAR Intents · 1Click"
+        case .mpp: "MPP · x402"
         }
     }
 
@@ -137,6 +142,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
         case .aave: "Base · Arbitrum · Polygon · Ethereum"
         case .morpho: "Base · Arbitrum · Ethereum"
         case .oneClick: "NEAR ⇄ Solana"
+        case .mpp: "APIs, email, calls, letters · USDC on Tempo"
         default: networks.map(\.name).joined(separator: " · ")
         }
     }
@@ -154,6 +160,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
         case .robinhoodStocks: "robinhood"
         case .relay: "relay"
         case .oneClick: "near"
+        case .mpp: "tempo"
         }
     }
 
@@ -242,7 +249,7 @@ public struct Modules: Equatable, Sendable {
         case .allocate, .rebalance:
             // Each vault is checked by the planner; with the whole kind off there's nothing to plan.
             return isOn(.earn) ? nil : ru ? "\(ModuleKind.earn.name) выключены в Settings › Modules." : "\(ModuleKind.earn.name) is off in Settings › Modules."
-        case .pay: return refusal(network: .tempo, ru: ru)
+        case .pay: return r(.mpp)
         case .sendTo, .yields, .receive, .stopSchedules: return nil
         }
     }

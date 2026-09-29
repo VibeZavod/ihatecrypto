@@ -213,5 +213,45 @@
       "plan_first": "WHEN",
       "no_pending": true
     }
+  },
+  {
+    "name": "Solana → Tempo over Relay → a drawn route with Tempo's card",
+    "send": [
+      "переведи 2 USDC из соланы в темпо"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "drawn_route": true,
+      "steps": [
+        "SOLANA",
+        "RELAY",
+        "TEMPO"
+      ],
+      "title_contains": "Tempo"
+    }
+  },
+  {
+    "name": "pay for an API on Tempo → the service's price on a card, nothing paid",
+    "send": [
+      "сколько стоит биткоин? оплати запрос в coingecko через темпо"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "command_contains": "pay",
+      "steps": [
+        "PAY"
+      ],
+      "title_contains": "0.06"
+    }
+  },
+  {
+    "name": "the 1st of every month → a scheduled monthly task, no card",
+    "send": [
+      "каждое 1 число месяца в 10:00 показывай мой P/L за месяц"
+    ],
+    "expect": {
+      "no_pending": true,
+      "reply": true
+    }
   }
 ]

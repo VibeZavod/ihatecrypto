@@ -82,4 +82,9 @@ private func challenge(_ request: String, extra: String = "") -> String {
     m.set(.tempo, false)
     #expect(m.refusal(.pay(method: "GET", url: "https://a.example", body: nil)) != nil)
     #expect(m.refusal(.solanaTo("tempo", 2)) != nil && m.refusal(.solanaTo("base", 2)) == nil)
+    // Payments have their own switch: off, «pay …» is refused while Tempo transfers still go.
+    var p = Modules()
+    p.set(.mpp, false)
+    #expect(p.refusal(.pay(method: "GET", url: "https://a.example", body: nil)) != nil && p.refusal(.solanaTo("tempo", 2)) == nil)
+    #expect(ModuleProtocol.mpp.kind == .payments && ModuleProtocol.mpp.networks == [.tempo])
 }

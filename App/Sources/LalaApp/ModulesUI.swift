@@ -265,6 +265,7 @@ struct ModulesSettings: View {
         case .perps: "chart.line.uptrend.xyaxis"
         case .stocks: "chart.bar"
         case .bridges: "point.topleft.down.to.point.bottomright.curvepath"
+        case .payments: "creditcard"
         }
     }
 }
