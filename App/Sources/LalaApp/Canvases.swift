@@ -766,6 +766,7 @@ extension Workspace {
         case .closeNear(let name): nearOutRoute(to: name, amount: nil, close: true)
         case .sendSol(let name, let amount): solOutRoute(to: name, amount: amount)
         case .pay: payRoute(command)
+        case .bridge(let from, let to, let amount): bridgeRoute(from, to, amount)
         case .claimRewards: claimRoute()
         default: ends(command).map { from, to in
             let footer = if case .sellStock = command {
@@ -1059,6 +1060,35 @@ extension Workspace {
             else if swapQuote?.command != command { swapQuote = (command, []) }
             try? await Task.sleep(for: .seconds(30))
         }
+    }
+
+    /// USDC on an EVM network we read one by one (nil where it isn't read: Polygon, Ethereum).
+    func usdc(on place: String) -> Decimal? {
+        switch place {
+        case "base": base?.usdc
+        case "arbitrum": arbitrumUSDC
+        case "robinhood": robinhood?.usdg
+        case "tempo": tempoUSDC
+        default: nil
+        }
+    }
+
+    /// One EVM network → Relay → another, both our own address: no stop on Solana.
+    private func bridgeRoute(_ from: String, _ to: String, _ amount: Decimal?) -> MoveRoute {
+        let a = WalletCommand.placeName(from), b = WalletCommand.placeName(to), stable = to == "robinhood" ? "USDG" : "USDC"
+        let have = usdc(on: from), moving = amount.map { min($0, have ?? $0) } ?? have
+        func fill(_ place: String) -> RouteFill { ["base": .base, "arbitrum": .arbitrum, "robinhood": .robinhood, "tempo": .tempo][place] ?? .relay }
+        let shown = moving.map { Fmt.num($0) } ?? "all"
+        return MoveRoute(title: "Move \(shown) USDC · \(a) → \(b)",
+                         footer: "Two \(a) transactions: an exact approve and Relay's deposit, checked field by field before signing; "
+                            + "it pays only your own address on \(b). Say “do it” or press Confirm.",
+                         steps: [
+            step(ModuleNetwork(place: from)?.logo ?? "eth", "FROM · \(a.uppercased())",
+                 have.map { h in "\(Fmt.num(h)) → \(Fmt.num(max(0, h - (moving ?? h))))" } ?? "\(shown) USDC", "USDC on \(a)", fill(from)),
+            step("relay", "BRIDGE · RELAY", "\(shown) USDC", "≈ $0.03 · a few seconds · no stop on Solana", .relay),
+            step(ModuleNetwork(place: to)?.logo ?? "eth", "TO · \(b.uppercased())",
+                 usdc(on: to).map { "\(Fmt.num($0)) → \(Fmt.num($0 + (moving ?? 0))) \(stable)" } ?? "\(shown) \(stable)", "your own address ✓", fill(to)),
+        ])
     }
 
     /// Solana → Relay → our own address on Base, Arbitrum or Robinhood Chain.

@@ -148,6 +148,9 @@ func moveMoney(_ text: String) async throws {
     case .solanaTo(let place, let amount):
         guard let n = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't move money to \(place).") }
         print(try await executor.solanaToEVM(n, usdc: amount ?? 1))
+    case .bridge(let from, let to, let amount):
+        guard let a = EVMNetwork.named(from), let b = EVMNetwork.named(to) else { throw ExecutionError("No network \(from) or \(to).") }
+        print(try await executor.bridge(a, to: b, usdc: amount))
     case .pay(let method, let url, let body):
         // Without --yes: the service's price only. With it: paid on Tempo, then the answer.
         let (status, headers, data) = try await MPP.call(method, url, body)

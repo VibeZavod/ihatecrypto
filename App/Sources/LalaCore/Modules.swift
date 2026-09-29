@@ -250,6 +250,7 @@ public struct Modules: Equatable, Sendable {
             // Each vault is checked by the planner; with the whole kind off there's nothing to plan.
             return isOn(.earn) ? nil : ru ? "\(ModuleKind.earn.name) выключены в Settings › Modules." : "\(ModuleKind.earn.name) is off in Settings › Modules."
         case .pay: return r(.mpp)
+        case .bridge(let from, let to, _): return r(.relay, via: [from, to].compactMap(ModuleNetwork.init(place:)))
         case .sendTo, .yields, .receive, .stopSchedules: return nil
         }
     }

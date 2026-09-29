@@ -168,19 +168,31 @@ extension Executor {
     }
 
     /// The same from any EVM network LALA knows (Base, Arbitrum).
-    public func evmToSolana(_ net: EVMNetwork, usdc requested: Decimal?) async throws -> String {
+    public func evmToSolana(_ net: EVMNetwork, usdc requested: Decimal?) async throws -> String { try await bridge(net, to: nil, usdc: requested) }
+
+    /// USDC from one EVM network straight to another at our own address (Base → Robinhood Chain arrives as USDG there),
+    /// or to Solana when `dest` is nil — over Relay, the same two checked transactions either way. A destination with a
+    /// gas coin and none of it gets a little along. nil `usdc` = everything on `net`.
+    public func bridge(_ net: EVMNetwork, to dest: EVMNetwork?, usdc requested: Decimal?) async throws -> String {
         let base = net.rpc, usdc = net.usdc, me = wallet.evm, chain = net.relayChain
         func show(_ u: UInt64) -> String { Fmt.num(Decimal(u) / 1_000_000, maxFraction: 6) }
+        guard dest?.key != net.key else { throw ExecutionError("The money is already on \(net.name).") }
+        let there = dest?.name ?? "Solana", stable = dest?.key == "robinhood" ? "USDG" : "USDC"
         let have = try await base.tokenBalance(usdc, owner: me)
         // On Tempo the fees come out of this USDC: a cent of it stays.
         let spendable = have > net.feeReserve ? have - net.feeReserve : 0
         let amount = requested.map { min(NSDecimalNumber(decimal: ($0 * 1_000_000).rounded(0, .down)).uint64Value, spendable) } ?? spendable
         guard amount >= 500_000 else { throw ExecutionError("\(show(have)) USDC on \(net.name) — below the half-dollar a bridge is worth.") }
+        // Gas for what comes next there (a buy on Robinhood Chain), when the destination has a gas coin and too little of it.
+        var topup: Decimal?
+        if let dest, dest.feeToken == nil, try await dest.rpc.balance(me) < dest.gasFloor { topup = dest.topupUSD }
 
-        let quote = try await Relay.quote(user: me, recipient: wallet.solana, originChain: chain, destinationChain: Relay.Chain.solana,
-                                          originCurrency: usdc, destinationCurrency: Relay.Currency.solanaUSDC, amount: amount)
-        let binding = BindingGuard.check(["sender": quote.sender, "recipient": quote.recipient],
-                                         expected: ["sender": me, "recipient": wallet.solana], subject: "Relay quote")
+        let recipient = dest == nil ? wallet.solana : me
+        let quote = try await Relay.quote(user: me, recipient: recipient, originChain: chain, destinationChain: dest?.relayChain ?? Relay.Chain.solana,
+                                          originCurrency: usdc, destinationCurrency: dest?.usdc ?? Relay.Currency.solanaUSDC, amount: amount,
+                                          topupGasUSD: topup)
+        let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": dest == nil ? quote.recipient : quote.recipient.lowercased()],
+                                         expected: ["sender": me.lowercased(), "recipient": dest == nil ? recipient : recipient.lowercased()], subject: "Relay quote")
         guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
         guard let depository = try await Relay.depository(chainId: chain)?.lowercased(),
               let deposit = quote.evm.first(where: { $0.id == "deposit" }), deposit.to.lowercased() == depository, deposit.chainId == chain,
@@ -197,14 +209,18 @@ extension Executor {
         }
         let arriving = Decimal(string: quote.amountOutFormatted) ?? 0
         let spend = Decimal(amount) / 1_000_000
-        guard spend - arriving <= min(max(arriving * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1) else {
-            throw ExecutionError("Relay wants \(Fmt.num(spend)) USDC for \(Fmt.num(arriving)) on Solana: more than allowed.")
+        guard spend - arriving - (topup ?? 0) <= min(max(arriving * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1) else {
+            throw ExecutionError("Relay wants \(Fmt.num(spend)) USDC for \(Fmt.num(arriving)) on \(there): more than allowed.")
         }
         let mint = Relay.Currency.solanaUSDC
-        let solBefore = try await rpc.tokenBalance(owner: wallet.solana, mint: mint)
+        func landed() async throws -> UInt64 {
+            if let dest { return try await dest.rpc.tokenBalance(dest.usdc, owner: me) }
+            return try await rpc.tokenBalance(owner: wallet.solana, mint: mint)
+        }
+        let before = try await landed()
         try await approve(base, token: usdc, spender: depository, amount: amount, note: "Approve exactly \(show(amount)) USDC to Relay")
         let hash = try await sendEVM(base, to: deposit.to, data: deposit.data, note: "Relay deposit \(show(amount)) USDC on \(net.name)")
-        try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "\(net.name) USDC→Solana \(show(amount)), tx \(hash)"))
+        try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "\(net.name) USDC→\(there) \(show(amount)), tx \(hash)"))
         let started = Date()
         while Date().timeIntervalSince(started) < 180 {
             let status = try await Relay.status(requestId: quote.requestId).status
@@ -215,15 +231,16 @@ extension Executor {
             }
             try await Task.sleep(for: .seconds(2))
         }
-        let target = solBefore + NSDecimalNumber(decimal: arriving * 990_000).uint64Value
+        let target = before + NSDecimalNumber(decimal: arriving * 990_000).uint64Value
         while Date().timeIntervalSince(started) < 240 {
-            let now = try await rpc.tokenBalance(owner: wallet.solana, mint: mint)
+            let now = try await landed()
             if now >= target {
-                return "Moved \(show(amount)) USDC from \(net.name) to Solana in \(Int(Date().timeIntervalSince(started))) s: \(Fmt.num(arriving)) arrived, \(show(now)) USDC on Solana now."
+                return "Moved \(show(amount)) USDC from \(net.name) to \(there) in \(Int(Date().timeIntervalSince(started))) s: \(Fmt.num(arriving)) \(stable) arrived, "
+                    + "\(show(now)) \(stable) on \(there) now." + (topup != nil ? " A little gas came along." : "")
             }
             try await Task.sleep(for: .seconds(2))
         }
-        throw ExecutionError("Relay didn't credit Solana within 4 minutes. Order \(quote.requestId) is in the journal. \(net.explorer)/tx/\(hash)")
+        throw ExecutionError("Relay didn't credit \(there) within 4 minutes. Order \(quote.requestId) is in the journal. \(net.explorer)/tx/\(hash)")
     }
 
     /// An exact approve when the allowance is short, then a wait until the chain shows it: the next call's dry run

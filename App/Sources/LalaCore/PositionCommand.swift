@@ -157,6 +157,9 @@ public enum WalletCommand: Equatable, Sendable {
     case robinhoodToSolana(Decimal?)
     /// USDC from the Solana wallet to our own address on «base», «arbitrum» or «robinhood» (USDG there); nil = ask.
     case solanaTo(String, Decimal?)
+    /// USDC from one EVM network straight to another over Relay, at our own address («base» → «robinhood», where it
+    /// arrives as USDG); nil = everything on `from`.
+    case bridge(from: String, to: String, Decimal?)
     /// A paid API on Tempo (MPP): the request as the service documents it; the price comes from its 402 answer and
     /// is paid in USDC on Tempo only after Confirm. `method` «GET» or «POST»; `body` JSON or nil.
     case pay(method: String, url: String, body: String?)
@@ -244,8 +247,14 @@ public enum WalletCommand: Equatable, Sendable {
         // Out of the Solana wallet: «move 3 USDC from Solana to Robinhood», «переведи 3 USDC из соланы в робингуд».
         // «из соланы в aave на арбитрум» is a deposit into Aave there, not an idle transfer: it's read further down.
         if !q.contains(/\baave\b|ааве|morpho|морфо/),
-           let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(base|бейс\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)/) {
+           let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)/) {
             return .solanaTo(Self.network(String(m.1)) ?? "robinhood", amount)
+        }
+        // Between two EVM networks, straight over Relay: «move 20 USDC from Base to Robinhood», «из бейза в робингуд».
+        if !q.contains(/\baave\b|ааве|morpho|морфо/),
+           let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)/),
+           let from = Self.network(String(m.1)), let to = Self.network(String(m.2)), from != to {
+            return .bridge(from: from, to: to, amount)
         }
         if q.contains(/robinhood|робин[гх]уд/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .robinhoodToSolana(amount)
@@ -430,7 +439,7 @@ extension WalletCommand {
     /// The EVM network a word names: «арбитрум» → «arbitrum», «полигон» → «polygon», «эфириум» or «mainnet» → «ethereum».
     static func network(_ word: String) -> String? {
         let w = word.lowercased()
-        return w.hasPrefix("b") || w.hasPrefix("бейс") ? "base" : w.hasPrefix("arb") || w.hasPrefix("арб") ? "arbitrum"
+        return w.hasPrefix("b") || w.hasPrefix("бейс") || w.hasPrefix("бейз") ? "base" : w.hasPrefix("arb") || w.hasPrefix("арб") ? "arbitrum"
             : w.hasPrefix("rob") || w.hasPrefix("роб") ? "robinhood" : w.hasPrefix("pol") || w.hasPrefix("пол") ? "polygon"
             : w.hasPrefix("eth") || w.hasPrefix("эфир") || w.hasPrefix("main") || w.hasPrefix("мейн") ? "ethereum"
             : w.hasPrefix("temp") || w.hasPrefix("темп") ? "tempo" : nil
@@ -487,6 +496,7 @@ extension WalletCommand {
         case .sellOn(let place, let t, let x): return "sell \(n(x)) \(t.hasPrefix("0x") ? "of the token \(t)" : t.uppercased()) on \(Self.placeName(place)) for USDC on Solana"
         case .solanaTo(let place, let x): return "move \(n(x)) USDC from Solana to \(Self.placeName(place))"
         case .pay(let method, let url, _): return "pay for \(method) \(url) in USDC on Tempo"
+        case .bridge(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to))" + (to == "robinhood" ? " (arrives as USDG)" : "")
         case .claimRewards: return "claim rewards on Merkl"
         }
     }

@@ -148,3 +148,16 @@ private func challenge(_ request: String, extra: String = "") -> String {
     let a = MPP.Answer(Data(#"{"output":[{"type":"message","content":[{"type":"output_text","text":"MOO fell as early holders sold into thin liquidity; the mood on X is mostly worried."}]}],"citations":["https://x.com/a/status/1"]}"#.utf8))
     #expect(try JSONDecoder().decode(MPP.Answer.self, from: JSONEncoder().encode(a)) == a && a.writing != nil)
 }
+
+// Between two EVM networks straight, not through Solana: the user's «из бейза на робингуд».
+@Test func evmToEvmMovesParse() {
+    #expect(WalletCommand.parse("move 20 USDC from Base to Robinhood") == .bridge(from: "base", to: "robinhood", 20))
+    #expect(WalletCommand.parse("переведи 20 USDC из бейза в робингуд") == .bridge(from: "base", to: "robinhood", 20))
+    #expect(WalletCommand.parse("move all USDC from Arbitrum to Tempo") == .bridge(from: "arbitrum", to: "tempo", nil))
+    #expect(WalletCommand.parse("move 20 USDC from Base to Solana") == .baseToSolana(20))
+    #expect(WalletCommand.parse("move 5 USDC from Solana to Base") == .solanaTo("base", 5))
+    #expect(WalletCommand.parse("withdraw USDC from Aave on Arbitrum") != .bridge(from: "arbitrum", to: "arbitrum", nil))
+    var m = Modules()
+    m.set(.robinhood, false)
+    #expect(m.refusal(.bridge(from: "base", to: "robinhood", 5)) != nil && Modules().refusal(.bridge(from: "base", to: "robinhood", 5)) == nil)
+}

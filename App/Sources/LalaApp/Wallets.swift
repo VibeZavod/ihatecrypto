@@ -91,6 +91,7 @@ extension Workspace {
         case .yields, .receive, .stopSchedules: []
         case .hlp: ["evm"]
         case .withdrawToSolana, .aave, .morpho, .baseToSolana, .arbitrumToSolana, .evmToSolana, .robinhoodToSolana, .solanaTo, .buyStock, .sellStock, .buyOn, .sellOn, .pay, .claimRewards: ["evm", "solana"]
+        case .bridge: ["evm"]
         case .sendNear, .closeNear: ["near"]
         case .buyNear, .sellNear: ["solana", "near"]
         default: ["solana"]   // spot, vaults, staking, sends: all on Solana
