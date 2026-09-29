@@ -196,7 +196,8 @@ public enum ChatRouter {
       can pick: [{"title": "a short label in the reply language", "comment": "one sentence in the reply language: what it gives \
       and the catch, with a number where it helps", "command": "one line in the English forms above", "recommended": true}]. \
       Mark exactly one "recommended": the one you'd pick for them. Only forms ihatecrypto has; amounts that fit their balances; \
-      a money move among them still waits for their Confirm. Don't offer what "show" already opens: go one step further \
+      a money move among them still waits for their Confirm. Every card does something: «leave it as it is» is not a card, \
+      and the app's own commands (new canvas, clear the plan, lock) never are. Don't offer what "show" already opens: go one step further \
       (another range, an alert at a level that matters, watching it, a safer alternative, a way to earn instead).
     """
 
@@ -282,12 +283,14 @@ public enum ChatRouter {
             guard !wanted.isEmpty else { throw LLMError("The model asked to look something up but named nothing.") }
             return .lookups(wanted)
         }
-        let options = (a["options"] as? [[String: Any]] ?? []).prefix(4).compactMap { c -> Option? in
+        let options = (a["options"] as? [[String: Any]] ?? []).compactMap { c -> Option? in
             guard let title = text(c["title"])?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty,
-                  let command = text(c["command"])?.trimmingCharacters(in: clean), !command.isEmpty, command.count <= 200 else { return nil }
+                  let command = text(c["command"])?.trimmingCharacters(in: clean), !command.isEmpty, command.count <= 200,
+                  // A card that opens a new canvas or clears the plan stands in for «do nothing».
+                  !["new canvas", "clear the plan", "lock"].contains(command.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! "))) else { return nil }
             return Option(title: title, comment: text(c["comment"])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "", command: command,
                           recommended: c["recommended"] as? Bool ?? (text(c["recommended"]) == "true"))
-        }
+        }.prefix(4)
         var show = text(a["show"])?.trimmingCharacters(in: clean)
         // The details belong on the canvas: a chart the model offered as a card opens with the answer instead.
         if show?.isEmpty != false { show = options.first { $0.command.lowercased().hasPrefix("chart") }?.command }

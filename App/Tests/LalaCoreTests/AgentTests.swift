@@ -11,7 +11,7 @@ import Testing
     let done = try ChatRouter.step(Data(#"""
     {"route":"chat","reply":"Горячий мемкоин.","show":"chart token B5AN on solana",
      "options":[{"title":"Следить","comment":"цена в избранном","command":"watch token B5AN on solana","recommended":"true"},
-                {"title":"","command":"chart ETH"},{"title":"No command"},{"title":"Rates","command":"where to keep USDC"}]}
+                {"title":"","command":"chart ETH"},{"title":"No command"},{"title":"Keep it","command":"new canvas"},{"title":"Rates","command":"where to keep USDC"}]}
     """#.utf8))
     guard case .done(let r) = done else { Issue.record("not an answer"); return }
     #expect(r.route == .chat("Горячий мемкоин."))
