@@ -166,6 +166,8 @@ struct StudioView: View {
     @State private var edgePulse = 0
     /// The block library under «Add block» (BlocksPanel.swift).
     @State private var showBlocks = false
+    /// Where the block library was last left: beside the sidebar, or under «Add block» at the right.
+    @AppStorage("blocksOnLeft") private var blocksOnLeft = false
     static let spring = Animation.spring(response: 0.42, dampingFraction: 0.82)
     static let minChat: CGFloat = 320
     /// Room the canvas keeps for the chat when it fits its boards: the default chat width and its margins.
@@ -237,16 +239,21 @@ struct StudioView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                         // Over the chat while open: a pick closes it and the chat shows the block's words.
                         if mode == "plan", !ws.showSchedule {
-                            VStack(alignment: .trailing, spacing: 10) {
-                                AddBlockButton(open: $showBlocks)
-                                if showBlocks {
-                                    BlocksPanel { withAnimation(.snappy) { showBlocks = false } }
-                                        .frame(maxHeight: max(200, geo.size.height - 78), alignment: .top)
-                                }
+                            // «Add block» / «Close blocks» stays at the right; the library itself sits under it or,
+                            // moved by its corner button, beside the sidebar, and glides between the two.
+                            AddBlockButton(open: $showBlocks)
+                                .padding(.top, 16).padding(.trailing, blocksEdge)
+                            if showBlocks {
+                                BlocksPanel(left: blocksOnLeft, move: { blocksOnLeft.toggle() }) { withAnimation(.snappy) { showBlocks = false } }
+                                    .frame(maxHeight: max(200, geo.size.height - (blocksOnLeft ? 32 : 78)), alignment: .top)
+                                    .padding(.top, blocksOnLeft ? 16 : 62)
+                                    .padding(.leading, blocksOnLeft ? 16 : 0)
+                                    .padding(.trailing, blocksOnLeft ? 0 : blocksEdge)
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: blocksOnLeft ? .topLeading : .topTrailing)
                             }
-                            .padding(.top, 16).padding(.trailing, blocksEdge)
                         }
                     }
+                    .animation(.snappy, value: blocksOnLeft)
                     // @AppStorage changes skip withAnimation, so the spring is tied to the values themselves.
                     .animation(Self.spring, value: chatOpen)
                     .animation(Self.spring, value: chatX)

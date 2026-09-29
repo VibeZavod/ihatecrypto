@@ -22,6 +22,9 @@ struct AddBlockButton: View {
 /// trade by itself are shown, not picked.
 struct BlocksPanel: View {
     @Environment(Workspace.self) private var ws
+    /// Beside the sidebar instead of under «Add block»; the corner button moves it across and back.
+    let left: Bool
+    let move: () -> Void
     let close: () -> Void
 
     static let columns = 3
@@ -29,10 +32,18 @@ struct BlocksPanel: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 3) {
-                Text("Blocks").font(.ui(17, .bold))
-                Text("What the agent builds a request from. Pick one to start it in the chat, or just write — it picks them itself.")
-                    .font(.ui(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 3) {
+                    Text("Blocks").font(.ui(17, .bold))
+                    Text("What the agent builds a request from. Pick one to start it in the chat, or just write — it picks them itself.")
+                        .font(.ui(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 0)
+                Button(action: move) {
+                    Image(systemName: left ? "arrow.right.to.line" : "arrow.left.to.line").font(.system(size: 13, weight: .semibold))
+                }
+                .buttonStyle(.hoverIcon)
+                .help(left ? "Move the blocks back to the right" : "Move the blocks next to the sidebar")
             }
             .padding(16)
             Divider()
@@ -54,8 +65,8 @@ struct BlocksPanel: View {
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(Brand.cardBorder))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: .black.opacity(0.18), radius: 24, y: 12)
-        // The user asked for it to slide: in from the window's right edge, back out to it.
-        .transition(.move(edge: .trailing).combined(with: .opacity))
+        // The user asked for it to slide: in from its side's edge, back out to it.
+        .transition(.move(edge: left ? .leading : .trailing).combined(with: .opacity))
     }
 
     @ViewBuilder private func tile(_ b: BlockCatalog.Block) -> some View {
