@@ -209,6 +209,16 @@ struct StudioView: View {
                     let chatTop = geo.size.height - 16 - height + place.height
                     let blocksEdge = chatTop < 70 && chatLeft + width > geo.size.width - 200 ? geo.size.width - chatLeft + 12 : 16
                     ZStack(alignment: .topTrailing) {
+                        // A page opened from a board or the chat: beside the docked chat, under the chat when it's moved.
+                        if ws.showWeb {
+                            let beside = docked ? width + 32 : 16
+                            WebPanel()
+                                .frame(width: min(760, max(380, (geo.size.width - beside) * 0.62)))
+                                .frame(maxHeight: max(300, geo.size.height - 32))
+                                .padding(.top, 16).padding(.trailing, beside)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
+                                .transition(.opacity)
+                        }
                         FloatingChat(
                             compact: !chatOpen,
                             wide: width >= maxWidth - 1,
@@ -258,6 +268,13 @@ struct StudioView: View {
         }
         // No title bar: the rail and the canvas go up to the window's top edge.
         .ignoresSafeArea(edges: .top)
+        // Web links on the canvas and in the chat (a chart, an explorer, a transaction) open beside the canvas; the
+        // rest (mail, apps) go to the system. Settings isn't under this: signing in goes through the browser.
+        .environment(\.openURL, OpenURLAction { url in
+            guard ["http", "https"].contains(url.scheme?.lowercased() ?? "") else { return .systemAction }
+            MainActor.assumeIsolated { ws.openWeb(url) }
+            return .handled
+        })
         .overlay { EdgePulse(trigger: edgePulse) }
         .onReceive(NotificationCenter.default.publisher(for: .lalaEdgePulse)) { _ in edgePulse += 1 }
         // One ground under the rail and the canvas, so the glass has the same dots behind it on both sides.

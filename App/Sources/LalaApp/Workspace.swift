@@ -80,6 +80,9 @@ final class Workspace {
     }
     /// The in-app dApp browser; its wallet is the signer's.
     @ObservationIgnored let browser = Browser()
+    /// A chart, an explorer or a transaction opened beside the canvas (WebPanel.swift), not in a browser.
+    @ObservationIgnored let sidePage = SidePage()
+    var showWeb = false
     /// The signer's Hyperliquid agent: orders without Touch ID, no withdrawals.
     var agentAddress: String?
     var agentActive = false
