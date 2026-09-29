@@ -497,7 +497,7 @@ struct EarlierBoards: View {
                 if !open.contains(i) {
                     EmptyView()
                 } else if done.bubbles.allSatisfy({ $0.kind == "step" }) {
-                    RouteSteps(steps: done.bubbles).frame(width: 470, alignment: .leading)
+                    RouteCards(steps: done.bubbles, outcome: done.outcome.ok)
                 } else {
                     LazyVGrid(columns: [GridItem(.fixed(220), alignment: .top), GridItem(.fixed(220), alignment: .top)], alignment: .leading, spacing: 14) {
                         ForEach(done.bubbles, id: \.self) { HistoryBubble(bubble: $0) }
@@ -534,7 +534,7 @@ struct SavedBoard: View {
                 }
             }
             if !canvas.bubbles.isEmpty, canvas.bubbles.allSatisfy({ $0.kind == "step" }) {
-                RouteSteps(steps: canvas.bubbles).frame(width: 470, alignment: .leading)
+                RouteCards(steps: canvas.bubbles, outcome: canvas.outcome?.ok)
             } else {
                 LazyVGrid(columns: [GridItem(.fixed(220), alignment: .top), GridItem(.fixed(220), alignment: .top)], alignment: .leading, spacing: 14) {
                     ForEach(canvas.bubbles, id: \.self) { HistoryBubble(bubble: $0) }
@@ -983,7 +983,13 @@ extension Workspace {
         let fill: RouteFill = place == "base" ? .base : .arbitrum
         let label = token.hasPrefix("0x") ? "\(token.prefix(6))…\(token.suffix(4))" : token.uppercased()
         let logo = place == "arbitrum" ? "arb" : place
-        let way = step("relay", "RELAY OR RELAY + UNISWAP", "whichever leaves more", "both quoted right before signing, gas counted", .relay)
+        // The way picked in the step's details, else the better of the two when it runs.
+        let way = switch routeWays[Self.wayKey(place, token)] {
+        case "relay": step("relay", "RELAY SWAP", "one step", usdc != nil ? "Relay swaps on the way · one Solana signature" : "Relay swaps it back to USDC on Solana", .relay)
+        case "uniswap": step("relay", "RELAY + UNISWAP", usdc != nil ? "bridge, then Uniswap" : "Uniswap, then bridge",
+                             usdc != nil ? "USDC to \(name), then Uniswap with an exact approve" : "Uniswap on \(name), then Relay's bridge to Solana", .relay)
+        default: step("relay", "RELAY OR RELAY + UNISWAP", "whichever leaves more", "both quoted right before signing, gas counted", .relay)
+        }
         let footer = "Relay’s swap is one Solana signature; the other way bridges USDC over Relay and swaps on Uniswap with an exact approve, the swap paying only this wallet. "
             + (token.hasPrefix("0x") ? "A token by its contract must trade on \(name) with $50k+ of liquidity. " : "The ticker is taken from Uniswap’s token list, its contract checked on-chain. ")
             + "Say “do it” or press Confirm."
@@ -1089,7 +1095,7 @@ struct RunningBoard: View {
                     ProgressView().controlSize(.small)
                 }
                 if !run.steps.isEmpty {
-                    RouteSteps(steps: run.steps, current: Self.currentStep(run.steps, run.lines)).frame(width: 470, alignment: .leading)
+                    RouteCards(steps: run.steps, current: Self.currentStep(run.steps, run.lines))
                 }
                 if SignerActivity.shared.waiting > 0 {
                     Label("Touch ID — confirm on the sensor, or with your Mac password, if it asks", systemImage: "touchid")
@@ -1103,7 +1109,7 @@ struct RunningBoard: View {
                         .font(.ui(10)).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
-            .frame(width: 470, alignment: .leading)
+            .frame(width: max(470, RouteCards.width(run.steps.count)), alignment: .leading)
             .transition(.opacity)
             .animation(.snappy, value: SignerActivity.shared.waiting > 0)
         }
@@ -1136,94 +1142,18 @@ struct WithdrawBoard: View {
                         Text(route.title).font(.ui(14, .semibold)).lineLimit(2).truncationMode(.middle)
                         StatusChip(text: "waiting for the signature", tint: Brand.profit).fixedSize()
                     }
-                    RouteSteps(steps: route.steps)
+                    RouteCards(steps: route.steps, footer: route.footer, pending: command, build: true)
                     Label(route.footer, systemImage: "signature").font(.ui(10)).foregroundStyle(.secondary)
+                        .frame(maxWidth: 470, alignment: .leading)
                     PendingButtons()
                 }
                 if let warning = route.warning {
                     Label(warning, systemImage: "exclamationmark.triangle").font(.ui(10)).foregroundStyle(Brand.jevInk)
                 }
             }
-            .frame(width: 470, alignment: .leading)
+            .frame(width: max(470, RouteCards.width(route.steps.count)), alignment: .leading)
             .transition(.opacity)
         }
-    }
-}
-
-/// A route's steps side by side, each an arrow in its place's color.
-struct RouteSteps: View {
-    let steps: [ActivityBubble]
-    /// The step a running move is on: those before it are done, those after it wait. nil = a plain route.
-    var current: Int?
-
-    var body: some View {
-        HStack(alignment: .top, spacing: 12) {
-            ForEach(Array(steps.enumerated()), id: \.offset) { i, step in
-                RouteStepView(step: step, state: current.map { i < $0 ? .done : i == $0 ? .now : .next } ?? .plain)
-            }
-        }
-    }
-}
-
-struct RouteStepView: View {
-    enum State { case plain, done, now, next }
-    @Environment(Workspace.self) private var ws
-    let step: ActivityBubble
-    var state: State = .plain
-
-    var body: some View {
-        card
-            .opacity(state == .next ? 0.4 : 1)
-            .overlay {
-                // Only the step a move is on breathes: the pulse used to be started on every step of the route.
-                if state == .now { StepPulse() }
-            }
-            .overlay(alignment: .topTrailing) {
-                switch state {
-                case .done: Image(systemName: "checkmark.circle.fill").font(.system(size: 18)).foregroundStyle(.white, Brand.profit).padding(10)
-                case .now: ProgressView().controlSize(.small).padding(12)
-                default: EmptyView()
-                }
-            }
-            .animation(.snappy, value: state)
-    }
-
-    @ViewBuilder private var card: some View {
-        let fill = step.fill ?? .solana
-        VStack(alignment: .leading, spacing: 6) {
-            // A token by its contract shows its own icon and name (saved routes too), not the chain's logo and the address.
-            if let token = step.title.firstMatch(of: /0x[0-9a-fA-F]{40}/).flatMap({ ws.favoriteToken(String($0.0)) }) {
-                TokenIcon(token: token, size: 24)
-            } else if let logo = step.logo, logo.hasPrefix("stock:") {
-                let symbol = String(logo.dropFirst(6))
-                StockLogo(symbol: symbol, url: ws.robinhood?.stocks.first { $0.symbol == symbol }?.logo, size: 24)
-            } else if let logo = step.logo {
-                TokenLogo(name: logo, size: 24)
-            }
-            Text(step.label).font(.ui(9, .heavy)).tracking(0.4).opacity(0.75)
-            Text(ws.readable(step.title)).font(.ui(13, .bold)).monospacedDigit().lineLimit(3).truncationMode(.middle)
-                .minimumScaleFactor(0.8).fixedSize(horizontal: false, vertical: true)
-            ForEach(step.lines, id: \.self) { Text($0).font(.ui(10)).opacity(0.8).fixedSize(horizontal: false, vertical: true) }
-        }
-        .foregroundStyle(fill.dark ? Color.white : Color.primary)
-        .padding(11)
-        .frame(maxWidth: .infinity, minHeight: 120, alignment: .topLeading)
-        // Its own height whatever the canvas proposes: the arrow grows with the text instead of cutting it.
-        .fixedSize(horizontal: false, vertical: true)
-        .background(ArrowCard(radius: 16, tip: 10).fill(fill.color))
-        .openable(logo: step.logo, routeStep: true)
-    }
-}
-
-/// The current step's outline breathing: an accent arrow whose opacity goes 0.3 ↔ 1.
-private struct StepPulse: View {
-    @State private var pulse = false
-
-    var body: some View {
-        ArrowCard(radius: 16, tip: 10).stroke(Brand.accent, lineWidth: 3)
-            .opacity(pulse ? 1 : 0.3)
-            .animation(.easeInOut(duration: 0.8).repeatForever(autoreverses: true), value: pulse)
-            .onAppear { pulse = true }
     }
 }
 

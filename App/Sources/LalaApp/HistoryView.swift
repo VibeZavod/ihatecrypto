@@ -304,7 +304,7 @@ struct HistoryBubble: View {
     var body: some View {
         Group {
             if bubble.kind == "step" {
-                RouteStepView(step: bubble)
+                RouteCard(step: bubble, state: .plain, width: 210)
             } else if let kind = StudioNode.Kind(rawValue: bubble.kind), !bubble.label.hasPrefix("Chart ·") {
                 StudioNodeView(node: StudioNode(id: bubble.title, kind: kind, label: bubble.label, title: bubble.title, lines: Array(bubble.lines.prefix(3)),
                                                 status: status, asset: bubble.asset, long: bubble.long ?? true, signature: bubble.signature))

@@ -925,6 +925,8 @@ struct StudioCanvas: View {
     @State private var frames = BlockFrames()
     /// How many plan blocks are on the canvas; grows one by one when a new plan arrives.
     @State private var shown = 0
+    /// The widest route on the canvas (RouteWidth): the plan column widens for three cards in a row.
+    @State private var routeWidth: CGFloat = 0
     @State private var assembling = false
 
     /// Portfolio frame + gap + plan + leading padding.
@@ -935,7 +937,8 @@ struct StudioCanvas: View {
         let nodes = nodes
         HStack(alignment: .top, spacing: 36) {
             StudioPortfolio(frames: frames)
-            plan(nodes).frame(width: 470, alignment: .topLeading)
+            plan(nodes).frame(width: max(470, routeWidth), alignment: .topLeading)
+                .onPreferenceChange(RouteWidth.self) { width in MainActor.assumeIsolated { routeWidth = width } }
         }
         .padding(.leading, 28).padding(.top, 24)
         // Full height even when the canvas is shorter: blocks never squeeze their text; drag to see the rest.
@@ -2202,6 +2205,7 @@ private struct ChatComposer: View {
             if case .failed(let why) = voice.state {
                 Label(why, systemImage: "mic.slash").font(.ui(10)).foregroundStyle(.orange).lineLimit(3)
             }
+            if let step = ws.stepContext, !voice.listening { StepContextChip(step: step) }
             if voice.listening { listening(voice) } else { field }
         }
         .padding(12)

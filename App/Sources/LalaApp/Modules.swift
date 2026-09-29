@@ -473,38 +473,27 @@ struct PlaceDetailBoard: View {
     }
 }
 
-extension View {
-    /// A route step whose logo names a place (Solana, Jupiter, Hyperliquid…) opens that place's details on click.
-    @ViewBuilder func openable(logo: String?, routeStep: Bool = false) -> some View {
-        if let place = logo.flatMap(Openable.place(logo:)) { modifier(Openable(place: place, routeStep: routeStep)) } else { self }
-    }
-}
-
 /// A portfolio card that opens its place's details: a pointer and an accent edge on hover, a stronger one while open.
 struct Openable: ViewModifier {
+    /// The place a route step's logo names (Solana, Jupiter, Hyperliquid…): its details open from the step's.
     static func place(logo: String) -> String? {
         ["sol": "solana", "hype": "hyperliquid", "jup": "jupiter", "kamino": "kamino", "near": "near", "robinhood": "robinhood", "morpho": "morpho"][logo]
     }
 
     @Environment(Workspace.self) private var ws
     let place: String
-    /// A portfolio card keeps an outline while its place is open; a route step doesn't (every Solana step would light up),
-    /// and its outline is an arrow like the step.
-    var routeStep = false
     @State private var hover = false
 
     func body(content: Content) -> some View {
-        let open = !routeStep && ws.detail == place
+        let open = ws.detail == place
         let width: CGFloat = open ? 2 : 1.5
         // A fixed-color edge whose opacity fades: an opacity change doesn't re-render the layer (a color change would,
         // every frame, and at up to 4× on a zoomed canvas).
         content
             .overlay {
-                Group {
-                    if routeStep { ArrowCard(radius: 16, tip: 10).stroke(Brand.accent, lineWidth: width) } else { RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent, lineWidth: width) }
-                }
-                .opacity(open ? 1 : hover ? 0.6 : 0)
-                .animation(.snappy(duration: 0.18), value: hover)
+                RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent, lineWidth: width)
+                    .opacity(open ? 1 : hover ? 0.6 : 0)
+                    .animation(.snappy(duration: 0.18), value: hover)
             }
             .contentShape(Rectangle())
             .onHover { hover = $0 }

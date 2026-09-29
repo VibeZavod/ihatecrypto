@@ -106,8 +106,19 @@ extension Executor {
         return (relay, relay && Modules.current.refusal(.uniswap, via: place) == nil)
     }
 
-    /// Buys a token on Base or Arbitrum for `usdc` from Solana, the better of the two ways.
-    public func buyOn(_ net: EVMNetwork, _ ref: String, usdc: Decimal) async throws -> String {
+    /// The way a trade takes: the one that leaves more, or only the one the person picked on the route's step
+    /// ("relay" = Relay's swap, "uniswap" = Relay's bridge + Uniswap). A pick only narrows the two quoted ways.
+    static func pick(_ ways: [SwapWay], prefer: String?) -> SwapWay? {
+        (prefer.map { p in ways.filter { $0.name == p } } ?? ways).max(by: { $0.worth < $1.worth })
+    }
+
+    /// What the refusal says when the picked way has no quote: the other one is still there to choose.
+    private static func unquoted(_ prefer: String?, _ what: String) -> String? {
+        prefer.map { "\($0 == "relay" ? "Relay's swap" : "Relay + Uniswap") doesn't quote \(what) right now. Nothing was signed; pick «Whichever leaves more» on the route's step to take the other way." }
+    }
+
+    /// Buys a token on Base or Arbitrum for `usdc` from Solana, the better of the two ways (or the one picked).
+    public func buyOn(_ net: EVMNetwork, _ ref: String, usdc: Decimal, prefer: String? = nil) async throws -> String {
         guard let uni = UniswapV3.on(net.rpc.chainId) else { throw ExecutionError("ihatecrypto swaps on Base and Arbitrum only.") }
         let token = try await evmToken(ref, on: net), me = wallet.evm
         let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
@@ -115,10 +126,11 @@ extension Executor {
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
         func amount(_ raw: Decimal) -> String { "\(Fmt.num(raw / scale, maxFraction: 6)) \(token.symbol)" }
         let (ways, uniswap) = try await buyWays(net, token, units: units, uni)
-        guard let way = ways.max(by: { $0.worth < $1.worth }) else {
-            throw ExecutionError("Neither Relay nor Uniswap quotes \(token.symbol) on \(net.name) for \(Fmt.num(usdc)) USDC right now. Nothing was signed.")
+        guard let way = Self.pick(ways, prefer: prefer) else {
+            throw ExecutionError(Self.unquoted(prefer, "\(token.symbol) on \(net.name)")
+                ?? "Neither Relay nor Uniswap quotes \(token.symbol) on \(net.name) for \(Fmt.num(usdc)) USDC right now. Nothing was signed.")
         }
-        report("\(Fmt.num(usdc)) USDC → \(token.symbol) on \(net.name). " + ways.map(\.line).joined(separator: "; ") + ". Taking \(way.name == "relay" ? "Relay's swap" : "the bridge and Uniswap").")
+        report("\(Fmt.num(usdc)) USDC → \(token.symbol) on \(net.name). " + ways.map(\.line).joined(separator: "; ") + ". Taking \(way.name == "relay" ? "Relay's swap" : "the bridge and Uniswap")\(prefer == nil ? "" : ", as picked").")
 
         let before = try await balance(token.address, on: net.rpc)
         var hash = ""
@@ -191,7 +203,7 @@ extension Executor {
 
     /// Sells a token on Base or Arbitrum back to USDC on Solana; nil = all of it. The better of Relay's swap-and-bridge
     /// and Uniswap on the chain followed by the Relay bridge.
-    public func sellOn(_ net: EVMNetwork, _ ref: String, amount: Decimal?) async throws -> String {
+    public func sellOn(_ net: EVMNetwork, _ ref: String, amount: Decimal?, prefer: String? = nil) async throws -> String {
         guard let uni = UniswapV3.on(net.rpc.chainId) else { throw ExecutionError("ihatecrypto swaps on Base and Arbitrum only.") }
         let token = try await evmToken(ref, on: net), me = wallet.evm
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
@@ -200,10 +212,11 @@ extension Executor {
         guard units > 0 else { throw ExecutionError("No \(token.symbol) on \(net.name).") }
         func tokens(_ raw: Decimal) -> String { "\(Fmt.num(raw / scale, maxFraction: 6)) \(token.symbol)" }
         let (ways, uniswap) = try await sellWays(net, token, units: units, uni)
-        guard let way = ways.max(by: { $0.worth < $1.worth }) else {
-            throw ExecutionError("Neither Relay nor Uniswap quotes \(tokens(units)) on \(net.name) right now. Nothing was signed.")
+        guard let way = Self.pick(ways, prefer: prefer) else {
+            throw ExecutionError(Self.unquoted(prefer, tokens(units) + " on " + net.name)
+                ?? "Neither Relay nor Uniswap quotes \(tokens(units)) on \(net.name) right now. Nothing was signed.")
         }
-        report("\(tokens(units)) on \(net.name) → USDC on Solana. " + ways.map(\.line).joined(separator: "; ") + ". Taking \(way.name == "relay" ? "Relay's swap" : "Uniswap and the bridge").")
+        report("\(tokens(units)) on \(net.name) → USDC on Solana. " + ways.map(\.line).joined(separator: "; ") + ". Taking \(way.name == "relay" ? "Relay's swap" : "Uniswap and the bridge")\(prefer == nil ? "" : ", as picked").")
         // Both ways sign on the chain: ETH for gas first (a top-up from Solana when there's none).
         try await ensureEVM(net, usdc: 0)
 

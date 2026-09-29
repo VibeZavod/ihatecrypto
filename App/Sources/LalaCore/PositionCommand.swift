@@ -382,6 +382,15 @@ extension WalletCommand {
         }
     }
 
+    /// The amount `with(amount:)` changes, as the command holds it: what a route step's details start from.
+    public var editableAmount: Decimal? {
+        switch self {
+        case .lendDeposit(_, let x), .kamino(_, _, let x), .hlp(_, let x), .aave(_, let x, _), .morpho(_, let x, _), .buy(_, let x),
+             .buyNear(let x), .buyStock(_, let x), .buyOn(_, _, let x), .stake(let x), .solanaTo(_, let x): x
+        default: nil
+        }
+    }
+
     public func with(amount: Decimal) -> WalletCommand {
         switch self {
         case .lendDeposit(let s, _): .lendDeposit(s, amount)

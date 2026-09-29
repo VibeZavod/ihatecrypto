@@ -121,7 +121,11 @@ final class Workspace {
     }
     /// A command the model read from another language: it waits for «do it», so a wrong reading moves nothing.
     var pendingAction: PendingAction? {
-        didSet { if pendingAction != nil, oldValue == nil { remindToConfirm() } }
+        didSet {
+            if pendingAction != nil, oldValue == nil { remindToConfirm() }
+            // A way picked on a route's step belongs to that trade: another move waiting for Confirm drops it.
+            if case .wallet(let command)? = pendingAction { routeWays = routeWays.filter { $0.key == command.wayKey } }
+        }
     }
 
     /// A card waits for Confirm while the window isn't in front (the model took a few seconds and the user looked
@@ -215,6 +219,11 @@ final class Workspace {
     var currentActivity: UUID?
     /// What the user is typing in the studio chat; templates on the canvas fill it.
     var draft = ""
+    /// A route step handed to the chat from its card («Send to chat»): the next message is about it.
+    var stepContext: StepContext?
+    /// The way a Base or Arbitrum trade takes, picked in its route step's details (Workspace.wayKey → "relay" or
+    /// "uniswap"); none = whichever leaves more. Used once, by the move it was picked for.
+    var routeWays: [String: String] = [:]
     /// Speaking into the chat's field.
     let voice = VoiceInput()
     /// A menu or Settings the person has open ("Picking a model", "Choosing networks", "In Settings"): the coin raises
@@ -490,7 +499,10 @@ final class Workspace {
                       "Похоже на фразу восстановления. Я её не показываю, не храню и никуда не отправляю. Импортируй фразу в отдельном окне."))
             return
         }
-        messages.append(Message(fromUser: true, text: text))
+        // A step handed over from its card: the message is about it, and a move waiting for Confirm keeps waiting.
+        let step = stepContext
+        stepContext = nil
+        messages.append(Message(fromUser: true, text: step.map { "«\($0.title)»\n" + text } ?? text))
         thinking = true
         defer { thinking = false }
         finishedAction = nil
@@ -543,7 +555,7 @@ final class Workspace {
                 return
             }
         }
-        if let pending = pendingAction {
+        if let pending = pendingAction, step == nil || confirms || declines {
             pendingAction = nil
             pendingText = nil
             if declines {
@@ -638,7 +650,8 @@ final class Workspace {
         // the same parsers, checks, Jev and confirmations as a typed command. The local parsers below read the message
         // as typed when no model is connected or it can't be reached.
         if let client {
-            await routeWithModel(text, client: client, before: before, offered: offered)
+            await routeWithModel(step.map { "About the step «\($0.title)» of the route on the canvas: \(text)" } ?? text,
+                                 client: client, before: before, offered: offered)
             return
         }
         // No model connected: the local parsers read the message as typed.

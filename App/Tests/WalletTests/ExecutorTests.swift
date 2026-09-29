@@ -47,3 +47,12 @@ import Testing
     #expect(Executor.solSpent(["SOL: 0.001479 (fees and rent for new accounts)"]) == 0)   // SOL came back, nothing spent
     #expect(Executor.solSpent([]) == 0)
 }
+
+@Test func aPickedSwapWayOnlyNarrowsTheQuotedOnes() {
+    let relay = Executor.SwapWay(name: "relay", out: 100, worth: 1.90, line: "")
+    let uniswap = Executor.SwapWay(name: "uniswap", out: 101, worth: 1.95, line: "")
+    #expect(Executor.pick([relay, uniswap], prefer: nil)?.name == "uniswap")      // whichever leaves more
+    #expect(Executor.pick([relay, uniswap], prefer: "relay")?.name == "relay")    // the one picked, even if it leaves less
+    #expect(Executor.pick([uniswap], prefer: "relay") == nil)                     // picked but unquoted: nothing is signed
+    #expect(Executor.pick([], prefer: nil) == nil)
+}

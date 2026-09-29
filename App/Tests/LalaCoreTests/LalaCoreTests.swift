@@ -321,3 +321,11 @@ private struct StubModel: LLMClient {
     i.riskUSD = 1
     #expect(Plan.fittingRisk(i, market: eth, equity: 2, policy: RiskPolicy(), openRisk: 0, available: 10) == nil)
 }
+
+@Test func aRouteStepEditsTheAmountTheCommandHolds() {
+    let buy = WalletCommand.buyOn("base", token: "AERO", usdc: 2)
+    #expect(buy.editableAmount == 2)
+    #expect(buy.with(amount: 3).editableAmount == 3)
+    #expect(WalletCommand.aave(deposit: true, amount: 5, network: "arbitrum").with(amount: 7) == .aave(deposit: true, amount: 7, network: "arbitrum"))
+    #expect(WalletCommand.sendSol(name: "Test", amount: 1).editableAmount == nil)   // a transfer's amount isn't edited from a card
+}
