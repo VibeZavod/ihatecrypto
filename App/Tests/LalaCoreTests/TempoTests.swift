@@ -88,3 +88,12 @@ private func challenge(_ request: String, extra: String = "") -> String {
     #expect(p.refusal(.pay(method: "GET", url: "https://a.example", body: nil)) != nil && p.refusal(.solanaTo("tempo", 2)) == nil)
     #expect(ModuleProtocol.mpp.kind == .payments && ModuleProtocol.mpp.networks == [.tempo])
 }
+
+@Test func mppDirectoryRanksByName() {
+    let fax: [String: Any] = ["id": "agentfax", "name": "agentfax", "description": "Send a fax, priced per page. No API key.", "tags": ["fax"], "categories": ["social"]]
+    let gecko: [String: Any] = ["id": "coingecko", "name": "CoinGecko", "description": "Cryptocurrency market data — prices, charts.", "tags": ["crypto", "prices"],
+                                "categories": ["data"], "endpoints": [["description": "Simple Price"]]]
+    let ids = { (q: String) in MPP.rank([fax, gecko], q).map { $0["id"] as? String ?? "" } }
+    #expect(ids("BTC price USD").first == "coingecko" && ids("coingecko") == ["coingecko"] && ids("fax") == ["agentfax"])
+    #expect(ids("paid api service").count == 2)   // nothing but service words: everything, unranked
+}

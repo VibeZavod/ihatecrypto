@@ -152,18 +152,32 @@ public enum MPP {
     /// for the model's «services» lookup.
     public static func search(_ query: String) async -> String {
         guard let services = await directory() else { return "The MPP directory (mpp.dev) didn't answer." }
-        let words = query.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init).filter { $0.count > 1 }
-        func score(_ s: [String: Any]) -> Int {
-            let text = [s["id"], s["name"], s["description"], (s["tags"] as? [String])?.joined(separator: " "), (s["categories"] as? [String])?.joined(separator: " "),
-                        (s["endpoints"] as? [[String: Any]])?.compactMap { $0["description"] as? String }.joined(separator: " ")]
-                .compactMap { $0 as? String }.joined(separator: " ").lowercased()
-            return words.reduce(0) { $0 + (text.contains($1) ? 1 : 0) }
-        }
-        let hits = services.map { ($0, score($0)) }.filter { words.isEmpty || $0.1 > 0 }.sorted { $0.1 > $1.1 }.prefix(6).map(\.0)
+        let hits = rank(services, query)
         guard !hits.isEmpty else { return "No MPP service matches «\(query)». Try broader words (email, search, image, flights, phone, mail)." }
         return hits.map { describe($0, endpoints: 6) }.joined(separator: "\n\n")
             + "\n\nTo pay one: the form «pay <METHOD> <service URL + path> <JSON body>». For the exact body fields look up «service <id>»."
     }
+
+    /// The six services that fit the words best.
+    static func rank(_ services: [[String: Any]], _ query: String) -> [[String: Any]] {
+        var words = tokens(query).filter { $0.count > 1 && !["api", "apis", "service", "services", "pay", "paid", "request", "the", "for", "via", "tempo", "mpp"].contains($0) }
+        // A coin's name is the word «crypto» to the directory: «BTC price» is CoinGecko's.
+        // ponytail: a short list; the model usually writes «crypto» itself.
+        if words.contains(where: ["bitcoin", "btc", "ethereum", "eth", "solana", "sol", "coin", "coins", "token", "tokens"].contains) { words.append("crypto") }
+        // A word in the name counts most, then in the tags, then anywhere in what it does; a word matches the start of
+        // one there («price» — «prices»). Plain substrings ranked a fax service «priced per page» over CoinGecko.
+        func score(_ s: [String: Any]) -> Int {
+            let name = tokens("\(s["id"] ?? "") \(s["name"] ?? "")")
+            let tags = tokens(((s["tags"] as? [String] ?? []) + (s["categories"] as? [String] ?? [])).joined(separator: " "))
+            let rest = tokens("\(s["description"] ?? "") " + ((s["endpoints"] as? [[String: Any]])?.compactMap { $0["description"] as? String }.joined(separator: " ") ?? ""))
+            return words.reduce(0) { sum, w in
+                sum + (name.contains { $0.hasPrefix(w) } ? 5 : tags.contains { $0.hasPrefix(w) } ? 2 : rest.contains { $0.hasPrefix(w) } ? 1 : 0)
+            }
+        }
+        return services.map { ($0, score($0)) }.filter { words.isEmpty || $0.1 > 0 }.sorted { $0.1 > $1.1 }.prefix(6).map(\.0)
+    }
+
+    static func tokens(_ text: String) -> [String] { text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init) }
 
     /// One service in full: every endpoint and price, and the start of its docs for the request fields.
     public static func service(_ id: String) async -> String {
