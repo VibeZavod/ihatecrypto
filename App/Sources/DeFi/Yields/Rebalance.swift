@@ -17,11 +17,14 @@ public enum Rebalance {
         /// Dollars it costs to put money in (a bridge there, first-deposit rent, gas), and why LALA won't, or nil.
         public let entryCost: Decimal
         public let closed: String?
+        /// The protocol the limit is counted per («Aave» on every network): see Allocation.Place.
+        public let protocolName: String
 
         public init(name: String, apy: Decimal, amount: Decimal, exitCost: Decimal = 0, locked: String? = nil,
-                    entryCost: Decimal = 0, closed: String? = nil) {
+                    entryCost: Decimal = 0, closed: String? = nil, protocol proto: String? = nil) {
             self.name = name; self.apy = apy; self.amount = amount
             self.exitCost = exitCost; self.locked = locked; self.entryCost = entryCost; self.closed = closed
+            self.protocolName = proto ?? name
         }
     }
 
@@ -62,10 +65,14 @@ public enum Rebalance {
         // Targets: the best rates fill up to the cap first; a locked place keeps what it has, a closed one can only shrink.
         var remaining = total - places.filter { $0.locked != nil }.reduce(0) { $0 + $1.amount }
         var target: [String: Decimal] = [:]
+        // The cap is per protocol: Aave on two networks shares one. Locked money counts first.
+        var used = places.filter { $0.locked != nil }.reduce(into: [String: Decimal]()) { $0[$1.protocolName, default: 0] += $1.amount }
         for p in places.sorted(by: { $0.apy > $1.apy }) {
             if p.locked != nil { target[p.name] = p.amount; continue }
-            let t = min(p.closed == nil ? cap : min(cap, p.amount), remaining)
+            let room = max(0, cap - used[p.protocolName, default: 0])
+            let t = min(p.closed == nil ? room : min(room, p.amount), remaining)
             target[p.name] = t
+            used[p.protocolName, default: 0] += t
             remaining -= t
         }
         // What can't be placed under the cap stays in the worst places it is in now: they give up less.

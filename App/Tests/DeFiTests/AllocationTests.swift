@@ -21,3 +21,15 @@ import Testing
     // Crumbs below the minimum slice are not worth a transaction.
     #expect(Allocation.plan(free: Decimal(string: "0.3")!, places: places, maxShare: 50, minSlice: Decimal(string: "0.5")!).slices.isEmpty)
 }
+
+@Test func theLimitIsPerProtocolAcrossNetworks() {
+    // Aave on two networks shares one 50% cap: 10 USDC free goes 5 to Aave (both markets together) and 5 elsewhere.
+    let plan = Allocation.plan(free: 10, places: [
+        .init(name: "Aave · Arbitrum", apy: 6, protocol: "Aave"),
+        .init(name: "Aave · Polygon", apy: 5.5, protocol: "Aave"),
+        .init(name: "Jupiter Lend", apy: 5),
+    ], maxShare: 50, minSlice: Decimal(string: "0.5")!)
+    let aave = plan.slices.filter { $0.place.hasPrefix("Aave") }.reduce(Decimal(0)) { $0 + $1.amount }
+    #expect(aave == 5)
+    #expect(plan.slices.first { $0.place == "Jupiter Lend" }?.amount == 5)
+}

@@ -4,7 +4,7 @@ import Foundation
 /// also from the chat). A protocol works only while it, its kind and every network it needs are on. Off means the
 /// assistant never plans a move through it; money already there still shows.
 public enum ModuleNetwork: String, CaseIterable, Sendable {
-    case solana, hyperliquid, base, near, arbitrum, robinhood
+    case solana, hyperliquid, base, near, arbitrum, robinhood, polygon, ethereum
 
     public var name: String {
         switch self {
@@ -14,6 +14,8 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .near: "NEAR"
         case .arbitrum: "Arbitrum"
         case .robinhood: "Robinhood Chain"
+        case .polygon: "Polygon"
+        case .ethereum: "Ethereum"
         }
     }
 
@@ -31,8 +33,10 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .hyperliquid: "Perps · oil and stocks (xyz) · HLP vault"
         case .base: "Aave · Morpho · USDC"
         case .near: "NEAR Intents swaps · 1Click"
-        case .arbitrum: "USDC in and out · Relay"
+        case .arbitrum: "Aave · Morpho · USDC in and out"
         case .robinhood: "Stock tokens · USDG · Uniswap"
+        case .polygon: "Aave · USDC"
+        case .ethereum: "Aave · Morpho · mainnet gas costs dollars"
         }
     }
 
@@ -45,6 +49,8 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .near: "near"
         case .arbitrum: "arb"
         case .robinhood: "robinhood"
+        case .polygon: "pol"
+        case .ethereum: "eth"
         }
     }
 }
@@ -93,7 +99,8 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
         // Uniswap works on Robinhood Chain, Base and Arbitrum: the network is checked per move.
         case .uniswap: []
         case .robinhoodStocks: [.robinhood]
-        case .aave, .morpho: [.base]
+        // Aave and Morpho work on several networks: the one a move uses is checked per move.
+        case .aave, .morpho: []
         case .hlp, .hlPerps, .xyz: [.hyperliquid]
         case .oneClick: [.near]
         }
@@ -122,8 +129,10 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
         switch self {
         case .hlPerps: "BTC, ETH, SOL and more"
         case .xyz: "Oil, metals, stocks"
-        case .relay: "Solana ⇄ Base · Arbitrum · Robinhood"
+        case .relay: "Solana ⇄ Base · Arbitrum · Polygon · Ethereum · Robinhood"
         case .uniswap: "Robinhood · Base · Arbitrum"
+        case .aave: "Base · Arbitrum · Polygon · Ethereum"
+        case .morpho: "Base · Arbitrum · Ethereum"
         case .oneClick: "NEAR ⇄ Solana"
         default: networks.map(\.name).joined(separator: " · ")
         }
@@ -233,16 +242,20 @@ public struct Modules: Equatable, Sendable {
         }
     }
 
-    /// A vault by the name the yield planners give it («Kamino Lend», «Aave · Base»), with the bridge it needs.
+    /// A vault by the name the yield planners give it («Kamino Lend», «Aave · Arbitrum»), with the bridge it needs.
+    /// A name it doesn't know is refused: nothing goes to a place no switch covers.
     public func refusal(vault name: String) -> String? {
         switch name {
-        case "Jupiter Lend": refusal(.jupiterLend)
-        case "Kamino Lend": refusal(.kamino)
-        case "JitoSOL staking": refusal(.jitoSOL)
-        case "Aave · Base": refusal(.aave) ?? refusal(.relay, via: [.base])
-        case "Morpho · Base": refusal(.morpho) ?? refusal(.relay, via: [.base])
-        case "HLP (Hyperliquid)": refusal(.hlp) ?? refusal(.relay, via: [.hyperliquid])
-        default: nil
+        case "Jupiter Lend": return refusal(.jupiterLend)
+        case "Kamino Lend": return refusal(.kamino)
+        case "JitoSOL staking": return refusal(.jitoSOL)
+        case "HLP (Hyperliquid)": return refusal(.hlp) ?? refusal(.relay, via: [.hyperliquid])
+        default:
+            // «Aave · Polygon», «Morpho · Ethereum»: the protocol, then its network and the bridge there.
+            let parts = name.components(separatedBy: " · ")
+            guard parts.count == 2, let p = ["Aave": ModuleProtocol.aave, "Morpho": .morpho][parts[0]],
+                  let n = ModuleNetwork.allCases.first(where: { $0.name == parts[1] }) else { return "\(name) isn't a place ihatecrypto knows." }
+            return refusal(p) ?? refusal(.relay, via: [n])
         }
     }
 

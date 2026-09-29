@@ -12,12 +12,16 @@ public enum Allocation {
         public let existing: Decimal
         /// Why LALA will not put money here now, or nil.
         public let blocked: String?
+        /// The protocol the limit is counted per: «Aave» for every Aave market, whatever the network — the same
+        /// contracts' risk, so spreading over networks doesn't get around it.
+        public let protocolName: String
 
-        public init(name: String, apy: Decimal, existing: Decimal = 0, blocked: String? = nil) {
+        public init(name: String, apy: Decimal, existing: Decimal = 0, blocked: String? = nil, protocol proto: String? = nil) {
             self.name = name
             self.apy = apy
             self.existing = existing
             self.blocked = blocked
+            self.protocolName = proto ?? name
         }
     }
 
@@ -43,15 +47,18 @@ public enum Allocation {
         var left = free
         var slices: [Slice] = []
         var notes: [String] = []
+        // What each protocol holds, across its places, and grows by as slices are placed.
+        var used = places.reduce(into: [String: Decimal]()) { $0[$1.protocolName, default: 0] += $1.existing }
         for p in places.sorted(by: { $0.apy > $1.apy }) {
             if let reason = p.blocked { notes.append("\(p.name) (\(p.apy.formatted(.number.precision(.fractionLength(0...2)).locale(Locale(identifier: "en_US"))))%): skipped, \(reason)."); continue }
-            let room = max(0, cap - p.existing)
+            let room = max(0, cap - used[p.protocolName, default: 0])
             let amount = min(left, room)
             guard amount >= minSlice else {
-                if room < minSlice, p.existing > 0 { notes.append("\(p.name): already at the \(maxShare)% limit.") }
+                if room < minSlice, used[p.protocolName, default: 0] > 0 { notes.append("\(p.name): \(p.protocolName) is already at the \(maxShare)% limit.") }
                 continue
             }
             slices.append(Slice(place: p.name, amount: amount, apy: p.apy))
+            used[p.protocolName, default: 0] += amount
             left -= amount
             if left < minSlice { break }
         }

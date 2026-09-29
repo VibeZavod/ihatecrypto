@@ -477,12 +477,9 @@ extension Executor {
            let q = try? await Jupiter.quote(input: SpotAsset.jitoSOL.mint, output: SpotAsset.all[0].mint, amount: held) {
             jito = Decimal(q.outAmount) / 1_000_000_000
         }
-        // Aave v3 on Base, USDC only: the rate and what is supplied come from the pool itself.
-        var aave: (apy: Decimal, supplied: Decimal, gas: UInt64)?
-        if !isSOL, let apy = try? await AaveV3.verifyBase(), let supplied = try? await EVMRPC.base.tokenBalance(AaveV3.baseAUSDC, owner: wallet.evm) {
-            aave = (apy, Decimal(supplied) / 1_000_000, (try? await EVMRPC.base.balance(wallet.evm)) ?? 0)
-        }
-        let total = free + jupiter + kamino + jito + (aave?.supplied ?? 0)
+        // Aave and Morpho on the EVM networks, USDC only: rates and balances from the pools and vaults themselves.
+        let evm = isSOL ? [] : await evmPlaces()
+        let total = free + jupiter + kamino + jito + evm.reduce(0) { $0 + $1.supplied }
         let kaminoRentUSD = Decimal(string: "0.0298")! * solPrice
         // A vault switched off in Settings › Modules is skipped, with the reason in the notes.
         let modules = Modules.current
@@ -502,15 +499,12 @@ extension Executor {
             }
         }
         var all = places
-        if let aave {
-            // Getting there costs the bridge (≈ $0.03) and, without gas on Base yet, the top-up with its delivery (≈ $0.11).
-            let cost = Decimal(string: "0.03")! + (aave.gas < Self.baseGasFloorForPlan ? Decimal(string: "0.11")! : 0)
-            // Worth it only when the trip costs less than half a year of the slice's interest.
-            let slice = max(0, min(free, total * maxShare / 100 - aave.supplied))
-            let yearly = slice * aave.apy / 100
-            all.append(.init(name: "Aave · Base", apy: aave.apy, existing: aave.supplied,
-                             blocked: modules.refusal(vault: "Aave · Base")
-                                ?? (cost > yearly / 2 ? "on Base: the bridge and gas (≈ \(Fmt.usd(cost))) cost more than half a year of this slice's interest (≈ \(Fmt.usd(yearly)) a year)" : nil)))
+        for p in evm {
+            // Worth it only when the round trip costs less than half a year of the slice's interest: on Ethereum that
+            // takes a large slice, on the L2s a few dollars.
+            let slice = max(0, min(free, total * maxShare / 100 - p.supplied))
+            all.append(.init(name: p.name, apy: p.apy, existing: p.supplied,
+                             blocked: modules.refusal(vault: p.name) ?? p.tooCostly(yearly: slice * p.apy / 100), protocol: p.protocolName))
         }
         let plan = Allocation.plan(free: free, places: all, maxShare: maxShare, minSlice: isSOL ? Decimal(string: "0.003")! : Decimal(string: "0.5")!)
         func amount(_ d: Decimal) -> String { Fmt.num(d, maxFraction: isSOL ? 6 : 2) + " " + asset }
@@ -533,8 +527,9 @@ extension Executor {
             case "Jupiter Lend": done.append(try await lend(asset, amount: piece, deposit: true))
             case "Kamino Lend": done.append(try await self.kamino(asset, amount: piece, deposit: true))
             case "JitoSOL staking": done.append(try await convert(from: SpotAsset.all[0], to: .jitoSOL, amount: piece))
-            case "Aave · Base": done.append(try await self.aave(deposit: true, usdc: piece))
-            default: continue
+            default:
+                if let m = AaveV3.market(place: slice.place) { done.append(try await self.aave(deposit: true, usdc: piece, market: m)) }
+                else if let v = MorphoVault.vault(place: slice.place) { done.append(try await self.morpho(deposit: true, usdc: piece, vault: v)) }
             }
         }
         let line = "Spread across \(done.count) \(done.count == 1 ? "protocol" : "protocols")."

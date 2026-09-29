@@ -35,3 +35,18 @@ import Testing
     // A Russian reply for a Russian chat.
     #expect(m.refusal(.stake(1), ru: true)?.contains("выключены") == true)
 }
+
+@Test func vaultsOnEveryNetworkFollowTheirNetworksSwitch() {
+    var m = Modules()
+    #expect(m.refusal(vault: "Aave · Polygon") == nil)
+    #expect(m.refusal(vault: "Morpho · Ethereum") == nil)
+    m.set(.polygon, false)
+    #expect(m.refusal(vault: "Aave · Polygon") != nil)
+    #expect(m.refusal(vault: "Aave · Arbitrum") == nil)
+    m.set(.aave, false)
+    #expect(m.refusal(vault: "Aave · Arbitrum") != nil)
+    // A place no switch covers is refused, not waved through.
+    #expect(Modules().refusal(vault: "Aave · BNB") != nil)
+    #expect(Modules().refusal(vault: "Somewhere") != nil)
+    #expect(ModuleNetwork(place: "polygon") == .polygon && ModuleNetwork(place: "ethereum") == .ethereum)
+}

@@ -55,3 +55,14 @@ import Testing
     #expect(plan.moves.map(\.amount) == [50])
     #expect(plan.moves.first?.to == "Kamino Lend")
 }
+
+@Test func rebalanceCapsAaveAcrossNetworksTogether() {
+    // 10 USDC in Jupiter Lend; two Aave markets pay more. Together they may take only half.
+    let plan = Rebalance.plan(places: [
+        .init(name: "Jupiter Lend", apy: 3, amount: 10),
+        .init(name: "Aave · Arbitrum", apy: 9, amount: 0, protocol: "Aave"),
+        .init(name: "Aave · Polygon", apy: 8, amount: 0, protocol: "Aave"),
+    ], maxShare: 50)
+    let intoAave = plan.moves.filter { $0.to.hasPrefix("Aave") }.reduce(Decimal(0)) { $0 + $1.amount }
+    #expect(intoAave == 5)
+}

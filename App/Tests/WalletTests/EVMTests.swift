@@ -1,6 +1,7 @@
 import EVMChain
 import Foundation
 import Testing
+@testable import TradeExecution
 import WalletCore
 
 @Test func rlpMatchesTheYellowPaperExamples() {
@@ -212,4 +213,13 @@ import WalletCore
     #expect(AaveV3.markets.allSatisfy { m in m.usdc == [1: EVMRPC.ethereumUSDC, 137: EVMRPC.polygonUSDC, 42161: EVMRPC.arbitrumUSDC, 8453: EVMRPC.baseUSDC][m.rpc.chainId] })
     #expect(MorphoVault.vaults.allSatisfy { v in v.usdc == [1: EVMRPC.ethereumUSDC, 42161: EVMRPC.arbitrumUSDC, 8453: EVMRPC.baseUSDC][v.rpc.chainId] })
     #expect(MorphoVault.vault(place: "Morpho · Ethereum")?.rpc.chainId == 1)
+}
+
+@Test func aRoundTripMustPayForItselfWithinHalfAYear() {
+    // Ethereum: ≈ $1.90 there and back is more than half a year of 4.3% on 15 USDC (≈ $0.65 a year).
+    let ethereum = EVMPlace(name: "Morpho · Ethereum", protocolName: "Morpho", apy: Decimal(string: "4.3")!, supplied: 0, roundTripUSD: Decimal(string: "1.9")!)
+    #expect(ethereum.tooCostly(yearly: 15 * Decimal(string: "4.3")! / 100) != nil)
+    // Arbitrum: ≈ $0.08 is well under it.
+    let arbitrum = EVMPlace(name: "Aave · Arbitrum", protocolName: "Aave", apy: 3, supplied: 0, roundTripUSD: Decimal(string: "0.08")!)
+    #expect(arbitrum.tooCostly(yearly: 15 * 3 / 100) == nil)
 }

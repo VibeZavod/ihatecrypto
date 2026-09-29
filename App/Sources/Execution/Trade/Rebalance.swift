@@ -54,31 +54,25 @@ extension Executor {
         async let vaultsCall = try? JupiterLend.vaults()
         async let jupCall = try? JupiterLend.positions(user: wallet.solana)
         async let kamCall = try? Kamino.positions(wallet: wallet.solana)
-        async let aaveAPYCall = try? AaveV3.verifyBase()
-        async let morphoAPYCall = MorphoRates.netAPY()
+        async let evmCall = evmPlaces()
         let options = await optionsCall
         let usdcVault = (await vaultsCall ?? []).first { $0.assetSymbol.uppercased() == "USDC" }
         let jupPositions = await jupCall ?? []
         let jupiter = usdcVault.flatMap { v in jupPositions.first { $0.vault == v.symbol }.map { Decimal($0.assets) / 1_000_000 } } ?? 0
         let kamino = (await kamCall ?? []).filter { $0.symbol.uppercased() == "USDC" }.reduce(0) { $0 + $1.valueUSD }
-        let aave = Decimal((try? await EVMRPC.base.tokenBalance(AaveV3.baseAUSDC, owner: wallet.evm)) ?? 0) / 1_000_000
-        let morpho = Decimal((try? await MorphoVault.value(wallet.evm, MorphoVault.base)) ?? 0) / 1_000_000
         let hlp: (equity: Decimal, withdrawable: Decimal, lockedUntil: Date?) = (try? await HyperliquidAccount.vaultEquity(user: wallet.evm, vault: HLGuard.hlpVault)) ?? (0, 0, nil)
         let solPrice = (try? await Hyperliquid.markets()["SOL"]?.markPx) ?? 0
-        let baseGas = (try? await EVMRPC.base.balance(wallet.evm)) ?? 0
         func apy(_ place: String) -> Decimal? { options.first { $0.place == place }?.apy }
-        // Estimates, shown as such: a Relay hop ≈ $0.03; Base without gas also pays for the ETH top-up; Kamino's first
-        // deposit opens accounts for ≈ 0.03 SOL of rent (0.0176 of it comes back on a full exit).
-        let hop = Decimal(string: "0.03")!
-        let baseEntry = hop + (baseGas < Self.baseGasFloorForPlan ? Decimal(string: "0.11")! : 0)
+        // Estimates, shown as such: Kamino's first deposit opens accounts for ≈ 0.03 SOL of rent (0.0176 of it comes
+        // back on a full exit); an EVM place's round trip is split half out, half in (EVMPlaces.swift).
         var places: [Rebalance.Place] = []
         if let a = apy("Jupiter Lend") { places.append(.init(name: "Jupiter Lend", apy: a, amount: jupiter)) }
         if let a = apy("Kamino Lend") {
             places.append(.init(name: "Kamino Lend", apy: a, amount: kamino, entryCost: kamino > 0 ? 0 : Decimal(string: "0.0298")! * solPrice))
         }
-        if let a = await aaveAPYCall { places.append(.init(name: "Aave · Base", apy: a, amount: aave, exitCost: hop, entryCost: baseEntry)) }
-        if let a = await morphoAPYCall {
-            places.append(.init(name: "Morpho · Base", apy: a, amount: morpho, exitCost: hop, entryCost: baseEntry + Decimal(string: "0.02")!))
+        for p in await evmCall {
+            places.append(.init(name: p.name, apy: p.apy, amount: p.supplied, exitCost: p.roundTripUSD / 2, entryCost: p.roundTripUSD / 2,
+                                protocol: p.protocolName))
         }
         if let a = apy("HLP (Hyperliquid)"), hlp.equity > 0 {
             let locked = hlp.lockedUntil.flatMap { $0 > Date() ? "HLP locks deposits for 4 days, until \(Fmt.date($0))" : nil }
@@ -97,12 +91,13 @@ extension Executor {
         switch place {
         case "Jupiter Lend": _ = try await lend("USDC", amount: asked, deposit: false)
         case "Kamino Lend": _ = try await kamino("USDC", amount: asked, deposit: false)
-        case "Aave · Base": _ = try await aave(deposit: false, usdc: asked)
-        case "Morpho · Base": _ = try await morpho(deposit: false, usdc: asked)
         case "HLP (Hyperliquid)":
             _ = try await hlp(deposit: false, amount: asked)
             _ = try await withdrawToSolana(usdc: nil)
-        default: throw ExecutionError("ihatecrypto can't take money out of \(place).")
+        default:
+            if let m = AaveV3.market(place: place) { _ = try await aave(deposit: false, usdc: asked, market: m) }
+            else if let v = MorphoVault.vault(place: place) { _ = try await morpho(deposit: false, usdc: asked, vault: v) }
+            else { throw ExecutionError("ihatecrypto can't take money out of \(place).") }
         }
     }
 
@@ -111,9 +106,10 @@ extension Executor {
         case "Jupiter Lend": _ = try await lend("USDC", amount: amount, deposit: true)
         // The plan already counted Kamino's first-deposit rent against the move.
         case "Kamino Lend": _ = try await kamino("USDC", amount: amount, deposit: true, acceptRent: true)
-        case "Aave · Base": _ = try await aave(deposit: true, usdc: amount)
-        case "Morpho · Base": _ = try await morpho(deposit: true, usdc: amount)
-        default: throw ExecutionError("ihatecrypto can't put money into \(place) this way.")
+        default:
+            if let m = AaveV3.market(place: place) { _ = try await aave(deposit: true, usdc: amount, market: m) }
+            else if let v = MorphoVault.vault(place: place) { _ = try await morpho(deposit: true, usdc: amount, vault: v) }
+            else { throw ExecutionError("ihatecrypto can't put money into \(place) this way.") }
         }
     }
 }
