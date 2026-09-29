@@ -57,6 +57,8 @@ def check(expect, state, replies):
             why.append(f"command {text((pending or {}).get('command'))}, expected «{want}»")
         elif key == "no_pending" and pending:
             why.append(f"a card waits: {text(pending)[:160]}")
+        elif key == "plan_first" and not ((b.get("plan") or {}).get("steps") or [{}])[0].get("label", "").upper().startswith(want):
+            why.append(f"the plan's first card is {text(((b.get('plan') or {}).get('steps') or [None])[0])}, expected «{want}…»")
         elif key == "plan" and (b.get("plan") or {}).get("asset") != want:
             why.append(f"plan {text(b.get('plan')) or 'none'}, expected a plan on {want}")
         elif key == "chart" and (b.get("chart") or {}).get("coin") != want:

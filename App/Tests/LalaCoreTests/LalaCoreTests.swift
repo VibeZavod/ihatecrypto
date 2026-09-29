@@ -329,3 +329,16 @@ private struct StubModel: LLMClient {
     #expect(WalletCommand.aave(deposit: true, amount: 5, network: "arbitrum").with(amount: 7) == .aave(deposit: true, amount: 7, network: "arbitrum"))
     #expect(WalletCommand.sendSol(name: "Test", amount: 1).editableAmount == nil)   // a transfer's amount isn't edited from a card
 }
+
+// A price alert tied to a plan prepares it again from `command`: every field must come back as it was.
+@Test func planCommandReadsBackToTheSamePlan() throws {
+    let markets: Set<String> = ["SOL", "ETH", "xyz:CL"]
+    var a = TradeIntent(); a.asset = "SOL"; a.riskUSD = d("0.295"); a.stopPct = 3; a.takePct = 6; a.leverage = 2
+    var b = TradeIntent(); b.asset = "xyz:CL"; b.side = .short; b.takeR = d("2.5"); b.autoRules = true; b.pullbackPct = d("1.5")
+    b.partialTake = true; b.trailingPct = 2; b.amountUSDC = 12
+    var c = TradeIntent(); c.asset = "ETH"; c.riskUSD = 5; c.stopPct = d("2.1"); c.entryPx = d("2650.5"); c.leverage = 3
+    for plan in [a, b, c] {
+        #expect(IntentParser.apply(plan.command, to: TradeIntent(), markets: markets) == plan, "\(plan.command)")
+    }
+    #expect(a.command == "long SOL risk $0.295 stop 3% take 6% leverage 2x")
+}

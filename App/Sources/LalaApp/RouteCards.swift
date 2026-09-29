@@ -6,14 +6,17 @@ import SwiftUI
 
 /// What a route step does, read from its label («BRIDGE · RELAY», «INTO · KAMINO LEND», «FROM · SOLANA»…): it picks
 /// the drawing at the bottom of its card. A trade plan's steps have their own: the rules' checklist, Jev's magnifier,
-/// the price line the position rides, the shield of its stop and take, and the two ways it can end.
+/// the price line the position rides, the shield of its stop and take, and the two ways it can end. A price alert the
+/// plan waits for («WHEN · PRICE FALLS TO») draws the price reaching its level, with the bell.
 enum StepKind: Equatable {
     case wallet, bridge, swap, buy, deposit, stake, send, check, jev, long, short, protect, result
+    case alert(up: Bool)
 
     init(_ step: ActivityBubble) {
         let label = step.label.uppercased()
         let place = label.components(separatedBy: "·").last?.trimmingCharacters(in: .whitespaces) ?? ""
-        if label.hasPrefix("CHECK") { self = .check }
+        if label.hasPrefix("WHEN") { self = .alert(up: label.contains("RISES")) }
+        else if label.hasPrefix("CHECK") { self = .check }
         else if label.hasPrefix("JEV") { self = .jev }
         else if label.hasPrefix("OPEN LONG") { self = .long }
         else if label.hasPrefix("OPEN SHORT") { self = .short }
@@ -37,6 +40,8 @@ enum StepKind: Equatable {
 /// A plan's step can also be stopped by a rule, or want a look (a detail missing, Jev's doubt).
 enum StepState: Equatable {
     case ready, done, now, touch, next, failed, plain, blocked, attention
+    /// A price alert the plan waits for: watching the price, nothing to do yet.
+    case watching
 
     /// The coin's face on the step's chip and in its drawing.
     var mood: LalaLogo.Mood {
@@ -49,6 +54,7 @@ enum StepState: Equatable {
         case .failed, .blocked: .error
         case .plain: .idle
         case .attention: .tuning
+        case .watching: .waiting
         }
     }
 }
@@ -209,6 +215,7 @@ struct RouteCards: View {
         switch steps[i].status {
         case "blocked": return .blocked
         case "attention": return .attention
+        case "watching": return .watching
         case "passed": return .done
         default: return .ready
         }
@@ -582,6 +589,7 @@ struct StateChip: View {
         case .failed: ("Failed", Color(hex: 0xB42A20), Color(hex: 0xFFB3A8))
         case .blocked: ("Stopped", Color(hex: 0xB42A20), Color(hex: 0xFFB3A8))
         case .attention: ("Look", Color(hex: 0x8A4B00), Color(hex: 0xFFB870))
+        case .watching: ("Watching", Color(hex: 0x8A4B00), Color(hex: 0xFFD9A8))
         case .plain: ("", .primary, .clear)
         }
     }
@@ -680,6 +688,7 @@ struct StepScene: View {
         case .short: (250, 57, 1.4)
         case .protect: (150, 64, 1.4)
         case .result: (90, 60, 1.4)
+        case .alert(let up): (236, up ? 58 : 74, 1.4)
         }
     }
 
@@ -789,6 +798,21 @@ struct StepScene: View {
             context.stroke(up, with: .color(good), style: StrokeStyle(lineWidth: 4 * k, lineCap: .round, dash: [7 * k, 7 * k]))
             var down = Path(); down.move(to: p(126, 72)); down.addCurve(to: p(244, 100), control1: p(170, 100), control2: p(206, 104))
             context.stroke(down, with: .color(bad), style: StrokeStyle(lineWidth: 4 * k, lineCap: .round))
+        case (.alert(let up), false):
+            // The level dashed across, the price running to it where the coin waits, the bell that rings there.
+            func y(_ v: CGFloat) -> CGFloat { up ? 132 - v : v }
+            var level = Path(); level.move(to: p(-4, y(98))); level.addLine(to: p(344, y(98)))
+            context.stroke(level, with: .color(look.drawing.opacity(0.7)), style: StrokeStyle(lineWidth: 2.5 * k, lineCap: .round, dash: [8 * k, 7 * k]))
+            var price = Path(); price.move(to: p(-4, y(34)))
+            for (px, py) in [(46.0, 52.0), (90, 40), (138, 66), (180, 56), (212, 80)] { price.addLine(to: p(px, y(py))) }
+            stroke(price)
+            let cy = up ? 96.0 : 36.0
+            var bell = Path()
+            bell.move(to: p(284, cy + 12)); bell.addCurve(to: p(316, cy + 12), control1: p(284, cy - 22), control2: p(316, cy - 22))
+            bell.move(to: p(279, cy + 12)); bell.addLine(to: p(321, cy + 12))
+            context.fill(bell, with: fill); stroke(bell)
+            context.fill(circle(300, cy + 18, 4.5), with: ink)
+            stroke(circle(300, cy - 15, 3), thin)
         default:
             break
         }

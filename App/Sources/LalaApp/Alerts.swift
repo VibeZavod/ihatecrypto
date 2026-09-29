@@ -22,15 +22,53 @@ extension Workspace {
                 reply("\(name) is already \(up ? "above" : "below") \(Fmt.price(price)): now \(Fmt.price(mark)).", note: note)
                 return
             }
-            alerts.append(PriceAlert(coin: coin, above: up, price: price, steps: steps.isEmpty ? nil : steps))
-            withAnimation(StudioView.spring) { showAlerts = true }
+            var alert = PriceAlert(coin: coin, above: up, price: price, steps: steps.isEmpty ? nil : steps)
+            // «add it to the plan»: a step that is this canvas's plan (its market and side) ties the alert to the plan.
+            // It becomes the plan's first step, one per plan: a new level replaces the old.
+            let tied = intent != TradeIntent() && !managesPosition && steps.contains { planStep($0).map { $0.asset == intent.asset && $0.side == intent.side } == true }
+            if tied {
+                alert.plan = canvasID
+                alerts.removeAll { $0.plan == canvasID }
+            }
+            alerts.append(alert)
+            if !tied { withAnimation(StudioView.spring) { showAlerts = true } }
             UserDefaults.standard.set("plan", forKey: "canvasMode")
             let away = ((price - mark) / mark * 100).rounded(1, .plain)
+            if tied {
+                reply(say("🔔 Added to the plan as its first step: when \(name) is \(up ? "above" : "below") \(Fmt.price(price)) (now \(Fmt.price(mark)), \(Fmt.num(abs(away)))% away), this plan comes back to you to confirm, with any changes you make to it until then.",
+                          "🔔 Добавил в план первым шагом: когда \(name) будет \(up ? "выше" : "ниже") \(Fmt.price(price)) (сейчас \(Fmt.price(mark)), \(Fmt.num(abs(away)))% до уровня), этот план придёт тебе на подтверждение — со всеми правками, что внесёшь до тех пор."), note: note)
+                return
+            }
             let then = steps.isEmpty ? "" : say(" Then I’ll prepare “\(steps.joined(separator: ", then "))” and send it to you to confirm.",
                                                " Тогда подготовлю «\(steps.joined(separator: ", потом "))» и пришлю на подтверждение.")
             reply(say("🔔 On the canvas: \(name) \(up ? "above" : "below") \(Fmt.price(price)) — now \(Fmt.price(mark)), \(Fmt.num(abs(away)))% \(up ? "higher" : "lower").",
                       "🔔 На канвасе: \(name) \(up ? "выше" : "ниже") \(Fmt.price(price)) — сейчас \(Fmt.price(mark)), на \(Fmt.num(abs(away)))% \(up ? "выше" : "ниже").") + then, note: note)
         }
+    }
+
+    /// A step that is a trade plan («long SOL risk $0.3 …»), read as that plan; nil for any other command.
+    func planStep(_ step: String) -> TradeIntent? {
+        let known = Set(markets.keys)
+        return IntentParser.startsPlan(step, markets: known) ? IntentParser.apply(step, to: TradeIntent(), markets: known) : nil
+    }
+
+    /// The alert tied to this canvas's plan while the plan is still that trade (its market and side).
+    var planAlert: PriceAlert? {
+        guard intent != TradeIntent() else { return nil }
+        return alerts.first { a in a.plan == canvasID && (a.steps ?? []).contains { planStep($0).map { $0.asset == intent.asset && $0.side == intent.side } == true } }
+    }
+
+    /// The plan's alert as its first route card: the level, how far the price is, and what happens when it gets there.
+    var planAlertStep: ActivityBubble? {
+        guard let a = planAlert else { return nil }
+        let name = IntentParser.pretty(a.coin).components(separatedBy: " (").first ?? a.coin
+        var lines: [String] = []
+        if let mark = markets[a.coin]?.markPx {
+            lines = ["now\t\(Fmt.price(mark))", "away\t\(Fmt.num(((a.price - mark) / mark * 100).rounded(1, .plain)))%"]
+        }
+        lines.append("then this plan comes to you to confirm")
+        return ActivityBubble(kind: "step", label: "WHEN · PRICE \(a.above ? "RISES" : "FALLS") TO", title: "\(name) \(Fmt.price(a.price))", lines: lines,
+                              status: "watching", asset: a.coin, logo: TokenLogo.name(forAsset: a.coin) ?? "hype", fill: .check)
     }
 
     /// Runs with every refresh: an alert that fires sends one notification and is done.
@@ -40,7 +78,11 @@ extension Workspace {
             alerts.removeAll { $0.id == a.id }
             // Its steps run as a task due now: on their own canvas once nothing else is going on, and a move or a plan
             // waits there for Confirm with a notification (runDueTask).
-            if let steps = a.steps {
+            if var steps = a.steps {
+                // Tied to a plan: that plan as it is on its canvas now, edits included — unless it's no longer that trade.
+                if let id = a.plan, let plan = id == canvasID ? intent : canvases.first(where: { $0.id == id })?.intent {
+                    steps = steps.map { step in planStep(step).map { $0.asset == plan.asset && $0.side == plan.side } == true ? plan.command : step }
+                }
                 let because = say("\(IntentParser.pretty(a.coin)) went \(a.above ? "above" : "below") \(Fmt.price(a.price))",
                                   "\(IntentParser.pretty(a.coin)) \(a.above ? "выше" : "ниже") \(Fmt.price(a.price))")
                 tasks.append(ScheduledTask(steps: steps, next: Date(), every: nil, because: because))
@@ -69,6 +111,10 @@ struct AlertsBoard: View {
     }
 
     var body: some View {
+        if ws.alerts.contains(where: { $0.id != ws.planAlert?.id }) { board }
+    }
+
+    private var board: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack {
                 Image(systemName: "bell.badge.fill").foregroundStyle(.orange)
@@ -77,7 +123,8 @@ struct AlertsBoard: View {
                 Button { withAnimation(StudioView.spring) { ws.showAlerts = false } } label: { Image(systemName: "xmark") }
                     .buttonStyle(.hoverIcon).help("Hide the board; the alerts stay")
             }
-            ForEach(ws.alerts) { chain(blocks($0)) }
+            // One tied to this canvas's plan is drawn as that plan's first step instead.
+            ForEach(ws.alerts.filter { $0.id != ws.planAlert?.id }) { chain(blocks($0)) }
             Text("Checked every 10 s while ihatecrypto is open or in the menu bar. Nothing moves until you confirm it.")
                 .font(.ui(10)).foregroundStyle(.tertiary)
         }

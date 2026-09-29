@@ -202,6 +202,8 @@ extension Workspace {
     func deleteCanvas(_ id: UUID) {
         if id == canvasID { newCanvas() }
         canvases.removeAll { $0.id == id }
+        // A price alert that waited to prepare its plan goes with it.
+        alerts.removeAll { $0.plan == id }
     }
 
     /// The canvas that was open last time (else the one worked on last).

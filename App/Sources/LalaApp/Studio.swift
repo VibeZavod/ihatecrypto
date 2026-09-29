@@ -1743,7 +1743,8 @@ extension Workspace {
         func card(_ label: String, _ title: String, _ lines: [String], _ status: String, logo: String? = nil, _ fill: RouteFill) -> ActivityBubble {
             ActivityBubble(kind: "step", label: label, title: title, lines: lines, status: status, asset: intent.asset, logo: logo, fill: fill)
         }
-        var steps: [ActivityBubble] = []
+        // A price alert tied to the plan comes first: the plan waits for that price.
+        var steps: [ActivityBubble] = planAlertStep.map { [$0] } ?? []
         let sizing = evaluation.sizing
         let name = IntentParser.pretty(intent.asset).components(separatedBy: " (").first ?? intent.asset
         // Rows are «label\tvalue» (StepLine): the eye finds the number without reading a sentence.

@@ -960,10 +960,14 @@ final class Workspace {
 
     /// «clear the plan», typed, read by the model or the plan's Cancel.
     func clearPlan(note: String? = nil) {
+        // The price alert that waited to prepare this plan goes with it.
+        let alert = planAlert
+        if let alert { alerts.removeAll { $0.id == alert.id } }
         intent = TradeIntent()
         executed = nil
         takeChoices = nil
-        reply(say("The plan is cleared. Tell me what to do next.", "План очищен. Скажи, что дальше."), note: note)
+        reply(alert == nil ? say("The plan is cleared. Tell me what to do next.", "План очищен. Скажи, что дальше.")
+                           : say("The plan is cleared, and its price alert with it. Tell me what to do next.", "План очищен, и его алерт тоже. Скажи, что дальше."), note: note)
     }
 
     /// After every message about the plan: the plan checked item by item and the next step (TradeAdvice.swift).

@@ -50,6 +50,24 @@ public struct TradeIntent: Codable, Equatable, Sendable {
         }
         return out
     }
+
+    /// The plan in the router's own form («long SOL risk $0.3 stop 3% take 6% leverage 2x»), which IntentParser.apply
+    /// reads back to the same plan: what a price alert tied to a plan runs to prepare it again.
+    public var command: String {
+        func n(_ d: Decimal) -> String { NSDecimalNumber(decimal: d).stringValue }
+        var parts = ["\(side == .long ? "long" : "short") \(asset.hasPrefix("xyz:") ? String(asset.dropFirst(4)) : asset)"]
+        if let v = riskUSD { parts.append("risk $\(n(v))") }
+        if let v = stopPct { parts.append("stop \(n(v))%") }
+        if let v = takePct { parts.append("take \(n(v))%") } else if let v = takeR { parts.append("take \(n(v))R") }
+        if let v = leverage { parts.append("leverage \(n(v))x") }
+        if let v = amountUSDC { parts.append("\(n(v)) USDC") }
+        if autoRules == true { parts.append("by the book") }
+        // «pullback N%», not «on a N% pullback»: after the word the parser takes the next percent, a trailing one too.
+        if let v = pullbackPct { parts.append("pullback \(n(v))%") } else if let v = entryPx { parts.append("limit \(n(v))") }
+        if let v = trailingPct { parts.append("trailing \(n(v))%") }
+        if partialTake == true { parts.append("take in parts") }
+        return parts.joined(separator: " ")
+    }
 }
 
 /// Deterministic parsing of the phrases a trader actually types. The cloud model only sees what this misses.

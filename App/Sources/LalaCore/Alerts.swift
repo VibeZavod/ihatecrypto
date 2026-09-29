@@ -11,6 +11,9 @@ public struct PriceAlert: Codable, Equatable, Sendable, Identifiable {
     public var created = Date()
     /// The router's commands to run when it fires; nil: only the notification.
     public var steps: [String]?
+    /// The canvas whose trade plan it prepares: drawn as that plan's first step, and when it fires it prepares the plan
+    /// as it is on that canvas then, edits included (`steps` holds it as it was when set).
+    public var plan: UUID?
 
     public init(coin: String, above: Bool, price: Decimal, steps: [String]? = nil) {
         self.coin = coin
