@@ -373,8 +373,11 @@ extension Workspace {
             case .sendTo(let name, let amount): prepareTransfer(amount, to: name)
             case .pay: reply(try await pay(command, e), note: "MPP · Tempo")
             case .bridge(let from, let to, let amount):
-                guard let a = EVMNetwork.named(from), let b = EVMNetwork.named(to) else { throw ExecutionError("ihatecrypto doesn't move money between \(from) and \(to).") }
-                reply(try await e.bridge(a, to: b, usdc: amount), note: "Relay · \(a.name) → \(b.name)")
+                let hyperliquid = to == "hyperliquid", b = EVMNetwork.named(to)
+                guard let a = EVMNetwork.named(from), hyperliquid || b != nil else {
+                    throw ExecutionError("ihatecrypto doesn't move money between \(from) and \(to).")
+                }
+                reply(try await e.bridge(a, to: b, hyperliquid: hyperliquid, usdc: amount), note: "Relay · \(a.name) → \(b?.name ?? "Hyperliquid")")
             case .claimRewards:
                 reply(try await e.claimRewards(), note: "Merkl")
                 rewards = nil

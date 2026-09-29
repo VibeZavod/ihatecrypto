@@ -56,3 +56,12 @@ import Testing
     #expect(Executor.pick([uniswap], prefer: "relay") == nil)                     // picked but unquoted: nothing is signed
     #expect(Executor.pick([], prefer: nil) == nil)
 }
+
+// Solana short: the first network holding the amount and a dime for Relay, never Ethereum (its gas costs dollars).
+@Test func tradeFundingPicksANetworkThatHoldsIt() {
+    let held: [String: Decimal] = ["base": 3000, "arbitrum": 60, "ethereum": 9000]
+    #expect(EVMNetwork.funding(50, held: { held[$0] })?.key == "base")
+    #expect(EVMNetwork.funding(3000, held: { held[$0] }) == nil)
+    #expect(EVMNetwork.funding(59, held: { ["arbitrum": 60, "ethereum": 9000][$0] })?.key == "arbitrum")
+    #expect(EVMNetwork.funding(100, held: { ["ethereum": 9000][$0] }) == nil)
+}

@@ -75,13 +75,15 @@ extension Workspace {
         if let s = sizing {
             out.append("\(evaluation.problem == nil ? "✓" : "✗") Size: \(Fmt.usd(s.notional)) · \(Fmt.num(r.leverage ?? 1))× · margin \(Fmt.usd(s.margin))"
                        + (evaluation.problem.map { ". \($0)" } ?? ""))
-            // Where the margin comes from: Hyperliquid's free balance, topped up from Solana over the bridge.
+            // Where the margin comes from: Hyperliquid's free balance, topped up over the bridge from Solana, or straight from
+            // the EVM network that has the USDC when Solana is short.
             let bridge = blocks.first { $0.id == "bridge" }, source = blocks.first { $0.id == "source" }
             let free = hl.map { Fmt.usd($0.withdrawable) } ?? "—"
             if source?.status == .blocked {
-                out.append("✗ Money: \(source?.lines.last ?? "not enough USDC on Solana")")
+                out.append("✗ Money: \(source?.lines.last.map { "\($0.dropLast()) on \(fundingNet?.name ?? "Solana")." } ?? "not enough USDC on Solana")")
             } else if let bridge, bridge.status == .ready || bridge.status == .warning, let q = quote {
-                out.append("✓ Money: \(free) free on Hyperliquid + \(Fmt.num(q.amountIn)) USDC from Solana over \(q.provider) (≈ \(Fmt.num(q.amountOut)) arrive)")
+                out.append("✓ Money: \(free) free on Hyperliquid + \(Fmt.num(q.amountIn)) USDC from \(fundingNet?.name ?? "Solana") over \(q.provider) (≈ \(Fmt.num(q.amountOut)) arrive)"
+                           + (fundingNet == nil ? "" : ", straight: Solana has only \(Fmt.num(solana?.usdc ?? 0))"))
                 // The bridge's warning (it costs more than the take earns) belongs next to the money.
                 if bridge.status == .warning, let costly = bridge.lines.first(where: { $0.hasPrefix("The bridge costs more") }) { out.append("⚠ Money: " + costly) }
             } else if let bridge, bridge.status == .blocked, let why = bridge.lines.first {

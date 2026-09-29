@@ -158,7 +158,7 @@ public enum WalletCommand: Equatable, Sendable {
     /// USDC from the Solana wallet to our own address on «base», «arbitrum» or «robinhood» (USDG there); nil = ask.
     case solanaTo(String, Decimal?)
     /// USDC from one EVM network straight to another over Relay, at our own address («base» → «robinhood», where it
-    /// arrives as USDG); nil = everything on `from`.
+    /// arrives as USDG), or to our Hyperliquid trading balance («hyperliquid»); nil = everything on `from`.
     case bridge(from: String, to: String, Decimal?)
     /// A paid API on Tempo (MPP): the request as the service documents it; the price comes from its 402 answer and
     /// is paid in USDC on Tempo only after Confirm. `method` «GET» or «POST»; `body` JSON or nil.
@@ -250,9 +250,10 @@ public enum WalletCommand: Equatable, Sendable {
            let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)/) {
             return .solanaTo(Self.network(String(m.1)) ?? "robinhood", amount)
         }
-        // Between two EVM networks, straight over Relay: «move 20 USDC from Base to Robinhood», «из бейза в робингуд».
+        // Between two EVM networks, or from one to Hyperliquid, straight over Relay: «move 20 USDC from Base to Robinhood»,
+        // «из бейза в робингуд», «с бейза на гипер».
         if !q.contains(/\baave\b|ааве|morpho|морфо/),
-           let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)/),
+           let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*|hyperliquid|гипер\w*|хайпер\w*|hl\b)/),
            let from = Self.network(String(m.1)), let to = Self.network(String(m.2)), from != to {
             return .bridge(from: from, to: to, amount)
         }
@@ -442,7 +443,8 @@ extension WalletCommand {
         return w.hasPrefix("b") || w.hasPrefix("бейс") || w.hasPrefix("бейз") ? "base" : w.hasPrefix("arb") || w.hasPrefix("арб") ? "arbitrum"
             : w.hasPrefix("rob") || w.hasPrefix("роб") ? "robinhood" : w.hasPrefix("pol") || w.hasPrefix("пол") ? "polygon"
             : w.hasPrefix("eth") || w.hasPrefix("эфир") || w.hasPrefix("main") || w.hasPrefix("мейн") ? "ethereum"
-            : w.hasPrefix("temp") || w.hasPrefix("темп") ? "tempo" : nil
+            : w.hasPrefix("temp") || w.hasPrefix("темп") ? "tempo"
+            : w.hasPrefix("hyper") || w.hasPrefix("гипер") || w.hasPrefix("хайпер") || w == "hl" ? "hyperliquid" : nil
     }
 
     /// The first EVM network the text names, if any.

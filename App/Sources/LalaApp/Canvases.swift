@@ -652,8 +652,9 @@ extension Workspace {
                     say("The order is \(Fmt.usd(s.notional)), under Hyperliquid’s $10 minimum.", "Ордер \(Fmt.usd(s.notional)) — меньше минимума Hyperliquid $10."))
         }
         if let p = e.problem { return (say("the position can’t be placed", "позицию не выставить"), p) }
-        if let source = b.first(where: { $0.id == "source" }), source.status == .blocked, let short = source.lines.last {
-            return (say("not enough USDC", "не хватает USDC"), say("\(short) on Solana", "\(short.replacingOccurrences(of: "Short by", with: "Не хватает")) на Solana"))
+        if let source = b.first(where: { $0.id == "source" }), source.status == .blocked, let short = source.lines.last?.dropLast() {
+            let place = fundingNet?.name ?? "Solana"
+            return (say("not enough USDC", "не хватает USDC"), say("\(short) on \(place).", "\(short.replacingOccurrences(of: "Short by", with: "Не хватает")) на \(place)."))
         }
         if let s = e.sizing, let equity, equity > 0, s.lossAtStopUSD / equity * 100 > policy.maxRiskPct {
             return (say("risk over the \(Fmt.pct(policy.maxRiskPct)) limit", "риск выше лимита \(Fmt.pct(policy.maxRiskPct))"),
@@ -669,8 +670,10 @@ extension Workspace {
     /// card or button says it.
     var planFix: (title: String, detail: String, command: String)? {
         guard planBlocker != nil, let m = market else { return nil }
-        // ponytail: Solana USDC less a bridge-fee cushion plus what is free on Hyperliquid; the confirm step re-quotes exactly.
-        let available = max(0, (solana?.usdc ?? 0) - Decimal(string: "0.1")!) + (hl.map { $0.withdrawable + (m.dex.flatMap { dexBalances[$0]?.withdrawable } ?? 0) } ?? 0)
+        // ponytail: the richest source (Solana or an EVM network the plan can bridge from) less a bridge-fee cushion, plus
+        // what is free on Hyperliquid; the confirm step re-quotes exactly.
+        let richest = ([solana?.usdc] + EVMNetwork.all.filter { $0.key != "ethereum" }.map { usdc(on: $0.key) }).compactMap { $0 }.max() ?? 0
+        let available = max(0, richest - Decimal(string: "0.1")!) + (hl.map { $0.withdrawable + (m.dex.flatMap { dexBalances[$0]?.withdrawable } ?? 0) } ?? 0)
         guard let f = Plan.fix(intent, market: m, equity: equity, policy: policy,
                                openRisk: HyperliquidAccount.riskAtStops(positions: positions, orders: orders), available: available) else { return nil }
         // Said as what changes in the trade, not as a sum: «Risk $0.33» read like something to pay.
@@ -1085,6 +1088,7 @@ extension Workspace {
         case "arbitrum": arbitrumUSDC
         case "robinhood": robinhood?.usdg
         case "tempo": tempoUSDC
+        case "hyperliquid": hl?.withdrawable
         default: nil
         }
     }
@@ -1093,7 +1097,7 @@ extension Workspace {
     private func bridgeRoute(_ from: String, _ to: String, _ amount: Decimal?) -> MoveRoute {
         let a = WalletCommand.placeName(from), b = WalletCommand.placeName(to), stable = to == "robinhood" ? "USDG" : "USDC"
         let have = usdc(on: from), moving = amount.map { min($0, have ?? $0) } ?? have
-        func fill(_ place: String) -> RouteFill { ["base": .base, "arbitrum": .arbitrum, "robinhood": .robinhood, "tempo": .tempo][place] ?? .relay }
+        func fill(_ place: String) -> RouteFill { ["base": .base, "arbitrum": .arbitrum, "robinhood": .robinhood, "tempo": .tempo, "hyperliquid": .hyperliquid][place] ?? .relay }
         let shown = moving.map { Fmt.num($0) } ?? "all"
         return MoveRoute(title: "Move \(shown) USDC · \(a) → \(b)",
                          footer: "Two \(a) transactions: an exact approve and Relay's deposit, checked field by field before signing; "

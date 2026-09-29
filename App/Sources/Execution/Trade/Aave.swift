@@ -61,6 +61,12 @@ public struct EVMNetwork: Sendable {
     /// nil for a network LALA doesn't move money on: never guessed.
     public static func of(chainId: UInt64) -> EVMNetwork? { all.first { $0.rpc.chainId == chainId } }
     public static func named(_ key: String) -> EVMNetwork? { all.first { $0.key == key } }
+
+    /// Where a trade's money comes from when Solana is short: the first network holding `send` and a dime over for Relay's
+    /// fee, straight to Hyperliquid. Not Ethereum, whose gas costs dollars. nil = none has it.
+    public static func funding(_ send: Decimal, held: (String) -> Decimal?) -> EVMNetwork? {
+        all.first { $0.key != "ethereum" && (held($0.key) ?? 0) >= send + Decimal(string: "0.1")! }
+    }
 }
 
 /// Aave v3 on any network LALA knows: USDC in and out. USDC missing there comes from Solana over Relay, with a little
@@ -171,13 +177,15 @@ extension Executor {
     public func evmToSolana(_ net: EVMNetwork, usdc requested: Decimal?) async throws -> String { try await bridge(net, to: nil, usdc: requested) }
 
     /// USDC from one EVM network straight to another at our own address (Base → Robinhood Chain arrives as USDG there),
-    /// or to Solana when `dest` is nil — over Relay, the same two checked transactions either way. A destination with a
-    /// gas coin and none of it gets a little along. nil `usdc` = everything on `net`.
-    public func bridge(_ net: EVMNetwork, to dest: EVMNetwork?, usdc requested: Decimal?) async throws -> String {
+    /// to our Hyperliquid trading balance (`hyperliquid`), or to Solana when `dest` is nil — over Relay, the same two
+    /// checked transactions each way. A destination with a gas coin and none of it gets a little along. nil `usdc` =
+    /// everything on `net`.
+    public func bridge(_ net: EVMNetwork, to dest: EVMNetwork?, hyperliquid: Bool = false, usdc requested: Decimal?) async throws -> String {
         let base = net.rpc, usdc = net.usdc, me = wallet.evm, chain = net.relayChain
         func show(_ u: UInt64) -> String { Fmt.num(Decimal(u) / 1_000_000, maxFraction: 6) }
         guard dest?.key != net.key else { throw ExecutionError("The money is already on \(net.name).") }
-        let there = dest?.name ?? "Solana", stable = dest?.key == "robinhood" ? "USDG" : "USDC"
+        let toSolana = dest == nil && !hyperliquid
+        let there = hyperliquid ? "Hyperliquid" : dest?.name ?? "Solana", stable = dest?.key == "robinhood" ? "USDG" : "USDC"
         let have = try await base.tokenBalance(usdc, owner: me)
         // On Tempo the fees come out of this USDC: a cent of it stays.
         let spendable = have > net.feeReserve ? have - net.feeReserve : 0
@@ -187,12 +195,13 @@ extension Executor {
         var topup: Decimal?
         if let dest, dest.feeToken == nil, try await dest.rpc.balance(me) < dest.gasFloor { topup = dest.topupUSD }
 
-        let recipient = dest == nil ? wallet.solana : me
-        let quote = try await Relay.quote(user: me, recipient: recipient, originChain: chain, destinationChain: dest?.relayChain ?? Relay.Chain.solana,
-                                          originCurrency: usdc, destinationCurrency: dest?.usdc ?? Relay.Currency.solanaUSDC, amount: amount,
-                                          topupGasUSD: topup)
-        let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": dest == nil ? quote.recipient : quote.recipient.lowercased()],
-                                         expected: ["sender": me.lowercased(), "recipient": dest == nil ? recipient : recipient.lowercased()], subject: "Relay quote")
+        let recipient = toSolana ? wallet.solana : me
+        let quote = try await Relay.quote(user: me, recipient: recipient, originChain: chain,
+                                          destinationChain: hyperliquid ? Relay.Chain.hyperliquid : dest?.relayChain ?? Relay.Chain.solana, originCurrency: usdc,
+                                          destinationCurrency: hyperliquid ? Relay.Currency.hyperliquidUSDC : dest?.usdc ?? Relay.Currency.solanaUSDC,
+                                          amount: amount, topupGasUSD: topup)
+        let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": toSolana ? quote.recipient : quote.recipient.lowercased()],
+                                         expected: ["sender": me.lowercased(), "recipient": toSolana ? recipient : recipient.lowercased()], subject: "Relay quote")
         guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
         guard let depository = try await Relay.depository(chainId: chain)?.lowercased(),
               let deposit = quote.evm.first(where: { $0.id == "deposit" }), deposit.to.lowercased() == depository, deposit.chainId == chain,
@@ -214,6 +223,7 @@ extension Executor {
         }
         let mint = Relay.Currency.solanaUSDC
         func landed() async throws -> UInt64 {
+            if hyperliquid { return NSDecimalNumber(decimal: try await Hyperliquid.balance(user: me).withdrawable * 1_000_000).uint64Value }
             if let dest { return try await dest.rpc.tokenBalance(dest.usdc, owner: me) }
             return try await rpc.tokenBalance(owner: wallet.solana, mint: mint)
         }

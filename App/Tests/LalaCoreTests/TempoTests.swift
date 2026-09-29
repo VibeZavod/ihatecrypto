@@ -154,6 +154,8 @@ private func challenge(_ request: String, extra: String = "") -> String {
     #expect(WalletCommand.parse("move 20 USDC from Base to Robinhood") == .bridge(from: "base", to: "robinhood", 20))
     #expect(WalletCommand.parse("переведи 20 USDC из бейза в робингуд") == .bridge(from: "base", to: "robinhood", 20))
     #expect(WalletCommand.parse("move all USDC from Arbitrum to Tempo") == .bridge(from: "arbitrum", to: "tempo", nil))
+    #expect(WalletCommand.parse("move 20 USDC from Base to Hyperliquid") == .bridge(from: "base", to: "hyperliquid", 20))
+    #expect(WalletCommand.parse("переведи 20 USDC с бейза на гипер") == .bridge(from: "base", to: "hyperliquid", 20))
     #expect(WalletCommand.parse("move 20 USDC from Base to Solana") == .baseToSolana(20))
     #expect(WalletCommand.parse("move 5 USDC from Solana to Base") == .solanaTo("base", 5))
     #expect(WalletCommand.parse("withdraw USDC from Aave on Arbitrum") != .bridge(from: "arbitrum", to: "arbitrum", nil))

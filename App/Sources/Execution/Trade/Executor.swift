@@ -119,6 +119,8 @@ public actor Executor {
         public let bridge: BridgeStep?
         /// USDC to move from the main Hyperliquid balance to a HIP-3 exchange's margin («xyz»).
         public var dexTransfer: (dex: String, usdc: Decimal)?
+        /// Solana was short: this much USDC goes straight from an EVM network to Hyperliquid instead of `bridge`.
+        public var fundFrom: (net: EVMNetwork, usdc: Decimal)?
         /// «Solana USDC: 5.80 → 3.75 (−2.05)», one line per balance.
         public let changes: [String]
         /// One line per signature, in order.
@@ -141,6 +143,12 @@ public actor Executor {
         let solanaUSDC = Decimal(try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
         var equity = hl.accountValue + solanaUSDC
         for dex in Hyperliquid.hip3Dexes { equity += (try? await Hyperliquid.dexBalance(user: wallet.evm, dex: dex).accountValue) ?? 0 }
+        // Idle USDC on the EVM networks is capital too, and the trade can be paid from it when Solana is short.
+        var held: [String: Decimal] = [:]
+        for net in EVMNetwork.all where net.key != "ethereum" {
+            held[net.key] = (try? await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)).map { Decimal($0) / 1_000_000 }
+        }
+        equity += held.values.reduce(0, +)
         let intent = Plan.resolve(requested, market: market, equity: equity, policy: policy).intent
         let evaluation = Plan.evaluate(intent, market: market)
         guard evaluation.missing.isEmpty, evaluation.problem == nil, let sizing = evaluation.sizing, intent.stopPct != nil else {
@@ -166,9 +174,9 @@ public actor Executor {
             let needed = sizing.margin * (1 + Self.slippage) + sizing.feesUSD
             if needed > dexFree { dexTransfer = (dex, (needed - dexFree).rounded(2, .up)) }
         }
-        var prepared: (step: BridgeStep, changes: [String])?
-        if let amount = intent.amountUSDC {
-            prepared = try await prepareBridge(.send(amount))
+        var amount: Bridge.Amount?
+        if let usdc = intent.amountUSDC {
+            amount = .send(usdc)
         } else if let need = Plan.bridgeNeed(intent, evaluation, hlWithdrawable: hl.withdrawable + dexFree) {
             // A little over the plan: the entry may fill up to 1% worse than the mark the plan used. A tiny top-up
             // would pay about as much in bridge fees as it moves (and the guard refuses that), so bring at least
@@ -178,7 +186,29 @@ public actor Executor {
                 let onSolana = Decimal(try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
                 arrive = max(arrive, min(Self.minBridgeUSDC, (onSolana - Decimal(string: "0.05")!).rounded(2, .down)))
             }
-            prepared = try await prepareBridge(.arrive(arrive))
+            amount = .arrive(arrive)
+        }
+        var prepared: (step: BridgeStep, changes: [String])?
+        var fund: (net: EVMNetwork, usdc: Decimal, quote: BridgeQuote, gas: Bool, have: Decimal)?
+        if let amount {
+            // Solana first. Short there, the money goes straight from an EVM network that holds it — the same choice,
+            // from the same dry quote, as the plan's card.
+            let newAccount = (try? await Hyperliquid.isNewAccount(wallet.evm)) ?? false
+            let viaSolana = switch amount {
+            case .send(let v): v
+            case .arrive: try await Bridge.dryQuote(amount, newAccount: newAccount).amountIn
+            }
+            if viaSolana > solanaUSDC, let net = EVMNetwork.funding(viaSolana, held: { held[$0] }) {
+                let q = try await Bridge.dryQuote(.send(viaSolana), newAccount: newAccount, from: (net.relayChain, net.usdc))
+                // No gas coin there: a little comes from Solana first (ensureEVM), which needs half a dollar there.
+                let gas = net.feeToken == nil ? try await net.rpc.balance(wallet.evm) >= net.gasFloor : true
+                guard gas || solanaUSDC >= Decimal(string: "0.7")! else {
+                    throw ExecutionError("\(net.name) has the USDC but no \(net.gasCoin) for gas, and Solana has too little USDC to bring it. Send a little \(net.gasCoin) to \(net.name) or USDC to Solana.")
+                }
+                fund = (net, viaSolana, q, gas, held[net.key] ?? 0)
+            } else {
+                prepared = try await prepareBridge(amount)
+            }
         }
         let bridge = prepared?.step
         var changes = prepared?.changes ?? []
@@ -187,7 +217,13 @@ public actor Executor {
             steps.append("Relay bridge: \(Fmt.num(b.spend)) USDC from Solana → \(Fmt.num(b.arriving)) USDC on Hyperliquid, fee \(Decimal(string: b.feesUSD).map { Fmt.usd($0) } ?? "$" + b.feesUSD)"
                          + (b.opening > 0 ? ", of it \(Fmt.usd(b.opening)) once for opening your Hyperliquid account." : "."))
         }
-        let arriving = bridge?.arriving ?? 0
+        if let f = fund {
+            if !f.gas { steps.append("\(f.net.gasCoin) for gas on \(f.net.name) first: 0.5 USDC from Solana over Relay, the \(f.net.gasCoin) arrives with it.") }
+            steps.append("Relay bridge straight from \(f.net.name): approve exactly \(Fmt.num(f.usdc)) USDC, then Relay's deposit → ≈ \(Fmt.num(f.quote.amountOut)) USDC on Hyperliquid, "
+                         + "fee ≈ \(Fmt.usd(f.quote.amountIn - f.quote.amountOut)). Solana has \(Fmt.num(solanaUSDC)) USDC, less than the trade needs.")
+            changes.append("\(f.net.name) USDC: \(Fmt.num(f.have)) → \(Fmt.num(f.have - f.usdc)) (−\(Fmt.num(f.usdc))).")
+        }
+        let arriving = bridge?.arriving ?? fund?.quote.amountOut ?? 0
         let side = intent.side == .long ? "Long" : "Short"
         if let t = dexTransfer {
             steps.append("Transfer \(Fmt.num(t.usdc)) USDC from the main Hyperliquid balance to the \(t.dex) exchange — its markets have their own margin.")
@@ -207,6 +243,7 @@ public actor Executor {
         var p = Prepared(intent: intent, market: market, sizing: sizing, leverage: leverage, bridge: bridge,
                          changes: changes, steps: steps, preparedAt: Date())
         p.dexTransfer = dexTransfer
+        p.fundFrom = fund.map { ($0.net, $0.usdc) }
         return p
     }
 
@@ -221,6 +258,10 @@ public actor Executor {
         }
         let long = p.intent.side == .long
         if let b = p.bridge { try await sendBridge(b) }
+        if let f = p.fundFrom {
+            try await ensureEVM(f.net, usdc: 0)
+            report(try await bridge(f.net, to: nil, hyperliquid: true, usdc: f.usdc))
+        }
         if let t = p.dexTransfer { try await moveMargin(from: "", to: t.dex, usdc: t.usdc) }
 
         let lev = try await post(Self.leverageAction(asset: p.market.index, leverage: p.leverage), label: "leverage")

@@ -123,7 +123,7 @@ public enum ChatRouter {
       rebalance USDC [max N% per protocol]   (moves money ALREADY in vaults to better rates: «переложи», «перекинь депозиты», «перебалансируй», «rebalance». «spread» / «разложи» / «распредели» is only for FREE USDC on Solana)
     MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from <Base|Arbitrum|Polygon|Ethereum|Tempo> to Solana
       move N USDC from Solana to <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo>   (arrives as USDG on Robinhood Chain)
-      move N USDC from <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo> to <another of them>   (straight over Relay, no Solana in between; no N = all of it)
+      move N USDC from <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo> to <another of them|Hyperliquid>   (straight over Relay, no Solana in between; no N = all of it)
       send N USDC to <NAME from the address book> | top up (where to send money into ihatecrypto)
       send N NEAR to <NAME from the address book> | send all NEAR to <NAME> | close the NEAR account into <NAME>
       send N SOL to <NAME from the address book>
@@ -162,12 +162,13 @@ public enum ChatRouter {
     Tempo (USDC for transfers and for paying services per request, MPP; fees come out of the USDC, no gas coin). \
     Ethereum's gas costs dollars: only large amounts are worth it there, and «spread»/«rebalance» weigh that by themselves.
     How money moves: Solana ⇄ Base, Arbitrum, Polygon, Ethereum, Robinhood Chain and Tempo over Relay, and between any two of those EVM \
-    networks straight over Relay too (Base → Robinhood Chain: one move, no stop on Solana); Hyperliquid → Solana; a trade \
-    plan brings USDC from Solana to Hyperliquid by itself; NEAR ⇄ Solana USDC through NEAR Intents (buy NEAR / sell NEAR); every vault is entered from Solana and left back to Solana \
+    networks straight over Relay too (Base → Robinhood Chain: one move, no stop on Solana), and from any of them straight to \
+    Hyperliquid; Hyperliquid → Solana; a trade plan brings its USDC to Hyperliquid by itself — from Solana, or straight from an \
+    EVM network that has it when Solana is short, gas there included — so never put a move before a trade; NEAR ⇄ Solana USDC through NEAR Intents (buy NEAR / sell NEAR); every vault is entered from Solana and left back to Solana \
     in ONE command — Aave and Morpho too: «withdraw USDC from Aave on Arbitrum» withdraws there and bridges to Solana by itself, so never \
     split it into two steps. Selling stock tokens or tokens by contract leaves USDG on Robinhood Chain; «move USDG from Robinhood \
     to Solana» brings it back. \
-    Hyperliquid and NEAR reach the EVM networks through Solana: build that as steps (NOW, IN STEPS).
+    Hyperliquid → the EVM networks, and NEAR ⇄ them, go through Solana: build that as steps (NOW, IN STEPS).
     Buying and selling a token by its contract works on Robinhood Chain, Base and Arbitrum. On Solana ihatecrypto buys \
     SOL, BTC, ETH, JUP and JitoSOL, and any Jupiter-verified token by its ticker (BONK, WIF, USDT…) — Safe search on or off; \
     any other Solana token by its mint only while Safe search is off (the context says which). On Base and Arbitrum it \

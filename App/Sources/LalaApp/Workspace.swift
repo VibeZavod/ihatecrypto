@@ -67,6 +67,8 @@ final class Workspace {
     var hlError: String?
     var quote: BridgeQuote?
     var quoteError: String?
+    /// The EVM network the plan's USDC leaves from, straight to Hyperliquid, when Solana is short; nil = Solana.
+    var fundingNet: EVMNetwork?
     var updatedAt: Date?
     /// Whether the signing process holds a key; nil outside ihatecrypto.app, where there is no signer.
     var signerHasWallet: Bool?
@@ -536,6 +538,7 @@ final class Workspace {
         live.marketsLoaded = !markets.isEmpty
         live.market = market
         live.quote = quote
+        live.from = fundingNet.map { ($0.name, usdc(on: $0.key) ?? 0) }
         return Plan.blocks(intent, evaluation, live)
     }
 
@@ -1280,17 +1283,21 @@ final class Workspace {
             else { nil }
         // A new Hyperliquid account pays a one-time opening fee on its first deposit; the plan shows it up front.
         let newAccount = if amount != nil, let evm = previewWallet?.evm { (try? await Hyperliquid.isNewAccount(evm)) ?? false } else { false }
-        let key = amount.map { "\($0) \(newAccount)" }
+        // Solana's USDC is in the key: when it's short, the money comes straight from an EVM network that has it.
+        let key = amount.map { "\($0) \(newAccount) \(solana?.usdc ?? 0)" }
         guard key != quotedKey else { return }
         quotedKey = key
         quote = nil
         quoteError = nil
-        guard let amount else { return }
+        guard let amount else { fundingNet = nil; return }
         do {
-            let q = try await Bridge.dryQuote(amount, newAccount: newAccount)
-            if quotedKey == key { quote = q }
+            var q = try await Bridge.dryQuote(amount, newAccount: newAccount)
+            // The executor picks the same way, from the same quote.
+            let net = q.amountIn > (solana?.usdc ?? 0) ? EVMNetwork.funding(q.amountIn) { usdc(on: $0) } : nil
+            if let net { q = try await Bridge.dryQuote(.send(q.amountIn), newAccount: newAccount, from: (net.relayChain, net.usdc)) }
+            if quotedKey == key { quote = q; fundingNet = net }
         } catch {
-            if quotedKey == key { quoteError = error.localizedDescription; quotedKey = nil }
+            if quotedKey == key { quoteError = error.localizedDescription; quotedKey = nil; fundingNet = nil }
         }
     }
 

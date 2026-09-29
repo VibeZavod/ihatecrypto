@@ -1746,7 +1746,7 @@ struct StudioNode: Identifiable {
             let bridging = ws.quote != nil || ws.resolved.intent.amountUSDC != nil
                 || ws.blocks.contains { $0.id == "bridge" && $0.status != .info && $0.status != .needsInput }
             if bridging {
-                lines.append("USDC: Circle's token on Solana, EPjF…Dt1v.")
+                lines.append(ws.fundingNet.map { "\($0.key == "robinhood" ? "USDG" : "USDC") on \($0.name): \($0.usdc.prefix(6))…\($0.usdc.suffix(4))." } ?? "USDC: Circle's token on Solana, EPjF…Dt1v.")
                 lines.append("Bridge: \(ws.quote?.provider ?? "Relay"), its program on the allowed list; each signature is checked again at Execute.")
             }
             if isEVMAddress(ws.hlAddress) { lines.append("To: your own Hyperliquid account \(ws.hlAddress.prefix(6))…\(ws.hlAddress.suffix(4)).") }
@@ -1835,10 +1835,13 @@ extension Workspace {
                 let asked = resolved.intent.amountUSDC
                 let send = quote?.amountIn ?? asked ?? need
                 let approx = quote == nil && asked == nil ? "≈ " : ""
-                var lines = solana.map { s in [row("wallet", send.map { "\(Fmt.num(s.usdc)) → \(Fmt.num(max(0, s.usdc - $0)))" } ?? Fmt.num(s.usdc))] } ?? []
+                // Solana short: the USDC leaves straight from the EVM network that has it (fundingNet).
+                let from = fundingNet, have = from.map { usdc(on: $0.key) ?? 0 } ?? solana?.usdc
+                var lines = have.map { h in [row("wallet", send.map { "\(Fmt.num(h)) → \(Fmt.num(max(0, h - $0)))" } ?? Fmt.num(h))] } ?? []
                 if source.status == .blocked, let short = source.lines.last { lines.insert(short, at: 0) }
-                steps.append(card("FROM · SOLANA", send.map { "\(approx)\(Fmt.num($0)) USDC" } ?? "USDC", lines.isEmpty ? source.lines : lines,
-                                  state(source.status), logo: "sol", .solana))
+                steps.append(card("FROM · \((from?.name ?? "Solana").uppercased())", send.map { "\(approx)\(Fmt.num($0)) USDC" } ?? "USDC",
+                                  lines.isEmpty ? source.lines : lines, state(source.status),
+                                  logo: from.flatMap { ModuleNetwork(place: $0.key)?.logo } ?? "sol", from.flatMap { RouteFill(rawValue: $0.key) } ?? .solana))
                 // Its amount waits for the position's checks: nothing for the user to do here.
                 let oneClick = bridge.label.contains("1Click") && !bridge.label.contains("Relay")
                 var lines2: [String]

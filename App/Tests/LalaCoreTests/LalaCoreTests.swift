@@ -126,6 +126,21 @@ private func intent(risk: String = "10", stop: String = "3", lev: String? = nil)
     #expect(Plan.blocks(intent(lev: "25"), e, Live())[1].status == .needsInput)
 }
 
+// Solana short, Base holds it: the plan's money comes from Base, not a «Short by» on Solana (the 50 USDC long of 2026-09-30).
+@Test func sourceIsTheFundingNetwork() {
+    var live = Live()
+    live.solanaAddressSet = true
+    live.solanaUSDC = 25
+    live.from = ("Base", 3000)
+    live.quote = BridgeQuote(provider: "Relay", amountIn: 50, reserve: 0, amountOut: Decimal(string: "49.97")!, time: "")
+    var i = intent()
+    i.amountUSDC = 50
+    let source = Plan.blocks(i, Plan.evaluate(i, market: eth), live)[0]
+    #expect(source.title == "USDC · Base" && source.status == .ready)
+    live.from = nil
+    #expect(Plan.blocks(i, Plan.evaluate(i, market: eth), live)[0].status == .blocked)
+}
+
 @Test func unknownBalanceIsNoDataNotZero() {
     var live = Live()
     live.solanaAddressSet = true

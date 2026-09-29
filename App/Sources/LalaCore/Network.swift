@@ -266,11 +266,12 @@ public enum Bridge {
     /// Both bridges in parallel. The app bridges trades through Relay, so Relay's price is the plan's (the signature
     /// asks for it); 1Click is shown for comparison and stands in only when Relay doesn't answer. `newAccount`: the
     /// user's Hyperliquid account doesn't exist yet, so the quote goes to a fresh random address and carries the same
-    /// one-time opening fee the real deposit will.
-    public static func dryQuote(_ amount: Amount, newAccount: Bool = false) async throws -> BridgeQuote {
+    /// one-time opening fee the real deposit will. `origin`: the USDC leaves an EVM network instead (chain, token) —
+    /// Relay only, straight to Hyperliquid.
+    public static func dryQuote(_ amount: Amount, newAccount: Bool = false, from origin: (chain: UInt64, usdc: String)? = nil) async throws -> BridgeQuote {
         let recipient = newAccount ? "0x" + (0..<20).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined() : placeholderRecipient
-        async let relay = try? relayQuote(amount, recipient: recipient)
-        async let oneClick = try? oneClickQuote(amount, recipient: recipient)
+        async let relay = try? relayQuote(amount, recipient: recipient, from: origin)
+        async let oneClick = origin == nil ? try? oneClickQuote(amount, recipient: recipient) : nil
         let options = [await relay, await oneClick].compactMap { $0 }
         guard var best = options.first else { throw NetError(message: "No bridge quotes: Relay and 1Click didn't respond.") }
         if let other = options.dropFirst().first {
@@ -280,18 +281,18 @@ public enum Bridge {
         return best
     }
 
-    static func relayQuote(_ amount: Amount, recipient: String = placeholderRecipient) async throws -> BridgeQuote {
+    static func relayQuote(_ amount: Amount, recipient: String = placeholderRecipient, from origin: (chain: UInt64, usdc: String)? = nil) async throws -> BridgeQuote {
         let (exactOutput, units): (Bool, Decimal) = switch amount {
         case .arrive(let v): (true, v * 100_000_000) // Hyperliquid perp USDC in Relay: 8 decimals
-        case .send(let v): (false, v * 1_000_000)
+        case .send(let v): (false, v * 1_000_000)   // USDC on Solana and the EVM networks: 6
         }
-        let q = try await Relay.quote(user: placeholderRefund, recipient: recipient, originChain: Relay.Chain.solana,
-                                      destinationChain: Relay.Chain.hyperliquid, originCurrency: Relay.Currency.solanaUSDC,
-                                      destinationCurrency: Relay.Currency.hyperliquidUSDC,
+        let q = try await Relay.quote(user: origin == nil ? placeholderRefund : placeholderRecipient, recipient: recipient,
+                                      originChain: origin?.chain ?? Relay.Chain.solana, destinationChain: Relay.Chain.hyperliquid,
+                                      originCurrency: origin?.usdc ?? Relay.Currency.solanaUSDC, destinationCurrency: Relay.Currency.hyperliquidUSDC,
                                       amount: NSDecimalNumber(decimal: units.rounded(0, .up)).uint64Value, exactOutput: exactOutput)
-        // Measured 2026-09-25: 4 s from send to credit on Hyperliquid.
-        return BridgeQuote(provider: "Relay", amountIn: try dec(q.amountInFormatted), reserve: 0,
-                           amountOut: try dec(q.amountOutFormatted), time: "Seconds: 4 s to credit in live runs.")
+        // Measured 2026-09-25: 4 s from send to credit on Hyperliquid from Solana; from an EVM network, Relay's estimate.
+        return BridgeQuote(provider: "Relay", amountIn: try dec(q.amountInFormatted), reserve: 0, amountOut: try dec(q.amountOutFormatted),
+                           time: origin == nil ? "Seconds: 4 s to credit in live runs." : "Seconds: ≈ \(max(q.seconds, 1)) s by Relay's estimate.")
     }
 
     static func oneClickQuote(_ amount: Amount, recipient: String = placeholderRecipient) async throws -> BridgeQuote {

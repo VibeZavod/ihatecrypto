@@ -136,6 +136,8 @@ public struct Live: Sendable {
     public var marketsLoaded = false
     public var market: Market?
     public var quote: BridgeQuote?
+    /// The EVM network the trade's USDC leaves from when Solana is short, and what it holds there; nil = Solana.
+    public var from: (name: String, usdc: Decimal)?
     /// USDC on Solana + Hyperliquid account value + vaults: what the risk rules measure against.
     public var equity: Decimal?
     public var policy = RiskPolicy()
@@ -213,11 +215,11 @@ public enum Plan {
     }
 
     static func source(_ live: Live, send: Decimal?) -> Block {
-        let title = "USDC · Solana"
-        guard live.solanaAddressSet else {
+        let title = "USDC · \(live.from?.name ?? "Solana")"
+        guard live.from != nil || live.solanaAddressSet else {
             return Block(id: "source", label: "Source", title: title, lines: ["Add a Solana address in Settings."], status: .needsInput)
         }
-        guard let have = live.solanaUSDC else {
+        guard let have = live.from?.usdc ?? live.solanaUSDC else {
             return Block(id: "source", label: "Source", title: title, lines: ["Balance: no data."], status: .noData)
         }
         var lines = ["Wallet: \(Fmt.num(have)) USDC."]
@@ -233,7 +235,7 @@ public enum Plan {
 
     static func bridge(_ i: TradeIntent, _ e: Evaluation, _ live: Live, need: Decimal?) -> Block {
         let label = "Bridge · \(live.quote?.provider ?? "Relay or 1Click")"
-        let title = "Solana → HyperCore USDC"
+        let title = "\(live.from?.name ?? "Solana") → HyperCore USDC"
         if i.amountUSDC == nil, e.problem != nil {
             return Block(id: "bridge", label: label, title: title, lines: ["The amount appears once the position passes the checks."], status: .needsInput)
         }
