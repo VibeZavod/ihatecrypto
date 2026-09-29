@@ -85,6 +85,8 @@ extension Workspace {
         let hash = try await e.payTempo(c.amount, to: c.payee, memo: c.memo, label: quote.service)
         payment = nil
         let proof = "\(EVMNetwork.tempo.explorer)/tx/\(hash)"
+        answerStep(say("loading the answer…", "загружаю ответ…"), say("\(quote.service) is working · up to a minute", "\(quote.service) работает · до минуты"))
+        runningAction?.lines.append(say("Waiting for \(quote.service)'s answer", "Жду ответ \(quote.service)"))
         let (status, _, data) = try await MPP.call(method, url, body, credential: (c.field, MPP.credential(c, hash: hash, payer: signerWallet?.evm ?? "")))
         guard (200..<300).contains(status) else {
             throw ExecutionError("Paid \(Fmt.num(c.usdc, maxFraction: 6)) USDC, but \(quote.service) answered \(status): \(MPP.shown(data, limit: 300)). The payment is on Tempo: \(proof)")
@@ -95,14 +97,28 @@ extension Workspace {
     /// The service's data on the canvas, and in the chat the answer to what was asked: the model reads the data
     /// (1–3 sentences, the best results as links), then one line on what it cost. Without a model: where to look.
     private func answered(_ ask: String, service: String, data: Data, usdc: Decimal?, proof: String?) async -> String {
-        serviceAnswer = ServiceAnswer(service: service, usdc: usdc, proof: proof, answer: MPP.Answer(data), raw: MPP.shown(data, limit: 20_000))
+        let answer = MPP.Answer(data)
+        serviceAnswer = ServiceAnswer(service: service, usdc: usdc, proof: proof, answer: answer, raw: MPP.shown(data, limit: 20_000))
         agentStep = say("Reading \(service)'s answer", "Читаю ответ \(service)")
+        answerStep(say("reading the answer…", "читаю ответ…"), say("it's on the canvas", "он на холсте"))
+        defer {
+            let found = answer.writing != nil ? say("a written answer", "текстом") : !answer.items.isEmpty ? say("\(answer.items.count) results", "результатов: \(answer.items.count)")
+                : !answer.facts.isEmpty ? say("\(answer.facts.count) values", "значений: \(answer.facts.count)") : say("a text answer", "текстовый ответ")
+            answerStep(say("answered", "ответ получен"), found + say(" · on the canvas", " · на холсте"))
+        }
         var text = say("\(service) answered: it's on the canvas.", "\(service) ответил — ответ на холсте.")
         if let client = llmClient(), let said = try? await MPP.reply(to: ask, service: service, data: data, language: replyLanguage, client: client, model: model), !said.isEmpty {
             text = said
         }
         let cost = usdc.map { say("Paid \(Fmt.num($0, maxFraction: 6)) USDC to \(service) on Tempo", "Оплачено \(Fmt.num($0, maxFraction: 6)) USDC · \(service) · Tempo") }
         return text + (cost.map { "\n\n\($0) \(proof ?? "")" } ?? "")
+    }
+
+    /// The running card's last step, the service's: what it's doing now («loading the answer…», then «answered»).
+    private func answerStep(_ title: String, _ line: String) {
+        guard let last = runningAction?.steps.indices.last else { return }
+        runningAction?.steps[last].title = title
+        runningAction?.steps[last].lines = [line]
     }
 
     /// The card: USDC on Tempo (with what comes from Solana first) → the payment → the service.
@@ -155,7 +171,16 @@ struct ServiceAnswerBoard: View {
                 Button { withAnimation(StudioView.spring) { ws.serviceAnswer = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
             }
             let a = answer.answer
-            if !a.items.isEmpty {
+            if let w = a.writing {
+                Text(w).font(.ui(12.5)).lineSpacing(2).lineLimit(18).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                if !a.links.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        ForEach(Array(a.links.prefix(6).enumerated()), id: \.offset) { _, link in
+                            row(MPP.Answer.Item(title: URL(string: link).map { ($0.host() ?? "") + $0.path() } ?? link, url: link, detail: nil))
+                        }
+                    }
+                }
+            } else if !a.items.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
                     ForEach(Array(a.items.enumerated()), id: \.offset) { _, item in row(item) }
                 }

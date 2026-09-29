@@ -126,3 +126,19 @@ private func challenge(_ request: String, extra: String = "") -> String {
     #expect(MPP.section(docs, about: ["/grok/x-search"]).hasPrefix("\n### Chat with X Search"))
     #expect(MPP.section(docs, about: []).hasPrefix("# Grok"))
 }
+
+// An AI service's answer (xAI's Responses API through Locus): its words and citations, not its tool calls; the chat's model
+// reads that text, not the JSON's start (the first Grok answer about MOO came out «cut» and empty).
+@Test func aiServiceAnswerIsItsWriting() throws {
+    let text = "MOO fell about 26% today as early holders sold into thin liquidity; posts on X are mostly worried, a few call it a dip to buy."
+    let grok = """
+    {"success":true,"data":{"id":"resp_1","output":[{"id":"rs_1","type":"reasoning","status":"completed","encrypted_content":"\(String(repeating: "QUJD", count: 400))"},
+    {"type":"custom_tool_call","name":"x_keyword_search","call_id":"xs_1","input":"{\\"query\\":\\"memorycowmoo\\"}"},
+    {"type":"message","role":"assistant","content":[{"type":"output_text","text":"\(text)","annotations":[{"type":"url_citation","url":"https://x.com/a/status/1"}]}]}],
+    "citations":["https://x.com/a/status/1","https://x.com/b/status/2"]}}
+    """
+    let a = MPP.Answer(Data(grok.utf8))
+    #expect(a.writing == text && a.links == ["https://x.com/a/status/1", "https://x.com/b/status/2"] && a.items.isEmpty)
+    let digest = MPP.digest(Data(grok.utf8))
+    #expect(digest.contains(text) && digest.contains("https://x.com/b/status/2") && !digest.contains("QUJD"))
+}

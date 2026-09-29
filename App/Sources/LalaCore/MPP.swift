@@ -155,6 +155,7 @@ public enum MPP {
             public let title: String
             public let url: String?
             public let detail: String?
+            public init(title: String, url: String?, detail: String?) { (self.title, self.url, self.detail) = (title, url, detail) }
             public var isImage: Bool { url.map { $0.lowercased().contains(/\.(?:png|jpe?g|webp|gif)(?:\?|$)/) } ?? false }
         }
         public struct Fact: Equatable, Sendable { public let key: String; public let value: String }
@@ -162,11 +163,35 @@ public enum MPP {
         public var items: [Item] = []
         public var facts: [Fact] = []
         public var text: String?
+        /// What an AI service wrote (Grok, Perplexity: the answer itself), and the links it cites. Its JSON puts the
+        /// answer after its tool calls, so a cut of the start showed only «x_keyword_search» rows.
+        public var writing: String?
+        public var links: [String] = []
 
         public init(_ data: Data) {
             guard let json = try? JSONSerialization.jsonObject(with: data, options: .fragmentsAllowed) else {
                 let t = String(decoding: data.prefix(1500), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
                 text = t.isEmpty ? nil : t
+                return
+            }
+            var texts: [String] = []
+            func collect(_ x: Any, _ key: String, depth: Int) {
+                guard depth < 14 else { return }
+                if let s = x as? String {
+                    if s.hasPrefix("http"), s.count < 400 {
+                        if !links.contains(s), links.count < 15 { links.append(s) }
+                    } else if Self.writingKeys.contains(key), s.count >= 80, s.filter({ $0 == " " }).count >= 8, !texts.contains(s) {
+                        texts.append(s)
+                    }
+                } else if let list = x as? [Any] {
+                    list.forEach { collect($0, key, depth: depth + 1) }
+                } else if let d = x as? [String: Any] {
+                    d.keys.sorted().forEach { collect(d[$0]!, $0, depth: depth + 1) }
+                }
+            }
+            collect(json, "", depth: 0)
+            if !texts.isEmpty {
+                writing = String(texts.joined(separator: "\n\n").prefix(6000))
                 return
             }
             // The list is the array of objects with the most titles and links in it, wherever it sits («data.web.results»).
@@ -207,6 +232,8 @@ public enum MPP {
         }
 
         static let titleKeys = ["title", "name", "headline", "label", "subject", "display_name", "full_name", "question"]
+        /// Where services put the words they wrote: xAI's and OpenAI's output_text, a chat reply's content, an answer.
+        static let writingKeys: Set<String> = ["output_text", "text", "content", "answer", "response", "completion"]
         static let detailKeys = ["description", "snippet", "summary", "content", "text", "body", "answer", "extra_snippets"]
 
         static func pick(_ row: [String: Any], _ keys: [String]) -> String? {
@@ -259,14 +286,21 @@ public enum MPP {
     public static func reply(to ask: String, service: String, data: Data, language: String, client: any LLMClient, model: String) async throws -> String {
         let prompt = """
         The user asked their crypto app: «\(ask.prefix(600))»
-        To answer it, the app paid a web service, \(service), which sent back (JSON, maybe cut):
-        \(shown(data, limit: 6000))
+        To answer it, the app paid a web service, \(service), which sent back:
+        \(digest(data))
         Answer the user in \(language) in 1–3 short sentences, from this data only: what they wanted to know, naming the one \
         to three most relevant results as markdown links [title](url) when there are any. If the data doesn't answer it (no \
         results, an error), say so plainly and what to ask instead. Plain text: no JSON, no headings, no preamble.
         """
         let text = try await client.complete(LLMRequest(model: model, messages: [LLMMessage(.user, prompt)]))
         return text.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    /// What the chat's model reads of an answer: an AI service's own words and its links; else the JSON, cut.
+    static func digest(_ data: Data) -> String {
+        let a = Answer(data)
+        guard let w = a.writing else { return shown(data, limit: 6000) }
+        return "Its answer:\n\(w)" + (a.links.isEmpty ? "" : "\n\nLinks it cites:\n" + a.links.joined(separator: "\n"))
     }
 
     /// The service's name in the directory («Brave Search») for its address; nil when it isn't listed.

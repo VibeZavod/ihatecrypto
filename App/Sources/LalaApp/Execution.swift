@@ -278,9 +278,11 @@ extension Workspace {
         // The route as confirmed, before any balance moves: the canvas keeps it with the outcome and the time.
         let confirmedRoute = route(command)
         func finish(_ ok: Bool) {
+            // The steps as the run left them: a paid request's last card says «answered», not «the answer comes here».
+            let steps = runningAction?.steps ?? confirmedRoute?.steps ?? []
             runningAction = nil
             guard movesMoney(command, confirmed: confirmed) else { return }
-            finishedAction = (confirmedRoute?.title ?? readable(Self.canvasTitle(command)), CanvasOutcome(at: Date(), ok: ok), confirmedRoute?.steps ?? [])
+            finishedAction = (confirmedRoute?.title ?? readable(Self.canvasTitle(command)), CanvasOutcome(at: Date(), ok: ok), steps)
             // The outcome board comes from the saved canvas: save now, not after the balance refresh that follows,
             // or the canvas stays blank for those seconds.
             saveCanvas()
