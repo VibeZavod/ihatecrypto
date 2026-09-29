@@ -273,6 +273,8 @@ struct RouteCards: View {
         case "attention": return .attention
         case "watching": return .watching
         case "passed": return .done
+        // A step of the same chain that runs after this move (Workspace.chainSteps): pale, dotted, not edited here.
+        case "then": return .next
         default: return .ready
         }
     }

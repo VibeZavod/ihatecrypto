@@ -290,3 +290,13 @@ import WalletCore
     #expect(EVMCall.decode(Data()).summary(chainId: 8453, to: payee, value: 1_000_000_000_000_000) == "send 0.001 ETH to 0x060b…9ff0 on Base")
     #expect(pay.summary(chainId: 4217, to: payee, value: 0) == "send tokens of 0x060b…9ff0 to 0x060b…9ff0 on Tempo")
 }
+
+// 54.56 AI of 18 decimals is past 64 bits: the quote and the swap carry it as a whole 256-bit word.
+@Test func uniswapAmountsPast64Bits() throws {
+    let big = Decimal(string: "54560000000000000000")!
+    let q = try UniswapV3.quoteExactInputSingle(tokenIn: EVMRPC.robinhoodUSDG, tokenOut: "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18", amountIn: big, fee: 3000)
+    #expect(ABI.decimal(in: Data(q.dropFirst(4)), word: 2) == big)
+    let swap = try UniswapV3.exactInputSingle(tokenIn: EVMRPC.robinhoodUSDG, tokenOut: "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18", fee: 3000,
+                                              recipient: "0x90f79bf6eb2c4f870365e785982e1f101e93b906", amountIn: 10_000_000, amountOutMinimum: big)
+    #expect(ABI.decimal(in: Data(swap.dropFirst(4)), word: 5) == big && ABI.decimal(in: Data(swap.dropFirst(4)), word: 4) == 10_000_000)
+}

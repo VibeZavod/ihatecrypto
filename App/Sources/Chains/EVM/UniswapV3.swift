@@ -33,14 +33,15 @@ public enum UniswapV3 {
     }
 
     /// QuoterV2.quoteExactInputSingle((tokenIn, tokenOut, amountIn, fee, sqrtPriceLimitX96)): word 0 of the answer is amountOut.
-    public static func quoteExactInputSingle(tokenIn: String, tokenOut: String, amountIn: UInt64, fee: UInt64) throws -> Data {
-        Data([0xc6, 0xa5, 0x02, 0x6a]) + (try ABI.address(tokenIn)) + (try ABI.address(tokenOut)) + ABI.uint(amountIn) + ABI.uint(fee) + ABI.uint(0)
+    /// Amounts are whole 256-bit words: 54 tokens of 18 decimals don't fit 64 bits.
+    public static func quoteExactInputSingle(tokenIn: String, tokenOut: String, amountIn: Decimal, fee: UInt64) throws -> Data {
+        Data([0xc6, 0xa5, 0x02, 0x6a]) + (try ABI.address(tokenIn)) + (try ABI.address(tokenOut)) + (try ABI.word(amountIn)) + ABI.uint(fee) + ABI.uint(0)
     }
 
     /// SwapRouter02.exactInputSingle((tokenIn, tokenOut, fee, recipient, amountIn, amountOutMinimum, sqrtPriceLimitX96)).
-    public static func exactInputSingle(tokenIn: String, tokenOut: String, fee: UInt64, recipient: String, amountIn: UInt64, amountOutMinimum: UInt64) throws -> Data {
+    public static func exactInputSingle(tokenIn: String, tokenOut: String, fee: UInt64, recipient: String, amountIn: Decimal, amountOutMinimum: Decimal) throws -> Data {
         Data([0x04, 0xe4, 0x5a, 0xaf]) + (try ABI.address(tokenIn)) + (try ABI.address(tokenOut)) + ABI.uint(fee) + (try ABI.address(recipient))
-            + ABI.uint(amountIn) + ABI.uint(amountOutMinimum) + ABI.uint(0)
+            + (try ABI.word(amountIn)) + (try ABI.word(amountOutMinimum)) + ABI.uint(0)
     }
 
     /// A route through pools: token, fee (3 bytes), token, fee, token… One pool is a path of two tokens.

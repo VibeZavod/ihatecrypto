@@ -968,19 +968,35 @@ extension Workspace {
         text.replacing(/0x[0-9a-fA-F]{40}/) { tokenLabel(String($0.0)) }
     }
 
+    /// What the chain waiting behind this card does next («… then buy AI then buy MOO»): each step's own cards but where
+    /// its money starts and its approves, marked to come after this move.
+    func chainSteps() -> [ActivityBubble] {
+        guard let q = taskQueue, q.canvas == canvasID else { return [] }
+        return q.steps.compactMap(WalletCommand.parse).compactMap(route).flatMap { r in
+            r.steps.filter { !$0.label.hasPrefix("FROM") && !$0.label.hasPrefix("APPROVE") }.map { var s = $0; s.status = "then"; return s }
+        }
+    }
+
     private func stockRoute(_ symbolOrContract: String, _ usdc: Decimal) -> MoveRoute {
         // A contract («купи 0x…»): its name and price from the favorites when it's there.
         let contract = symbolOrContract.hasPrefix("0x")
         let favorite = favoriteTokens.first { $0.address.lowercased() == symbolOrContract.lowercased() }
         let symbol = favorite?.symbol ?? (contract ? "\(symbolOrContract.prefix(6))…\(symbolOrContract.suffix(4))" : symbolOrContract)
         let price = contract ? favorite.flatMap { tokenInfo[$0.id]?.priceUSD } : markets["xyz:\(symbolOrContract)"]?.markPx
+        // USDG already on Robinhood Chain pays first (a bridge from Base leaves it there): Solana only brings what's missing.
+        let usdg = robinhood?.usdg ?? 0, bring = max(0, usdc - usdg)
+        let from = bring == 0
+            ? step("robinhood", "FROM · ROBINHOOD CHAIN", "\(Fmt.num(usdg)) → \(Fmt.num(usdg - usdc)) USDG", "already there · no bridge", .robinhood)
+            : step("sol", "FROM · SOLANA", "\(Fmt.num(bring)) USDC", (usdg > 0 ? "the rest of \(Fmt.num(usdc)) is on Robinhood · " : "")
+                   + (solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? ""), .solana)
         return MoveRoute(title: "Buy \(symbol) · \(Fmt.num(usdc)) USDC on Robinhood Chain",
-                         footer: "One Solana signature for the bridge, then two on Robinhood Chain: an exact USDG approve and the Uniswap swap, which may only pay this wallet. "
+                         footer: (bring == 0 ? "Two signatures on Robinhood Chain with the USDG already there: " : "One Solana signature for the bridge, then two on Robinhood Chain: ")
+                            + "an exact USDG approve and the Uniswap swap, which may only pay this wallet. "
                             + (contract ? "The token is taken by its contract: it must trade on Robinhood Chain with $50k+ of liquidity, and the price must sit within 5% of DexScreener's."
                                         : "The token is Robinhood's registered contract, checked on-chain, and the price must sit within Robinhood's own quote.")
                             + " Say “do it” or press Confirm.", steps: [
-            step("sol", "FROM · SOLANA", "\(Fmt.num(usdc)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana),
-            step("relay", "BRIDGE · RELAY", "USDG → Robinhood", "+ ETH for gas when there's none", .relay),
+            from,
+        ] + (bring == 0 ? [] : [step("relay", "BRIDGE · RELAY", "USDG → Robinhood", "+ ETH for gas when there's none", .relay)]) + [
             approve("≈ \(Fmt.num(usdc)) USDG", for: "Uniswap", logo: "uni", .robinhood, line: "exactly what arrives · only Uniswap may take it"),
             step("robinhood", "BUY · UNISWAP", symbol,
                  price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 2)) \(symbol) worth ≈ \(Fmt.usd(usdc)) · 1 \(symbol) = \(tokenPrice($0))" } ?? "at the pool price", .robinhood),
@@ -1275,7 +1291,7 @@ struct WithdrawBoard: View {
                         Spacer(minLength: 12)
                         PendingButtons()
                     }
-                    RouteCards(steps: route.steps, footer: route.footer, pending: command, build: true)
+                    RouteCards(steps: route.steps + ws.chainSteps(), footer: route.footer, pending: command, build: true)
                     Label(route.footer, systemImage: "signature").font(.ui(10)).foregroundStyle(.secondary)
                         .frame(maxWidth: 470, alignment: .leading)
                 }

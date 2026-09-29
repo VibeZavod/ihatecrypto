@@ -74,19 +74,18 @@ public enum RobinhoodStocks {
 }
 
 extension Executor {
-    /// Tokens of 18 decimals: amounts up to ≈ 18 tokens fit the 64-bit amounts used here.
-    // ponytail: 64-bit token amounts; switch to 256-bit words before trading more than ~18 whole tokens at once.
     func balance(_ token: String, on rpc: EVMRPC) async throws -> Decimal {
         ABI.decimal(in: try await rpc.read(token, try ERC20.balanceOf(wallet.evm)), word: 0) ?? 0
     }
 
     /// The Uniswap v3 pool with the most output for this trade, and that output.
-    func bestPool(_ tokenIn: String, _ tokenOut: String, amountIn: UInt64) async throws -> (fee: UInt64, out: UInt64)? {
-        var best: (UInt64, UInt64)?
+    /// Amounts in the tokens' smallest units, as 256-bit words: 54 AI of 18 decimals is past 64 bits.
+    func bestPool(_ tokenIn: String, _ tokenOut: String, amountIn: Decimal) async throws -> (fee: UInt64, out: Decimal)? {
+        var best: (UInt64, Decimal)?
         for fee in UniswapV3.fees {
             guard let answer = try? await EVMRPC.robinhood.read(UniswapV3.robinhoodQuoter,
                     try UniswapV3.quoteExactInputSingle(tokenIn: tokenIn, tokenOut: tokenOut, amountIn: amountIn, fee: fee)),
-                  let out = ABI.uint(in: answer, word: 0), out > (best?.1 ?? 0) else { continue }
+                  let out = ABI.decimal(in: answer, word: 0), out > (best?.1 ?? 0) else { continue }
             best = (fee, out)
         }
         return best.map { (fee: $0.0, out: $0.1) }
@@ -101,9 +100,9 @@ extension Executor {
         let symbol = token.symbol
         let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
         guard units >= 500_000 else { throw ExecutionError("At least 0.5 USDC: less isn't worth the bridge.") }
-        guard let pool = try await bestPool(usdg, token.address, amountIn: units) else { throw ExecutionError(noPool(symbol, listing)) }
+        guard let pool = try await bestPool(usdg, token.address, amountIn: Decimal(units)) else { throw ExecutionError(noPool(symbol, listing)) }
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
-        let price = (Decimal(units) / 1_000_000) / (Decimal(pool.out) / scale)
+        let price = (Decimal(units) / 1_000_000) / (pool.out / scale)
         var band = listing?.priceUSD.map { (bid: $0, ask: $0) }
         if listing == nil { band = try await RobinhoodStocks.quote(symbol) }
         if let q = band, price > q.ask * Decimal(string: "1.05")! || price < q.bid * Decimal(string: "0.95")! {
@@ -112,13 +111,13 @@ extension Executor {
         report("\(token.name) (\(symbol)): ≈ \(Fmt.usd(price)) a token on Uniswap (pool fee \(Fmt.num(Decimal(pool.fee) / 10_000))%).")
         try await ensureEVM(.robinhood, usdc: units)
         // Quote again with the money there: the price may have moved while the bridge ran.
-        guard let fresh = try await bestPool(usdg, token.address, amountIn: units) else { throw ExecutionError(noPool(symbol, listing)) }
-        let minimum = fresh.out / 100 * 99
+        guard let fresh = try await bestPool(usdg, token.address, amountIn: Decimal(units)) else { throw ExecutionError(noPool(symbol, listing)) }
+        let minimum = (fresh.out * 99 / 100).rounded(0, .down)
         try await approve(rpc, token: usdg, spender: UniswapV3.robinhoodRouter, amount: units, note: "Approve exactly \(Fmt.num(Decimal(units) / 1_000_000)) USDG to Uniswap")
         let before = try await balance(token.address, on: rpc)
         let hash = try await sendEVM(rpc, to: UniswapV3.robinhoodRouter,
                                      data: try UniswapV3.exactInputSingle(tokenIn: usdg, tokenOut: token.address, fee: fresh.fee, recipient: me,
-                                                                          amountIn: units, amountOutMinimum: minimum),
+                                                                          amountIn: Decimal(units), amountOutMinimum: minimum),
                                      note: "Buy \(symbol) for \(Fmt.num(Decimal(units) / 1_000_000)) USDG")
         var after = try await balance(token.address, on: rpc)
         for _ in 0..<10 where after <= before {
@@ -130,9 +129,7 @@ extension Executor {
     }
 
     private func noPool(_ symbol: String, _ listing: TokenLookup.Info?) -> String {
-        listing == nil ? "No Uniswap pool trades \(symbol) for USDG."
-            // ponytail: amounts are 64-bit (≈ 18 whole tokens of 18 decimals); 256-bit words lift it.
-            : "No Uniswap v3 pool on Robinhood Chain trades \(symbol) for USDG at this size (ihatecrypto handles up to ≈ 18 whole tokens a trade for now)."
+        listing == nil ? "No Uniswap pool trades \(symbol) for USDG." : "No Uniswap v3 pool on Robinhood Chain trades \(symbol) for USDG."
     }
 
     /// Sells a Stock Token for USDG on Robinhood Chain; nil = all of it.
@@ -142,16 +139,15 @@ extension Executor {
         let symbol = token.symbol
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
         let held = try await balance(token.address, on: rpc)
-        let wanted = amount.map { min($0 * scale, held) } ?? held
-        guard wanted > 0, wanted < Decimal(UInt64.max) else { throw ExecutionError(held == 0 ? "No \(symbol) on Robinhood Chain." : "Too many tokens for one sale here.") }
-        let units = NSDecimalNumber(decimal: wanted.rounded(0, .down)).uint64Value
-        guard let pool = try await bestPool(token.address, usdg, amountIn: units) else { throw ExecutionError(noPool(symbol, listing)) }
+        let wanted = (amount.map { min($0 * scale, held) } ?? held).rounded(0, .down)
+        guard wanted > 0 else { throw ExecutionError("No \(symbol) on Robinhood Chain.") }
+        guard let pool = try await bestPool(token.address, usdg, amountIn: wanted) else { throw ExecutionError(noPool(symbol, listing)) }
         try await ensureEVM(.robinhood, usdc: 0)
-        try await approve(rpc, token: token.address, spender: UniswapV3.robinhoodRouter, amount: units, note: "Approve exactly \(Fmt.num(wanted / scale, maxFraction: 6)) \(symbol) to Uniswap")
+        try await approve(rpc, token: token.address, spender: UniswapV3.robinhoodRouter, units: wanted, note: "Approve exactly \(Fmt.num(wanted / scale, maxFraction: 6)) \(symbol) to Uniswap")
         let before = try await rpc.tokenBalance(usdg, owner: me)
         let hash = try await sendEVM(rpc, to: UniswapV3.robinhoodRouter,
                                      data: try UniswapV3.exactInputSingle(tokenIn: token.address, tokenOut: usdg, fee: pool.fee, recipient: me,
-                                                                          amountIn: units, amountOutMinimum: pool.out / 100 * 99),
+                                                                          amountIn: wanted, amountOutMinimum: (pool.out * 99 / 100).rounded(0, .down)),
                                      note: "Sell \(Fmt.num(wanted / scale, maxFraction: 6)) \(symbol)")
         var after = try await rpc.tokenBalance(usdg, owner: me)
         for _ in 0..<10 where after <= before {
