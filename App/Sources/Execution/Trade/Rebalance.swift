@@ -62,7 +62,7 @@ extension Executor {
         let jupiter = usdcVault.flatMap { v in jupPositions.first { $0.vault == v.symbol }.map { Decimal($0.assets) / 1_000_000 } } ?? 0
         let kamino = (await kamCall ?? []).filter { $0.symbol.uppercased() == "USDC" }.reduce(0) { $0 + $1.valueUSD }
         let aave = Decimal((try? await EVMRPC.base.tokenBalance(AaveV3.baseAUSDC, owner: wallet.evm)) ?? 0) / 1_000_000
-        let morpho = Decimal((try? await MorphoVault.value(wallet.evm)) ?? 0) / 1_000_000
+        let morpho = Decimal((try? await MorphoVault.value(wallet.evm, MorphoVault.base)) ?? 0) / 1_000_000
         let hlp: (equity: Decimal, withdrawable: Decimal, lockedUntil: Date?) = (try? await HyperliquidAccount.vaultEquity(user: wallet.evm, vault: HLGuard.hlpVault)) ?? (0, 0, nil)
         let solPrice = (try? await Hyperliquid.markets()["SOL"]?.markPx) ?? 0
         let baseGas = (try? await EVMRPC.base.balance(wallet.evm)) ?? 0

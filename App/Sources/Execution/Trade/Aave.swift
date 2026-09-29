@@ -48,51 +48,56 @@ public struct EVMNetwork: Sendable {
 
     /// nil for a network LALA doesn't move money on: never guessed.
     static func of(chainId: UInt64) -> EVMNetwork? { all.first { $0.rpc.chainId == chainId } }
+    public static func named(_ key: String) -> EVMNetwork? { all.first { $0.key == key } }
 }
 
-/// Aave v3 on Base: USDC in and out. USDC missing on Base comes from Solana over Relay, with a little ETH for gas.
+/// Aave v3 on any network LALA knows: USDC in and out. USDC missing there comes from Solana over Relay, with a little
+/// of the network's gas coin; a withdrawal goes back to Solana.
 extension Executor {
     static var baseGasFloorForPlan: UInt64 { EVMNetwork.base.gasFloor }
 
-    public func aave(deposit: Bool, usdc requested: Decimal?) async throws -> String {
-        let base = EVMRPC.base
-        // Pool and aToken are re-read from Base before anything is signed.
-        let apy = try await AaveV3.verifyBase(base)
-        let usdc = EVMRPC.baseUSDC, pool = AaveV3.basePool, me = wallet.evm
+    public func aave(deposit: Bool, usdc requested: Decimal?, market m: AaveV3.Market = AaveV3.base) async throws -> String {
+        guard let net = EVMNetwork.named(m.chain) else { throw ExecutionError("ihatecrypto doesn't move money on \(m.chainName). Nothing was signed.") }
+        let rpc = m.rpc
+        // Pool and aToken are re-read from the market's own network before anything is signed.
+        let apy = try await AaveV3.verify(m)
+        let usdc = m.usdc, pool = m.pool, me = wallet.evm
         func units(_ d: Decimal) -> UInt64 { NSDecimalNumber(decimal: (d * 1_000_000).rounded(0, .down)).uint64Value }
         func show(_ u: UInt64) -> String { Fmt.num(Decimal(u) / 1_000_000, maxFraction: 6) }
 
         guard deposit else {
-            let supplied = try await base.tokenBalance(AaveV3.baseAUSDC, owner: me)
-            guard supplied > 0 else { throw ExecutionError("Nothing is supplied to Aave on Base.") }
+            let supplied = try await rpc.tokenBalance(m.aUSDC, owner: me)
+            guard supplied > 0 else { throw ExecutionError("Nothing is supplied to Aave on \(m.chainName).") }
             // nil = everything, interest included.
             let amount = requested.map(units).flatMap { $0 < supplied ? $0 : nil }
-            let before = try await base.tokenBalance(usdc, owner: me)
-            _ = try await sendEVM(base, to: pool, data: try AaveV3.withdraw(asset: usdc, amount: amount, to: me),
-                                  note: "Aave withdraw \(amount.map(show) ?? "all") USDC")
-            var onBase = try await base.tokenBalance(usdc, owner: me)
-            for _ in 0..<10 where onBase <= before {
+            try await ensureEVM(net, usdc: 0)
+            let before = try await rpc.tokenBalance(usdc, owner: me)
+            _ = try await sendEVM(rpc, to: pool, data: try AaveV3.withdraw(asset: usdc, amount: amount, to: me),
+                                  note: "Aave withdraw \(amount.map(show) ?? "all") USDC on \(m.chainName)")
+            var there = try await rpc.tokenBalance(usdc, owner: me)
+            for _ in 0..<10 where there <= before {
                 try await Task.sleep(for: .seconds(1))
-                onBase = try await base.tokenBalance(usdc, owner: me)
+                there = try await rpc.tokenBalance(usdc, owner: me)
             }
             // Back where the money lives: Solana.
-            return try await baseToSolana(usdc: nil)
+            return try await evmToSolana(net, usdc: nil)
         }
 
         guard let requested, requested > 0 else { throw ExecutionError("Say how much, e.g. “lend 2 USDC on Aave”.") }
         let want = units(requested)
-        try await ensureBase(usdc: want)
-        try await approve(base, token: usdc, spender: pool, amount: want, note: "Approve exactly \(show(want)) USDC to Aave")
-        let before = try await base.tokenBalance(AaveV3.baseAUSDC, owner: me)
-        let hash = try await sendEVM(base, to: pool, data: try AaveV3.supply(asset: usdc, amount: want, onBehalfOf: me), note: "Aave supply \(show(want)) USDC")
+        try await ensureEVM(net, usdc: want)
+        try await approve(rpc, token: usdc, spender: pool, amount: want, note: "Approve exactly \(show(want)) USDC to Aave on \(m.chainName)")
+        let before = try await rpc.tokenBalance(m.aUSDC, owner: me)
+        let hash = try await sendEVM(rpc, to: pool, data: try AaveV3.supply(asset: usdc, amount: want, onBehalfOf: me),
+                                     note: "Aave supply \(show(want)) USDC on \(m.chainName)")
         // A node can answer from a block before the receipt's for a moment: give it up to ten seconds.
-        var after = try await base.tokenBalance(AaveV3.baseAUSDC, owner: me)
+        var after = try await rpc.tokenBalance(m.aUSDC, owner: me)
         for _ in 0..<10 where after <= before {
             try await Task.sleep(for: .seconds(1))
-            after = try await base.tokenBalance(AaveV3.baseAUSDC, owner: me)
+            after = try await rpc.tokenBalance(m.aUSDC, owner: me)
         }
-        guard after > before else { throw ExecutionError("The supply went through but aUSDC didn't grow. https://basescan.org/tx/\(hash)") }
-        return "Supplied \(show(want)) USDC to Aave on Base at ≈ \(Fmt.num(apy.rounded(2, .plain)))% a year: \(show(after)) USDC there now. https://basescan.org/tx/\(hash)"
+        guard after > before else { throw ExecutionError("The supply went through but aUSDC didn't grow. \(net.explorer)/tx/\(hash)") }
+        return "Supplied \(show(want)) USDC to Aave on \(m.chainName) at ≈ \(Fmt.num(apy.rounded(2, .plain)))% a year: \(show(after)) USDC there now. \(net.explorer)/tx/\(hash)"
     }
 
     func ensureBase(usdc want: UInt64) async throws { try await ensureEVM(.base, usdc: want) }

@@ -202,3 +202,14 @@ import WalletCore
     #expect(EVMRPC.signable == [1, 137, 42161, 8453, 4663])
     #expect(EVMRPC.polygon.chainId == 137 && EVMRPC.ethereum.chainId == 1)
 }
+
+@Test func aaveMarketsAndMorphoVaults() {
+    #expect(AaveV3.market(place: "Aave · Polygon")?.rpc.chainId == 137)
+    #expect(AaveV3.market(place: "Aave · BNB") == nil)
+    // Arbitrum and Polygon share the pool's address; their aTokens differ, so a market verified on the wrong network fails.
+    #expect(AaveV3.arbitrum.pool == AaveV3.polygon.pool && AaveV3.arbitrum.aUSDC != AaveV3.polygon.aUSDC)
+    // Each market and vault holds its own network's USDC.
+    #expect(AaveV3.markets.allSatisfy { m in m.usdc == [1: EVMRPC.ethereumUSDC, 137: EVMRPC.polygonUSDC, 42161: EVMRPC.arbitrumUSDC, 8453: EVMRPC.baseUSDC][m.rpc.chainId] })
+    #expect(MorphoVault.vaults.allSatisfy { v in v.usdc == [1: EVMRPC.ethereumUSDC, 42161: EVMRPC.arbitrumUSDC, 8453: EVMRPC.baseUSDC][v.rpc.chainId] })
+    #expect(MorphoVault.vault(place: "Morpho · Ethereum")?.rpc.chainId == 1)
+}
