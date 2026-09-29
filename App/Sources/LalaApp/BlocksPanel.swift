@@ -54,7 +54,8 @@ struct BlocksPanel: View {
         .overlay(RoundedRectangle(cornerRadius: 24, style: .continuous).strokeBorder(Brand.cardBorder))
         .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
         .shadow(color: .black.opacity(0.18), radius: 24, y: 12)
-        .transition(.opacity)
+        // The user asked for it to slide: in from the window's right edge, back out to it.
+        .transition(.move(edge: .trailing).combined(with: .opacity))
     }
 
     @ViewBuilder private func tile(_ b: BlockCatalog.Block) -> some View {
