@@ -197,6 +197,11 @@ import Testing
     #expect(WalletCommand.parse("положи 1,5 usdc в aave на base") == .aave(deposit: true, amount: Decimal(string: "1.5")!))
     #expect(WalletCommand.parse("buy USDC on Base and put it into Aave") == .aave(deposit: true, amount: nil))
     #expect(WalletCommand.parse("withdraw USDC from Aave") == .aave(deposit: false, amount: nil))
+    // Rewards to collect, not a withdrawal or the rates: «claim … from Aave», «claim yield».
+    for text in ["claim rewards", "claim my rewards from Morpho", "claim rewards from Aave", "claim yield", "забери награды", "собери мои награды", "клейм наград", "получи бонусы"] {
+        #expect(WalletCommand.parse(text) == .claimRewards, "\(text)")
+    }
+    #expect(WalletCommand.parse("сними 1 usdc из aave") != .claimRewards)
     #expect(WalletCommand.parse("сними 1 usdc из aave") == .aave(deposit: false, amount: 1))
     #expect(WalletCommand.parse("what do I have on Aave?") == nil)
     #expect(WalletCommand.parse("move USDC from Base to Solana") == .baseToSolana(nil))

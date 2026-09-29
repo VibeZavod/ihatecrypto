@@ -370,6 +370,9 @@ extension Workspace {
                 reply(try await e.solanaToEVM(net, usdc: amount ?? 0), note: "Relay · Solana → \(net.name)")
             case .sendTo(let name, let amount): prepareTransfer(amount, to: name)
             case .pay: reply(try await pay(command, e), note: "MPP · Tempo")
+            case .claimRewards:
+                reply(try await e.claimRewards(), note: "Merkl")
+                rewards = nil
             case .receive: showReceive = true
             case .allocate(let symbol, let share, let limit):
                 // Two steps: the plan first, the deposits only after «do it».

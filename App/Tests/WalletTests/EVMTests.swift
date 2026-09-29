@@ -235,3 +235,46 @@ import WalletCore
     #expect(Tempo.feeUnits(1_000_000_000_000) == 1 && Tempo.feeUnits(1_000_000_000_001) == 2 && Tempo.feeUnits(0) == 0)
     #expect(EVMRPC.signable.contains(EVMRPC.tempo.chainId))
 }
+
+/// Merkl's claim: the calldata matches Foundry's `cast calldata` for the same arguments (two rewards, proofs of two
+/// lengths), the signer reads back whom it pays and refuses a claim for anyone else, and the API's answer keeps only
+/// what is left to claim for this wallet.
+@Test func merklClaim() throws {
+    let me = "0x14dc79964da2c08b23698b3d3cc7ca32193d9955", other = "0x" + String(repeating: "5c", count: 20)
+    func reward(_ token: String, _ amount: String, _ proofs: [String]) -> Merkl.Reward {
+        Merkl.Reward(chainId: 8453, token: token, symbol: "T", decimals: 18, amount: Decimal(string: amount)!, claimed: 0, proofs: proofs, root: "0x", price: nil)
+    }
+    let a = "0x" + String(repeating: "aa", count: 32), b = "0x" + String(repeating: "bb", count: 32), c = "0x" + String(repeating: "cc", count: 32)
+    let rewards = [reward("0xbaa5cc21fd487b8fcc2f632f3f4e8d37262a0842", "4920135994870910511487", [a, b]),
+                   reward(EVMRPC.baseUSDC, "1500000", [c])]
+    let data = try Merkl.claim(user: me, rewards)
+    // cast calldata "claim(address[],address[],uint256[],bytes32[][])" "[me,me]" "[MORPHO,USDC]" "[4920135994870910511487,1500000]" "[[a,b],[c]]"
+    let cast = "71ee95c0" + [
+        "80", "e0", "140", "1a0",
+        "2", String(me.dropFirst(2)), String(me.dropFirst(2)),
+        "2", "baa5cc21fd487b8fcc2f632f3f4e8d37262a0842", String(EVMRPC.baseUSDC.dropFirst(2)),
+        "2", "10ab89a73565dc5697f", "16e360",
+        "2", "40", "a0", "2", String(a.dropFirst(2)), String(b.dropFirst(2)), "1", String(c.dropFirst(2)),
+    ].map { String(repeating: "0", count: 64 - $0.count) + $0 }.joined()
+    #expect(data.hex == cast)
+    #expect(data.prefix(4).hex == Keccak.hash256(Data("claim(address[],address[],uint256[],bytes32[][])".utf8)).prefix(4).hex)
+    #expect(EVMCall.decode(data) == .claim(recipients: [me, me]))
+    #expect(EVMCall.decode(data).refusal(sender: me) == nil)
+    #expect(EVMCall.decode(try Merkl.claim(user: other, rewards)).refusal(sender: me) != nil)
+    #expect(Keccak.hash256(Data("getMerkleRoot()".utf8)).prefix(4).hex == "49590657")
+
+    let json = """
+    [{"chain": {"id": 8453}, "rewards": [
+      {"root": "0x1f", "recipient": "\(me.uppercased().replacingOccurrences(of: "0X", with: "0x"))", "amount": "4920135994870910511487", "claimed": "4502475146340745774208",
+       "pending": "0", "proofs": ["\(a)"], "token": {"chainId": 8453, "address": "0xbaa5", "decimals": 18, "symbol": "MORPHO", "price": 2.5}},
+      {"root": "0x1f", "recipient": "\(me)", "amount": "7", "claimed": "7", "pending": "0", "proofs": [],
+       "token": {"chainId": 8453, "address": "0xusdc", "decimals": 6, "symbol": "USDC", "price": 1}},
+      {"root": "0x1f", "recipient": "\(other)", "amount": "9", "claimed": "0", "pending": "0", "proofs": [],
+       "token": {"chainId": 8453, "address": "0xusdc", "decimals": 6, "symbol": "USDC", "price": 1}}
+    ]}]
+    """
+    let owed = try Merkl.parse(Data(json.utf8), user: me)
+    #expect(owed.count == 1)
+    #expect(owed.first?.symbol == "MORPHO")
+    #expect(owed.first?.claimable == Decimal(string: "417.660848530164737279"))
+}

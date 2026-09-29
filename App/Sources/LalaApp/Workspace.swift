@@ -148,6 +148,8 @@ final class Workspace {
     var pendingText: String?
     /// A paid API's price as its 402 named it, for the «pay …» card waiting for Confirm (Payments.swift).
     var payment: (command: WalletCommand, challenge: MPP.Challenge)?
+    /// What Merkl owes the wallet, asked for before a «claim rewards» card (Rewards.swift).
+    var rewards: [Merkl.Reward]?
     /// A move left waiting on a canvas the user switched away from: it waits there, for a quarter of an hour.
     var parkedPending: [UUID: (action: PendingAction, text: String?, at: Date)] = [:]
     /// A deposit or buy that came without an amount: the next reply that is just a number fills it.

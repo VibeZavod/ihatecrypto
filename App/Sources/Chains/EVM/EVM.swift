@@ -374,6 +374,8 @@ public enum EVMCall: Equatable, Sendable {
     case vault(receiver: String, owner: String?)
     /// A lending pool (Aave's supply, deposit or withdraw): who gets the aTokens or the withdrawn asset.
     case lending(beneficiary: String)
+    /// Merkl's Distributor.claim: whom each reward is paid to.
+    case claim(recipients: [String])
     case contract(selector: String)
 
     public static func decode(_ data: Data) -> EVMCall {
@@ -397,6 +399,7 @@ public enum EVMCall: Equatable, Sendable {
         case "b460af94", "ba087652": if let r = address(1), let o = address(2) { return .vault(receiver: r, owner: o) }
         // Aave: supply/deposit(asset, amount, onBehalfOf, referral) and withdraw(asset, amount, to): the third word.
         case "617ba037", "e8eda9df", "69328dec": if let b = address(2) { return .lending(beneficiary: b) }
+        case "71ee95c0": if let r = Merkl.recipients(data) { return .claim(recipients: r) }
         default: break
         }
         return .contract(selector: "0x" + selector)
@@ -412,6 +415,9 @@ public enum EVMCall: Equatable, Sendable {
         }
         if case .lending(let beneficiary) = self, beneficiary.lowercased() != sender.lowercased() {
             return "The lending pool would credit \(beneficiary), not this wallet."
+        }
+        if case .claim(let recipients) = self, let other = recipients.first(where: { $0.lowercased() != sender.lowercased() }) ?? (recipients.isEmpty ? "nobody" : nil) {
+            return "The rewards claim would pay \(other), not this wallet."
         }
         if case .vault(let receiver, let owner) = self {
             if receiver.lowercased() != sender.lowercased() { return "The vault would credit \(receiver), not this wallet." }

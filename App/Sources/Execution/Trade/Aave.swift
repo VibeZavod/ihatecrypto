@@ -59,7 +59,7 @@ public struct EVMNetwork: Sendable {
     var feeReserve: UInt64 { feeToken == nil ? 0 : 10_000 }
 
     /// nil for a network LALA doesn't move money on: never guessed.
-    static func of(chainId: UInt64) -> EVMNetwork? { all.first { $0.rpc.chainId == chainId } }
+    public static func of(chainId: UInt64) -> EVMNetwork? { all.first { $0.rpc.chainId == chainId } }
     public static func named(_ key: String) -> EVMNetwork? { all.first { $0.key == key } }
 }
 

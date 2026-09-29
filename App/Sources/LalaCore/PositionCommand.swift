@@ -160,6 +160,9 @@ public enum WalletCommand: Equatable, Sendable {
     /// A paid API on Tempo (MPP): the request as the service documents it; the price comes from its 402 answer and
     /// is paid in USDC on Tempo only after Confirm. `method` «GET» or «POST»; `body` JSON or nil.
     case pay(method: String, url: String, body: String?)
+    /// «claim rewards», «забери награды»: what Merkl owes this wallet (Morpho's, Aave's and other protocols' rewards)
+    /// on Base, Arbitrum, Ethereum and Polygon, paid to it.
+    case claimRewards
 
     public static func parse(_ text: String) -> WalletCommand? {
         // «pay POST https://… {"q": 1}»: the URL and the body kept as written.
@@ -168,6 +171,10 @@ public enum WalletCommand: Equatable, Sendable {
             return .pay(method: m.1.map { $0.uppercased() } ?? (body == nil ? "GET" : "POST"), url: String(m.2), body: body)
         }
         let q = text.lowercased()
+        // Rewards to collect, before «claim … from Aave» reads as a withdrawal and «claim yield» as the rates.
+        if q.contains(/\bclaim|клейм|ревард|реворд/) || q.contains(/(?:забер|забра|собер|собра|получ|вывед|выве)\w*\s+(?:\w+\s+){0,2}?(?:награ|бонус)/) {
+            return .claimRewards
+        }
         let amount = (q.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|usdg|\$|долл|dollars?|bucks|бакс)/)?.1)
             .flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
         // «положи 1 в джупитер»: a bare number is the amount of a deposit or a withdrawal when nothing else is
@@ -480,6 +487,7 @@ extension WalletCommand {
         case .sellOn(let place, let t, let x): return "sell \(n(x)) \(t.hasPrefix("0x") ? "of the token \(t)" : t.uppercased()) on \(Self.placeName(place)) for USDC on Solana"
         case .solanaTo(let place, let x): return "move \(n(x)) USDC from Solana to \(Self.placeName(place))"
         case .pay(let method, let url, _): return "pay for \(method) \(url) in USDC on Tempo"
+        case .claimRewards: return "claim rewards on Merkl"
         }
     }
 }

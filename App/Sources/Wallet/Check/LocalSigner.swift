@@ -158,6 +158,13 @@ func moveMoney(_ text: String) async throws {
         let hash = try await executor.payTempo(c.amount, to: c.payee, memo: c.memo, label: c.realm)
         let (paid, _, answer) = try await MPP.call(method, url, body, credential: (c.field, MPP.credential(c, hash: hash, payer: signer.wallet.evm)))
         print("Paid: \(EVMNetwork.tempo.explorer)/tx/\(hash)\n\(paid):\n\(MPP.shown(answer))")
+    case .claimRewards:
+        // Without --yes: what Merkl owes. With it: claimed on each chain.
+        let owed = try await Merkl.rewards(user: signer.wallet.evm)
+        for r in owed { print("chain \(r.chainId): \(Fmt.num(r.claimable, maxFraction: 6)) \(r.symbol)\(r.worthUSD.map { " ≈ \(Fmt.usd($0))" } ?? "")") }
+        guard !owed.isEmpty else { print("Nothing to claim on Merkl."); return }
+        guard send else { print("Add --yes to claim it."); return }
+        print(try await executor.claimRewards())
     case .receive: print("Solana (USDC, SOL): \(signer.wallet.solana)\nBase / EVM (USDC, ETH): \(signer.wallet.evm)")
     case .rebalance(let share):
         let (text, ready, _) = try await executor.rebalance(maxShare: share ?? 50, execute: send)

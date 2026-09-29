@@ -763,6 +763,7 @@ extension Workspace {
         case .closeNear(let name): nearOutRoute(to: name, amount: nil, close: true)
         case .sendSol(let name, let amount): solOutRoute(to: name, amount: amount)
         case .pay: payRoute(command)
+        case .claimRewards: claimRoute()
         default: ends(command).map { from, to in
             let footer = if case .sellStock = command {
                 "Two Robinhood Chain transactions: an exact approve and the Uniswap swap, which may only pay this wallet. Say “do it” or press Confirm; anything else cancels."
@@ -1266,6 +1267,7 @@ extension Workspace {
         if let off = moduleRefusal(command) { reply(off, note: note); return }   // switched off in Settings › Modules
         if case .sendTo(let name, let amount) = command { prepareTransfer(amount, to: name, note: note); return }
         if case .pay = command { await preparePayment(command, note: note); return }
+        if case .claimRewards = command { await prepareClaim(command, note: note); return }
         if case .receive = command {
             withAnimation(StudioView.spring) { showReceive = true }
             let sol = isSolanaAddress(solanaAddress) ? "Solana \(AddressCheck.ends(solanaAddress).start) … \(AddressCheck.ends(solanaAddress).end)" : nil
