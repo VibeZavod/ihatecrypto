@@ -14,8 +14,9 @@ struct PaymentQuote {
     let service: String
 }
 
-/// What a service sent back, on the canvas: its results as rows (or its values), who answered, what it cost.
-struct ServiceAnswer {
+/// What a service sent back, on the canvas: its results as rows (or its values), who answered, what it cost. A paid
+/// one is kept in its move's last step, so every move on a canvas keeps its own answer.
+struct ServiceAnswer: Codable, Hashable {
     let service: String
     let usdc: Decimal?
     /// The payment on Tempo's explorer; nil when the service answered for free.
@@ -98,7 +99,9 @@ extension Workspace {
     /// (1–3 sentences, the best results as links), then one line on what it cost. Without a model: where to look.
     private func answered(_ ask: String, service: String, data: Data, usdc: Decimal?, proof: String?) async -> String {
         let answer = MPP.Answer(data)
-        serviceAnswer = ServiceAnswer(service: service, usdc: usdc, proof: proof, answer: answer, raw: MPP.shown(data, limit: 20_000))
+        let kept = ServiceAnswer(service: service, usdc: usdc, proof: proof, answer: answer, raw: MPP.shown(data, limit: 20_000))
+        // A paid one goes with its move (drawn under its route, now and once it's an earlier move); a free one on its own.
+        if let last = runningAction?.steps.indices.last { runningAction?.steps[last].answer = kept } else { serviceAnswer = kept }
         agentStep = say("Reading \(service)'s answer", "Читаю ответ \(service)")
         answerStep(say("reading the answer…", "читаю ответ…"), say("it's on the canvas", "он на холсте"))
         defer {
@@ -150,6 +153,8 @@ extension Workspace {
 struct ServiceAnswerBoard: View {
     @Environment(Workspace.self) private var ws
     let answer: ServiceAnswer
+    /// A free answer can be closed; one kept with its move stays under it.
+    var closable = true
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
@@ -168,7 +173,9 @@ struct ServiceAnswerBoard: View {
                     Image(systemName: "doc.on.doc")
                 }
                 .buttonStyle(.hoverIcon).help("Copy the whole answer")
-                Button { withAnimation(StudioView.spring) { ws.serviceAnswer = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
+                if closable {
+                    Button { withAnimation(StudioView.spring) { ws.serviceAnswer = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
+                }
             }
             let a = answer.answer
             if let w = a.writing {

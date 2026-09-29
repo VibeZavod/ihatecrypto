@@ -53,6 +53,9 @@ targets:
     info:
       path: LalaSigner-Info.plist
       properties:
+        # xcodegen writes this plist from here: the name the Touch ID window shows goes here, not in the file.
+        CFBundleName: ihatecrypto
+        CFBundleDisplayName: ihatecrypto
         XPCService:
           ServiceType: Application
     dependencies:

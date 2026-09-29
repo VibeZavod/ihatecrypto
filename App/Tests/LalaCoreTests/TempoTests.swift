@@ -142,3 +142,9 @@ private func challenge(_ request: String, extra: String = "") -> String {
     let digest = MPP.digest(Data(grok.utf8))
     #expect(digest.contains(text) && digest.contains("https://x.com/b/status/2") && !digest.contains("QUJD"))
 }
+
+// A paid answer is kept with its move in the canvas file: it survives the trip through JSON.
+@Test func serviceAnswerSurvivesSaving() throws {
+    let a = MPP.Answer(Data(#"{"output":[{"type":"message","content":[{"type":"output_text","text":"MOO fell as early holders sold into thin liquidity; the mood on X is mostly worried."}]}],"citations":["https://x.com/a/status/1"]}"#.utf8))
+    #expect(try JSONDecoder().decode(MPP.Answer.self, from: JSONEncoder().encode(a)) == a && a.writing != nil)
+}

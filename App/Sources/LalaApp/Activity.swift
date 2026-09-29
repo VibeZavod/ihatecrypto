@@ -39,6 +39,8 @@ struct ActivityBubble: Codable, Hashable, Sendable {
     var long: Bool?
     /// For a money move's route steps: the place's color.
     var fill: RouteFill?
+    /// A paid request's last step: what the service answered, kept with the move (Payments.swift).
+    var answer: ServiceAnswer?
 }
 
 extension Workspace {

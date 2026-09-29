@@ -150,15 +150,15 @@ public enum MPP {
 
     /// What a service answered, for the canvas: its list of results (search hits, flights, images) when it has one, else
     /// its plain values, else its text.
-    public struct Answer: Equatable, Sendable {
-        public struct Item: Equatable, Sendable {
+    public struct Answer: Codable, Hashable, Sendable {
+        public struct Item: Codable, Hashable, Sendable {
             public let title: String
             public let url: String?
             public let detail: String?
             public init(title: String, url: String?, detail: String?) { (self.title, self.url, self.detail) = (title, url, detail) }
             public var isImage: Bool { url.map { $0.lowercased().contains(/\.(?:png|jpe?g|webp|gif)(?:\?|$)/) } ?? false }
         }
-        public struct Fact: Equatable, Sendable { public let key: String; public let value: String }
+        public struct Fact: Codable, Hashable, Sendable { public let key: String; public let value: String }
 
         public var items: [Item] = []
         public var facts: [Fact] = []

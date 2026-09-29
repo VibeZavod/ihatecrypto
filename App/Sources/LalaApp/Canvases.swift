@@ -502,6 +502,7 @@ struct EarlierBoards: View {
                     EmptyView()
                 } else if done.bubbles.allSatisfy({ $0.kind == "step" }) {
                     RouteCards(steps: done.bubbles, outcome: done.outcome.ok)
+                    if let answer = done.bubbles.last?.answer { ServiceAnswerBoard(answer: answer, closable: false) }
                 } else {
                     LazyVGrid(columns: [GridItem(.fixed(220), alignment: .top), GridItem(.fixed(220), alignment: .top)], alignment: .leading, spacing: 14) {
                         ForEach(done.bubbles, id: \.self) { HistoryBubble(bubble: $0) }
@@ -530,6 +531,7 @@ struct SavedBoard: View {
             }
             if !canvas.bubbles.isEmpty, canvas.bubbles.allSatisfy({ $0.kind == "step" }) {
                 RouteCards(steps: canvas.bubbles, outcome: canvas.outcome?.ok, asItWas: canvas.outcome == nil)
+                if let answer = canvas.bubbles.last?.answer { ServiceAnswerBoard(answer: answer, closable: false) }
             } else {
                 LazyVGrid(columns: [GridItem(.fixed(220), alignment: .top), GridItem(.fixed(220), alignment: .top)], alignment: .leading, spacing: 14) {
                     ForEach(canvas.bubbles, id: \.self) { HistoryBubble(bubble: $0) }
