@@ -738,6 +738,8 @@ struct MoveRoute {
 /// A route step's color, by place; kept by name, so a saved route draws the same.
 enum RouteFill: String, Codable, Hashable, Sendable {
     case solana, relay, hyperliquid, hlp, jupiter, kamino, jito, aave, morpho, base, arbitrum, robinhood, near
+    /// A plan's checks and its result: no place of their own, a grey card.
+    case check
 
     var color: Color {
         switch self {
@@ -754,9 +756,10 @@ enum RouteFill: String, Codable, Hashable, Sendable {
         case .arbitrum: Color(hex: 0x213147)
         case .robinhood: Color(hex: 0x3A4A00)
         case .near: Color(hex: 0x10231C)
+        case .check: Color(light: 0xF7F7F8, dark: 0x26262B)
         }
     }
-    var dark: Bool { self != .solana }
+    var dark: Bool { self != .solana && self != .check }
 }
 
 extension Workspace {

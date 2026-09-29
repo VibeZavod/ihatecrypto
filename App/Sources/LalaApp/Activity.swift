@@ -98,11 +98,9 @@ extension Workspace {
             return ("Take-profit choices", intent.asset, choices.map { ActivityBubble(kind: "choice", label: $0.title, title: risk.map($0.payoff) ?? $0.title, lines: [$0.detail]) })
         }
         if intent != TradeIntent(), !managesPosition {
-            let nodes = StudioNode.build(self).map {
-                ActivityBubble(kind: $0.kind.rawValue, label: $0.label, title: $0.title, lines: $0.lines, status: "\($0.status)",
-                               asset: $0.asset, signature: $0.signature, long: $0.long)
-            }
-            return ("Plan · \(intent.side == .long ? "long" : "short") \(IntentParser.pretty(intent.asset))", intent.asset, nodes)
+            // The same cards as on the canvas, so the history and a reopened canvas draw it the same way.
+            return ("Plan · \(intent.side == .long ? "long" : "short") \(IntentParser.pretty(intent.asset))", intent.asset,
+                    planRoute(StudioNode.build(self)).steps)
         }
         return nil
     }

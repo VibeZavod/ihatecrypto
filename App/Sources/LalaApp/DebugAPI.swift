@@ -243,7 +243,8 @@ final class DebugAPI {
         if let t = ws.takeChoices { out["takeChoices"] = t.map(\.title) }
         if let w = ws.awaitingAmount { out["awaitingAmount"] = String(describing: w) }
         if ws.intent != TradeIntent() {
-            out["plan"] = ["asset": ws.intent.asset, "side": ws.intent.side == .long ? "long" : "short", "ready": ws.planIsReady] as [String: Any]
+            out["plan"] = ["asset": ws.intent.asset, "side": ws.intent.side == .long ? "long" : "short", "ready": ws.planIsReady,
+                           "steps": steps(ws.planRoute(StudioNode.build(ws)).steps)] as [String: Any]
         }
         if ws.showReceive { out["receive"] = true }
         if let saved = ws.savedBoard { out["saved"] = saved.displayTitle }

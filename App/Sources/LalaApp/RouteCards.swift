@@ -5,14 +5,21 @@ import SwiftUI
 // MARK: What a step is
 
 /// What a route step does, read from its label («BRIDGE · RELAY», «INTO · KAMINO LEND», «FROM · SOLANA»…): it picks
-/// the drawing at the bottom of its card.
+/// the drawing at the bottom of its card. A trade plan's steps have their own: the rules' checklist, Jev's magnifier,
+/// the price line the position rides, the shield of its stop and take, and the two ways it can end.
 enum StepKind: Equatable {
-    case wallet, bridge, swap, buy, deposit, stake, send
+    case wallet, bridge, swap, buy, deposit, stake, send, check, jev, long, short, protect, result
 
     init(_ step: ActivityBubble) {
         let label = step.label.uppercased()
         let place = label.components(separatedBy: "·").last?.trimmingCharacters(in: .whitespaces) ?? ""
-        if label.contains("BRIDGE") || label.hasPrefix("RELAY") { self = .bridge }
+        if label.hasPrefix("CHECK") { self = .check }
+        else if label.hasPrefix("JEV") { self = .jev }
+        else if label.hasPrefix("OPEN LONG") { self = .long }
+        else if label.hasPrefix("OPEN SHORT") { self = .short }
+        else if label.hasPrefix("PROTECT") { self = .protect }
+        else if label.hasPrefix("RESULT") { self = .result }
+        else if label.contains("BRIDGE") || label.hasPrefix("RELAY") { self = .bridge }
         else if label.hasPrefix("SWAP") { self = .swap }
         else if label.hasPrefix("BUY") || label.hasPrefix("SELL") { self = .buy }
         else if label.contains("JITO") || label.contains("STAK") { self = .stake }
@@ -27,8 +34,9 @@ enum StepKind: Equatable {
 
 /// Where a step is: waiting for Confirm, done, the one a running move is on (or waiting for Touch ID there), still
 /// to come, or part of a move that failed; plain in the history, which shows a canvas as it was, with no state.
+/// A plan's step can also be stopped by a rule, or want a look (a detail missing, Jev's doubt).
 enum StepState: Equatable {
-    case ready, done, now, touch, next, failed, plain
+    case ready, done, now, touch, next, failed, plain, blocked, attention
 
     /// The coin's face on the step's chip and in its drawing.
     var mood: LalaLogo.Mood {
@@ -38,8 +46,9 @@ enum StepState: Equatable {
         case .now: .thinking
         case .touch: .tuning
         case .next: .idle
-        case .failed: .error
+        case .failed, .blocked: .error
         case .plain: .idle
+        case .attention: .tuning
         }
     }
 }
@@ -47,7 +56,7 @@ enum StepState: Equatable {
 extension RouteFill {
     /// The color on a light card: the lines of a step still to come and the ring of the step a move is on
     /// (Solana's own tint is too pale for either).
-    var accent: Color { self == .solana ? Color(hex: 0x8B6AE8) : color }
+    var accent: Color { self == .solana ? Color(hex: 0x8B6AE8) : self == .check ? Color.secondary : color }
 }
 
 /// A card's colors, from its place and its state: a step still to come is its place's color, faint.
@@ -62,6 +71,7 @@ struct CardLook {
     var label: Color {
         if pale { return fill.accent }
         switch fill {
+        case .check: return .secondary
         case .solana: return Color(light: 0x6E5A9A, dark: 0xC9B8FF)
         case .jupiter: return Color(hex: 0xC7F284)
         case .hyperliquid, .hlp, .near: return Color(hex: 0x97FCE4)
@@ -70,8 +80,9 @@ struct CardLook {
     }
     /// The ticker on a buy's price tag: Jupiter's lime on Jupiter, the ink elsewhere.
     var tag: Color { !pale && fill == .jupiter ? Color(hex: 0xC7F284) : drawing }
-    /// Filled shapes in the drawing (a wallet, a vault, a tag) are the card's own color, so the lines read on it.
-    var body: Color { pale ? Brand.card : fill.color }
+    /// Filled shapes in the drawing (a wallet, a vault, a tag) are the card's own color, so the lines read on it; on a
+    /// check's grey card they are paper.
+    var body: Color { pale || fill == .check ? Brand.card : fill.color }
 
     @ViewBuilder var background: some View {
         let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
@@ -85,8 +96,8 @@ struct CardLook {
 
 // MARK: The route
 
-/// A money move's route: one card per step in its place's color, arrows between them, rows of three that wrap with an
-/// arrow back to the start of the next row. Each card says its state with the coin's face, opens its details on a
+/// A money move's route, or a trade plan's: one card per step in its place's color, arrows between them, rows of three
+/// that wrap with an arrow back to the start of the next row; a longer route is the same cards smaller, seven to a row. Each card says its state with the coin's face, opens its details on a
 /// click and has Why / Edit / Send to chat / Copy on a right click. A new route is laid out by the assistant's coin
 /// cursor, card by card; the cards fade in where they stand and never move.
 struct RouteCards: View {
@@ -103,12 +114,19 @@ struct RouteCards: View {
     var pending: WalletCommand?
     /// Laid out by the coin cursor when it first shows.
     var build = false
+    /// What a new layout follows; by default the titles. A plan's titles carry live numbers (the bridge's quote), so
+    /// it passes the plan itself: the cards are laid out again when the plan changes, not when a price does.
+    var buildKey: String?
 
     static let cardWidth: CGFloat = 236, cardHeight: CGFloat = 228, gap: CGFloat = 40, perRow = 3
-    /// What the route takes across: up to three cards and the arrows between them.
+    static let smallWidth: CGFloat = 168, smallHeight: CGFloat = 200, smallGap: CGFloat = 26, smallPerRow = 7
+    /// Over three steps the cards are the small ones.
+    static func compact(_ count: Int) -> Bool { count > perRow }
+    /// What the route takes across: a row of cards and the arrows between them.
     static func width(_ count: Int) -> CGFloat {
-        let n = CGFloat(min(max(count, 1), perRow))
-        return n * cardWidth + (n - 1) * gap
+        let small = compact(count)
+        let n = CGFloat(min(max(count, 1), small ? smallPerRow : perRow))
+        return n * (small ? smallWidth : cardWidth) + (n - 1) * (small ? smallGap : gap)
     }
 
     /// How many cards the cursor has put down; nil before it starts. A route it builds shows none until then (no flash
@@ -119,13 +137,14 @@ struct RouteCards: View {
     @State private var open: Int?
 
     var body: some View {
-        let rows = stride(from: 0, to: steps.count, by: Self.perRow).map { Array($0..<min($0 + Self.perRow, steps.count)) }
+        let small = Self.compact(steps.count), perRow = small ? Self.smallPerRow : Self.perRow
+        let rows = stride(from: 0, to: steps.count, by: perRow).map { Array($0..<min($0 + perRow, steps.count)) }
         VStack(alignment: .leading, spacing: 18) {
-            VStack(alignment: .leading, spacing: 46) {
+            VStack(alignment: .leading, spacing: small ? 36 : 46) {
                 ForEach(rows, id: \.self) { row in
                     HStack(spacing: 0) {
                         ForEach(row, id: \.self) { i in
-                            if i != row.first { StepArrow(solid: solid(into: i)).opacity(i < placed ? 1 : 0) }
+                            if i != row.first { StepArrow(solid: solid(into: i), width: small ? Self.smallGap : Self.gap).opacity(i < placed ? 1 : 0) }
                             card(i)
                         }
                     }
@@ -145,11 +164,11 @@ struct RouteCards: View {
         }
         .coordinateSpace(.named("route"))
         .preference(key: RouteWidth.self, value: Self.width(steps.count))
-        .task(id: build ? steps.map(\.title).joined(separator: "|") : "") { await assemble() }
+        .task(id: build ? buildKey ?? steps.map(\.title).joined(separator: "|") : "") { await assemble() }
     }
 
     private func card(_ i: Int) -> some View {
-        RouteCard(step: steps[i], state: state(i), isOpen: open == i)
+        RouteCard(step: steps[i], state: state(i), isOpen: open == i, compact: Self.compact(steps.count))
             .opacity(i < placed ? 1 : 0)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("route")) } action: { frames[i] = $0 }
             .onTapGesture { toggle(i) }
@@ -178,7 +197,13 @@ struct RouteCards: View {
     private func state(_ i: Int) -> StepState {
         if let outcome { return outcome ? .done : .failed }
         if let current { return i < current ? .done : i > current ? .next : SignerActivity.shared.waiting > 0 ? .touch : .now }
-        return .ready
+        // A plan's step says its own: a rule stops it, it wants a look, or a check has passed.
+        switch steps[i].status {
+        case "blocked": return .blocked
+        case "attention": return .attention
+        case "passed": return .done
+        default: return .ready
+        }
     }
 
     /// The arrow into a step: solid along the way the money goes or went, dotted to a step still to come.
@@ -286,35 +311,59 @@ struct RouteCard: View {
     var isOpen = false
     /// The history draws the same card narrower.
     var width = RouteCards.cardWidth
+    /// A long route's small card: its label, the coin for its state, its title, three lines of its numbers and its
+    /// drawing; the rest opens on a click.
+    var compact = false
     @State private var hover = false
 
     var body: some View {
         let look = CardLook(fill: step.fill ?? .solana, state: state)
+        let kind = StepKind(step)
+        let w = compact ? RouteCards.smallWidth : width
+        let radius: CGFloat = compact ? 14 : 20
         ZStack(alignment: .topLeading) {
-            StepScene(kind: StepKind(step), look: look, state: state, ticker: ticker)
-                .frame(width: width, height: 84 * width / RouteCards.cardWidth)
+            StepScene(kind: kind, look: look, state: state, ticker: ticker)
+                .frame(width: w, height: 84 * w / RouteCards.cardWidth)
                 .opacity(look.pale ? 0.55 : 1)
                 .frame(maxHeight: .infinity, alignment: .bottom)
-            VStack(alignment: .leading, spacing: 5) {
-                HStack(alignment: .top) {
-                    LogoBadge(step: step)
-                    Spacer(minLength: 6)
-                    if state != .plain { StateChip(state: state, fill: look.fill) }
+            if compact {
+                VStack(alignment: .leading, spacing: 3) {
+                    HStack(alignment: .top, spacing: 4) {
+                        Text(step.label).font(.ui(9.5, .heavy)).tracking(0.6).foregroundStyle(look.label)
+                            .lineLimit(2).minimumScaleFactor(0.8).fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 0)
+                        // What the result comes to is an estimate, not a step with a state.
+                        if state != .plain, kind != .result { StateChip(state: state, fill: look.fill, compact: true) }
+                    }
+                    StepTitle(step: step, ink: look.ink, size: 14)
+                    ForEach(Array(step.lines.filter { !$0.isEmpty }.prefix(3).enumerated()), id: \.offset) { _, line in
+                        Text(line).font(.ui(10)).monospacedDigit().foregroundStyle(look.line)
+                            .lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
-                Text(step.label).font(.ui(10, .heavy)).tracking(0.7).foregroundStyle(look.label)
-                    .lineLimit(1).minimumScaleFactor(0.75).padding(.top, 4)
-                StepTitle(step: step, ink: look.ink)
-                if let line = step.lines.first(where: { !$0.isEmpty }) {
-                    Text(line).font(.ui(11)).foregroundStyle(look.line).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 12).padding(.top, 10)
+            } else {
+                VStack(alignment: .leading, spacing: 5) {
+                    HStack(alignment: .top) {
+                        LogoBadge(step: step)
+                        Spacer(minLength: 6)
+                        if state != .plain { StateChip(state: state, fill: look.fill) }
+                    }
+                    Text(step.label).font(.ui(10, .heavy)).tracking(0.7).foregroundStyle(look.label)
+                        .lineLimit(1).minimumScaleFactor(0.75).padding(.top, 4)
+                    StepTitle(step: step, ink: look.ink)
+                    if let line = step.lines.first(where: { !$0.isEmpty }) {
+                        Text(line).font(.ui(11)).foregroundStyle(look.line).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
+                .padding(16)
             }
-            .padding(16)
         }
-        .frame(width: width, height: RouteCards.cardHeight * width / RouteCards.cardWidth, alignment: .topLeading)
+        .frame(width: w, height: compact ? RouteCards.smallHeight : RouteCards.cardHeight * width / RouteCards.cardWidth, alignment: .topLeading)
         .background { look.background }
-        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .overlay { edges(look) }
-        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
+        .overlay { edges(look, kind: kind, radius: radius) }
+        .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .onHover { hover = $0 }
         .pointerStyle(.link)
         .help("Details · right-click for more")
@@ -326,16 +375,20 @@ struct RouteCard: View {
         ws.readable(step.title).components(separatedBy: " → ").last?.split(separator: " ").last.map(String.init)
     }
 
-    /// Only the border says more: dashed for a step still to come, a ring for the one a move is on (breathing, the
-    /// only thing on the route that moves) or whose details are open, the accent edge under the pointer.
-    @ViewBuilder private func edges(_ look: CardLook) -> some View {
-        let card = RoundedRectangle(cornerRadius: 20, style: .continuous)
-        let ring = RoundedRectangle(cornerRadius: 25, style: .continuous)
+    /// Only the border says more: dashed for a step still to come and for the result (an estimate), red for a step that
+    /// failed or a rule stops, amber for one that wants a look, a ring for the one a move is on (breathing, the only
+    /// thing on the route that moves) or whose details are open, the accent edge under the pointer.
+    @ViewBuilder private func edges(_ look: CardLook, kind: StepKind, radius: CGFloat) -> some View {
+        let card = RoundedRectangle(cornerRadius: radius, style: .continuous)
         ZStack {
             if look.pale { card.strokeBorder(look.fill.accent.opacity(0.7), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])) }
-            if state == .failed { card.strokeBorder(Brand.loss, lineWidth: 2) }
+            else if kind == .result { card.strokeBorder(Color.secondary.opacity(0.55), style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])) }
+            else if look.fill == .check { card.strokeBorder(Brand.cardBorder, lineWidth: 1.5) }
+            if state == .failed || state == .blocked { card.strokeBorder(Brand.loss, lineWidth: 2) }
+            if state == .attention { card.strokeBorder(Color.orange, lineWidth: 2) }
             if isOpen {
-                ring.strokeBorder(Brand.accent, lineWidth: 2.5).padding(-5)
+                // Right on the card's edge.
+                card.strokeBorder(Brand.accent, lineWidth: 3)
             } else if state == .now || state == .touch {
                 RingPulse(color: state == .touch ? .primary : look.fill.accent)
             }
@@ -401,25 +454,29 @@ struct StepTitle: View {
     @Environment(Workspace.self) private var ws
     let step: ActivityBubble
     let ink: Color
+    var size: CGFloat = 19
 
     var body: some View {
-        let parts = ws.readable(step.title).components(separatedBy: " → ")
-        HStack(spacing: 6) {
+        // «→ Hyperliquid» starts with its arrow: an empty first part.
+        let parts = ws.readable(step.title).components(separatedBy: "→").map { $0.trimmingCharacters(in: .whitespaces) }
+        HStack(spacing: size * 0.3) {
             ForEach(parts.indices, id: \.self) { i in
                 if i > 0 { Text("→") }
-                icon(parts[i])
-                Text(parts[i])
+                if !parts[i].isEmpty {
+                    icon(parts[i])
+                    Text(parts[i])
+                }
             }
         }
-        .font(.ui(19, .bold)).monospacedDigit().foregroundStyle(ink)
+        .font(.ui(size, .bold)).monospacedDigit().foregroundStyle(ink)
         .lineLimit(1).minimumScaleFactor(0.55)
     }
 
     @ViewBuilder private func icon(_ part: String) -> some View {
         if let contract = step.title.firstMatch(of: /0x[0-9a-fA-F]{40}/).map({ String($0.0) }), let token = ws.favoriteToken(contract) {
-            TokenIcon(token: token, size: 20)
+            TokenIcon(token: token, size: size + 1)
         } else if let name = Self.logo(part) {
-            TokenLogo(name: name, size: 20, round: true)
+            TokenLogo(name: name, size: size + 1, round: true)
         }
     }
 
@@ -437,9 +494,25 @@ struct StepTitle: View {
 struct StateChip: View {
     let state: StepState
     let fill: RouteFill
+    /// A small card's chip: the coin on its state's halo, no word.
+    var compact = false
 
     var body: some View {
         let (text, ink, halo) = look
+        if compact {
+            ZStack {
+                Circle().fill(halo)
+                LalaLogo(size: 13, mood: state.mood)
+            }
+            .frame(width: 18, height: 18)
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(text)
+        } else {
+            chip(text, ink, halo)
+        }
+    }
+
+    private func chip(_ text: String, _ ink: Color, _ halo: Color) -> some View {
         HStack(spacing: 5) {
             ZStack {
                 Circle().fill(halo)
@@ -463,6 +536,8 @@ struct StateChip: View {
         case .touch: ("Touch ID", .white, Color(hex: 0xFFD23F))
         case .next: ("Next", Color(hex: 0x6A6A72), Color(hex: 0xD9D9DE))
         case .failed: ("Failed", Color(hex: 0xB42A20), Color(hex: 0xFFB3A8))
+        case .blocked: ("Stopped", Color(hex: 0xB42A20), Color(hex: 0xFFB3A8))
+        case .attention: ("Look", Color(hex: 0x8A4B00), Color(hex: 0xFFB870))
         case .plain: ("", .primary, .clear)
         }
     }
@@ -473,6 +548,7 @@ struct StateChip: View {
 /// The arrow from one card to the next: solid where the money goes or went, dotted to a step still to come.
 struct StepArrow: View {
     let solid: Bool
+    var width = RouteCards.gap
 
     var body: some View {
         Canvas { context, size in
@@ -485,7 +561,7 @@ struct StepArrow: View {
             context.stroke(shaft, with: ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, dash: solid ? [] : [2, 5]))
             context.stroke(head, with: ink, style: StrokeStyle(lineWidth: 2.2, lineCap: .round, lineJoin: .round))
         }
-        .frame(width: RouteCards.gap, height: 18)
+        .frame(width: width, height: 18)
         .accessibilityHidden(true)
     }
 }
@@ -554,19 +630,29 @@ struct StepScene: View {
         case .deposit: (170, 52, 1.4)
         case .stake: (170, 44, 1.4)
         case .send: (80, 72, 1.4)
+        case .check: (130, 66, 1.4)
+        case .jev: (120, 66, 1.4)
+        case .long: (250, 35, 1.4)
+        case .short: (250, 57, 1.4)
+        case .protect: (150, 64, 1.4)
+        case .result: (90, 60, 1.4)
         }
     }
 
     private func draw(_ context: inout GraphicsContext, k: CGFloat, front: Bool) {
         func p(_ x: CGFloat, _ y: CGFloat) -> CGPoint { CGPoint(x: x * k, y: y * k) }
         let ink = GraphicsContext.Shading.color(look.drawing)
-        let line = StrokeStyle(lineWidth: 3 * k, lineCap: .round, lineJoin: .round)
+        // A small card's lines are a little heavier, as on the brand board, so they still read.
+        let line = StrokeStyle(lineWidth: (k < 0.6 ? 4 : 3) * k, lineCap: .round, lineJoin: .round)
         let thin = StrokeStyle(lineWidth: 1.6 * k, lineCap: .round)
         let fill = GraphicsContext.Shading.color(look.body)
         func stroke(_ path: Path, _ style: StrokeStyle? = nil, opacity: Double = 1) {
             context.stroke(path, with: .color(look.drawing.opacity(opacity)), style: style ?? line)
         }
         func circle(_ x: CGFloat, _ y: CGFloat, _ r: CGFloat) -> Path { Path(ellipseIn: CGRect(x: (x - r) * k, y: (y - r) * k, width: 2 * r * k, height: 2 * r * k)) }
+        // The take's green and the stop's red, lighter on a dark card.
+        let good = look.fill.dark && !look.pale ? Color(hex: 0x7EEBC0) : Color(hex: 0x1F9D6A)
+        let bad = look.fill.dark && !look.pale ? Color(hex: 0xFF8A7A) : Color(hex: 0xD9443A)
         switch (kind, front) {
         case (.wallet, true):
             var wallet = Path()
@@ -624,6 +710,43 @@ struct StepScene: View {
             stroke(trail, StrokeStyle(lineWidth: 2.2 * k, lineCap: .round, dash: [4 * k, 7 * k]))
             stroke(circle(266, 42, 11))
             var shoulders = Path(); shoulders.move(to: p(242, 100)); shoulders.addQuadCurve(to: p(290, 100), control: p(266, 50)); stroke(shoulders)
+        case (.check, false):
+            let sheet = Path(roundedRect: CGRect(x: 190 * k, y: 14 * k, width: 100 * k, height: 120 * k), cornerRadius: 10 * k)
+            context.fill(sheet, with: fill); stroke(sheet)
+            var ticks = Path()
+            for y in [48.0, 76] { ticks.move(to: p(206, y)); ticks.addLine(to: p(211, y + 5)); ticks.addLine(to: p(220, y - 4)) }
+            context.stroke(ticks, with: .color(good), style: line)
+            var rows = Path(); rows.move(to: p(232, 49)); rows.addLine(to: p(276, 49)); rows.move(to: p(232, 77)); rows.addLine(to: p(276, 77))
+            stroke(rows, StrokeStyle(lineWidth: 3.5 * k, lineCap: .round))
+        case (.jev, false):
+            let sheet = Path(roundedRect: CGRect(x: 176 * k, y: 16 * k, width: 92 * k, height: 112 * k), cornerRadius: 8 * k)
+            context.fill(sheet, with: fill); stroke(sheet)
+            context.fill(circle(250, 80, 26), with: fill); stroke(circle(250, 80, 26))
+            var handle = Path(); handle.move(to: p(269, 99)); handle.addLine(to: p(294, 124)); stroke(handle, StrokeStyle(lineWidth: 6 * k, lineCap: .round))
+            var tick = Path(); tick.move(to: p(238, 80)); tick.addLine(to: p(246, 88)); tick.addLine(to: p(260, 74))
+            context.stroke(tick, with: .color(good), style: line)
+        case (.long, false), (.short, false):
+            // The price line the position rides: up for a long, down for a short.
+            let ys: [CGFloat] = kind == .long ? [112, 84, 98, 30] : [30, 58, 44, 112]
+            var price = Path(); price.move(to: p(-4, ys[0])); price.addLine(to: p(90, ys[1])); price.addLine(to: p(140, ys[2])); price.addLine(to: p(344, ys[3]))
+            stroke(price)
+        case (.protect, true):
+            var shield = Path()
+            shield.move(to: p(230, 10)); shield.addLine(to: p(290, 30)); shield.addLine(to: p(290, 64))
+            shield.addCurve(to: p(230, 130), control1: p(290, 98), control2: p(264, 120))
+            shield.addCurve(to: p(170, 64), control1: p(196, 120), control2: p(170, 98))
+            shield.addLine(to: p(170, 30)); shield.closeSubpath()
+            context.fill(shield, with: fill); stroke(shield)
+            // The take above, dashed until it's hit; the stop below.
+            var take = Path(); take.move(to: p(186, 52)); take.addLine(to: p(274, 52))
+            context.stroke(take, with: .color(good), style: StrokeStyle(lineWidth: 3 * k, lineCap: .round, dash: [6 * k, 6 * k]))
+            var stop = Path(); stop.move(to: p(190, 86)); stop.addLine(to: p(270, 86))
+            context.stroke(stop, with: .color(bad), style: StrokeStyle(lineWidth: 3 * k, lineCap: .round))
+        case (.result, false):
+            var up = Path(); up.move(to: p(126, 50)); up.addCurve(to: p(244, 22), control1: p(170, 20), control2: p(206, 18))
+            context.stroke(up, with: .color(good), style: StrokeStyle(lineWidth: 4 * k, lineCap: .round, dash: [7 * k, 7 * k]))
+            var down = Path(); down.move(to: p(126, 72)); down.addCurve(to: p(244, 100), control1: p(170, 100), control2: p(206, 104))
+            context.stroke(down, with: .color(bad), style: StrokeStyle(lineWidth: 4 * k, lineCap: .round))
         default:
             break
         }

@@ -925,17 +925,13 @@ struct ProfileMenu: View {
 
 // MARK: Canvas
 
-/// The portfolio frame and the plan beside it; LALA AI's cursor places the blocks one by one.
-/// What the canvas shows: the portfolio and the plan. The pan and zoom around it are CanvasViewport's, and this view
-/// takes nothing from it, so what it reads from the workspace redraws the canvas and nothing else does.
+/// What the canvas shows: the portfolio and the plan beside it, a trade plan as route cards the coin cursor lays out.
+/// The pan and zoom around it are CanvasViewport's, and this view takes nothing from it, so what it reads from the
+/// workspace redraws the canvas and nothing else does.
 struct StudioCanvas: View {
     @Environment(Workspace.self) private var ws
-    @State private var frames = BlockFrames()
-    /// How many plan blocks are on the canvas; grows one by one when a new plan arrives.
-    @State private var shown = 0
-    /// The widest route on the canvas (RouteWidth): the plan column widens for three cards in a row.
+    /// The widest route on the canvas (RouteWidth): the plan column widens for a row of cards.
     @State private var routeWidth: CGFloat = 0
-    @State private var assembling = false
 
     /// Portfolio frame + gap + plan + leading padding.
     static let contentWidth: CGFloat = 28 + 270 + 36 + 470 + 24
@@ -944,7 +940,7 @@ struct StudioCanvas: View {
         // The plan once per pass: the blocks, the status and the lines all read it.
         let nodes = nodes
         HStack(alignment: .top, spacing: 36) {
-            StudioPortfolio(frames: frames)
+            StudioPortfolio()
             plan(nodes).frame(width: max(470, routeWidth), alignment: .topLeading)
                 .onPreferenceChange(RouteWidth.self) { width in MainActor.assumeIsolated { routeWidth = width } }
         }
@@ -953,11 +949,6 @@ struct StudioCanvas: View {
         .fixedSize(horizontal: false, vertical: true)
         // Inside the zoom: a pan moves none of the frames measured in it.
         .coordinateSpace(.named("studio"))
-        // Only with a plan: without one there's nothing to join, and the Canvas would be a bitmap as big as the content.
-        .background(alignment: .topLeading) {
-            if !nodes.isEmpty { Connectors(frames: frames, visible: Set(nodes.prefix(shown).map(\.id)).union(["pf.solana"])) }
-        }
-        .task(id: planKey) { await assemble() }
     }
 
     // MARK: Plan
@@ -965,8 +956,6 @@ struct StudioCanvas: View {
     private var hasRoute: Bool { ws.intent != TradeIntent() || ws.managesPosition }
     /// A reopened canvas, or this one after its money move: its board as it was.
     private var board: CanvasSession? { ws.savedBoard ?? ws.finishedCanvas }
-    /// Changes only when the plan itself changes, not on every price refresh: the assembly replays per plan.
-    private var planKey: String { hasRoute ? String(describing: ws.intent) : "" }
     /// Once the plan is on the exchange, the canvas shows the position itself instead of the old route.
     private var nodes: [StudioNode] { hasRoute && !ws.managesPosition ? StudioNode.build(ws) : [] }
 
@@ -1024,30 +1013,18 @@ struct StudioCanvas: View {
                               (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty { placeholder }
                 }
             } else {
-                let left = nodes.filter { $0.column == 0 }, right = nodes.filter { $0.column == 1 }
-                HStack(alignment: .top, spacing: 30) {
-                    VStack(spacing: 18) { ForEach(left) { node($0, nodes: nodes) } }.frame(width: 220)
-                    VStack(spacing: 18) { ForEach(right) { node($0, nodes: nodes) } }.frame(width: 220)
-                }
-                ForEach(nodes.filter { $0.column == 2 }) { node($0, nodes: nodes) }
-                if nodes.contains(where: { $0.status == .blocked }), !assembling { FixChoices() }
-                if let choices = ws.takeChoices, !assembling {
+                let route = ws.planRoute(nodes)
+                RouteCards(steps: route.steps, footer: route.footer, build: true,
+                           buildKey: String(describing: ws.intent) + route.steps.map(\.label).joined())
+                Label(route.footer, systemImage: "signature").font(.ui(10)).foregroundStyle(.secondary)
+                    .frame(maxWidth: 470, alignment: .leading)
+                if nodes.contains(where: { $0.status == .blocked }), ws.assembly == nil { FixChoices() }
+                if let choices = ws.takeChoices, ws.assembly == nil {
                     TakeChoices(choices: choices, risk: ws.evaluation.sizing?.lossAtStopUSD)
                         .transition(.opacity)
                 }
             }
         }
-        .overlay(alignment: .topLeading) { cursors(nodes) }
-    }
-
-    private func node(_ n: StudioNode, nodes: [StudioNode]) -> some View {
-        let index = nodes.firstIndex { $0.id == n.id } ?? 0
-        let visible = index < shown
-        let current = assembling && index == shown - 1
-        return StudioNodeView(node: n)
-            .overlay { if current { RoundedRectangle(cornerRadius: 20).strokeBorder(cursorColor(index, n), lineWidth: 3) } }
-            .opacity(visible ? 1 : 0)
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("studio")) } action: { frames.record(n.id, $0) }
     }
 
     private var placeholder: some View {
@@ -1084,7 +1061,7 @@ struct StudioCanvas: View {
     private func statusText(_ nodes: [StudioNode]) -> String {
         if ws.allocationPreview != nil { return ws.pendingAllocation != nil ? "ready to sign" : "nothing to place" }
         guard hasRoute else { return board.map { $0.outcome.map { $0.ok ? "executed" : "failed" } ?? "saved canvas" } ?? "waiting for a task" }
-        if assembling { return "building · \(shown) of \(nodes.count)" }
+        if let a = ws.assembly { return "building · \(a.shown) of \(a.total)" }
         if ws.managesPosition { return ws.positions.contains { $0.coin == ws.intent.asset } ? "position open" : "done · position closed" }
         if nodes.contains(where: { $0.status == .blocked }) { return "stopped by the rules" }
         return ws.planIsReady ? "ready to sign" : "needs details"
@@ -1093,101 +1070,9 @@ struct StudioCanvas: View {
     private func statusTint(_ nodes: [StudioNode]) -> Color {
         if ws.allocationPreview != nil { return ws.pendingAllocation != nil ? Brand.profit : .secondary }
         if !hasRoute, let o = board?.outcome { return o.ok ? Brand.profit : Brand.loss }
-        guard hasRoute, !assembling else { return .secondary }
+        guard hasRoute, ws.assembly == nil else { return .secondary }
         if nodes.contains(where: { $0.status == .blocked }) { return Brand.blockedInk }
         return ws.planIsReady || ws.managesPosition ? Brand.profit : Brand.jevInk
-    }
-
-    // MARK: Assembly
-
-    private func assemble() async {
-        let count = nodes.count
-        guard count > 0 else { shown = 0; assembling = false; ws.assembly = nil; return }
-        shown = 0
-        assembling = true
-        for i in 1...count {
-            try? await Task.sleep(for: .milliseconds(420))
-            if Task.isCancelled { ws.assembly = nil; return }
-            withAnimation(.spring(response: 0.45, dampingFraction: 0.72)) { shown = i }
-            ws.assembly = (i, count)
-        }
-        try? await Task.sleep(for: .milliseconds(700))
-        withAnimation(.easeOut(duration: 0.3)) { assembling = false; ws.assembly = nil }
-    }
-
-    /// LALA AI carries the blocks; a second cursor joins when the plan is long, Jev carries his own check.
-    private func carrier(_ index: Int, _ n: StudioNode) -> (String, Color) {
-        if n.kind == .jev { return ("Jev", Brand.jevCursor) }
-        if index >= 3, index % 2 == 1 { return ("Assistant · 2", Brand.secondCursor) }
-        return ("Assistant", Brand.accent)
-    }
-
-    private func cursorColor(_ index: Int, _ n: StudioNode) -> Color { carrier(index, n).1 }
-
-    @ViewBuilder private func cursors(_ nodes: [StudioNode]) -> some View {
-        if assembling, shown > 0, shown <= nodes.count {
-            let (label, color) = carrier(shown - 1, nodes[shown - 1])
-            PlanCursor(frames: frames, id: nodes[shown - 1].id, label: label, color: color)
-                .animation(.easeInOut(duration: 0.4), value: shown)
-        }
-        Color.clear.frame(width: 1, height: 1)
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("studio")) } action: { frames.record("plan.origin", $0) }
-    }
-
-}
-
-/// Where the canvas's blocks are, for the lines between them and the assistant's cursor. Kept apart from the canvas and
-/// read only by those two: a block that moves or grows (a hovered token row, a new plan block) redraws them, not the
-/// whole canvas, and nothing at all when no plan is drawn.
-@Observable
-final class BlockFrames {
-    private(set) var rects: [String: CGRect] = [:]
-
-    func record(_ id: String, _ frame: CGRect) {
-        if rects[id] != frame { rects[id] = frame }
-    }
-}
-
-/// The assistant's cursor at the corner of the block it's placing.
-private struct PlanCursor: View {
-    let frames: BlockFrames
-    let id: String
-    let label: String
-    let color: Color
-
-    var body: some View {
-        if let f = frames.rects[id], let origin = frames.rects["plan.origin"] {
-            StudioCursor(label: label, color: color)
-                .offset(x: f.maxX - origin.minX - 34, y: f.maxY - origin.minY - 20)
-        }
-    }
-}
-
-/// The lines between the blocks on the canvas.
-private struct Connectors: View {
-    let frames: BlockFrames
-    /// The blocks already placed: one still waiting its turn in the assembly gets no line yet.
-    let visible: Set<String>
-
-    var body: some View {
-        let frames = frames.rects
-        let pairs: [(String, String, Color)] = [
-            ("pf.solana", "source", Color(hex: 0x9945FF)), ("source", "bridge", Color(hex: 0x9945FF)),
-            ("bridge", "position", Brand.relay), ("position", "protection", Color(hex: 0x0F6B5D)),
-            ("protection", "jev", Brand.jevCursor), ("risk", "outcome", .primary), ("jev", "outcome", .primary)
-        ]
-        Canvas { context, _ in
-            for (a, b, color) in pairs where visible.contains(a) && visible.contains(b) {
-                guard let fa = frames[a], let fb = frames[b] else { continue }
-                var path = Path()
-                let start = fb.minY > fa.maxY + 4 && abs(fb.midX - fa.midX) < 60 ? CGPoint(x: fa.midX, y: fa.maxY) : CGPoint(x: fa.maxX, y: fa.midY)
-                let end = fb.minY > fa.maxY + 4 && abs(fb.midX - fa.midX) < 60 ? CGPoint(x: fb.midX, y: fb.minY) : CGPoint(x: fb.minX, y: fb.midY)
-                path.move(to: start)
-                path.addCurve(to: end, control1: CGPoint(x: (start.x + end.x) / 2, y: start.y), control2: CGPoint(x: (start.x + end.x) / 2, y: end.y))
-                context.stroke(path, with: .color(color.opacity(0.8)), lineWidth: 2.5)
-            }
-        }
-        .allowsHitTesting(false)
     }
 }
 
@@ -1437,25 +1322,6 @@ struct StatusChip: View {
     }
 }
 
-struct StudioCursor: View {
-    let label: String
-    let color: Color
-
-    var body: some View {
-        ZStack(alignment: .topLeading) {
-            Image(systemName: "cursorarrow").font(.system(size: 22, weight: .bold)).foregroundStyle(color)
-                .shadow(color: .white, radius: 0.5)
-            Text(label).font(.ui(11, .heavy)).foregroundStyle(color == Brand.jevCursor || color == Brand.accent ? Brand.onAccent : .white)
-                .padding(.horizontal, 8).padding(.vertical, 3)
-                .background(UnevenRoundedRectangle(topLeadingRadius: 3, bottomLeadingRadius: 10, bottomTrailingRadius: 10, topTrailingRadius: 10).fill(color))
-                .offset(x: 16, y: 18)
-                .fixedSize()
-        }
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-}
-
 // MARK: Portfolio frame
 
 /// Tokens beyond the balances read one by one: Solana's inside the Solana card, the other networks' in a card of their
@@ -1527,8 +1393,6 @@ struct HoldingRow: View {
 
 struct StudioPortfolio: View {
     @Environment(Workspace.self) private var ws
-    /// Where the Solana card is, for the plan's first line. A class: passing it never counts as a change.
-    let frames: BlockFrames
 
     var body: some View {
         Group {
@@ -1600,7 +1464,6 @@ struct StudioPortfolio: View {
             .padding(11)
             .background(RoundedRectangle(cornerRadius: 16).fill(Brand.solanaTint))
             .modifier(Openable(place: "solana"))
-            .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("studio")) } action: { frames.record("pf.solana", $0) }
 
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 10) {
@@ -1827,6 +1690,95 @@ struct StudioNode: Identifiable {
             out.append(StudioNode(id: "outcome", kind: .outcome, label: "Result", title: line, lines: [], status: .info))
         }
         return out
+    }
+}
+
+extension Workspace {
+    /// The trade plan as route cards, in the order it happens: the money from Solana (or already on Hyperliquid), the
+    /// bridge, the rules and Jev's check, the position, its stop and take, and what it comes to. A step a rule stops,
+    /// or that waits for a detail, says so on its card; its lines open with a click.
+    func planRoute(_ nodes: [StudioNode]) -> (steps: [ActivityBubble], footer: String) {
+        func node(_ kind: StudioNode.Kind) -> StudioNode? { nodes.first { $0.kind == kind } }
+        func state(_ s: Block.Status, check: Bool = false) -> String {
+            switch s {
+            case .blocked: "blocked"
+            case .needsInput: "attention"
+            case .ready, .warning, .info: check ? "passed" : "info"
+            case .noData: "info"
+            }
+        }
+        func card(_ label: String, _ title: String, _ lines: [String], _ status: String, logo: String? = nil, _ fill: RouteFill) -> ActivityBubble {
+            ActivityBubble(kind: "step", label: label, title: title, lines: lines, status: status, asset: intent.asset, logo: logo, fill: fill)
+        }
+        var steps: [ActivityBubble] = []
+        let sizing = evaluation.sizing
+        // «Not needed»: the margin is on Hyperliquid already, and the route starts there.
+        let bridge = node(.bridge).flatMap { $0.status == .info ? nil : $0 }
+        if let source = node(.source) {
+            if let bridge {
+                let send = quote?.amountIn ?? intent.amountUSDC
+                // How much leaves the wallet and what stays; what stops it (short of money) first.
+                let wallet = solana.map { s in send.map { "wallet \(Fmt.num(s.usdc)) → \(Fmt.num(s.usdc - $0)) USDC" } ?? "wallet \(Fmt.num(s.usdc)) USDC" }
+                let lines = source.status == .blocked ? Array(source.lines.suffix(1)) + [wallet].compactMap { $0 } : [wallet].compactMap { $0 }
+                steps.append(card("FROM · SOLANA", send.map { "\(Fmt.num($0)) USDC" } ?? "USDC", lines.isEmpty ? source.lines : lines,
+                                  state(source.status), logo: "sol", .solana))
+                // Its amount waits for the position's checks: nothing for the user to do here.
+                let oneClick = bridge.label.contains("1Click") && !bridge.label.contains("Relay")
+                let lines2 = quote.map { q in
+                    ["send \(Fmt.num(q.amountIn)) → get \(Fmt.num(q.amountOut)) USDC",
+                     "fee ≈ \(Fmt.usd(q.amountIn - q.reserve - q.amountOut))" + (q.time.firstMatch(of: /\d+\s*s\b/).map { " · ≈ \($0.0)" } ?? ""),
+                     q.opening ? "incl. Hyperliquid's one-time account fee" : nil].compactMap { $0 }
+                } ?? bridge.lines
+                steps.append(card(oneClick ? "BRIDGE · 1CLICK" : "BRIDGE · RELAY", "→ Hyperliquid", lines2,
+                                  bridge.status == .needsInput ? "info" : state(bridge.status), logo: oneClick ? "usdc" : "relay", .relay))
+            } else {
+                steps.append(card("FROM · HYPERLIQUID", hl.map { "\(Fmt.num($0.withdrawable)) USDC" } ?? "USDC",
+                                  ["the margin is on Hyperliquid already"], "info", logo: "hype", .hyperliquid))
+            }
+        }
+        if let r = node(.risk) {
+            // The loss at the stop is the result card's; the checks themselves here.
+            steps.append(card("CHECK RULES", r.title, r.lines.filter { !$0.hasPrefix("If the stop") }, state(r.status, check: true), .check))
+        }
+        if let j = node(.jev) {
+            steps.append(card("JEV CHECKS", j.status == .warning ? "Has doubts" : "Matches request", j.lines,
+                              j.status == .warning ? "attention" : "passed", .check))
+        }
+        if let p = node(.position) {
+            let name = IntentParser.pretty(intent.asset).components(separatedBy: " (").first ?? intent.asset
+            var lines = p.lines
+            if let s = sizing, let m = market {
+                lines = ["\(Fmt.num(s.size, maxFraction: m.szDecimals)) \(name) at \(intent.entryPx == nil ? "≈ " : "limit ")\(Fmt.price(s.entry))",
+                         "size \(Fmt.usd(s.notional)) · margin \(Fmt.usd(s.margin))",
+                         "liquidation ≈ \(Fmt.price(s.liquidationPrice))"]
+            }
+            // What stops it goes first: it's the line the card shows.
+            if p.status == .blocked, let problem = evaluation.problem ?? p.lines.last { lines.insert(problem, at: 0) }
+            steps.append(card("OPEN \(p.long ? "LONG" : "SHORT") · HYPERLIQUID", "\(name) \(Fmt.num(intent.leverage ?? 1))×",
+                              lines, state(p.status), logo: TokenLogo.name(forAsset: intent.asset) ?? "hype", .hyperliquid))
+        }
+        if let s = node(.protection) {
+            var lines = s.lines
+            if let z = sizing, let stop = intent.stopPct {
+                lines = ["stop \(Fmt.price(z.stopPrice)) · −\(Fmt.pct(stop)) · −\(Fmt.usd(z.lossAtStopUSD))"]
+                if let tp = z.takePrice, let profit = z.profitAtTakeUSD {
+                    let pct = (abs(tp - z.entry) / z.entry * 100).rounded(1, .plain)
+                    lines.append("take \(Fmt.price(tp)) · +\(Fmt.pct(pct)) · +\(Fmt.usd(profit))")
+                }
+                lines.append("both on the exchange, on the mark price")
+            }
+            steps.append(card("PROTECT", sizing?.takePrice != nil ? "Stop + take" : "Stop", lines, state(s.status), logo: "hype", .hyperliquid))
+        }
+        if let s = sizing {
+            let take = s.profitAtTakeUSD.map { " or +\(Fmt.usd($0))" } ?? ""
+            var lines = ["at the stop / at the take"]
+            if let profit = s.profitAtTakeUSD, s.lossAtStopUSD > 0 { lines.append("reward/risk 1:\(Fmt.num((profit / s.lossAtStopUSD).rounded(1, .plain)))") }
+            lines.append("fees ≈ \(Fmt.usd(s.feesUSD)) included")
+            steps.append(card("RESULT · ESTIMATE", "−\(Fmt.usd(s.lossAtStopUSD))\(take)", lines, "info", .check))
+        }
+        let signatures = nodes.filter { $0.signature != nil }.count
+        let footer = "Execute shows the simulation first, then \(signatures) signature\(signatures == 1 ? "" : "s") — nothing is signed before your Touch ID."
+        return (steps, footer)
     }
 }
 
