@@ -190,7 +190,7 @@ struct MenuBarContent: View {
                 }
                 Spacer()
                 VStack(alignment: .trailing, spacing: 1) {
-                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.ui(14, .heavy)).monospacedDigit()
+                    Text(ws.total.map(Fmt.usd) ?? "—").font(.ui(14, .heavy)).monospacedDigit()
                     if !ws.positions.isEmpty {
                         Text("\(signed(ws.positionsPnl)) in positions").font(.ui(10, .semibold))
                             .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)

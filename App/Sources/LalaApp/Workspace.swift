@@ -251,6 +251,13 @@ final class Workspace {
     var near: Decimal = 0
     /// Its value in dollars, at Hyperliquid's NEAR price.
     var nearUSD: Decimal { near * (markets["NEAR"]?.markPx ?? 0) }
+    /// Gas money: SOL on Solana, ETH on Base and Robinhood Chain, at Hyperliquid's prices. It is the user's money, so
+    /// the balance shows it (`total`); the risk rules leave it out (`equity`), since no trade may spend it.
+    var solUSD: Decimal { (solana?.sol ?? 0) * (markets["SOL"]?.markPx ?? 0) }
+    var gasETH: Decimal { (base?.eth ?? 0) + (robinhood?.eth ?? 0) }
+    var gasETHUSD: Decimal { gasETH * (markets["ETH"]?.markPx ?? 0) }
+    /// Everything the wallet holds, gas included: the balance on screen.
+    var total: Decimal? { equity.map { $0 + solUSD + gasETHUSD } }
     /// Hyperliquid's HLP vault: what is in it and, while a deposit is locked, until when.
     var hlp: (equity: Decimal, lockedUntil: Date?) = (0, nil)
     /// On Base, at the Hyperliquid (EVM) address: idle USDC, USDC supplied to Aave, ETH for gas.

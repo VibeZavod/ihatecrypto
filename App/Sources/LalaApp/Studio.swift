@@ -494,7 +494,7 @@ struct StudioRail: View {
                 if ws.updatedAt == nil {
                     Skeleton(width: 150, height: 34, radius: 9).padding(.vertical, 3)
                 } else {
-                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.ui(32, .semibold)).monospacedDigit().tracking(-0.6)
+                    Text(ws.total.map(Fmt.usd) ?? "—").font(.ui(32, .semibold)).monospacedDigit().tracking(-0.6)
                 }
                 if !ws.positions.isEmpty {
                     Text("\(signed(ws.positionsPnl)) in positions").font(.ui(12, .semibold))
@@ -529,7 +529,7 @@ struct StudioRail: View {
                         if ws.updatedAt == nil {
                             Skeleton(width: 44, height: 11)
                         } else {
-                            Text(ws.equity.map(Fmt.usd) ?? "—").font(.ui(11, .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                            Text(ws.total.map(Fmt.usd) ?? "—").font(.ui(11, .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                         }
                         if !ws.positions.isEmpty {
                             Text(signed(ws.positionsPnl)).font(.ui(10, .semibold))
@@ -1487,7 +1487,7 @@ struct StudioPortfolio: View {
             HStack {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("PORTFOLIO").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
-                    Text(ws.equity.map(Fmt.usd) ?? "—").font(.ui(20, .heavy)).monospacedDigit()
+                    Text(ws.total.map(Fmt.usd) ?? "—").font(.ui(20, .heavy)).monospacedDigit()
                     let series = ws.equitySeries()
                     if series.count > 2, let first = series.first, let last = series.last {
                         Text("\(signed(last.usd - first.usd)) · \(Int((last.at.timeIntervalSince(first.at) / 86_400).rounded(.up))) d")
@@ -1512,7 +1512,8 @@ struct StudioPortfolio: View {
                     TokenLogo(name: "sol", size: 34)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Solana").font(.ui(14, .semibold))
-                        Text(ws.solana.map { "\(Fmt.num($0.sol, maxFraction: 4)) SOL" } ?? "no address").font(.ui(10)).foregroundStyle(Brand.solanaInk)
+                        Text(ws.solana.map { "\(Fmt.num($0.sol, maxFraction: 4)) SOL" + (ws.markets["SOL"] != nil ? " ≈ \(Fmt.usd(ws.solUSD)) · gas" : "") } ?? "no address")
+                            .font(.ui(10)).foregroundStyle(Brand.solanaInk)
                     }
                     Spacer()
                     HStack(spacing: 4) {
@@ -1615,6 +1616,26 @@ struct StudioPortfolio: View {
             if ws.near > 0 {
                 place("near", "NEAR", ws.markets["NEAR"] != nil ? "≈ \(Fmt.usd(ws.nearUSD))" : "native NEAR",
                       "\(Fmt.num(ws.near, maxFraction: 4)) NEAR", tint: Color(light: 0xE6FBF3, dark: 0x0E2A20), ink: Color(light: 0x05785A, dark: 0x00EC97))
+            }
+
+            // ETH that pays the fees on Base and Robinhood Chain: small, but the user's money.
+            if ws.gasETH > 0 {
+                HStack(spacing: 10) {
+                    TokenLogo(name: "eth", size: 22)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("ETH · gas").font(.ui(12, .semibold))
+                        Text([(ws.base?.eth ?? 0) > 0 ? "Base" : nil, (ws.robinhood?.eth ?? 0) > 0 ? "Robinhood" : nil]
+                            .compactMap { $0 }.joined(separator: ", ")).font(.ui(10)).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 0) {
+                        Text(Fmt.usd(ws.gasETHUSD)).font(.ui(12, .bold)).monospacedDigit()
+                        Text("\(Fmt.num(ws.gasETH, maxFraction: 6)) ETH").font(.ui(9)).foregroundStyle(.secondary).monospacedDigit()
+                    }
+                }
+                .padding(.horizontal, 11).padding(.vertical, 8)
+                .background(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.cardBorder))
+                .help("ETH at your EVM address pays the network fees on Base and Robinhood Chain")
             }
 
             RobinhoodCard()

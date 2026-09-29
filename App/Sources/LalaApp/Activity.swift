@@ -186,7 +186,7 @@ extension Workspace {
         if !shownTokens.isEmpty {
             facts.append("Other tokens on Solana: " + shownTokens.map { "\(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol)\($0.usd.map { " ≈ \(Fmt.usd($0))" } ?? "")" }.joined(separator: ", ") + ".")
         }
-        if let e = equity { facts.append("Portfolio total: \(Fmt.usd(e)).") }
+        if let t = total { facts.append("Portfolio total: \(Fmt.usd(t)), gas included (\(Fmt.usd(solUSD + gasETHUSD)) in SOL and ETH for fees).") }
         let week = equitySeries()
         if week.count > 2, let first = week.first, let last = week.last {
             facts.append("Portfolio since \(Fmt.date(first.at)): \(Fmt.usd(first.usd)) → \(Fmt.usd(last.usd)) (\(signed(last.usd - first.usd))).")
