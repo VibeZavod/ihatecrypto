@@ -141,38 +141,74 @@ extension Executor {
         let rpc = EVMRPC.robinhood, usdg = EVMRPC.robinhoodUSDG, me = wallet.evm, chain = Relay.Chain.robinhood
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1), spend = Decimal(units) / 1_000_000
         try await ensureEVM(.robinhood, usdc: units)
-        let quote = try await Relay.quote(user: me, recipient: me, originChain: chain, destinationChain: chain,
-                                          originCurrency: usdg, destinationCurrency: token.address, amount: units)
-        let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": quote.recipient.lowercased()],
-                                         expected: ["sender": me.lowercased(), "recipient": me.lowercased()], subject: "Relay quote")
-        guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
-        guard let proxy = try await Relay.approvalProxy(chainId: chain)?.lowercased(),
-              let call = quote.evm.last, call.to.lowercased() == proxy, call.chainId == chain, call.value == "0" || call.value == "<null>",
-              quote.evm.dropLast().allSatisfy({ exactApprove($0, token: usdg, spender: proxy, units: Decimal(units)) }) else {
-            throw ExecutionError("Relay's transactions don't go to the approval proxy it publishes for Robinhood Chain, for exactly this amount. Nothing was signed.")
+        guard let proxy = try await Relay.approvalProxy(chainId: chain)?.lowercased() else { throw ExecutionError("Relay publishes no approval proxy for Robinhood Chain.") }
+        /// Relay's quote with every check: from and to this wallet, its call to the proxy after an exact approve, the price.
+        func checked() async throws -> (quote: Relay.Quote, call: Relay.EVMStep, price: Decimal, out: Decimal) {
+            let quote = try await Relay.quote(user: me, recipient: me, originChain: chain, destinationChain: chain,
+                                              originCurrency: usdg, destinationCurrency: token.address, amount: units)
+            let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": quote.recipient.lowercased()],
+                                             expected: ["sender": me.lowercased(), "recipient": me.lowercased()], subject: "Relay quote")
+            guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
+            guard let call = quote.evm.last, call.to.lowercased() == proxy, call.chainId == chain, call.value == "0" || call.value == "<null>",
+                  quote.evm.dropLast().allSatisfy({ exactApprove($0, token: usdg, spender: proxy, units: Decimal(units)) }) else {
+                throw ExecutionError("Relay's transactions don't go to the approval proxy it publishes for Robinhood Chain, for exactly this amount. Nothing was signed.")
+            }
+            let out = (Decimal(string: quote.amountOut) ?? 0) / scale, worthOut = Decimal(string: quote.amountOutUSD) ?? 0
+            guard out > 0, spend - worthOut <= max(spend * Decimal(string: "0.03")!, Decimal(string: "0.15")!) else {
+                throw ExecutionError("Relay gives \(Fmt.usd(worthOut)) of \(token.symbol) for \(Fmt.num(spend)) USDG: more lost than allowed. Nothing was signed.")
+            }
+            let price = spend / out
+            if let p = listing.priceUSD, price > p * Decimal(string: "1.05")! || price < p * Decimal(string: "0.95")! {
+                throw ExecutionError("Relay's price \(Fmt.usd(price)) is off DexScreener's \(Fmt.usd(p)) by more than 5%. Nothing was signed.")
+            }
+            return (quote, call, price, out)
         }
-        let out = (Decimal(string: quote.amountOut) ?? 0) / scale, worthOut = Decimal(string: quote.amountOutUSD) ?? 0
-        guard out > 0, spend - worthOut <= max(spend * Decimal(string: "0.03")!, Decimal(string: "0.15")!) else {
-            throw ExecutionError("Relay gives \(Fmt.usd(worthOut)) of \(token.symbol) for \(Fmt.num(spend)) USDG: more lost than allowed. Nothing was signed.")
-        }
-        let price = spend / out
-        if let p = listing.priceUSD, price > p * Decimal(string: "1.05")! || price < p * Decimal(string: "0.95")! {
-            throw ExecutionError("Relay's price \(Fmt.usd(price)) is off DexScreener's \(Fmt.usd(p)) by more than 5%. Nothing was signed.")
-        }
-        report("\(token.name) (\(token.symbol)): no Uniswap v3 pool with USDG, so Relay swaps it on Robinhood Chain: ≈ \(Fmt.usd(price)) a token.")
+        var q = try await checked()
+        let first = q
+        report("\(token.name) (\(token.symbol)): no Uniswap v3 pool with USDG, so Relay swaps it on Robinhood Chain: ≈ \(Fmt.usd(q.price)) a token.")
         try await approve(rpc, token: usdg, spender: proxy, amount: units, note: "Approve exactly \(Fmt.num(spend)) USDG to Relay")
         let before = try await balance(token.address, on: rpc)
-        let hash = try await sendEVM(rpc, to: call.to, data: call.data, note: "Relay: buy \(token.symbol) for \(Fmt.num(spend)) USDG")
-        try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "Robinhood USDG→\(token.symbol), tx \(hash)"))
+        // Relay's route is priced for the moment it's quoted: after the approve's wait it's asked again, and a dry run that
+        // still reverts (a pool moved: «T8: Insufficient Liquidity» on SHROOM) asks once more. The dry run comes before any
+        // signature, so a retry signs nothing twice.
+        var hash = ""
+        for attempt in 0..<3 {
+            q = try await checked()
+            // Asked again, the price may have moved: more than 10% fewer tokens than when the move started stops here and
+            // says so, rather than buying at a price nobody saw.
+            if let drop = Self.worseByMoreThanTenPercent(first: first.out, now: q.out) {
+                throw ExecutionError("⚠️ Asked again, Relay gives \(Fmt.num(q.out, maxFraction: 2)) \(token.symbol) for \(Fmt.num(spend)) USDG instead of \(Fmt.num(first.out, maxFraction: 2)) "
+                                     + "(−\(Fmt.num(drop))%): more than 10% worse, so nothing was swapped. "
+                                     + "The exact approve stays; say «do it» again to buy at the new price.")
+            }
+            do {
+                hash = try await sendEVM(rpc, to: q.call.to, data: q.call.data, note: "Relay: buy \(token.symbol) for \(Fmt.num(spend)) USDG")
+                break
+            } catch where "\(error.localizedDescription)".contains("eth_estimateGas") {
+                guard attempt < 2 else {
+                    throw ExecutionError("Relay couldn't route \(Fmt.num(spend)) USDG into \(token.symbol) just now (\(error.localizedDescription)). Nothing was swapped; "
+                                         + "the exact approve stays for the next try. Try again in a minute, or with less.")
+                }
+                report("Relay's route for \(token.symbol) moved before the swap: asking it again.")
+                try await Task.sleep(for: .seconds(2))
+            }
+        }
+        try journal.append(.init(chain: "relay", id: q.quote.requestId, kind: .signed, note: "Robinhood USDG→\(token.symbol), tx \(hash)"))
         var after = try await balance(token.address, on: rpc)
         for _ in 0..<30 where after <= before {
             try await Task.sleep(for: .seconds(1))
             after = try await balance(token.address, on: rpc)
         }
-        guard after > before else { throw ExecutionError("Relay took the USDG but no \(token.symbol) arrived yet. Order \(quote.requestId) is in the journal. \(EVMNetwork.robinhood.explorer)/tx/\(hash)") }
+        guard after > before else { throw ExecutionError("Relay took the USDG but no \(token.symbol) arrived yet. Order \(q.quote.requestId) is in the journal. \(EVMNetwork.robinhood.explorer)/tx/\(hash)") }
         let got = (after - before) / scale
         return "Bought \(Fmt.num(got, maxFraction: 6)) \(token.symbol) (\(token.name)) for \(Fmt.num(spend)) USDG via Relay — ≈ \(Fmt.usd(spend / got)) a token. "
             + "You hold \(Fmt.num(after / scale, maxFraction: 6)) \(token.symbol) on Robinhood Chain. \(EVMNetwork.robinhood.explorer)/tx/\(hash)"
+    }
+
+    /// How much worse (%, one decimal) a fresh quote is than the first, when that's more than 10%; nil otherwise.
+    public static func worseByMoreThanTenPercent(first: Decimal, now: Decimal) -> Decimal? {
+        guard first > 0, now < first * Decimal(string: "0.9")! else { return nil }
+        return ((1 - now / first) * 100).rounded(1, .plain)
     }
 
     /// An EVM step that is exactly «approve `units` of `token` to `spender`».

@@ -300,3 +300,11 @@ import WalletCore
                                               recipient: "0x90f79bf6eb2c4f870365e785982e1f101e93b906", amountIn: 10_000_000, amountOutMinimum: big)
     #expect(ABI.decimal(in: Data(swap.dropFirst(4)), word: 5) == big && ABI.decimal(in: Data(swap.dropFirst(4)), word: 4) == 10_000_000)
 }
+
+// Re-quoted after the approve: more than 10% fewer tokens than the first quote stops the swap with a warning.
+@Test func requoteWorseThanTenPercentStops() {
+    #expect(Executor.worseByMoreThanTenPercent(first: 1000, now: 950) == nil)
+    #expect(Executor.worseByMoreThanTenPercent(first: 1000, now: 900) == nil)
+    #expect(Executor.worseByMoreThanTenPercent(first: 1000, now: 850) == 15)
+    #expect(Executor.worseByMoreThanTenPercent(first: 1000, now: 1200) == nil)
+}

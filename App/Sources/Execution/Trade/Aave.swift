@@ -348,27 +348,41 @@ extension Executor {
         guard try await rpc.tokenBalance(net.usdc, owner: me) >= units else {
             throw ExecutionError("No gas on \(net.name), and neither Solana nor \(net.name) has \(Fmt.usd(usd)) of USDC to buy it. Top up either first.")
         }
-        let quote = try await Relay.quote(user: me, recipient: me, originChain: chain, destinationChain: chain, originCurrency: net.usdc,
-                                          destinationCurrency: "0x0000000000000000000000000000000000000000", amount: units)
-        let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": quote.recipient.lowercased()],
-                                         expected: ["sender": me.lowercased(), "recipient": me.lowercased()], subject: "Relay quote")
-        guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
-        guard let proxy = try await Relay.approvalProxy(chainId: chain)?.lowercased(), let call = quote.evm.last,
-              call.to.lowercased() == proxy, call.chainId == chain, call.value == "0" || call.value == "<null>",
-              quote.evm.dropLast().allSatisfy({ step in
-                  let args = Data(step.data.dropFirst(4))
-                  return step.to.lowercased() == net.usdc && step.data.prefix(4).hex == "095ea7b3"
-                      && ABI.address(in: args, word: 0)?.lowercased() == proxy && ABI.decimal(in: args, word: 1) == Decimal(units)
-              }) else {
-            throw ExecutionError("Relay's transactions don't go to the approval proxy it publishes for \(net.name), for exactly this amount. Nothing was signed.")
+        guard let proxy = try await Relay.approvalProxy(chainId: chain)?.lowercased() else { throw ExecutionError("Relay publishes no approval proxy for \(net.name).") }
+        /// Relay's quote with every check: from and to this wallet, its call to the proxy after an exact approve, what it gives.
+        func checked() async throws -> Relay.EVMStep {
+            let quote = try await Relay.quote(user: me, recipient: me, originChain: chain, destinationChain: chain, originCurrency: net.usdc,
+                                              destinationCurrency: "0x0000000000000000000000000000000000000000", amount: units)
+            let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": quote.recipient.lowercased()],
+                                             expected: ["sender": me.lowercased(), "recipient": me.lowercased()], subject: "Relay quote")
+            guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
+            guard let call = quote.evm.last, call.to.lowercased() == proxy, call.chainId == chain, call.value == "0" || call.value == "<null>",
+                  quote.evm.dropLast().allSatisfy({ step in
+                      let args = Data(step.data.dropFirst(4))
+                      return step.to.lowercased() == net.usdc && step.data.prefix(4).hex == "095ea7b3"
+                          && ABI.address(in: args, word: 0)?.lowercased() == proxy && ABI.decimal(in: args, word: 1) == Decimal(units)
+                  }) else {
+                throw ExecutionError("Relay's transactions don't go to the approval proxy it publishes for \(net.name), for exactly this amount. Nothing was signed.")
+            }
+            let worthOut = Decimal(string: quote.amountOutUSD) ?? 0
+            guard worthOut > 0, usd - worthOut <= max(usd * Decimal(string: "0.05")!, Decimal(string: "0.15")!) else {
+                throw ExecutionError("Relay gives \(Fmt.usd(worthOut)) of \(net.gasCoin) for \(Fmt.usd(usd)): more lost than allowed. Nothing was signed.")
+            }
+            return call
         }
-        let worthOut = Decimal(string: quote.amountOutUSD) ?? 0
-        guard worthOut > 0, usd - worthOut <= max(usd * Decimal(string: "0.05")!, Decimal(string: "0.15")!) else {
-            throw ExecutionError("Relay gives \(Fmt.usd(worthOut)) of \(net.gasCoin) for \(Fmt.usd(usd)): more lost than allowed. Nothing was signed.")
-        }
+        _ = try await checked()
         let before = try await rpc.balance(me)
         try await approve(rpc, token: net.usdc, spender: proxy, amount: units, note: "Approve exactly \(Fmt.num(usd)) USDC to Relay for gas")
-        _ = try await sendEVM(rpc, to: call.to, data: call.data, note: "Relay: \(Fmt.usd(usd)) of USDC into \(net.gasCoin) on \(net.name)")
+        // Quoted again after the approve's wait, and once more if its dry run reverts: a route is priced for its moment.
+        for attempt in 0..<2 {
+            let call = try await checked()
+            do {
+                _ = try await sendEVM(rpc, to: call.to, data: call.data, note: "Relay: \(Fmt.usd(usd)) of USDC into \(net.gasCoin) on \(net.name)")
+                break
+            } catch where attempt == 0 && "\(error.localizedDescription)".contains("eth_estimateGas") {
+                try await Task.sleep(for: .seconds(2))
+            }
+        }
         for _ in 0..<30 where try await rpc.balance(me) <= before { try await Task.sleep(for: .seconds(1)) }
     }
 
