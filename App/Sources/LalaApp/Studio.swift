@@ -2264,7 +2264,7 @@ private struct ChatComposer: View {
             .popover(isPresented: $templatesOpen, arrowEdge: .top) {
                 TemplatesPanel { phrase in ws.draft = phrase; templatesOpen = false }
             }
-            TextField("What should we do?", text: Bindable(ws).draft, axis: .vertical)
+            TextField(ws.stepContext == nil ? "What should we do?" : "Ask about this step…", text: Bindable(ws).draft, axis: .vertical)
                 .textFieldStyle(.plain).font(.ui(14)).lineLimit(1...5)
                 // The caret in the brand's orange.
                 .tint(Brand.accent)

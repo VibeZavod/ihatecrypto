@@ -160,12 +160,16 @@ struct RouteCards: View {
             .accessibilityAction(named: "Send to chat") { sendToChat(i) }
             .accessibilityAction(named: "Copy details") { copy(i) }
             .contextMenu {
-                Button { why(i) } label: { Label("Why this way?", systemImage: "questionmark.circle") }
-                Button { withAnimation(.snappy(duration: 0.2)) { open = i } } label: { Label("Edit step…", systemImage: "pencil") }
-                    .disabled(!editable(i))
-                Button { sendToChat(i) } label: { Label { Text("Send to chat") } icon: { Image(nsImage: CoinIcon.image) } }
-                Divider()
-                Button { copy(i) } label: { Label("Copy details", systemImage: "doc.on.doc") }
+                // macOS drops menu icons unless asked; the coin marks the step going to the chat.
+                Group {
+                    Button { why(i) } label: { Label("Why this way?", systemImage: "questionmark.circle") }
+                    Button { withAnimation(.snappy(duration: 0.2)) { open = i } } label: { Label("Edit step…", systemImage: "pencil") }
+                        .disabled(!editable(i))
+                    Button { sendToChat(i) } label: { Label { Text("Send to chat") } icon: { Image(nsImage: CoinIcon.image) } }
+                    Divider()
+                    Button { copy(i) } label: { Label("Copy details", systemImage: "doc.on.doc") }
+                }
+                .labelStyle(.titleAndIcon)
             }
     }
 
@@ -454,6 +458,7 @@ struct StateChip: View {
         .padding(.leading, 3).padding(.trailing, 9).padding(.vertical, 3)
         .foregroundStyle(ink)
         .background(Capsule().fill(state == .touch ? Color.black : Color.white))
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(text)
     }
 
