@@ -44,10 +44,12 @@ targets:
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "After you click the chat's microphone, ihatecrypto listens and types what you say into the field. Nothing is sent until you send it."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "What you say in the chat becomes text in its field, recognized on this Mac when your language's model is installed."
   # Sandboxed, no network entitlement: it can only answer the app over XPC and read its own Keychain group.
+  # Its Touch ID prompt names it and shows its icon: «ihatecrypto is trying to send 0.18 USDC to 0x060b…9Ff0 on Tempo»
+  # with the coin, not «LalaSigner» with a blank bundle's icon. The executable and identifier stay, so its Keychain does.
   LalaSigner:
     type: xpc-service
     platform: macOS
-    sources: [../Sources/Signer/Service]
+    sources: [../Sources/Signer/Service, ../Sources/LalaApp/Assets.xcassets]
     info:
       path: LalaSigner-Info.plist
       properties:
@@ -60,5 +62,6 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.lala.mac.signer
         PRODUCT_NAME: LalaSigner
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: LalaSigner.entitlements
         ENABLE_APP_SANDBOX: YES

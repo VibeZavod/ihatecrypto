@@ -278,3 +278,15 @@ import WalletCore
     #expect(owed.first?.symbol == "MORPHO")
     #expect(owed.first?.claimable == Decimal(string: "417.660848530164737279"))
 }
+
+// What the Touch ID prompt says a transaction does: from its calldata, in words.
+@Test func touchIDSaysWhatIsSigned() throws {
+    let payee = "0x060b0fb0be9d90557577b3aee480711067149ff0", relay = "0x4cd00e387622c35bddb9b4c962c136462338bc31"
+    let pay = EVMCall.decode(try ERC20.transfer(to: payee, amount: 185_357))
+    #expect(pay.summary(chainId: 4217, to: EVMRPC.tempoUSDC, value: 0) == "send 0.185357 USDC to 0x060b…9ff0 on Tempo")
+    #expect(EVMCall.decode(try ERC20.approve(spender: relay, amount: 2_000_000)).summary(chainId: 42161, to: EVMRPC.arbitrumUSDC, value: 0)
+            == "let 0x4cd0…bc31 spend exactly 2 USDC on Arbitrum")
+    #expect(EVMCall.decode(try Tempo.setUserToken(EVMRPC.tempoUSDC)).summary(chainId: 4217, to: Tempo.feeManager, value: 0) == "pay Tempo's fees in USDC from now on")
+    #expect(EVMCall.decode(Data()).summary(chainId: 8453, to: payee, value: 1_000_000_000_000_000) == "send 0.001 ETH to 0x060b…9ff0 on Base")
+    #expect(pay.summary(chainId: 4217, to: payee, value: 0) == "send tokens of 0x060b…9ff0 to 0x060b…9ff0 on Tempo")
+}

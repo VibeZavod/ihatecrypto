@@ -226,6 +226,12 @@ public struct EVMRPC: Sendable {
     /// The only networks the signer signs for: the app's signing process and the CLI check the same list.
     public static let signable: Set<UInt64> = [1, 137, 42161, 8453, 4663, 4217]
 
+    /// The networks by name, for what the signer says it signs.
+    public static let names: [UInt64: String] = [1: "Ethereum", 137: "Polygon", 42161: "Arbitrum", 8453: "Base", 4663: "Robinhood Chain", 4217: "Tempo"]
+    /// The dollars ihatecrypto moves, by contract: their symbol for the Touch ID prompt; all have 6 decimals.
+    public static let dollars: [String: String] = [baseUSDC: "USDC", arbitrumUSDC: "USDC", polygonUSDC: "USDC", ethereumUSDC: "USDC",
+                                                   tempoUSDC: "USDC", robinhoodUSDG: "USDG"]
+
     /// eth_call: the raw return value.
     public func read(_ to: String, _ data: Data) async throws -> Data {
         let hex = try await call("eth_call", [["to": to, "data": "0x" + data.hex], "latest"]) as? String ?? "0x"
@@ -403,6 +409,32 @@ public enum EVMCall: Equatable, Sendable {
         default: break
         }
         return .contract(selector: "0x" + selector)
+    }
+
+    /// What the transaction does, in words for the Touch ID prompt, which reads «ihatecrypto is trying to <this>»:
+    /// «send 0.185357 USDC to 0x060b…9Ff0 on Tempo». Read from the calldata by the signer itself, never from the app's
+    /// description of it; a token or contract it doesn't know is named by its address.
+    public func summary(chainId: UInt64, to: String, value: UInt64) -> String {
+        let net = "on " + (EVMRPC.names[chainId] ?? "network \(chainId)")
+        func short(_ a: String) -> String { a.count > 12 ? "\(a.prefix(6))…\(a.suffix(4))" : a }
+        func units(_ word: Data, _ decimals: Int16) -> String {
+            let whole = word.reduce(Decimal(0)) { $0 * 256 + Decimal($1) }
+            return NSDecimalNumber(decimal: whole / pow(10, Int(decimals))).stringValue
+        }
+        let dollar = EVMRPC.dollars[to.lowercased()]
+        switch self {
+        case .transfer(let recipient, let amount):
+            return dollar.map { "send \(units(amount, 6)) \($0) to \(short(recipient)) \(net)" } ?? "send tokens of \(short(to)) to \(short(recipient)) \(net)"
+        case .approve(let spender, let amount):
+            return dollar.map { "let \(short(spender)) spend exactly \(units(amount, 6)) \($0) \(net)" } ?? "let \(short(spender)) spend tokens of \(short(to)) \(net)"
+        case .plain:
+            return "send \(units(ABI.uint(value), 18)) \(chainId == 137 ? "POL" : "ETH") to \(short(to)) \(net)"
+        case .swap: return "swap on Uniswap \(net), paying this wallet"
+        case .vault(_, let owner): return "\(owner == nil ? "deposit into" : "withdraw from") the vault \(short(to)) \(net)"
+        case .lending: return "use the lending pool \(short(to)) \(net), for this wallet"
+        case .contract where to.lowercased() == Tempo.feeManager: return "pay Tempo's fees in USDC from now on"
+        default: return "call the contract \(short(to)) \(net)"
+        }
     }
 
     /// An amount no real balance reaches: the «unlimited» allowance (≥ 2¹²⁸).

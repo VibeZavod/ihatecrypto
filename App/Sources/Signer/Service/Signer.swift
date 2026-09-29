@@ -266,7 +266,7 @@ enum Signer {
             let tx = EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee,
                                     gasLimit: gasLimit, to: to, value: value, data: data)
             var r = SignerReply(ok: true)
-            r.signedRaw = try withKey("evm", reason: "sign an EVM transaction for a site: \(to.prefix(10))…, network \(chainId)") { try tx.signed(privateKey: $0).raw }
+            r.signedRaw = try withKey("evm", reason: call.summary(chainId: chainId, to: to, value: value)) { try tx.signed(privateKey: $0).raw }
             r.checks = ["Calldata parsed by the signer: no unlimited approvals and no spending by others."]
             return r
 

@@ -1153,11 +1153,23 @@ struct RunningBoard: View {
                     RouteCards(steps: run.steps, current: Self.currentStep(run.steps, run.lines))
                 }
                 if SignerActivity.shared.waiting > 0 {
-                    Label("Touch ID — confirm on the sensor, or with your Mac password, if it asks", systemImage: "touchid")
-                        .font(.ui(13, .semibold)).foregroundStyle(Brand.onAccent)
-                        .padding(.horizontal, 12).padding(.vertical, 8)
-                        .background(Capsule().fill(Brand.accent))
-                        .transition(.opacity)
+                    // What is being signed, with the coin: the system's own window says it in the signer's words.
+                    HStack(spacing: 10) {
+                        LalaLogo(size: 30, mood: .waiting)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(ws.say("Sign with Touch ID: \(run.title)", "Подпиши Touch ID: \(run.title)")).font(.ui(13, .semibold)).lineLimit(1)
+                            Text(ws.say("Touch the sensor, or type your Mac password if it asks. It covers this move only.",
+                                        "Приложи палец к датчику или введи пароль Mac, если спросит. Подпись — только на это действие."))
+                                .font(.ui(10.5)).opacity(0.85).lineLimit(2)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "touchid").font(.system(size: 22, weight: .medium))
+                    }
+                    .foregroundStyle(Brand.onAccent)
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .frame(maxWidth: 560, alignment: .leading)
+                    .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Brand.accent))
+                    .transition(.opacity)
                 }
                 TimelineView(.periodic(from: run.started, by: 1)) { t in
                     Label("\(run.lines.last ?? "Signing") · \(Int(t.date.timeIntervalSince(run.started))) s", systemImage: "bolt.fill")
