@@ -19,7 +19,8 @@ struct ReceiveBoard: View {
                 Button { withAnimation(StudioView.spring) { ws.showReceive = false } } label: { Image(systemName: "xmark") }
                     .buttonStyle(.hoverIcon).help("Close")
             }
-            RouteCards(steps: [topUp])
+            // Only once money lands: before that «Watching · USDC or SOL» only repeated the Solana row under it.
+            if let landed = topUp { RouteCards(steps: [landed]) }
             if isSolanaAddress(ws.solanaAddress) {
                 ReceiveCard(logo: "sol", network: "Solana", badge: "recommended", address: ws.solanaAddress,
                             what: "USDC or SOL on the Solana network. USDC is what ihatecrypto trades with; keep ≈ 0.02 SOL for fees.",
@@ -47,15 +48,15 @@ struct ReceiveBoard: View {
         .onAppear { start = ws.solana.map { ($0.usdc, $0.sol) } }
     }
 
-    /// The deposit being waited for: Watching until Solana's USDC or SOL goes up, then what landed.
-    private var topUp: ActivityBubble {
+    /// What landed on Solana since the board opened; nil while nothing has.
+    private var topUp: ActivityBubble? {
         let now = ws.solana
         let usdc = start.flatMap { s in now.map { $0.usdc - s.usdc } }.flatMap { $0 > 0 ? $0 : nil }
         let sol = start.flatMap { s in now.map { $0.sol - s.sol } }.flatMap { $0 > 0 ? $0 : nil }
         let landed = [usdc.map { "+\(Fmt.num($0)) USDC" }, sol.map { "+\(Fmt.num($0, maxFraction: 6)) SOL" }].compactMap { $0 }
-        return ActivityBubble(kind: "step", label: "TOP UP · SOLANA", title: landed.first ?? "USDC or SOL",
-                              lines: [landed.isEmpty ? "watching for a deposit to land" : "landed on your Solana address"] + landed.dropFirst(),
-                              status: landed.isEmpty ? "watching" : "passed", logo: "sol", fill: .solana)
+        guard let first = landed.first else { return nil }
+        return ActivityBubble(kind: "step", label: "TOP UP · SOLANA", title: first, lines: ["landed on your Solana address"] + landed.dropFirst(),
+                              status: "passed", logo: "sol", fill: .solana)
     }
 }
 
