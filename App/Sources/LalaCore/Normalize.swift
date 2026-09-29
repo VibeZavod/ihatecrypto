@@ -127,8 +127,12 @@ public enum ChatRouter {
       send N NEAR to <NAME from the address book> | send all NEAR to <NAME> | close the NEAR account into <NAME>
       send N SOL to <NAME from the address book>
     PAYING FOR A SERVICE (MPP on Tempo, the x402 way: an API that charges per request — search, data, email, phone calls, mailed letters,
-      images, flights…): pay <GET|POST> <URL> [<JSON body>]   (the URL and body exactly as the services lookup and the service's docs give them;
+      flights, token research…): pay <GET|POST> <URL> [<JSON body>]   (the URL and body exactly as the services lookup and the service's docs give them;
       the price comes from the service and shows on a card; paid in USDC on Tempo, bridged from Solana when short, only after Confirm)
+      Don't pick a service silently when more than one fits, or when they ask what it costs or what the options are: answer "chat" with the
+      prices and offer each fitting service as a card — its pay command, the comment saying its price and what it gives and misses — the best
+      one "recommended". Go straight to the pay command only when they named the service or one clearly fits. Posts on X (Twitter): Grok's
+      x-search reads X itself (priced by use, up to ≈ $0.18); a web search with site:x.com sees only the pages a search engine indexed.
     ADDRESSES AND WATCHLIST: save <ADDRESS> as <NAME> [on solana|base|arbitrum|ethereum|tempo|hyperliquid|near] | add <NAME> to favorites | remove <NAME> from favorites   (NAME from the address book, not a ticker)
       watch token <CONTRACT or MINT> [on robinhood|base|arbitrum|ethereum|solana] | remove token <SYMBOL> from favorites
     MARKET: chart <ASSET> [week|month] | what's moving | alert me when <ASSET> is above|below|at <PRICE> | cancel alerts
@@ -200,11 +204,16 @@ public enum ChatRouter {
       rates <USDC|SOL>        where the money can earn now: each vault ihatecrypto can use and its yearly rate
       movers                  the Hyperliquid markets that moved most today
       services <WORDS>        paid APIs that take MPP payments on Tempo (mpp.dev's directory): what each does, its endpoints and prices
-      service <ID>            one of them in full: every endpoint, its price and the docs with the request's fields
+      service <ID> [<PATH>]   one of them in full: every endpoint, its price, and the docs of that endpoint with the request's fields
     Look things up whenever the answer depends on data you don't have below: a pasted address or a token's name → token; \
     how they're doing, what they hold or did → portfolio; a price or «should I long X» → market, plus portfolio for the size; \
-    where to earn → rates; paying for something, a service or an API («оплати», «купи звонок», «отправь письмо почтой») → services, \
-    then service for the fields. Never say you have no data about something before looking it up.
+    where to earn → rates; paying for something, a service or an API («оплати», «купи звонок», «отправь письмо почтой», «сколько \
+    стоит найти…») → services, then service for the fields and the price. \
+    Token research goes deeper through paid services on Tempo when the free token lookup isn't enough or they ask for more (price \
+    history, onchain trades and holders, wallet balances and PnL, the news, what people say on X): Codex (onchain token data by \
+    GraphQL, $0.001 a query), Allium (prices, history, balances, PnL, $0.02), CoinGecko (market data, $0.06), Perplexity or Brave \
+    (web and news, $0.006 / $0.035), Grok x-search (posts on X). Look them up with services, then offer them as cards with their \
+    prices; nothing is paid without their Confirm. Never say you have no data about something before looking it up.
 
     When you know enough, the final answer: {"route": "command" | "plan" | "chat" | "clarify", "command": "...", \
     "reply": "...", "show": "...", "options": [...]}
@@ -425,7 +434,7 @@ public enum ChatRouter {
         }
         let options = (a["options"] as? [[String: Any]] ?? []).compactMap { c -> Option? in
             guard let title = text(c["title"])?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty,
-                  let command = text(c["command"])?.trimmingCharacters(in: clean), !command.isEmpty, command.count <= 200,
+                  let command = text(c["command"])?.trimmingCharacters(in: clean), !command.isEmpty, command.count <= maxCommand(command),
                   // A card that opens a new canvas or clears the plan stands in for «do nothing».
                   !["new canvas", "clear the plan", "lock"].contains(command.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! "))) else { return nil }
             return Option(title: title, comment: text(c["comment"])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "", command: command,
@@ -513,13 +522,16 @@ public enum ChatRouter {
             || TakeStyle.asksForChoice(c) || IntentParser.apply(c, to: TradeIntent(), markets: markets) != nil
     }
 
+    /// A command is one short line; a paid request carries its JSON body (a question for Grok's X search runs past 200).
+    static func maxCommand(_ c: String) -> Int { c.hasPrefix("pay ") ? 2000 : 200 }
+
     static func decode(_ json: Data) throws -> Route {
         struct Answer: Decodable { let route: String; let command: String?; let reply: String? }
         let a = try JSONDecoder().decode(Answer.self, from: json)
         let command = a.command?.trimmingCharacters(in: CharacterSet(charactersIn: "`\"'«» \n")) ?? ""
         let reply = a.reply?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         switch a.route {
-        case "command" where !command.isEmpty && command.count <= 200: return .command(command)
+        case "command" where !command.isEmpty && command.count <= maxCommand(command): return .command(command)
         case "question": return .question
         case "plan": return .plan
         case "chat" where !reply.isEmpty: return .chat(reply)

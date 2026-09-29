@@ -108,3 +108,21 @@ private func challenge(_ request: String, extra: String = "") -> String {
     #expect(MPP.Answer(Data("queued".utf8)).text == "queued")
     #expect(MPP.Answer(Data(#"{"images":[{"url":"https://cdn.example/a.png","width":1024}]}"#.utf8)).items.first?.isImage == true)
 }
+
+// The chat folds a service's JSON under a reply, whole or cut short (the first paid answer's was cut at 1,500 characters).
+@Test func chatFoldsServiceJSON() {
+    let old = "Paid 0.035 USDC to brave.mpp.paywithlocus.com on Tempo. https://explore.tempo.xyz/tx/0xab\n\n{\n  \"success\" : true,\n  \"data\" : {\n    \"type\" : \"search\",\n    \"query\" : {\n      \"original\" : \"site:x.com (\\\"memorycowmoo\\\")\",\n      \"more_results_available\" : false"
+    let (words, data) = MPP.splitData(old)
+    #expect(words == "Paid 0.035 USDC to brave.mpp.paywithlocus.com on Tempo. https://explore.tempo.xyz/tx/0xab" && data?.hasPrefix("{") == true)
+    #expect(MPP.rows(data ?? "").first?.title == "type: search")
+    let hits = #"{"web":{"results":[{"title":"<strong>Moo</strong>","url":"https://x.com/moo"},{"title":"Two","url":"https://b.example"}]}}"#
+    #expect(MPP.rows(hits).map(\.title) == ["Moo", "Two"] && MPP.rows(hits).first?.url == "https://x.com/moo")
+    #expect(MPP.splitData("Plain words.\n\nNo data here.").1 == nil)
+}
+
+// A service's docs from the section of the endpoint asked for, not the doc's start.
+@Test func serviceDocsStartAtTheEndpoint() {
+    let docs = "# Grok\nintro\n### Chat\n/grok/chat body\n### Chat with X Search\ncurl -X POST https://grok.example/grok/x-search -d '{\"model\":\"grok-4.6\"}'"
+    #expect(MPP.section(docs, about: ["/grok/x-search"]).hasPrefix("\n### Chat with X Search"))
+    #expect(MPP.section(docs, about: []).hasPrefix("# Grok"))
+}

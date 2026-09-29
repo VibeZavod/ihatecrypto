@@ -1,5 +1,6 @@
 import Foundation
 import LLMCatalog
+import LalaCore
 import SwiftUI
 
 /// The chat as the eye reads it: execution steps gathered into one card, every other message on its own.
@@ -107,7 +108,9 @@ struct Reply: View {
     var outcome = false
 
     var body: some View {
-        let (emoji, text) = ChatText.leadingEmoji(message.text)
+        let (emoji, full) = ChatText.leadingEmoji(message.text)
+        // A service's raw JSON under the words (older paid answers had it): folded into a card, not a wall of braces.
+        let (text, data) = MPP.splitData(full)
         VStack(alignment: .leading, spacing: 5) {
             if let note = message.note { kicker(note) }
             if text.hasPrefix("Failed: ") {
@@ -135,6 +138,7 @@ struct Reply: View {
             } else {
                 styled(text)
             }
+            if let data { DataCard(json: data).padding(.leading, outcome || emoji != nil ? 40 : 0) }
         }
         .font(.ui(14))
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -272,7 +276,50 @@ struct StepsCard: View {
     }
 }
 
+/// A service's JSON in the chat, folded: what it found (titles with their sites, or its first values), and the JSON itself
+/// behind «Show JSON». Works on JSON cut short too: the rows are read line by line.
+struct DataCard: View {
+    let json: String
+    @State private var open = false
+
+    var body: some View {
+        let rows = MPP.rows(json)
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 6) {
+                Image(systemName: "curlybraces").font(.ui(10, .bold))
+                Text("SERVICE ANSWER").font(.ui(10, .semibold)).tracking(0.6)
+                Spacer(minLength: 8)
+                Button { open.toggle() } label: {
+                    Label(open ? "Hide JSON" : "Show JSON", systemImage: open ? "chevron.up" : "chevron.down").font(.ui(10.5, .semibold))
+                }
+                .buttonStyle(.plain).foregroundStyle(.secondary).help("The service's answer as it came")
+            }
+            .foregroundStyle(.tertiary)
+            ForEach(Array(rows.enumerated()), id: \.offset) { _, row in
+                VStack(alignment: .leading, spacing: 1) {
+                    if let url = row.url.flatMap(URL.init(string:)) {
+                        Link(destination: url) { Text(row.title).font(.ui(12.5, .semibold)).lineLimit(2).multilineTextAlignment(.leading) }.buttonStyle(.plain)
+                        Text(url.host() ?? url.absoluteString).font(.ui(10)).foregroundStyle(RouteFill.relay.accent).lineLimit(1)
+                    } else {
+                        Text(row.title).font(.ui(12)).lineLimit(2)
+                    }
+                }
+            }
+            if open {
+                ScrollView {
+                    Text(json).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .frame(maxHeight: 220)
+            }
+        }
+        .padding(.horizontal, 12).padding(.vertical, 10)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary.opacity(0.5)))
+    }
+}
+
 enum ChatText {
+
     /// «💸 Received…» → («💸», «Received…»); nil when the text starts with a letter.
     static func leadingEmoji(_ text: String) -> (String?, String) {
         guard let first = text.first, first.unicodeScalars.first?.properties.isEmojiPresentation == true

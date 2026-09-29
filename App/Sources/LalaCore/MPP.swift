@@ -226,11 +226,32 @@ public enum MPP {
         }
 
         /// Search engines mark matches with <strong>: the canvas shows the words.
-        static func plain(_ s: String) -> String {
+        public static func plain(_ s: String) -> String {
             s.replacing(/<[^>]+>/, with: "").replacingOccurrences(of: "&amp;", with: "&").replacingOccurrences(of: "&quot;", with: "\"")
                 .replacingOccurrences(of: "&#39;", with: "'").replacingOccurrences(of: "&lt;", with: "<").replacingOccurrences(of: "&gt;", with: ">")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
         }
+    }
+
+    /// «Paid … ↗\n\n{ "success": true, … }» → the words, and the JSON after them (whole or cut short).
+    public static func splitData(_ text: String) -> (String, String?) {
+        guard let r = text.range(of: #"\n\s*\n(?=\s*[\{\[]\s*\n?\s*")"#, options: .regularExpression) else { return (text, nil) }
+        let data = String(text[r.upperBound...]).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard data.count > 40, data.contains("\":") || data.contains("\" :") else { return (text, nil) }
+        return (String(text[..<r.lowerBound]).trimmingCharacters(in: .whitespacesAndNewlines), data)
+    }
+
+    /// What the folded card lists: the results' titles with their links when the JSON has them, else its first
+    /// non-empty text values («original: site:x.com …»). At most four.
+    public static func rows(_ json: String) -> [(title: String, url: String?)] {
+        func values(_ keys: String) -> [String] {
+            json.matches(of: try! Regex(#""(?:"# + keys + #")"\s*:\s*"((?:[^"\\]|\\.)*)""#)).compactMap { m in
+                (m.output[1].substring).map { Answer.plain(String($0)) }
+            }.filter { !$0.isEmpty }
+        }
+        let titles = values("title|name|headline"), urls = values("url|link").filter { $0.hasPrefix("http") }
+        if !titles.isEmpty { return titles.prefix(4).enumerated().map { ($0.element, $0.offset < urls.count ? urls[$0.offset] : nil) } }
+        return json.matches(of: #/"(\w+)"\s*:\s*"((?:[^"\\]|\\.)+)"/#).prefix(4).map { ("\($0.output.1): \(Answer.plain(String($0.output.2)))", nil) }
     }
 
     /// The user's question answered from what the service sent: 1–3 sentences in their language, the best results as
@@ -263,15 +284,18 @@ public enum MPP {
         let hits = rank(services, query)
         guard !hits.isEmpty else { return "No MPP service matches «\(query)». Try broader words (email, search, image, flights, phone, mail)." }
         return hits.map { describe($0, endpoints: 6) }.joined(separator: "\n\n")
-            + "\n\nTo pay one: the form «pay <METHOD> <service URL + path> <JSON body>». For the exact body fields look up «service <id>»."
+            + "\n\nTo pay one: the form «pay <METHOD> <service URL + path> <JSON body>». For the exact body fields look up «service <id> <path>»."
     }
 
     /// The six services that fit the words best.
     static func rank(_ services: [[String: Any]], _ query: String) -> [[String: Any]] {
-        var words = tokens(query).filter { $0.count > 1 && !["api", "apis", "service", "services", "pay", "paid", "request", "the", "for", "via", "tempo", "mpp"].contains($0) }
+        var words = tokens(query).filter { $0.count > 1 && !["api", "apis", "service", "services", "pay", "paid", "request", "the", "for", "via", "tempo", "mpp",
+                                                             "on", "about", "of", "in", "to", "and", "or", "what", "how", "is", "are", "with", "from"].contains($0) }
         // A coin's name is the word «crypto» to the directory: «BTC price» is CoinGecko's.
         // ponytail: a short list; the model usually writes «crypto» itself.
         if words.contains(where: ["bitcoin", "btc", "ethereum", "eth", "solana", "sol", "coin", "coins", "token", "tokens"].contains) { words.append("crypto") }
+        // Twitter is «X» there («Chat with X Search»); a one-letter word matches only itself, not «x402» or «xai».
+        if words.contains(where: ["twitter", "tweet", "tweets", "твиттер", "твит", "твиты"].contains) || tokens(query).contains("x") { words.append("x") }
         // A word in the name counts most, then in the tags, then anywhere in what it does; a word matches the start of
         // one there («price» — «prices»). Plain substrings ranked a fax service «priced per page» over CoinGecko.
         func score(_ s: [String: Any]) -> Int {
@@ -279,25 +303,48 @@ public enum MPP {
             let tags = tokens(((s["tags"] as? [String] ?? []) + (s["categories"] as? [String] ?? [])).joined(separator: " "))
             let rest = tokens("\(s["description"] ?? "") " + ((s["endpoints"] as? [[String: Any]])?.compactMap { $0["description"] as? String }.joined(separator: " ") ?? ""))
             return words.reduce(0) { sum, w in
-                sum + (name.contains { $0.hasPrefix(w) } ? 5 : tags.contains { $0.hasPrefix(w) } ? 2 : rest.contains { $0.hasPrefix(w) } ? 1 : 0)
+                let hit = { (t: String) in w.count == 1 ? t == w : t.hasPrefix(w) }
+                return sum + (name.contains(where: hit) ? 5 : tags.contains(where: hit) ? 2 : rest.contains(where: hit) ? 1 : 0)
             }
         }
-        return services.map { ($0, score($0)) }.filter { words.isEmpty || $0.1 > 0 }.sorted { $0.1 > $1.1 }.prefix(6).map(\.0)
+        return services.filter { !unpayable($0) }.map { ($0, score($0)) }.filter { words.isEmpty || $0.1 > 0 }.sorted { $0.1 > $1.1 }.prefix(6).map(\.0)
+    }
+
+    /// Services whose 402 ihatecrypto can't pay, measured 2026-09-30: Tempo's own proxies and Orthogonal's take only a
+    /// transaction they send and pay the fee for (fal, OpenAI, Anthropic, Fiber, ScrapeCreators), Exa only a transaction
+    /// it sends (pull), Nansen only x402 on Base — a signed spending authorization the signer refuses as a drainer's tool.
+    /// Left out of the search so the model never offers what can't be paid.
+    // ponytail: by host, as measured; a service's 402 is still checked before any card (MPP.challenge).
+    static func unpayable(_ s: [String: Any]) -> Bool {
+        let host = (s["serviceUrl"] as? String).flatMap { URL(string: $0)?.host()?.lowercased() } ?? ""
+        return host.hasSuffix(".mpp.tempo.xyz") || ["mpp.orthogonal.com", "api.exa.ai", "api.nansen.ai"].contains(host)
     }
 
     static func tokens(_ text: String) -> [String] { text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init) }
 
     /// One service in full: every endpoint and price, and the start of its docs for the request fields.
-    public static func service(_ id: String) async -> String {
+    /// `arg`: «grok» or «grok /grok/x-search»: with an endpoint the docs start at that endpoint's section — a long doc
+    /// cut at its start never reached Grok's X search, and the model fell back to a web search.
+    public static func service(_ arg: String) async -> String {
         guard let services = await directory() else { return "The MPP directory (mpp.dev) didn't answer." }
-        guard let s = services.first(where: { ($0["id"] as? String)?.lowercased() == id.lowercased().trimmingCharacters(in: .whitespaces) }) else {
-            return "No MPP service «\(id)». Search with «services <words>» first."
+        let words = arg.split(separator: " ").map(String.init)
+        guard let id = words.first?.lowercased(), let s = services.first(where: { ($0["id"] as? String)?.lowercased() == id }) else {
+            return "No MPP service «\(arg)». Search with «services <words>» first."
         }
-        var text = describe(s, endpoints: 40)
+        var text = describe(s, endpoints: 25)
         if let docs = (s["docs"] as? [String: Any])?["llmsTxt"] as? String, let data = try? await HTTP.get(docs, timeout: 10) {
-            text += "\nDocs (\(docs)):\n" + String(decoding: data.prefix(2500), as: UTF8.self)
+            text += "\nDocs (\(docs)):\n" + section(String(decoding: data, as: UTF8.self), about: Array(words.dropFirst()))
         }
         return text
+    }
+
+    /// 2,500 characters of the docs from the heading of the section that names the endpoint (its path's last part,
+    /// «x-search»); the start when none is named or found.
+    static func section(_ docs: String, about hint: [String]) -> String {
+        let keys = hint.compactMap { $0.split(separator: "/").last.map(String.init) }.filter { $0.count > 2 }
+        guard let hit = keys.lazy.compactMap({ docs.range(of: $0, options: .caseInsensitive) }).first else { return String(docs.prefix(2500)) }
+        let head = docs[..<hit.lowerBound].range(of: "\n#", options: .backwards)?.lowerBound ?? hit.lowerBound
+        return String(docs[head...].prefix(2500))
     }
 
     static func describe(_ s: [String: Any], endpoints limit: Int) -> String {
@@ -306,6 +353,8 @@ public enum MPP {
             let pay = e["payment"] as? [String: Any]
             let price: String = if let a = (pay?["amount"] as? String).flatMap({ Decimal(string: $0) }), a > 0 {
                 "$" + Fmt.num(a / 1_000_000, maxFraction: 6)
+            } else if let hint = pay?["amountHint"] as? String {
+                "priced by use (\(hint)); the 402 names the most it charges"
             } else if pay?["intent"] as? String == "session" { "per use (session: ihatecrypto can't pay these yet)" } else if pay == nil { "free" } else { "price in its 402 answer" }
             return "  \(e["method"] as? String ?? "GET") \(base)\(e["path"] as? String ?? "") — \(e["description"] as? String ?? ""), \(price)"
         }

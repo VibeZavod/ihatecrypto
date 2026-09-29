@@ -54,8 +54,11 @@ extension Workspace {
                 payment = PaymentQuote(command: command, challenge: c, ask: ask, service: service)
                 pendingAction = .wallet(command)
                 pendingText = "pay \(Fmt.num(c.usdc, maxFraction: 6)) USDC to \(service)"
-                reply(say("\(service) asks \(Fmt.num(c.usdc, maxFraction: 6)) USDC. The card is on the canvas — Confirm pays it in USDC on Tempo.",
-                          "\(service) просит \(Fmt.num(c.usdc, maxFraction: 6)) USDC. Карточка на холсте — Confirm оплатит в USDC на Tempo."), note: note)
+                let short = (tempoUSDC ?? 0) < c.usdc + Decimal(string: "0.01")!
+                reply(say("\(service) asks \(Fmt.num(c.usdc, maxFraction: 6)) USDC. The card is on the canvas — Confirm pays it in USDC on Tempo"
+                            + (short ? ", first bringing $1 there from Solana so the next requests don't each need a bridge." : "."),
+                          "\(service) просит \(Fmt.num(c.usdc, maxFraction: 6)) USDC. Карточка на холсте — Confirm оплатит в USDC на Tempo"
+                            + (short ? ", а сначала перекинет туда $1 с Solana, чтобы следующие запросы не гоняли мост каждый раз." : ".")), note: note)
             }
         } catch {
             reply(say("Couldn't reach \(host): ", "Не достучался до \(host): ") + error.localizedDescription, note: note)
@@ -106,15 +109,17 @@ extension Workspace {
     func payRoute(_ command: WalletCommand) -> MoveRoute? {
         guard case .pay(_, let url, _) = command, let quote = payment, quote.command == command else { return nil }
         let c = quote.challenge, host = URL(string: url)?.host() ?? c.realm, price = Fmt.num(c.usdc, maxFraction: 6)
-        let there = tempoUSDC ?? 0, short = there < c.usdc
+        let there = tempoUSDC ?? 0, short = there < c.usdc + Decimal(string: "0.01")!
+        let floatUSD = Decimal(Executor.tempoFloat) / 1_000_000, requests = NSDecimalNumber(decimal: (max(c.usdc, floatUSD) / c.usdc).rounded(0, .down)).intValue
         return MoveRoute(title: "Pay \(price) USDC · \(quote.service)",
                          footer: "One Tempo transfer of \(price) USDC to the address \(host) named (\(AddressCheck.ends(c.payee).start) … \(AddressCheck.ends(c.payee).end)); "
                             + (short ? "what's short comes from Solana over Relay first; " : "")
                             + "the fee, ≈ $0.001, comes out of the USDC. Then the request goes again with the payment's hash. Say “do it” or press Confirm.",
                          steps: [
-            // Short on Tempo: what's missing plus a cent for fees comes from Solana, Relay's ≈ $0.02 on top (2026-09-30).
-            short ? ActivityBubble(kind: "step", label: "FROM · SOLANA → TEMPO", title: "\(Fmt.num(c.usdc - there + Decimal(string: "0.01")!, maxFraction: 6)) USDC",
-                                   lines: ["bridged over Relay first, ≈ $0.02", solana.map { "\(Fmt.num($0.usdc)) USDC on Solana" } ?? "from your Solana USDC"],
+            // Short on Tempo: a dollar's float comes from Solana (Executor.tempoFloat), plus a cent for fees; Relay's ≈ $0.02 on top.
+            short ? ActivityBubble(kind: "step", label: "FROM · SOLANA → TEMPO", title: "\(Fmt.num(max(c.usdc, floatUSD) - there + Decimal(string: "0.01")!, maxFraction: 6)) USDC",
+                                   lines: [say("a float for ≈ \(requests) requests like this · Relay ≈ $0.02", "запас на ≈ \(requests) таких запросов · Relay ≈ $0.02"),
+                                           solana.map { "\(Fmt.num($0.usdc)) USDC on Solana" } ?? "from your Solana USDC"],
                                    logo: "sol", fill: .solana)
                   : ActivityBubble(kind: "step", label: "FROM · TEMPO", title: "\(Fmt.num(there)) → \(Fmt.num(there - c.usdc)) USDC", lines: ["your USDC on Tempo"],
                                    logo: "tempo", fill: .tempo),

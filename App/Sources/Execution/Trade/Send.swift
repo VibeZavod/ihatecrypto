@@ -41,10 +41,16 @@ extension Executor {
     public func payTempo(_ units: UInt64, to payee: String, memo: Data?, label: String) async throws -> String {
         guard units > 0 else { throw ExecutionError("Nothing to pay.") }
         let net = EVMNetwork.tempo
-        try await ensureEVM(net, usdc: units)
+        // Short there: a dollar comes over (or the price, if more), so the next requests don't each pay a bridge.
+        let there = try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)
+        try await ensureEVM(net, usdc: there >= units + net.feeReserve ? units : max(units, Self.tempoFloat))
         let data = try memo.map { try ERC20.transfer(to: payee, amount: units, memo: $0) } ?? ERC20.transfer(to: payee, amount: units)
         return try await sendEVM(net.rpc, to: net.usdc, data: data, note: "Pay \(Self.usdc(units)) USDC to \(label)", recipients: [payee])
     }
+
+    /// What a payment brings to Tempo when it's short there: a dollar, the user's ask (2026-09-30: «предлагай сразу
+    /// перевести 1 бакс… чтобы по многу раз не переводить»).
+    public static let tempoFloat: UInt64 = 1_000_000
 
     private func sendEVMUSDC(_ units: UInt64, on net: EVMNetwork, to recipient: String, label: String) async throws -> String {
         try await ensureEVM(net, usdc: units)
