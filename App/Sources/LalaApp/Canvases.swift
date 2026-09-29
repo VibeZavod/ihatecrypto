@@ -677,7 +677,7 @@ extension Workspace {
             : (now.map { s.notional > $0.notional } ?? true)
                 ? say("Raise the order to \(Fmt.usd(s.notional))", "Поднять ордер до \(Fmt.usd(s.notional))")
                 : say("Cut the order to \(Fmt.usd(s.notional))", "Уменьшить ордер до \(Fmt.usd(s.notional))")
-        let was = now.map { " " + say("instead of", "вместо") + " \(Fmt.usd($0.lossAtStopUSD))" } ?? ""
+        let was = now.map { " " + say("instead of", "вместо") + " −\(Fmt.usd($0.lossAtStopUSD))" } ?? ""
         return (title, say("At the stop −\(Fmt.usd(s.lossAtStopUSD))\(was), margin \(Fmt.usd(s.margin)) — passes every rule.",
                            "На стопе −\(Fmt.usd(s.lossAtStopUSD))\(was), маржа \(Fmt.usd(s.margin)) — проходит все правила."), f.command)
     }
