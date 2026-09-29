@@ -38,23 +38,53 @@ public enum Holdings {
 
     /// Every ERC-20 at the address on one network, and its ETH when `native` (Base's and Robinhood's ETH is already
     /// counted as gas). `skip`: contracts the app counts elsewhere (USDC, Aave's aUSDC, the Morpho vault…), lowercased.
-    public static func evm(_ chain: String, address: String, native: Bool, skip: Set<String>) async -> [Holding] {
+    /// nil when the network couldn't be read in full: the caller keeps what it had instead of showing a shorter list.
+    public static func evm(_ chain: String, address: String, native: Bool, skip: Set<String>) async -> [Holding]? {
         guard let host = blockscout[chain] else { return [] }
-        async let tokens = try? HTTP.get("https://\(host)/api/v2/addresses/\(address)/tokens?type=ERC-20", headers: browser)
-        async let account: Data? = native ? (try? await HTTP.get("https://\(host)/api/v2/addresses/\(address)", headers: browser)) : nil
-        var out = evmTokens(chain, await tokens, skip: skip)
-        if let eth = nativeCoin(chain, await account) { out.append(eth) }
+        async let pages = tokenPages(host, address: address)
+        async let account: [String: Any]?? = native
+            ? .some(await retrying { json(try await HTTP.get("https://\(host)/api/v2/addresses/\(address)", headers: browser)) as? [String: Any] })
+            : .none
+        guard let items = await pages else { return nil }
+        var out = evmTokens(chain, items, skip: skip)
+        switch await account {
+        case .some(nil): return nil
+        case .some(let a?): if let eth = nativeCoin(chain, a) { out.append(eth) }
+        case .none: break
+        }
         // Tokens CoinGecko doesn't list get DexScreener's price and pool, so the scam check has something to go on.
+        // DexScreener takes 30 contracts a call.
+        // ponytail: 20 calls at most (600 tokens); past that the rest stays listed under «hidden», unpriced.
         let unpriced = out.filter { $0.price == nil }.map(\.contract)
-        guard !unpriced.isEmpty else { return out }
-        // ponytail: DexScreener takes 30 contracts a call; a wallet flooded with more airdrops leaves the rest unpriced.
-        let dex = try? await HTTP.get("https://api.dexscreener.com/tokens/v1/\(chain)/" + unpriced.prefix(30).joined(separator: ","))
-        return dexPrices(out, dex)
+        for start in stride(from: 0, to: min(unpriced.count, 600), by: 30) {
+            let chunk = unpriced[start..<min(start + 30, unpriced.count)]
+            out = dexPrices(out, try? await HTTP.get("https://api.dexscreener.com/tokens/v1/\(chain)/" + chunk.joined(separator: ",")))
+        }
+        return out
     }
 
-    static func evmTokens(_ chain: String, _ data: Data?, skip: Set<String>) -> [Holding] {
-        let items = (json(data) as? [String: Any])?["items"] as? [[String: Any]] ?? []
-        return items.compactMap { item in
+    /// Every page of the address's ERC-20s. Blockscout serves 50 at a time, the most valuable first, and says where the
+    /// next page starts; a page that fails is asked again (the API throws the odd 500). nil when even the first page
+    /// never came; a later one that never comes ends the list there, losing only the least valuable tail.
+    // ponytail: 20 pages at most (1000 tokens): past that the address is a spam dump and the tail is unpriced dust.
+    static func tokenPages(_ host: String, address: String) async -> [[String: Any]]? {
+        var items: [[String: Any]] = []
+        var next: [String: Any]? = [:]
+        for page in 0..<20 {
+            guard let params = next else { break }
+            var url = URLComponents(string: "https://\(host)/api/v2/addresses/\(address)/tokens")
+            url?.queryItems = [URLQueryItem(name: "type", value: "ERC-20")]
+                + params.sorted { $0.key < $1.key }.compactMap { k, v in v is NSNull ? nil : URLQueryItem(name: k, value: "\(v)") }
+            guard let link = url?.string,
+                  let body = await retrying({ json(try await HTTP.get(link, headers: browser)) as? [String: Any] }) else { return page == 0 ? nil : items }
+            items += body["items"] as? [[String: Any]] ?? []
+            next = body["next_page_params"] as? [String: Any]
+        }
+        return items
+    }
+
+    static func evmTokens(_ chain: String, _ items: [[String: Any]], skip: Set<String>) -> [Holding] {
+        items.compactMap { item in
             guard let t = item["token"] as? [String: Any], let contract = (t["address_hash"] as? String)?.lowercased(), !skip.contains(contract),
                   let raw = number(item["value"]), raw > 0, let decimals = Int(t["decimals"] as? String ?? "") else { return nil }
             let rate = number(t["exchange_rate"])
@@ -64,8 +94,8 @@ public enum Holdings {
         }
     }
 
-    static func nativeCoin(_ chain: String, _ data: Data?) -> Holding? {
-        guard let a = json(data) as? [String: Any], let wei = number(a["coin_balance"]), wei > 0 else { return nil }
+    static func nativeCoin(_ chain: String, _ a: [String: Any]) -> Holding? {
+        guard let wei = number(a["coin_balance"]), wei > 0 else { return nil }
         return Holding(chain: chain, contract: "native", amount: wei / pow(10, 18), symbol: "ETH", icon: ethIcon,
                        price: number(a["exchange_rate"]), verified: true, native: true)
     }
@@ -91,10 +121,12 @@ public enum Holdings {
     // MARK: Hyperliquid spot
 
     /// Everything on Hyperliquid's spot side, USDC included (the perp account doesn't count it), priced off its own book.
-    public static func hyperliquidSpot(user: String) async -> [Holding] {
-        async let state = try? HTTP.post("https://api.hyperliquid.xyz/info", json: ["type": "spotClearinghouseState", "user": user])
-        async let meta = try? HTTP.post("https://api.hyperliquid.xyz/info", json: ["type": "spotMetaAndAssetCtxs"])
-        return hyperliquidSpot(await state, meta: await meta)
+    /// nil when it couldn't be read.
+    public static func hyperliquidSpot(user: String) async -> [Holding]? {
+        async let state = retrying { try await HTTP.post("https://api.hyperliquid.xyz/info", json: ["type": "spotClearinghouseState", "user": user]) }
+        async let meta = retrying { try await HTTP.post("https://api.hyperliquid.xyz/info", json: ["type": "spotMetaAndAssetCtxs"]) }
+        guard let s = await state, let m = await meta else { return nil }
+        return hyperliquidSpot(s, meta: m)
     }
 
     static func hyperliquidSpot(_ state: Data?, meta: Data?) -> [Holding] {
@@ -116,15 +148,19 @@ public enum Holdings {
     // MARK: NEAR
 
     /// Fungible tokens on the NEAR account, wNEAR aside (counted with NEAR). Ref's price list names and prices them;
-    /// a token it doesn't list is named by its own contract's metadata.
-    public static func near(account: String) async -> [Holding] {
-        async let list = try? HTTP.get("https://api.fastnear.com/v1/account/\(account)/ft")
-        async let prices = try? HTTP.get("https://indexer.ref.finance/list-token-price")
-        let listed = await list, priced = await prices
-        var metadata: [String: (symbol: String, decimals: Int)] = [:]
+    /// a token it doesn't list is named by its own contract's metadata, all of them asked at once. nil when the
+    /// account's list or the prices couldn't be read.
+    public static func near(account: String) async -> [Holding]? {
+        async let list = retrying { try await HTTP.get("https://api.fastnear.com/v1/account/\(account)/ft") }
+        async let prices = retrying { try await HTTP.get("https://indexer.ref.finance/list-token-price") }
+        guard let listed = await list, let priced = await prices else { return nil }
         let ref = json(priced) as? [String: [String: Any]] ?? [:]
-        for (contract, _) in nearBalances(listed) where ref[contract] == nil {
-            if let m = await nearMetadata(contract) { metadata[contract] = m }
+        let unlisted = nearBalances(listed).map(\.contract).filter { ref[$0] == nil }
+        let metadata = await withTaskGroup(of: (String, (symbol: String, decimals: Int)?).self) { group in
+            for contract in unlisted { group.addTask { (contract, await nearMetadata(contract)) } }
+            var out: [String: (symbol: String, decimals: Int)] = [:]
+            for await (contract, m) in group { out[contract] = m }
+            return out
         }
         return near(listed, prices: priced, metadata: metadata)
     }
@@ -162,6 +198,15 @@ public enum Holdings {
     // MARK: Helpers
 
     static func json(_ data: Data?) -> Any? { data.flatMap { try? JSONSerialization.jsonObject(with: $0) } }
+
+    /// Up to three tries, a second apart: public APIs drop the odd request.
+    static func retrying<T>(_ fetch: () async throws -> T?) async -> T? {
+        for attempt in 0..<3 {
+            if let value = try? await fetch() { return value }
+            if attempt < 2 { try? await Task.sleep(for: .seconds(1)) }
+        }
+        return nil
+    }
 
     /// Through the number's text: a JSON double's decimalValue turns 1.88 into 1.8799999….
     static func number(_ v: Any?) -> Decimal? { ((v as? NSNumber)?.stringValue ?? v as? String).flatMap { Decimal(string: $0) } }

@@ -10,7 +10,7 @@ import Testing
      {"id": "SPAMmint", "symbol": "USDC", "usdPrice": 0.000001, "liquidity": 12, "isVerified": false, "tags": []}]
     """
     let amounts: [String: Decimal] = ["RAYmint": Decimal(string: "1.065743")!, "jlUSDCmint": 5, "MEMEmint": 2500, "SPAMmint": 1000, "Unknownmint": 3]
-    let held = Solana.holdings(amounts, jupiter: Data(json.utf8))
+    let held = Solana.holdings(amounts, jupiter: [Data(json.utf8)])
 
     // Jupiter Lend's shares are the Jupiter Lend row, not a token.
     #expect(!held.contains { $0.symbol == "jlUSDC" })
@@ -40,7 +40,8 @@ import Testing
       {"token": {"address_hash": "0xFAKE", "decimals": "18", "exchange_rate": "1", "reputation": "scam", "symbol": "USDT"}, "value": "1000000000000000000000"}
     ]}
     """
-    let tokens = Holdings.evmTokens("base", Data(blockscout.utf8), skip: ["0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"])
+    let items = (try? JSONSerialization.jsonObject(with: Data(blockscout.utf8)) as? [String: Any])?["items"] as? [[String: Any]] ?? []
+    let tokens = Holdings.evmTokens("base", items, skip: ["0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"])
     // USDC on Base is the Base row's; the rest are listed.
     #expect(tokens.map(\.symbol) == ["AERO", "MEME", "Claim-USDC.com", "USDT"])
     let dex = """

@@ -163,18 +163,22 @@ public enum Solana {
         return Balance(sol: Decimal(l.value) / 1_000_000_000, usdc: usdc, tokens: await holdings(others))
     }
 
-    /// Names, icons and prices from Jupiter, in one request. Jupiter Lend's share tokens are left out: the Jupiter Lend
-    /// row counts them. Without Jupiter the tokens still show, by mint and unpriced.
-    // ponytail: one search takes up to 100 mints; a wallet flooded with more airdrops shows the rest unpriced.
+    /// Names, icons and prices from Jupiter, 100 mints a request (its search's limit). Jupiter Lend's share tokens are
+    /// left out: the Jupiter Lend row counts them. Without Jupiter the tokens still show, by mint and unpriced.
     static func holdings(_ amounts: [String: Decimal]) async -> [Holding] {
-        guard !amounts.isEmpty else { return [] }
         let mints = amounts.keys.sorted()
-        let data = try? await HTTP.get("https://lite-api.jup.ag/tokens/v2/search?query=" + mints.prefix(100).joined(separator: ","))
-        return holdings(amounts, jupiter: data)
+        var pages: [Data] = []
+        for start in stride(from: 0, to: mints.count, by: 100) {
+            let chunk = mints[start..<min(start + 100, mints.count)]
+            if let data = await Holdings.retrying({ try await HTTP.get("https://lite-api.jup.ag/tokens/v2/search?query=" + chunk.joined(separator: ",")) }) {
+                pages.append(data)
+            }
+        }
+        return holdings(amounts, jupiter: pages)
     }
 
-    static func holdings(_ amounts: [String: Decimal], jupiter data: Data?) -> [Holding] {
-        let found = Holdings.json(data) as? [[String: Any]] ?? []
+    static func holdings(_ amounts: [String: Decimal], jupiter pages: [Data]) -> [Holding] {
+        let found = pages.flatMap { Holdings.json($0) as? [[String: Any]] ?? [] }
         let byMint = Dictionary(found.compactMap { t in (t["id"] as? String).map { ($0, t) } }) { a, _ in a }
         return amounts.compactMap { mint, amount -> Holding? in
             let t = byMint[mint] ?? [:]
