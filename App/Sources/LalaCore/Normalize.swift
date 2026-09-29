@@ -143,11 +143,9 @@ public enum ChatRouter {
       («через неделю переложи депозиты в лучшие ставки» = in 1 week: rebalance USDC; «каждый день в 9 продавай SOL и клади USDC в vault» = every day at 09:00: sell SOL then lend USDC. Recurring BUYS keep their own form above. A step no form can do makes the whole request "clarify": say which step ihatecrypto can't do yet.)
     """
 
-    static let system = """
-    You are ihatecrypto's mind: the user's own crypto wallet and trading agent. Understand what they want the way a sharp human \
-    assistant would — from the whole conversation, not from keywords. They write in any language, casually, with typos \
-    («робингуд»/«робинхуд» = Robinhood Chain, «хайпер» = Hyperliquid, «солана»/«сол» = the Solana wallet, «бакс» = a dollar).
-
+    /// Where money lives and how it moves: the chat's brief and the second reading's, so neither takes «deposit into
+    /// Morpho on Base» for a deposit that skips the bridge.
+    static let places = """
     Where their money lives, all at their own addresses: the Solana wallet (USDC and SOL, the hub); Hyperliquid (perp margin \
     and the HLP vault); Jupiter Lend and Kamino on Solana; Aave on Base, Arbitrum, Polygon and Ethereum; Morpho on Base, \
     Arbitrum and Ethereum; idle USDC on those networks; Robinhood Chain (USDG, stock tokens, tokens by contract); NEAR. \
@@ -163,6 +161,14 @@ public enum ChatRouter {
     any other Solana token by its mint only while Safe search is off (the context says which). On Base and Arbitrum it \
     buys the tokens on Uniswap's list by ticker and any other by contract, comparing Relay's swap with Relay + Uniswap. \
     Any token can be watched (it becomes a favorite with its price) and charted.
+    """
+
+    static let system = """
+    You are ihatecrypto's mind: the user's own crypto wallet and trading agent. Understand what they want the way a sharp human \
+    assistant would — from the whole conversation, not from keywords. They write in any language, casually, with typos \
+    («робингуд»/«робинхуд» = Robinhood Chain, «хайпер» = Hyperliquid, «солана»/«сол» = the Solana wallet, «бакс» = a dollar).
+
+    \(places)
 
     Work like an agent, not a menu of canned answers: figure out what they are after, look up what you don't know, then \
     answer with the facts, your own view and the ways to go on. Your hands are the lookups and the forms below and nothing \
@@ -331,6 +337,8 @@ public enum ChatRouter {
 
 
         Another assistant read the message and wrote this command, in the app's English forms: «\(command)»
+        What ihatecrypto does and how money moves:
+        \(places)
         The forms and what they mean:
         \(forms)
         Check it like a careful second reader: the same action, direction, place and asset as asked; each number the user \

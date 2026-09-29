@@ -53,7 +53,9 @@ public protocol TextClassifier: Sendable {
 public enum InjectionGuard {
     public static let threshold = 0.7
 
-    public static func screen(_ text: String, source: String, classifier: (any TextClassifier)?) async -> Verdict {
+    /// `redirects: false` when an address in the text can't become a recipient anyway (the chat): the classifier's
+    /// payment-redirect label is then a note, not a stop.
+    public static func screen(_ text: String, source: String, classifier: (any TextClassifier)?, redirects: Bool = true) async -> Verdict {
         var v = Verdict()
         let f = InjectionHeuristics.findings(text)
         if !f.commands.isEmpty {
@@ -78,7 +80,7 @@ public enum InjectionGuard {
                 v.checks.append("\(classifier.name): looks like ordinary data (\(percent)%).")
             case "instructions" where confidence >= threshold:
                 v.problems.append("\(classifier.name): the text tries to steer the assistant (\(percent)%).")
-            case "payment_redirect" where confidence >= threshold:
+            case "payment_redirect" where confidence >= threshold && redirects:
                 v.problems.append("\(classifier.name): the text tries to redirect funds to its own address (\(percent)%).")
             default:
                 v.checks.append("\(classifier.name) is unsure: \(label) (\(percent)%). Local rules decide.")

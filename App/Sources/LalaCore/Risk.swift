@@ -141,7 +141,8 @@ extension Plan {
             r.takePct = (stop * multiple).rounded(2, .plain)
             notes.append("Take-profit \(Fmt.num(multiple))R: \(Fmt.num(multiple)) × stop = \(Fmt.pct(r.takePct!)).")
         }
-        if r.leverage == nil, auto, let m = market {
+        // Leverage left out is the rules' cap even with the rest named: at 1× «risk $0.5 stop 1.2%» needed $39 of margin.
+        if r.leverage == nil, let m = market {
             // Risk comes from the stop, not the leverage: the rules' ceiling just keeps margin small.
             r.leverage = min(p.maxLeverage, Decimal(m.maxLeverage))
             notes.append("Leverage \(Fmt.num(r.leverage!))×, the rules' cap; the stop sets the loss, leverage only shrinks the margin.")
@@ -180,7 +181,9 @@ extension Plan {
             let stopPx = entry * (1 - (r.side == .long ? 1 : -1) * stop / 100)
             let perCoin = entry * stop / 100 + (entry + stopPx) * RiskCalc.takerFee
             let least = ((minNotional / entry).rounded(m.szDecimals, .up) * perCoin).rounded(2, .up)
-            if least > risk, least <= equity * p.maxRiskPct / 100 {
+            // Money the user named caps it: «4 USDC at 2×» is $8, and raising it to $10 would spend more than they said.
+            let withinMoney = i.amountUSDC.map { minNotional / (r.leverage ?? 1) <= $0 } ?? true
+            if least > risk, least <= equity * p.maxRiskPct / 100, withinMoney {
                 r.riskUSD = least
                 notes.append("Risk raised to \(Fmt.usd(least)) so the order reaches Hyperliquid's $10 minimum.")
             }

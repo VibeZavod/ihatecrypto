@@ -13,7 +13,7 @@ public struct JevClassifier: TextClassifier {
     ]
 
     let apiKey: String
-    public let name = "Jev"
+    public let name = "The second check"
 
     public init(apiKey: String) { self.apiKey = apiKey }
 
@@ -80,8 +80,8 @@ public enum JevReviewer {
             instructions: "state.user_messages are what a trader typed, oldest first; later messages edit earlier ones. state.plan is the trade plan an app built from them, with live prices. Judge the plan against the latest intent of the messages.",
             criteria: planLabels)
         return review(label, confidence, good: "matches", texts: [
-            "matches": "Jev: the plan matches the request", "mismatch": "Jev: the plan differs from the request",
-            "risky": "Jev: the plan carries a risk you may not expect",
+            "matches": "The plan matches your request", "mismatch": "The plan differs from your request",
+            "risky": "The plan matches, but carries a risk you may not expect",
         ])
     }
 
@@ -98,8 +98,8 @@ public enum JevReviewer {
             instructions: "A crypto wallet's assistant read state.message (in any language, with state.recent_chat before it) and wrote state.command, one line in the app's fixed English command forms, to carry out. Judge whether the command does what the user asked. Numbers the user didn't give may be missing: the app fills them by its rules or asks.",
             criteria: readingLabels)
         return review(label, confidence, good: "matches", texts: [
-            "matches": "Jev: the command matches the message", "mismatch": "Jev: the command does something other than the message asks",
-            "unclear": "Jev: the message is too vague to tell",
+            "matches": "the command matches the message", "mismatch": "the command does something other than the message asks",
+            "unclear": "the message is too vague to tell",
         ])
     }
 
@@ -109,8 +109,8 @@ public enum JevReviewer {
             instructions: "An app is about to sign state.signatures to carry out state.plan. Compare each signature and each balance change with the plan: amounts, assets and where funds go.",
             criteria: transactionLabels)
         return review(label, confidence, good: "consistent", texts: [
-            "consistent": "Jev: signatures and balance changes match the plan", "inconsistent": "Jev: signatures or balances don't match the plan",
-            "unclear": "Jev: can't judge from the signature list",
+            "consistent": "signatures and balance changes match the plan", "inconsistent": "signatures or balances don't match the plan",
+            "unclear": "can't judge from the signature list",
         ])
     }
 
@@ -127,8 +127,8 @@ public enum JevReviewer {
             instructions: "A web page open in a crypto wallet's built-in browser asks the user to sign a Solana transaction. state.balance_changes come from simulating it. Judge whether this looks like a normal action on that site or like phishing or a drainer.",
             criteria: siteLabels)
         return review(label, confidence, good: "ordinary", texts: [
-            "ordinary": "Jev: an ordinary action for this kind of site", "suspicious": "Jev: looks like phishing or a drainer",
-            "unclear": "Jev: can't judge from this data",
+            "ordinary": "an ordinary action for this kind of site", "suspicious": "looks like phishing or a drainer",
+            "unclear": "can't judge from this data",
         ])
     }
 
@@ -137,13 +137,12 @@ public enum JevReviewer {
     static let concernThreshold = 0.5
 
     static func review(_ label: String, _ confidence: Double, good: String, texts: [String: String]) -> JevReview {
-        let percent = "\(Int((confidence * 100).rounded()))%"
         let text = texts[label] ?? label
+        // Below the threshold a doubt is no doubt: the code checks decide, and the card says it passed.
         if label != good, confidence < concernThreshold {
-            return JevReview(label: label, confidence: confidence, concern: false,
-                             text: "Jev is unsure: more likely “\(text.replacingOccurrences(of: "Jev: ", with: ""))” (\(percent)), below the threshold; the code check decides.")
+            return JevReview(label: good, confidence: confidence, concern: false, text: (texts[good] ?? good) + ".")
         }
-        return JevReview(label: label, confidence: confidence, concern: label != good, text: "\(text) (\(percent)).")
+        return JevReview(label: label, confidence: confidence, concern: label != good, text: text + ".")
     }
 }
 

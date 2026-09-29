@@ -104,6 +104,8 @@ final class Workspace {
     /// A confirmed money move while it runs: its route stays on the canvas with the latest step, until the outcome.
     var runningAction: (title: String, steps: [ActivityBubble], lines: [String], started: Date)?
     var planReview: JevReview?
+    /// The second check of the plan under way (startPlanReview).
+    var planReviewTask: Task<Void, Never>?
     var txReview: JevReview?
     var jevNote: String?
     var positions: [HyperliquidAccount.Position] = []
@@ -132,7 +134,8 @@ final class Workspace {
     /// away): a notification says so. Read on the next turn of the run loop, when the card's text is set.
     func remindToConfirm(_ what: String? = nil) {
         Task { @MainActor in
-            guard !NSApp.isActive else { return }
+            // A test through the debug API makes cards too: they don't call the user over.
+            guard !NSApp.isActive, !SignerClient.untrusted else { return }
             notify(.confirm, say("Waiting for your Confirm", "Ждёт твоего Confirm"),
                    what ?? pendingText ?? say("A move is on the canvas.", "Действие на холсте."), record: false)
         }
@@ -442,7 +445,7 @@ final class Workspace {
             Keychain.save(try await openRouter.signIn(open: { url in Task { @MainActor in NSWorkspace.shared.open(url) } }), for: "openrouter")
             signedInCache.remove("openrouter")
             credentialVersion += 1
-            jevStatus = say("Connected: Jev checks every command and plan.", "Подключено: Jev проверяет каждую команду и план.")
+            jevStatus = say("Connected: a separate model now checks every command and plan too.", "Подключено: теперь каждую команду и план проверяет ещё и отдельная модель.")
             jevNote = nil
             planReview = nil
             reviewedIntent = nil
@@ -540,9 +543,14 @@ final class Workspace {
         defer { snapshotCanvas(); saveCanvas() }
 
         // Before the parser or any model sees it: local rules, plus Jev if the user turned it on.
-        let classifier: (any TextClassifier)? = jevScreening ? openRouterKey.map { JevClassifier(apiKey: $0) } : nil
+        // The classifier reads what looks pasted — an address or a link — where an injection could hide; it took the
+        // user's own «не хочу, отмени» for steering and «переведи на арбитрум» for a redirect. Local rules read everything.
+        let pasted = text.contains(/0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|https?:\/\/|www\./)
+        let classifier: (any TextClassifier)? = jevScreening && pasted ? openRouterKey.map { JevClassifier(apiKey: $0) } : nil
         busy = true
-        let screen = await InjectionGuard.screen(text, source: "chat message", classifier: classifier)
+        // «купи токен 0x2E8c… на 1 доллар» read as a redirect: from the chat an address never becomes a recipient (sends go
+        // to address-book names), so only the classifier's «steers the assistant» stops a chat message.
+        let screen = await InjectionGuard.screen(text, source: "chat message", classifier: classifier, redirects: false)
         busy = false
         FileHandle.standardError.write(Data("LALA screen: ok=\(screen.ok) \(screen.checks + screen.problems)\n".utf8))
         guard screen.ok else {
@@ -551,7 +559,7 @@ final class Workspace {
                   + screen.problems.joined(separator: " ")
                   + say(" The message was not passed to the model and changed nothing.", " Сообщение не ушло модели и ничего не изменило.")
                   + (pastedAddress ? say(" To keep an address, save it in Addresses — the book button in the rail.", " Чтобы сохранить адрес, добавь его в адресную книгу — кнопка с книгой слева.") : ""),
-                  note: classifier == nil ? "guard: local rules" : "guard: rules and Jev")
+                  note: classifier == nil ? "guard: local rules" : "guard: rules and the second check")
             return
         }
         let before = intent
@@ -735,7 +743,7 @@ final class Workspace {
             reply("I didn’t get that. Without a model I understand: long/short, a ticker ($ETH), “risk $10”, “stop 3%”, “take 6%”, “leverage 2x”, “100 USDC” — in English or Russian. For other languages and free wording like “take closer”, connect a model in Settings (⌘,): a ChatGPT subscription, Claude Code, OpenRouter or an API key.")
         }
         await refreshQuote()
-        await reviewPlan()
+        startPlanReview()
     }
 
     /// A move the user confirmed, carried out.
@@ -768,7 +776,7 @@ final class Workspace {
         let changes = intent.changes(from: before)
         await refreshQuote()
         reply("Take: \(style.title.lowercased())" + (changes.isEmpty ? "." : " — " + changes.joined(separator: ", ") + ".") + outcomeLine)
-        await reviewPlan()
+        startPlanReview()
     }
 
     /// The model's reading of the message (ChatRouter) — the only reading while a model is connected: keywords guess,
@@ -783,11 +791,20 @@ final class Workspace {
         let lookup: @Sendable (ChatRouter.Lookup) async -> String = { [weak self] l in await self?.agentLookup(l) ?? "" }
         // A second reader of every command: Jev when OpenRouter is connected, else the model reading it again.
         let key = jevScreening ? openRouterKey : nil, recent = context.recent, model = model
+        @Sendable func modelReading(_ command: String) async -> (answered: Bool, why: String?) {
+            do { return (true, try await ChatRouter.verify(text, command: command, context: context, client: client, model: model)) } catch { return (false, nil) }
+        }
+        @Sendable func classifierReading(_ command: String) async -> JevReview? {
+            guard let key else { return nil }
+            return try? await JevReviewer.reading(message: text, recent: recent, command: command, apiKey: key)
+        }
+        // Both at once. The model's reading decides and says what differs; the OpenRouter classifier raised false alarms
+        // on right commands (no reason given), so it counts only when the model couldn't answer.
         @Sendable func secondReading(_ command: String) async -> String? {
-            if let key, let r = try? await JevReviewer.reading(message: text, recent: recent, command: command, apiKey: key) {
-                return r.concern ? r.text : nil
-            }
-            do { return try await ChatRouter.verify(text, command: command, context: context, client: client, model: model) } catch { return nil }
+            async let byModel = modelReading(command)
+            async let other = classifierReading(command)
+            let (m, review) = await (byModel, other)
+            return m.answered ? m.why : (review?.concern == true ? review?.text : nil)
         }
         var check: (@Sendable (String) async -> String?)?
         if jevScreening { check = secondReading }
@@ -905,7 +922,7 @@ final class Workspace {
             reply("The model is unavailable: \(error.localizedDescription)", note: note)
         }
         await refreshQuote()
-        await reviewPlan()
+        startPlanReview()
     }
 
     /// Runs the model's English command through the parsers. False when it is not a command they know.
@@ -996,7 +1013,7 @@ final class Workspace {
         if market == nil { await loadMarkets() }
         await refreshQuote()
         replyPlan(changes, command: canonical, userText: text, note: note)
-        await reviewPlan()
+        startPlanReview()
         return true
     }
 

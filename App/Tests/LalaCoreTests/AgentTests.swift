@@ -299,3 +299,29 @@ private final class Script: LLMClient, @unchecked Sendable {
                                               model: "m", check: { _ in "not what they asked" })
     #expect(stubborn.doubt == "not what they asked")
 }
+
+@Test func whatTheUserLeftOutTheRulesFill() throws {
+    // «open a short on btc, risk half a buck»: the stop by the book, the rules' leverage, the $0.50 risk kept.
+    var m = Market(name: "BTC", markPx: 84000, szDecimals: 5, maxLeverage: 40)
+    m.atrPct = 1
+    let i = try #require(IntentParser.apply("short BTC risk $0.50", to: TradeIntent(), markets: ["BTC"])).started
+    #expect(i.autoRules == true)
+    let r = Plan.resolve(i, market: m, equity: 29, policy: RiskPolicy()).intent
+    #expect(r.riskUSD == Decimal(string: "0.5") && r.stopPct != nil && r.leverage == RiskPolicy().maxLeverage)
+    // Both named: nothing else is filled but the leverage.
+    let both = try #require(IntentParser.apply("short BTC risk $0.50 stop 1.2%", to: TradeIntent(), markets: ["BTC"])).started
+    #expect(both.autoRules == nil && Plan.resolve(both, market: m, equity: 29, policy: RiskPolicy()).intent.leverage == RiskPolicy().maxLeverage)
+}
+
+@Test func theMinimumOrderNeverSpendsMoreThanNamed() throws {
+    // «нефть лонг на 4 доллара x2» is an $8 position: under the $10 minimum, said so, not quietly $5 of margin.
+    var m = Market(name: "xyz:CL", markPx: 91, szDecimals: 3, maxLeverage: 20)
+    m.atrPct = 1.8
+    let i = try #require(IntentParser.apply("long oil 4 USDC leverage 2x", to: TradeIntent(), markets: ["xyz:CL"])).started
+    let r = Plan.resolve(i, market: m, equity: 29, policy: RiskPolicy()).intent
+    #expect(Plan.evaluate(r, market: m).problem?.contains("$10 minimum") == true)
+    // At 3× the same 4 USDC reaches it.
+    let three = try #require(IntentParser.apply("leverage 3x", to: i, markets: ["xyz:CL"]))
+    let r3 = Plan.resolve(three, market: m, equity: 29, policy: RiskPolicy()).intent
+    #expect(Plan.evaluate(r3, market: m).problem == nil)
+}

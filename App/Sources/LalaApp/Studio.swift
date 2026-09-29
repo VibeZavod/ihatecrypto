@@ -1709,11 +1709,25 @@ struct StudioNode: Identifiable {
             out[i].signature = n
         }
         if let r = ws.planReview {
-            out.append(StudioNode(id: "jev", kind: .jev, label: "Jev", title: r.concern ? "Has doubts" : "Matches your request",
-                                  lines: [r.text], status: r.concern ? .warning : .ready))
+            // What was checked, each line a fact the code or a second model confirmed: your words, then what the money
+            // touches — the token, the bridge's program, the destination, the market. The transactions themselves are
+            // checked the same way at Execute, before Touch ID.
+            var lines = [r.concern ? r.text : "Matches your request."]
+            let bridging = ws.quote != nil || ws.resolved.intent.amountUSDC != nil
+                || ws.blocks.contains { $0.id == "bridge" && $0.status != .info && $0.status != .needsInput }
+            if bridging {
+                lines.append("USDC: Circle's token on Solana, EPjF…Dt1v.")
+                lines.append("Bridge: \(ws.quote?.provider ?? "Relay"), its program on the allowed list; each signature is checked again at Execute.")
+            }
+            if isEVMAddress(ws.hlAddress) { lines.append("To: your own Hyperliquid account \(ws.hlAddress.prefix(6))…\(ws.hlAddress.suffix(4)).") }
+            if ws.market != nil { lines.append("Market: \(IntentParser.pretty(ws.intent.asset)) on Hyperliquid.") }
+            if let t = ws.txReview { lines.append("Signatures: " + t.text) }
+            let doubt = r.concern || ws.txReview?.concern == true
+            out.append(StudioNode(id: "jev", kind: .jev, label: "Second check", title: doubt ? "Has doubts" : "All correct",
+                                  lines: lines, status: doubt ? .warning : .ready))
         } else if let note = ws.jevNote, ws.evaluation.sizing != nil {
-            // Off or unreachable: the card says so, rather than the check silently missing from the route.
-            out.append(StudioNode(id: "jev", kind: .jev, label: "Jev", title: "Not checking", lines: [note], status: .info))
+            // Unreachable: the card says so, rather than the check silently missing from the route.
+            out.append(StudioNode(id: "jev", kind: .jev, label: "Second check", title: "Not checking", lines: [note], status: .info))
         }
         if let s = ws.evaluation.sizing {
             var line = "If stopped: −\(Fmt.usd(s.lossAtStopUSD))"
@@ -1816,7 +1830,7 @@ extension Workspace {
             steps.append(card("CHECK RULES", r.title, lines.isEmpty ? r.lines : lines, state(r.status, check: true), .check))
         }
         if let j = node(.jev) {
-            steps.append(card("JEV CHECKS", j.status == .info ? "Not checking" : j.status == .warning ? "Has doubts" : "Matches request", j.lines,
+            steps.append(card("SECOND CHECK", j.title, j.lines,
                               j.status == .info ? "info" : j.status == .warning ? "attention" : "passed", .check))
         }
         if let p = node(.position) {
@@ -1914,7 +1928,7 @@ struct StudioNodeView: View {
         case .position: (node.long ? "arrow.up.right" : "arrow.down.right", node.long ? "OPEN LONG" : "OPEN SHORT")
         case .protection: ("shield.fill", "PROTECT")
         case .risk: ("checklist", "CHECK RULES")
-        case .jev: ("checkmark.shield.fill", "JEV CHECKS")
+        case .jev: ("checkmark.shield.fill", "SECOND CHECK")
         case .outcome: ("equal.circle.fill", "RESULT")
         case .other: nil
         }
@@ -2569,7 +2583,7 @@ struct TemplatesPanel: View {
     /// What each template's scheme looks like, for the preview beside the list (S15).
     static let steps: [String: [(String, String)]] = [
         "Trade by the book": [("From", "USDC on Solana"), ("Bridge", "Relay or 1Click — the cheaper"), ("Position", "long or short, up to 5×"),
-                              ("Stop and take", "stop 1.5 ATR · take in parts"), ("Rules", "risk 1% of capital"), ("Jev", "checks the plan")],
+                              ("Stop and take", "stop 1.5 ATR · take in parts"), ("Rules", "risk 1% of capital"), ("Second check", "checks the plan")],
         "Short on a pullback": [("Entry", "limit 2% above the market"), ("Position", "short oil · xyz exchange"), ("Stop and take", "by the book"),
                                 ("Guardian", "breakeven after ½")],
         "Best rates": [("Free", "USDC on Solana"), ("Split", "best rates · ≤ 50% per protocol"), ("Deposit", "Jupiter Lend, Kamino"), ("Result", "a year’s yield in USDC")],

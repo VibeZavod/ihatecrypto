@@ -558,15 +558,15 @@ struct SettingsView: View {
             Toggle("Check every command and plan a second time", isOn: $ws.jevScreening)
             if ws.openRouterKey == nil {
                 HStack {
-                    Text("Jev isn't connected").font(.ui(12))
+                    Text("OpenRouter isn't connected").font(.ui(12))
                     Spacer()
                     Button("Connect OpenRouter") { Task { await ws.signInJev() } }
                 }
             }
             if let status = ws.jevStatus { Text(status).font(.ui(10)).foregroundStyle(.secondary) }
             Text(ws.openRouterKey == nil
-                 ? "Jev is a separate model on OpenRouter: the browser opens to sign in and adds an OpenRouter key; the chat keeps its own model. Until then the chat's model reads each command and plan a second time, and local rules check incoming text."
-                 : "Jev reads each command the chat understood and each plan against your words; a disagreement goes back to the model, then to you. Before a message reaches the model, rules and Jev also check it for commands aimed at the assistant and requests to send money to an address. Jev can only stop something, never approve a signature. The texts go to OpenRouter.")
+                 ? "Adds a separate model on OpenRouter to the second check: the browser opens to sign in and adds an OpenRouter key; the chat keeps its own model. Without it the chat's model reads each command and plan a second time, and local rules check incoming text."
+                 : "The chat's model and a separate model on OpenRouter read each command the chat understood and each plan against your words; a disagreement goes back to the model, then to you. Pasted text with an address or a link is also checked for commands aimed at the assistant and requests to send money elsewhere. The second check can only stop something, never approve a signature. The texts go to OpenRouter.")
                 .font(.ui(10)).foregroundStyle(.secondary)
         }
     }

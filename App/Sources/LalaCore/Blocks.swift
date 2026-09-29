@@ -29,7 +29,7 @@ public enum BlockCatalog {
               example: "take in parts", fill: "hyperliquid", logo: "hype"),
         Block(group: "Trade", label: "CHECK RULES", title: "Risk rules", form: "risk ≤ 2% of capital · reward/risk ≥ 1.5 · leverage ≤ 5×",
               example: "", fill: "check", logo: nil, automatic: true),
-        Block(group: "Trade", label: "JEV CHECKS", title: "Jev reads it", form: "the plan against your words, then every signature",
+        Block(group: "Trade", label: "SECOND CHECK", title: "Second check", form: "the plan against your words, then every signature",
               example: "", fill: "check", logo: nil, automatic: true),
         Block(group: "Trade", label: "RESULT · ESTIMATE", title: "Loss or profit", form: "at the stop and at the take, in $ and % of capital",
               example: "", fill: "check", logo: nil, automatic: true),

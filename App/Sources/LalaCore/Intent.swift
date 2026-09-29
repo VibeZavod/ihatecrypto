@@ -53,12 +53,12 @@ public struct TradeIntent: Codable, Equatable, Sendable {
 
     /// The plan in the router's own form («long SOL risk $0.3 stop 3% take 6% leverage 2x»), which IntentParser.apply
     /// reads back to the same plan: what a price alert tied to a plan runs to prepare it again.
-    /// A plan that names neither its risk nor its stop — only the market, side, leverage, money or entry («long ETH»,
-    /// «лонг соланы х3 на 5 юсдс») — is filled by the risk rules, as «by the book» is. «long ETH» alone would otherwise
-    /// equal the empty plan (TradeIntent's defaults are ETH, long), which isn't drawn.
+    /// A plan missing its risk or its stop («long ETH», «лонг соланы х3 на 5 юсдс», «short BTC risk half a buck») is
+    /// filled by the risk rules, as «by the book» is; what the user named stays. «long ETH» alone would otherwise equal
+    /// the empty plan (TradeIntent's defaults are ETH, long), which isn't drawn.
     public var started: TradeIntent {
         var next = self
-        if next.autoRules == nil, next.riskUSD == nil, next.stopPct == nil { next.autoRules = true }
+        if next.autoRules == nil, next.riskUSD == nil || next.stopPct == nil { next.autoRules = true }
         return next
     }
 

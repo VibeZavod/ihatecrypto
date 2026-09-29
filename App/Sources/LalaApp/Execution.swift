@@ -121,42 +121,57 @@ extension Workspace {
         return out
     }
 
+    /// The second check of the plan runs beside the chat: the reply shows at once, the check's card fills in a few
+    /// seconds later, and Execute waits for it (prepareExecution).
+    func startPlanReview() {
+        let previous = planReviewTask
+        planReviewTask = Task { await previous?.value; await reviewPlan() }
+    }
+
     /// Jev reads each sized plan against the user's words; without OpenRouter the chat's model does. It can only warn.
     func reviewPlan() async {
         // Any sized plan, a stopped one too: a misread request («5 USDC» read as risk $5) is what the rules stop.
         guard evaluation.sizing != nil, intent != reviewedIntent || planReview == nil else { return }
         guard jevScreening else { planReview = nil; jevNote = nil; return }
         reviewedIntent = intent
-        let requests = messages.filter(\.fromUser).map(\.text)
-        if let key = openRouterKey {
-            do {
-                planReview = try await JevReviewer.plan(requests: requests, plan: planLines, apiKey: key)
-                jevNote = nil
-                return
-            } catch {
-                jevNote = "Jev is unavailable: \(error.localizedDescription)."
-            }
+        let requests = messages.filter(\.fromUser).map(\.text), lines = planLines, key = openRouterKey, client = llmClient(),
+            language = replyLanguage, model = model
+        // Both readers at once: the chat's model says what differs, the OpenRouter classifier adds a confident concern.
+        @Sendable func byModel() async -> Result<String?, Error>? {
+            guard let client else { return nil }
+            do { return .success(try await ChatRouter.verifyPlan(requests: requests, plan: lines, language: language, client: client, model: model)) }
+            catch { return .failure(error) }
         }
-        guard let client = llmClient() else {
+        @Sendable func byClassifier() async -> JevReview? {
+            guard let key else { return nil }
+            return try? await JevReviewer.plan(requests: requests, plan: lines, apiKey: key)
+        }
+        async let modelSays = byModel()
+        async let classifierSays = byClassifier()
+        let (m, c) = await (modelSays, classifierSays)
+        guard intent == reviewedIntent else { return }   // the plan changed meanwhile: its own review follows
+        // The model's reading decides; the classifier's reasonless alarm on right plans («лонг нефти на 5$») counts only
+        // when the model couldn't answer.
+        if case .success(let why)? = m {
+            planReview = JevReview(label: why == nil ? "matches" : "mismatch", confidence: 1, concern: why != nil, text: why ?? "Matches your request.")
+        } else if let c, c.concern {
+            planReview = c
+        } else if c != nil || { if case .success? = m { return true } else { return false } }() {
+            planReview = JevReview(label: "matches", confidence: 1, concern: false, text: "Matches your request.")
+        } else {
             planReview = nil
-            jevNote = "Jev isn't connected (sign in to OpenRouter in Settings › Sign-ins) and no model is: only code checks apply."
+            jevNote = "The second check couldn't run" + (m.flatMap { if case .failure(let e) = $0 { ": \(e.localizedDescription)" } else { nil } } ?? ": connect a model in Settings › Sign-ins")
+                + ". Only code checks apply."
             return
         }
-        do {
-            let why = try await ChatRouter.verifyPlan(requests: requests, plan: planLines, language: replyLanguage, client: client, model: model)
-            planReview = JevReview(label: why == nil ? "matches" : "mismatch", confidence: 1, concern: why != nil,
-                                   text: why.map { "\(model): \($0)" } ?? "\(model) read the plan against your words: it matches."
-                                       + (openRouterKey == nil ? " Jev isn't connected (OpenRouter), so the chat's model checked." : ""))
-            jevNote = nil
-        } catch {
-            planReview = nil
-            jevNote = "Neither Jev nor \(model) could check the plan: \(error.localizedDescription). Only code checks apply."
-        }
+        jevNote = nil
     }
 
     /// Fresh quote, the bridge transaction and its simulation, and Jev's reading of all of it. Nothing is signed.
     func prepareExecution() async {
         guard let wallet = previewWallet else { return }
+        // The plan's second check may still be reading it: its warning must be on the card before anything is prepared.
+        await planReviewTask?.value
         if let missing = missingTradingKey { executionError = missing; return }
         if let off = tradeRefusal { executionError = off; return }
         preparing = true
@@ -402,7 +417,34 @@ extension Workspace {
     /// A move that can't go through with what the wallet holds is said so at once, instead of a card whose Confirm
     /// could only fail («Sell 0 NEAR»).
     func refusalBeforeCard(_ command: WalletCommand) -> String? {
+        /// A move from a place that hasn't the money: said before the card, not after a failed signature. A balance not
+        /// loaded yet leaves it to the move's own checks.
+        func lacks(_ have: Decimal?, _ asked: Decimal?, _ place: String, _ unit: String = "USDC") -> String? {
+            guard let have else { return nil }
+            if have <= 0 {
+                return say("\(place) has \(Fmt.num(have)) \(unit), so there’s nothing to move from there — nothing was prepared.",
+                           "На \(place) \(Fmt.num(have)) \(unit) — оттуда нечего переводить, ничего не готовлю.")
+            }
+            if let asked, asked > have {
+                return say("Only \(Fmt.num(have)) \(unit) is on \(place), less than \(Fmt.num(asked)). Say an amount up to that.",
+                           "На \(place) только \(Fmt.num(have)) \(unit) — меньше, чем \(Fmt.num(asked)). Назови сумму не больше.")
+            }
+            return nil
+        }
         switch command {
+        case .withdrawToSolana(let asked): return lacks(hl?.withdrawable, asked, "Hyperliquid")
+        case .kamino(deposit: false, symbol: "USDC", amount: let asked): return lacks(kamino, asked, "Kamino")
+        case .lendWithdraw("USDC", let asked): return lacks(lend.reduce(0) { $0 + $1.usdc }, asked, "Jupiter Lend")
+        case .baseToSolana(let asked): return lacks(base?.usdc, asked, "Base")
+        case .hlp(deposit: false, amount: let asked):
+            if let until = hlp.lockedUntil, until > Date(), hlp.equity > 0 {
+                return say("HLP is locked until \(Fmt.date(until)): Hyperliquid lets deposits out 4 days after they go in.",
+                           "HLP заблокирован до \(Fmt.date(until)): Hyperliquid выпускает депозит через 4 дня после внесения.")
+            }
+            return lacks(hlp.equity, asked, "HLP")
+        case .lendDeposit("USDC", let asked?), .kamino(deposit: true, symbol: "USDC", amount: let asked?): return lacks(solana?.usdc, asked, "Solana")
+        case .lendDeposit("SOL", let asked?), .kamino(deposit: true, symbol: "SOL", amount: let asked?), .stake(let asked?):
+            return lacks(solana?.sol, asked, "Solana", "SOL")
         case .sellNear(let asked):
             // What a sale keeps on the account while it is sent: storage and prepaid gas (sellNearRoute, intentDepositOverhead).
             let sellable = max(0, near - Decimal(string: "0.09")!)
@@ -454,7 +496,7 @@ extension Workspace {
         intent.asset = market.name
         reply("Market: \(IntentParser.pretty(market.name)) · Hyperliquid\(market.dex.map { " \($0)" } ?? "") — \(market.group.rawValue.lowercased()). " + (intent.changes(from: before).isEmpty ? "" : "Plan recalculated.") + outcomeLine)
         await refreshQuote()
-        await reviewPlan()
+        startPlanReview()
     }
 
     /// Markets of one group, most traded first.
@@ -699,7 +741,7 @@ struct ConfirmSheet: View {
                     }
                 }
                 if concern {
-                    Toggle("I understand Jev's warning and execute anyway", isOn: $acknowledged)
+                    Toggle("I understand the second check's warning and execute anyway", isOn: $acknowledged)
                 }
             } else if ws.preparing {
                 HStack { ProgressView().controlSize(.small); Text("Quote, transaction and simulation…").foregroundStyle(.secondary) }
