@@ -770,6 +770,7 @@ extension Workspace {
         case .sendSol(let name, let amount): solOutRoute(to: name, amount: amount)
         case .pay: payRoute(command)
         case .bridge(let from, let to, let amount): bridgeRoute(from, to, amount)
+        case .gas(let place, let usd): gasRoute(place, usd ?? 1)
         case .claimRewards: claimRoute()
         default: ends(command).map { from, to in
             let footer = if case .sellStock = command {
@@ -1091,6 +1092,20 @@ extension Workspace {
         case "hyperliquid": hl?.withdrawable
         default: nil
         }
+    }
+
+    /// Gas for a network: Solana's USDC → Relay → the network's own coin at our address (half a dollar of USDC comes along).
+    private func gasRoute(_ place: String, _ usd: Decimal) -> MoveRoute {
+        let name = WalletCommand.placeName(place), coin = place == "polygon" ? "POL" : "ETH"
+        let fill: RouteFill = ["base": .base, "arbitrum": .arbitrum, "robinhood": .robinhood][place] ?? .relay
+        return MoveRoute(title: "Gas · \(Fmt.usd(usd)) of \(coin) on \(name)",
+                         footer: "One Solana signature for the Relay bridge: \(Fmt.usd(usd)) of \(coin) and half a dollar of USDC arrive at your own address on \(name). "
+                            + "When Solana is short, Relay swaps \(name)'s own USDC for it there. Say “do it” or press Confirm.",
+                         steps: [
+            step("sol", "FROM · SOLANA", "\(Fmt.num(usd + Decimal(string: "0.58")!)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana),
+            step("relay", "BRIDGE · RELAY", "\(Fmt.usd(usd)) of \(coin)", "+ 0.5 USDC along · a few seconds", .relay),
+            step(ModuleNetwork(place: place)?.logo ?? "eth", "GAS · \(name.uppercased())", "≈ \(Fmt.usd(usd)) of \(coin)", "for the fees of the next moves there", fill),
+        ])
     }
 
     /// One EVM network → Relay → another, both our own address: no stop on Solana.

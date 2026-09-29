@@ -124,6 +124,8 @@ public enum ChatRouter {
     MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from <Base|Arbitrum|Polygon|Ethereum|Tempo> to Solana
       move N USDC from Solana to <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo>   (arrives as USDG on Robinhood Chain)
       move N USDC from <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo> to <another of them|Hyperliquid>   (straight over Relay, no Solana in between; no N = all of it)
+      add gas on <Base|Arbitrum|Polygon|Ethereum|Robinhood> [for N USDC]   (that network's own coin for fees, over Relay; no N = $1. Gas is never a dead end:
+      a move short of it tops it up by itself, so «not enough ETH» is fixed with this form, never refused)
       send N USDC to <NAME from the address book> | top up (where to send money into ihatecrypto)
       send N NEAR to <NAME from the address book> | send all NEAR to <NAME> | close the NEAR account into <NAME>
       send N SOL to <NAME from the address book>

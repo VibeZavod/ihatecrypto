@@ -87,6 +87,12 @@ public enum Relay {
         return ((chain?["protocol"] as? [String: Any])?["v2"] as? [String: Any])?["depository"] as? String
     }
 
+    /// The chain's own coin (ETH, POL) in USD, as Relay prices it: what a gas top-up of some wei costs.
+    public static func nativePrice(chainId: UInt64) async throws -> Decimal? {
+        let (data, _) = try await URLSession.shared.data(from: URL(string: base + "/currencies/token/price?address=0x0000000000000000000000000000000000000000&chainId=\(chainId)")!)
+        return ((try JSONSerialization.jsonObject(with: data) as? [String: Any])?["price"] as? NSNumber).map { $0.decimalValue }
+    }
+
     /// The approval proxy Relay publishes for a chain (contracts.approvalProxy in /chains): its swaps from an EVM token
     /// take an exact approve to it and then call it.
     public static func approvalProxy(chainId: UInt64) async throws -> String? {

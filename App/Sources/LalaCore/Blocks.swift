@@ -41,6 +41,8 @@ public enum BlockCatalog {
 
         Block(group: "Move money", label: "BRIDGE · RELAY", title: "Between networks", form: "move N USDC between Solana, Base, Arbitrum, Polygon, Ethereum, Robinhood, Tempo — any two, straight",
               example: "move 5 USDC from Solana to Base", fill: "relay", logo: "relay"),
+        Block(group: "Move money", label: "GAS · TOP UP", title: "Gas on any network", form: "add gas on Base|Arbitrum|Polygon|Ethereum|Robinhood for N USDC · moves top it up by themselves",
+              example: "add gas on robinhood for 1 USDC", fill: "robinhood", logo: "eth"),
         Block(group: "Move money", label: "FROM · HYPERLIQUID", title: "Back to Solana", form: "withdraw N USDC to Solana",
               example: "withdraw 1 USDC to Solana", fill: "hyperliquid", logo: "hype"),
         Block(group: "Move money", label: "TO · ADDRESS BOOK", title: "Send", form: "send N USDC|SOL|NEAR to NAME from the address book",

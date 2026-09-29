@@ -372,6 +372,9 @@ extension Workspace {
                 reply(try await e.solanaToEVM(net, usdc: amount ?? 0), note: "Relay · Solana → \(net.name)")
             case .sendTo(let name, let amount): prepareTransfer(amount, to: name)
             case .pay: reply(try await pay(command, e), note: "MPP · Tempo")
+            case .gas(let place, let usd):
+                guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't top up gas on \(place).") }
+                reply(try await e.topUpGas(net, usd: usd ?? 1), note: "Gas · \(net.name)")
             case .bridge(let from, let to, let amount):
                 let hyperliquid = to == "hyperliquid", b = EVMNetwork.named(to)
                 guard let a = EVMNetwork.named(from), hyperliquid || b != nil else {

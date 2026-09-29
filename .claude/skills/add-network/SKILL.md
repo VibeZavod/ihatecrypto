@@ -47,6 +47,11 @@ curl -s https://api.relay.link/chains | python3 -c "import json,sys; [print(c['i
 - [ ] `App/Sources/LalaApp/RouteCards.swift`: `RouteFill.accent` для нового цвета и `places` (метка «TO · <NET>» означает свой кошелёк, а не отправку чужому).
 - [ ] Иконки токенов в портфеле: у `Holding.icon` должен быть URL, иначе будет кружок с буквой. Брать `featuredTokens[].metadata.logoURI` из Relay `/chains`.
 
+**Газ — никогда не тупик (правило пользователя)**
+- [ ] У сети с родной монетой (`feeToken == nil`) `EVMNetwork` задаёт `gasFloor` и `topupUSD`. Проверь, что `Relay.nativePrice(chainId:)` отдаёт цену монеты, а котировка Solana → сеть с `topupGas` довозит газ: `sendEVM` сам докупает газ перед транзакцией, которой его не хватает (`topUpGas`: с Solana, иначе Relay-своп USDC сети в монету).
+- [ ] Сеть есть в форме `add gas on <…>` (PositionCommand: слова сети в разборе газа, Normalize, блок «GAS · TOP UP»). Проверка: `LalaWalletCheck move "add gas on <сеть> for 1 USDC"` и котировка с `topupGas` без ошибок.
+- [ ] Сеть без родной монеты (как Tempo) — `feeToken`, а не газ; `add gas` для неё отвечает, что пополнять нечего.
+
 **Деньги и баланс**
 - [ ] `App/Sources/Execution/Trade/Send.swift`: `Destination.<net>` → `sendEVMUSDC(units, on: .<net>, …)`.
 - [ ] `App/Sources/LalaCore/Holdings.swift`: хост в `blockscout[...]` или ветка чтения через RPC. Затем добавить в `Workspace.loadHoldings` (кортеж `read`).

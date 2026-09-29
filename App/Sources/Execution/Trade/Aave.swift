@@ -290,7 +290,17 @@ extension Executor {
                 throw ExecutionError("Not enough \(net.gasCoin) on \(net.name) for the fee: \(note).")
             }
         } else {
-            guard gasLimit * maxFee <= (try await rpc.balance(wallet.evm)) else { throw ExecutionError("Not enough \(net.gasCoin) on \(net.name) for gas: \(note).") }
+            // Short of gas is never a dead end: a top-up of three times what this call may cost comes over first.
+            let fee = gasLimit * maxFee
+            if fee > (try await rpc.balance(wallet.evm)) {
+                // A top-up that itself runs short (Relay's swap for gas with none there) stops instead of looping.
+                guard !Self.toppingUp else { throw ExecutionError("Not enough \(net.gasCoin) on \(net.name) even to buy gas there: \(note). Top up Solana's USDC and try again.") }
+                let price = try await Relay.nativePrice(chainId: net.rpc.chainId) ?? 0
+                let usd = price > 0 ? min(max(Decimal(fee) / 1e18 * price * 3, net.topupUSD, Decimal(string: "0.5")!), 10) : max(net.topupUSD, 1)
+                report("Not enough \(net.gasCoin) on \(net.name) for «\(note)»: bringing \(Fmt.usd(usd)) of it first.")
+                _ = try await Self.$toppingUp.withValue(true) { try await topUpGas(net, usd: usd) }
+                guard fee <= (try await rpc.balance(wallet.evm)) else { throw ExecutionError("Not enough \(net.gasCoin) on \(net.name) for gas even after a top-up: \(note).") }
+            }
         }
         let nonce = try await rpc.nonce(wallet.evm)
         let raw = try await signer.signEVM(chainId: rpc.chainId, nonce: nonce, maxPriorityFee: tip, maxFee: maxFee, gasLimit: gasLimit, to: to, data: data,
@@ -305,6 +315,61 @@ extension Executor {
         try journal.append(.init(chain: net.key, id: hash, kind: .confirmed))
         report("\(note): done. \(net.explorer)/tx/\(hash)")
         return hash
+    }
+
+    /// Set while a gas top-up runs: its own transactions don't start another.
+    @TaskLocal static var toppingUp = false
+
+    /// `usd` of the network's own coin for gas, at our address there: over Relay from Solana's USDC (it rides on half a
+    /// dollar of USDC, which arrives too); when Solana is short, Relay swaps the network's own USDC for it on the chain.
+    public func topUpGas(_ net: EVMNetwork, usd: Decimal) async throws -> String {
+        guard net.feeToken == nil else { return "\(net.name) takes its fees in \(net.gasCoin): there's no gas coin to top up." }
+        guard usd >= Decimal(string: "0.1")!, usd <= 20 else { throw ExecutionError("A gas top-up is between $0.10 and $20.") }
+        let me = wallet.evm, rpc = net.rpc
+        let before = try await rpc.balance(me)
+        let price = try await Relay.nativePrice(chainId: rpc.chainId) ?? 0
+        // Most of what's bought: the wait below ends when 80% of it is there.
+        let expected = price > 0 ? NSDecimalNumber(decimal: usd / price * 1e18 * Decimal(string: "0.8")!).uint64Value : 1
+        let solanaUSDC = Decimal(try await self.rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
+        if solanaUSDC >= usd + 1 {
+            try await ensureEVM(net, usdc: 0, gas: (floor: before + expected, topupUSD: usd))
+        } else {
+            try await swapForGas(net, usd: usd)
+        }
+        let after = try await rpc.balance(me)
+        return "Topped up gas on \(net.name): \(Fmt.num(Decimal(before) / 1e18, maxFraction: 8)) → \(Fmt.num(Decimal(after) / 1e18, maxFraction: 8)) \(net.gasCoin) (≈ \(Fmt.usd(usd)))."
+    }
+
+    /// Gas bought with the network's own USDC by Relay's swap on the chain: an exact approve to the approval proxy Relay
+    /// publishes for it, then its call to that proxy, from and to this wallet, at most 5% (or $0.15) lost.
+    private func swapForGas(_ net: EVMNetwork, usd: Decimal) async throws {
+        let me = wallet.evm, rpc = net.rpc, chain = net.relayChain
+        let units = NSDecimalNumber(decimal: (usd * 1_000_000).rounded(0, .up)).uint64Value
+        guard try await rpc.tokenBalance(net.usdc, owner: me) >= units else {
+            throw ExecutionError("No gas on \(net.name), and neither Solana nor \(net.name) has \(Fmt.usd(usd)) of USDC to buy it. Top up either first.")
+        }
+        let quote = try await Relay.quote(user: me, recipient: me, originChain: chain, destinationChain: chain, originCurrency: net.usdc,
+                                          destinationCurrency: "0x0000000000000000000000000000000000000000", amount: units)
+        let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": quote.recipient.lowercased()],
+                                         expected: ["sender": me.lowercased(), "recipient": me.lowercased()], subject: "Relay quote")
+        guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
+        guard let proxy = try await Relay.approvalProxy(chainId: chain)?.lowercased(), let call = quote.evm.last,
+              call.to.lowercased() == proxy, call.chainId == chain, call.value == "0" || call.value == "<null>",
+              quote.evm.dropLast().allSatisfy({ step in
+                  let args = Data(step.data.dropFirst(4))
+                  return step.to.lowercased() == net.usdc && step.data.prefix(4).hex == "095ea7b3"
+                      && ABI.address(in: args, word: 0)?.lowercased() == proxy && ABI.decimal(in: args, word: 1) == Decimal(units)
+              }) else {
+            throw ExecutionError("Relay's transactions don't go to the approval proxy it publishes for \(net.name), for exactly this amount. Nothing was signed.")
+        }
+        let worthOut = Decimal(string: quote.amountOutUSD) ?? 0
+        guard worthOut > 0, usd - worthOut <= max(usd * Decimal(string: "0.05")!, Decimal(string: "0.15")!) else {
+            throw ExecutionError("Relay gives \(Fmt.usd(worthOut)) of \(net.gasCoin) for \(Fmt.usd(usd)): more lost than allowed. Nothing was signed.")
+        }
+        let before = try await rpc.balance(me)
+        try await approve(rpc, token: net.usdc, spender: proxy, amount: units, note: "Approve exactly \(Fmt.num(usd)) USDC to Relay for gas")
+        _ = try await sendEVM(rpc, to: call.to, data: call.data, note: "Relay: \(Fmt.usd(usd)) of USDC into \(net.gasCoin) on \(net.name)")
+        for _ in 0..<30 where try await rpc.balance(me) <= before { try await Task.sleep(for: .seconds(1)) }
     }
 
     /// Tempo: the wallet's fee token set to `token` once, before a call that isn't a plain transfer of it.

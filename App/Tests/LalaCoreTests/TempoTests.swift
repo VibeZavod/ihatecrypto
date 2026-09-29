@@ -163,3 +163,13 @@ private func challenge(_ request: String, extra: String = "") -> String {
     m.set(.robinhood, false)
     #expect(m.refusal(.bridge(from: "base", to: "robinhood", 5)) != nil && Modules().refusal(.bridge(from: "base", to: "robinhood", 5)) == nil)
 }
+
+// Gas is never a dead end: «добавь газа на робингуд на 3 бакса» is a command, not «ihatecrypto can't».
+@Test func gasTopUpsParse() {
+    #expect(WalletCommand.parse("добавь газа на робингуд на 3 бакса") == .gas("robinhood", usd: 3))
+    #expect(WalletCommand.parse("add gas on base for 2 USDC") == .gas("base", usd: 2))
+    #expect(WalletCommand.parse("top up gas on arbitrum") == .gas("arbitrum", usd: nil))
+    #expect(WalletCommand.parse("докинь газ в полигон") == .gas("polygon", usd: nil))
+    #expect(WalletCommand.parse("move 20 USDC from Base to Robinhood") == .bridge(from: "base", to: "robinhood", 20))
+    #expect(ChatRouter.parses("add gas on robinhood for 1 USDC", markets: []))
+}

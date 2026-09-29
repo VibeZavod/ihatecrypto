@@ -160,6 +160,8 @@ public enum WalletCommand: Equatable, Sendable {
     /// USDC from one EVM network straight to another over Relay, at our own address («base» → «robinhood», where it
     /// arrives as USDG), or to our Hyperliquid trading balance («hyperliquid»); nil = everything on `from`.
     case bridge(from: String, to: String, Decimal?)
+    /// The network's own coin for fees («robinhood», «base», …), `usd` worth of it over Relay; nil = $1.
+    case gas(String, usd: Decimal?)
     /// A paid API on Tempo (MPP): the request as the service documents it; the price comes from its 402 answer and
     /// is paid in USDC on Tempo only after Confirm. `method` «GET» or «POST»; `body` JSON or nil.
     case pay(method: String, url: String, body: String?)
@@ -174,6 +176,14 @@ public enum WalletCommand: Equatable, Sendable {
             return .pay(method: m.1.map { $0.uppercased() } ?? (body == nil ? "GET" : "POST"), url: String(m.2), body: body)
         }
         let q = text.lowercased()
+        // «add gas on robinhood for 3 USDC», «добавь газа на робингуд на 3 бакса», «докинь газ в полигон».
+        if q.contains(/\bgas\b|\bгаз\w*/), q.contains(/\badd\b|top\s*up|\bbring\b|\bget\b|\bbuy\b|добав\w*|доки\w*|пополн\w*|закин\w*|подкин\w*|купи\w*|нуж\w*/),
+           let word = q.firstMatch(of: /\b(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet)\b/),
+           let net = Self.network(String(word.1)) {
+            let usd = (q.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|usdg|\$|долл|dollars?|bucks|бакс)/)?.1)
+                .flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
+            return .gas(net, usd: usd)
+        }
         // Rewards to collect, before «claim … from Aave» reads as a withdrawal and «claim yield» as the rates.
         if q.contains(/\bclaim|клейм|ревард|реворд/) || q.contains(/(?:забер|забра|собер|собра|получ|вывед|выве)\w*\s+(?:\w+\s+){0,2}?(?:награ|бонус)/) {
             return .claimRewards
@@ -498,6 +508,7 @@ extension WalletCommand {
         case .sellOn(let place, let t, let x): return "sell \(n(x)) \(t.hasPrefix("0x") ? "of the token \(t)" : t.uppercased()) on \(Self.placeName(place)) for USDC on Solana"
         case .solanaTo(let place, let x): return "move \(n(x)) USDC from Solana to \(Self.placeName(place))"
         case .pay(let method, let url, _): return "pay for \(method) \(url) in USDC on Tempo"
+        case .gas(let place, let usd): return "add ≈ \(Fmt.usd(usd ?? 1)) of gas on \(Self.placeName(place))"
         case .bridge(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to))" + (to == "robinhood" ? " (arrives as USDG)" : "")
         case .claimRewards: return "claim rewards on Merkl"
         }
