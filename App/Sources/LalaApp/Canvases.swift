@@ -375,6 +375,8 @@ extension CanvasList {
         let pinned = all.filter { $0.pinnedAt != nil }.sorted { $0.pinnedAt! < $1.pinnedAt! }
         let items = all.filter { $0.pinnedAt == nil }
         return LazyVStack(alignment: .leading, spacing: 2) {
+            // The open canvas before it's kept shows at once, on top, instead of appearing only after the first answer.
+            if ws.canvasID == nil { NewCanvasRow() }
             ForEach(pinned) { row($0) }
             if !pinned.isEmpty, !items.isEmpty { Divider().padding(.vertical, 4).padding(.horizontal, 8) }
             ForEach(ws.canvasFolders, id: \.self) { folder in
@@ -400,6 +402,50 @@ extension CanvasList {
             withAnimation(StudioView.spring) { ws.openCanvas(c) }
             close?()
         }
+    }
+}
+
+/// The open canvas before it's kept: its edge pulses while it waits for the first message and while the first answer is
+/// being written; with that answer it becomes a row of its own.
+private struct NewCanvasRow: View {
+    @Environment(Workspace.self) private var ws
+
+    var body: some View {
+        HStack(spacing: 9) {
+            RoundedRectangle(cornerRadius: 8).fill(Brand.glassFill).frame(width: 26, height: 26)
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Brand.glassRim))
+                .overlay(Image(systemName: "bubble.left").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary))
+            VStack(alignment: .leading, spacing: 1) {
+                Text(ws.messages.first(where: \.fromUser)?.text ?? "New canvas").font(.ui(13, .semibold)).lineLimit(1)
+                Text(ws.thinking ? "answering…" : ws.newCanvasFolder.map { "goes to «\($0)» · write below" } ?? "write below to keep it")
+                    .font(.ui(11)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 8).padding(.vertical, 6)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Brand.glassSelected))
+        .modifier(PulsingEdge(active: true))
+        .help("A new canvas: it's kept here once you write something")
+    }
+}
+
+/// A row's edge breathing in the accent while `active` (a canvas being written). Only the border changes, the row stays put.
+struct PulsingEdge: ViewModifier {
+    let active: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var lit = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .strokeBorder(Brand.accent.opacity(active ? (lit ? 0.8 : 0.2) : 0), lineWidth: 1.5))
+            .onChange(of: active, initial: true) {
+                lit = false
+                guard active else { return }
+                if reduceMotion { lit = true } else {
+                    withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { lit = true }
+                }
+            }
     }
 }
 
@@ -514,6 +560,8 @@ struct CanvasRow: View {
         .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(current ? Brand.glassSelected : hover ? Brand.glassFill.opacity(0.6) : .clear))
         .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(current ? Brand.glassRim : .clear))
         .shadow(color: .black.opacity(current ? 0.06 : 0), radius: 2, y: 1)
+        // The open canvas pulses while its answer is being written.
+        .modifier(PulsingEdge(active: current && ws.thinking))
         .onHover { hover = $0 }
         .help("\(canvas.displayTitle) · \(LLMCatalog.provider(id: canvas.providerID)?.info.name ?? canvas.providerID) · \(canvas.model)")
         .contextMenu { actions }
