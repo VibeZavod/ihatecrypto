@@ -64,14 +64,14 @@ extension Executor {
     }
 
     /// USDC (USDG on Robinhood Chain) lying unused on each EVM network Settings › Modules allows, from half a dollar
-    /// (a bridge's minimum). Not Ethereum, whose gas costs dollars. A network that can't be read counts as empty.
+    /// (a bridge's minimum); Ethereum last, so the cheaper networks are pulled from first. A network that can't be read
+    /// counts as empty.
     public func idleUSDC() async -> [(net: EVMNetwork, usdc: Decimal)] {
-        let modules = Modules.current, me = wallet.evm
-        guard modules.isOn(ModuleKind.bridges) else { return [] }
+        let me = wallet.evm
+        guard Modules.current.isOn(ModuleKind.bridges) else { return [] }
         var out: [(net: EVMNetwork, usdc: Decimal)] = []
-        for net in EVMNetwork.all where net.key != "ethereum" {
-            guard let n = ModuleNetwork(place: net.key), modules.isOn(n),
-                  let have = try? await net.rpc.tokenBalance(net.usdc, owner: me), have > net.feeReserve else { continue }
+        for net in EVMNetwork.searched {
+            guard let have = try? await net.rpc.tokenBalance(net.usdc, owner: me), have > net.feeReserve else { continue }
             let usdc = Decimal(have - net.feeReserve) / 1_000_000
             if usdc >= Decimal(string: "0.5")! { out.append((net, usdc)) }
         }

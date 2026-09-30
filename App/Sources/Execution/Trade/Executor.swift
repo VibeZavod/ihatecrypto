@@ -145,7 +145,7 @@ public actor Executor {
         for dex in Hyperliquid.hip3Dexes { equity += (try? await Hyperliquid.dexBalance(user: wallet.evm, dex: dex).accountValue) ?? 0 }
         // Idle USDC on the EVM networks is capital too, and the trade can be paid from it when Solana is short.
         var held: [String: Decimal] = [:]
-        for net in EVMNetwork.all where net.key != "ethereum" {
+        for net in EVMNetwork.searched {
             held[net.key] = (try? await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)).map { Decimal($0) / 1_000_000 }
         }
         equity += held.values.reduce(0, +)

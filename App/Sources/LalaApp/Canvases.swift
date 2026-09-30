@@ -927,7 +927,7 @@ extension Workspace {
         guard planBlocker != nil, let m = market else { return nil }
         // ponytail: the richest source (Solana or an EVM network the plan can bridge from) less a bridge-fee cushion, plus
         // what is free on Hyperliquid; the confirm step re-quotes exactly.
-        let richest = ([solana?.usdc] + EVMNetwork.all.filter { $0.key != "ethereum" }.map { usdc(on: $0.key) }).compactMap { $0 }.max() ?? 0
+        let richest = ([solana?.usdc] + EVMNetwork.searched.map { usdc(on: $0.key) }).compactMap { $0 }.max() ?? 0
         let available = max(0, richest - Decimal(string: "0.1")!) + (hl.map { $0.withdrawable + (m.dex.flatMap { dexBalances[$0]?.withdrawable } ?? 0) } ?? 0)
         guard let f = Plan.fix(intent, market: m, equity: equity, policy: policy,
                                openRisk: HyperliquidAccount.riskAtStops(positions: positions, orders: orders), available: available) else { return nil }

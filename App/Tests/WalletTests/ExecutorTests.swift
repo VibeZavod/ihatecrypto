@@ -58,13 +58,16 @@ import WalletCore
     #expect(Executor.pick([], prefer: nil) == nil)
 }
 
-// Solana short: the first network holding the amount and a dime for Relay, never Ethereum (its gas costs dollars).
+// Solana short: the first network holding the amount and a dime for Relay; Ethereum last (its gas costs dollars), never out.
 @Test func tradeFundingPicksANetworkThatHoldsIt() {
     let held: [String: Decimal] = ["base": 3000, "arbitrum": 60, "ethereum": 9000]
     #expect(EVMNetwork.funding(50, held: { held[$0] })?.key == "base")
-    #expect(EVMNetwork.funding(3000, held: { held[$0] }) == nil)
+    #expect(EVMNetwork.funding(3000, held: { held[$0] })?.key == "ethereum")
+    #expect(EVMNetwork.funding(10_000, held: { held[$0] }) == nil)
     #expect(EVMNetwork.funding(59, held: { ["arbitrum": 60, "ethereum": 9000][$0] })?.key == "arbitrum")
-    #expect(EVMNetwork.funding(100, held: { ["ethereum": 9000][$0] }) == nil)
+    // Ethereum is asked last, never left out: a big balance there pays when nothing cheaper holds enough.
+    #expect(EVMNetwork.funding(100, held: { ["ethereum": 9000][$0] })?.key == "ethereum")
+    #expect(EVMNetwork.funding(100, held: { ["ethereum": 9000, "tempo": 500][$0] })?.key == "tempo")
 }
 
 @Test func aSpreadTakesIdleUSDCWhereItIsAndPullsOnlyWhatSolanaLacks() {

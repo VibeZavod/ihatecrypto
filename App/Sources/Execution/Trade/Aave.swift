@@ -63,9 +63,15 @@ public struct EVMNetwork: Sendable {
     public static func named(_ key: String) -> EVMNetwork? { all.first { $0.key == key } }
 
     /// Where a trade's money comes from when Solana is short: the first network holding `send` and a dime over for Relay's
-    /// fee, straight to Hyperliquid. Not Ethereum, whose gas costs dollars. nil = none has it.
+    /// fee, straight to Hyperliquid. Ethereum is asked last (its gas costs dollars), never left out. nil = none has it.
     public static func funding(_ send: Decimal, held: (String) -> Decimal?) -> EVMNetwork? {
-        all.first { $0.key != "ethereum" && (held($0.key) ?? 0) >= send + Decimal(string: "0.1")! }
+        searched.first { (held($0.key) ?? 0) >= send + Decimal(string: "0.1")! }
+    }
+
+    /// Every network a search for money looks at: all but the ones switched off in Settings › Modules — the user's rule,
+    /// never a network left out by us. Ethereum comes last, so a cheaper network pays first when both hold enough.
+    public static var searched: [EVMNetwork] {
+        all.filter { ModuleNetwork(place: $0.key).map(Modules.current.isOn) ?? true }.sorted { $0.key != "ethereum" && $1.key == "ethereum" }
     }
 }
 

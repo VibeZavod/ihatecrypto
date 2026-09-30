@@ -195,7 +195,7 @@ import WalletCore
     // The quote call: selector, offset 0x40, amount, then the path's length and bytes padded to a word.
     let quote = try UniswapV3.quoteExactInput(path: path, amountIn: 5_000_000)
     #expect(quote.prefix(4).hex == "cdca1753" && quote.count == 4 + 32 * 3 + 96)
-    #expect(UniswapV3.on(8453)?.router == "0x2626664c2603336e57b271c5c0b26f421741e481" && UniswapV3.on(42161) != nil && UniswapV3.on(1) == nil)
+    #expect(UniswapV3.on(8453)?.router == "0x2626664c2603336e57b271c5c0b26f421741e481" && UniswapV3.on(42161) != nil && UniswapV3.on(1) != nil && UniswapV3.on(137) != nil && UniswapV3.on(10) == nil)
 }
 
 @Test func signableNetworks() {
