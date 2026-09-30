@@ -277,3 +277,11 @@ import Testing
     #expect(WalletCommand.aave(deposit: true, amount: nil, network: "polygon").amountQuestion == "How much USDC into Aave on Polygon?")
     #expect(WalletCommand.morpho(deposit: false, amount: 1, network: "ethereum").summary == "withdraw 1 USDC from Morpho on Ethereum to Solana")
 }
+
+@Test func sendToOnTheNetworkNamed() {
+    #expect(WalletCommand.parse("send 2 USDC to main wallet on ethereum") == .sendTo(name: "main wallet", amount: 2, network: "ethereum"))
+    #expect(WalletCommand.parse("переведи 2 USDC на main wallet по эфир сети") == .sendTo(name: "main wallet", amount: 2, network: "ethereum"))
+    #expect(WalletCommand.parse("отправь 5 usdc на Маму в сети полигон") == .sendTo(name: "Маму", amount: 5, network: "polygon"))
+    // A network inside the name stays in it.
+    #expect(WalletCommand.parse("send 0.5 USDC to My Base wallet") == .sendTo(name: "My Base wallet", amount: Decimal(string: "0.5")!))
+}

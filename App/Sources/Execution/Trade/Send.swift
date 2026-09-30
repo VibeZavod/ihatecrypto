@@ -21,6 +21,8 @@ extension Executor {
         /// Another Hyperliquid account: USDC from the perp balance, no bridge.
         case hyperliquid(String)
         case tempo(String)
+        case ethereum(String)
+        case polygon(String)
     }
 
     public func sendUSDC(_ amount: Decimal, to destination: Destination, label: String) async throws -> String {
@@ -33,6 +35,8 @@ extension Executor {
         case .robinhood(let recipient): return try await sendEVMUSDC(units, on: .robinhood, to: recipient, label: label)
         case .hyperliquid(let recipient): return try await sendHyperliquidUSDC(amount, to: recipient, label: label)
         case .tempo(let recipient): return try await sendEVMUSDC(units, on: .tempo, to: recipient, label: label)
+        case .ethereum(let recipient): return try await sendEVMUSDC(units, on: .ethereum, to: recipient, label: label)
+        case .polygon(let recipient): return try await sendEVMUSDC(units, on: .polygon, to: recipient, label: label)
         }
     }
 

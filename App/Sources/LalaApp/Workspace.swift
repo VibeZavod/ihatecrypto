@@ -774,8 +774,8 @@ final class Workspace {
             return
         }
         if let command = PnLCommand.parse(text, markets: Set(markets.keys)) { await showPnL(command); return }
-        if case .sendTo(let name, let amount)? = WalletCommand.parse(text) {
-            prepareTransfer(amount, to: name)
+        if case .sendTo(let name, let amount, let net)? = WalletCommand.parse(text) {
+            prepareTransfer(amount, to: name, network: net)
             return
         }
         if let command = WalletCommand.parse(text) {
@@ -956,13 +956,6 @@ final class Workspace {
         if intent != TradeIntent(), let json = try? JSONEncoder().encode(intent) { c.plan = String(decoding: json, as: UTF8.self) }
         if let ch = chart { c.canvas.append("chart \(ch.coin) (\(ch.range.title))") }
         if let p = pendingText { c.canvas.append("waiting for Confirm: \(p)") }
-        // A spread or rebalance on the canvas has no pendingText: without this the model answered «there's no plan on the canvas».
-        if pendingText == nil, let p = pendingAllocation {
-            c.canvas.append("waiting for Confirm: \(p.summary)" + (allocationPreview.map { a in
-                " — " + a.slices.map { "\($0.place) \(Fmt.num($0.amount)) \(a.asset)" }.joined(separator: ", ") + ", from " +
-                    (a.sources.isEmpty ? "Solana" : a.sources.map { "\(Fmt.num($0.amount)) on \($0.place)" }.joined(separator: " + "))
-            } ?? ""))
-        }
         c.canvas += alerts.map { a in
             "price alert: \(a.coin) \(a.above ? "above" : "below") \(Fmt.price(a.price))" + (a.steps.map { ", then " + $0.joined(separator: " then ") } ?? "")
         }
@@ -1075,8 +1068,8 @@ final class Workspace {
             addressBookCommand(command, note: note)
             return true
         }
-        if case .sendTo(let name, let amount)? = WalletCommand.parse(canonical) {
-            prepareTransfer(amount, to: name, note: note)
+        if case .sendTo(let name, let amount, let net)? = WalletCommand.parse(canonical) {
+            prepareTransfer(amount, to: name, network: net, note: note)
             return true
         }
         if let command = WalletCommand.parse(canonical) {

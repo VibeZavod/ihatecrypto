@@ -375,7 +375,7 @@ extension Workspace {
                 // Never a guess: a network the app doesn't know gets nothing.
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't move money to \(place).") }
                 reply(try await e.solanaToEVM(net, usdc: amount ?? 0), note: "Relay · Solana → \(net.name)")
-            case .sendTo(let name, let amount): prepareTransfer(amount, to: name)
+            case .sendTo(let name, let amount, let net): prepareTransfer(amount, to: name, network: net)
             case .pay: reply(try await pay(command, e), note: "MPP · Tempo")
             case .gas(let place, let usd):
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't top up gas on \(place).") }

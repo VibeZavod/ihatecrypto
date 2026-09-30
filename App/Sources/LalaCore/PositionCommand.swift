@@ -133,7 +133,8 @@ public enum WalletCommand: Equatable, Sendable {
     /// The same from «polygon» or «ethereum».
     case evmToSolana(String, Decimal?)
     /// «send 5 USDC to Bybit»: to an entry of the address book, by its name. An address in the text is never a recipient.
-    case sendTo(name: String, amount: Decimal)
+    /// `network`: the one the message names («… on ethereum», «… по эфир сети»); nil = where the entry is saved.
+    case sendTo(name: String, amount: Decimal, network: String? = nil)
     /// Native NEAR from the wallet's NEAR account to an address-book entry on NEAR; nil = all but the account's own
     /// storage and the fee.
     case sendNear(name: String, amount: Decimal?)
@@ -349,11 +350,20 @@ public enum WalletCommand: Equatable, Sendable {
         if jupiter, let value = coins ?? amount { return .lendDeposit(symbol, value) }
         if let m = text.firstMatch(of: /(?i)(?:send|pay|transfer|отправь\w*|переведи|перевести|скинь|кинь)\s+\$?(\d+(?:[.,]\d+)?)\s*(?:usdc|\$|долл\w*|dollars?|bucks)?\s+(?:to|на|для)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/),
            let value = Decimal(string: String(m.1).replacingOccurrences(of: ",", with: ".")) {
-            let name = String(m.2).trimmingCharacters(in: .whitespaces)
+            var name = String(m.2).trimmingCharacters(in: .whitespaces)
+            // «… to Mom on ethereum», «… на main wallet по эфир сети»: the network goes, the name stays.
+            var network: String?
+            if let tail = name.firstMatch(of: /(?i)\s+(?:on|in|via|по|в|на|через)\s+(?:the\s+)?(?:сети\s+)?(ethereum|эфир\w*|mainnet|base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|robinhood|робинхуд\w*|tempo|темпо|solana|солан\w*|hyperliquid|хайперликвид\w*)(?:\s+(?:network|chain|mainnet|сет[иья]))?\s*$/) {
+                let word = String(tail.1).lowercased()
+                network = word.hasPrefix("эфир") || word == "mainnet" ? "ethereum" : word.hasPrefix("бейс") ? "base" : word.hasPrefix("арбитрум") ? "arbitrum"
+                    : word.hasPrefix("полигон") ? "polygon" : word.hasPrefix("робинхуд") ? "robinhood" : word == "темпо" ? "tempo"
+                    : word.hasPrefix("солан") ? "solana" : word.hasPrefix("хайперликвид") ? "hyperliquid" : word
+                name = String(name[..<tail.range.lowerBound])
+            }
             // Our own places stay what they were; a pasted address is not a name.
             let place = name.lowercased().wholeMatch(of: /(?:the\s+)?(?:solana|солан\w*|hyperliquid|хайперликвид\w*|base|бейс|aave|kamino|hlp|vault)/) != nil
             if !place, !name.lowercased().contains(/0x[0-9a-f]{6}/), name.count <= 40 {
-                return .sendTo(name: name, amount: value)
+                return .sendTo(name: name, amount: value, network: network)
             }
         }
         if q.contains(/arbitrum|арбитрум/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
@@ -496,7 +506,7 @@ extension WalletCommand {
         case .baseToSolana(let x): return "move \(n(x)) USDC from Base to Solana"
         case .arbitrumToSolana(let x): return "move \(n(x)) USDC from Arbitrum to Solana"
         case .evmToSolana(let net, let x): return "move \(n(x)) USDC from \(Self.placeName(net)) to Solana"
-        case .sendTo(let name, let x): return "send \(Fmt.num(x)) USDC to \(name)"
+        case .sendTo(let name, let x, let net): return "send \(Fmt.num(x)) USDC to \(name)" + (net.map { " on \($0)" } ?? "")
         case .sendNear(let name, let x): return "send \(n(x)) NEAR to \(name)"
         case .closeNear(let name): return "close your NEAR account and send all its NEAR to \(name)"
         case .sendSol(let name, let x): return "send \(Fmt.num(x, maxFraction: 9)) SOL to \(name)"

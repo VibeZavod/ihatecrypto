@@ -164,6 +164,7 @@ extension AddressCheck.Network {
         case .robinhood: "robinhood"
         case .near: "near"
         case .tempo: "tempo"
+        case .polygon: "pol"
         }
     }
 }
@@ -681,9 +682,9 @@ extension Workspace {
         if let i = addressBook.firstIndex(where: { $0.id == entry.id }) { addressBook[i].lastSent = Date() }
     }
 
-    func prepareTransfer(_ amount: Decimal, to name: String, note: String? = nil) {
+    func prepareTransfer(_ amount: Decimal, to name: String, network: String? = nil, note: String? = nil) {
         let key = name.lowercased()
-        guard let entry = addressBook.first(where: { $0.name.lowercased() == key }) ?? ownWallet(key) ?? addressBook.first(where: { $0.name.lowercased().contains(key) }) else {
+        guard var entry = addressBook.first(where: { $0.name.lowercased() == key }) ?? ownWallet(key) ?? addressBook.first(where: { $0.name.lowercased().contains(key) }) else {
             reply("There’s no “\(name)” in Addresses. Add it there first (the book button in the rail), then send by its name."
                   + (key.contains("solana") || key.contains("солан") ? " To bring money to your own Solana wallet, say “withdraw \(Fmt.num(amount)) USDC to Solana”." : ""), note: note)
             return
@@ -692,9 +693,16 @@ extension Workspace {
             reply("“\(entry.name)” is a NEAR account: ihatecrypto sends it NEAR, not USDC — e.g. “send 0.1 NEAR to \(entry.name)”.", note: note)
             return
         }
-        guard entry.network != .ethereum else {
-            reply("“\(entry.name)” is on Ethereum mainnet, where one transfer costs dollars in gas; ihatecrypto sends USDC on Solana, Base, Arbitrum, Tempo and Hyperliquid.", note: note)
-            return
+        // The network the message names wins, Ethereum mainnet too (the user's call, 2026-10-01: «мне пофиг что дорого»).
+        // A 0x address saved on one EVM network is the same address on another; the card says it was saved elsewhere.
+        if let net = network.flatMap(AddressCheck.Network.init(rawValue:)), net != entry.network {
+            let evm: Set<AddressCheck.Network> = [.base, .arbitrum, .ethereum, .polygon, .robinhood, .tempo, .hyperliquid]
+            guard evm.contains(net), evm.contains(entry.network) else {
+                reply(say("“\(entry.name)” is a \(entry.network.title) address: it can't receive on \(net.title).",
+                          "«\(entry.name)» — адрес в \(entry.network.title), в \(net.title) он получить не может."), note: note)
+                return
+            }
+            entry.network = net
         }
         if !entry.memo.isEmpty, entry.network == .solana {
             reply("“\(entry.name)” needs a memo / tag, and ihatecrypto can’t add one to a Solana transfer yet — send it from the exchange’s app instead.", note: note)
@@ -704,7 +712,8 @@ extension Workspace {
         pendingAction = .transfer(entry, amount)
         pendingText = "send \(Fmt.num(amount)) USDC to \(entry.name)"
         let ends = AddressCheck.ends(entry.address)
-        reply("The transfer is on the canvas: \(Fmt.num(amount)) USDC to “\(entry.name)” on \(entry.network.title), \(ends.start) … \(ends.end). Sign it, or say anything else to cancel.", note: note)
+        reply(say("The transfer is on the canvas: \(Fmt.num(amount)) USDC to “\(entry.name)” on \(entry.network.title), \(ends.start) … \(ends.end). Sign it, or say anything else to cancel.",
+                  "Перевод на холсте: \(Fmt.num(amount)) USDC на «\(entry.name)» в \(entry.network.title), \(ends.start) … \(ends.end). Подпиши или напиши что-нибудь другое, чтобы отменить."), note: note)
     }
 
     func transfer(_ amount: Decimal, to entry: SavedAddress) async {
@@ -725,7 +734,10 @@ extension Workspace {
             case .hyperliquid: .hyperliquid(entry.address)
             case .robinhood: .robinhood(entry.address)
             case .tempo: .tempo(entry.address)
-            default: .base(entry.address)
+            case .ethereum: .ethereum(entry.address)
+            case .polygon: .polygon(entry.address)
+            case .base: .base(entry.address)
+            case .near: throw ExecutionError("USDC doesn't go to a NEAR account.")
             }
             let text = try await executor(wallet).sendUSDC(amount, to: destination, label: entry.name)
             if let i = addressBook.firstIndex(where: { $0.id == entry.id }) { addressBook[i].lastSent = Date() }
@@ -747,7 +759,8 @@ struct TransferBoard: View {
     var body: some View {
         if case .transfer(let entry, let amount)? = ws.pendingAction {
             let solana = entry.network == .solana, hyper = entry.network == .hyperliquid
-            let from = solana ? ws.solana?.usdc : hyper ? ws.hl?.withdrawable : entry.network == .arbitrum ? ws.arbitrumUSDC : entry.network == .tempo ? ws.tempoUSDC : ws.base?.usdc
+            let from = solana ? ws.solana?.usdc : hyper ? ws.hl?.withdrawable : entry.network == .arbitrum ? ws.arbitrumUSDC
+                : entry.network == .tempo ? ws.tempoUSDC : entry.network == .base ? ws.base?.usdc : nil
             let ends = AddressCheck.ends(entry.address)
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
@@ -759,7 +772,9 @@ struct TransferBoard: View {
                         TokenLogo(name: entry.network.logo, size: 24)
                         Text("FROM · \(entry.network.title.uppercased())").font(.ui(9, .heavy)).tracking(0.4).opacity(0.75)
                         Text(from.map { "\(Fmt.num($0)) → \(Fmt.num(max(0, $0 - amount))) USDC" } ?? "—").font(.ui(13, .bold)).monospacedDigit()
-                        Text(hyper ? "perp balance · no bridge, no gas" : !solana && (from ?? 0) < amount ? "the rest comes from Solana first" : "your wallet").font(.ui(10)).opacity(0.8)
+                        Text(hyper ? "perp balance · no bridge, no gas" : solana ? "your wallet"
+                             : from.map { $0 < amount ? "the rest comes from Solana first" : "your wallet" } ?? "your wallet · what's short comes from Solana")
+                            .font(.ui(10)).opacity(0.8)
                     }
                     .padding(11)
                     .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
@@ -774,6 +789,15 @@ struct TransferBoard: View {
                     .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
                     .background(RoundedRectangle(cornerRadius: 16).fill(Brand.card))
                     .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent, lineWidth: 2))
+                }
+                if let saved = ws.addressBook.first(where: { $0.id == entry.id }), saved.network != entry.network {
+                    Label("Saved for \(saved.network.title), sent on \(entry.network.title) to the same address. Your own wallet has it there too; an exchange's deposit address may not — check that it takes \(entry.network.title).",
+                          systemImage: "exclamationmark.triangle.fill")
+                        .font(.ui(10)).foregroundStyle(Brand.jevInk)
+                }
+                if entry.network == .ethereum {
+                    Label("Ethereum mainnet: the fee is in ETH and can be dollars; it's bought for you if the wallet has none there.", systemImage: "fuelpump")
+                        .font(.ui(10)).foregroundStyle(.secondary)
                 }
                 if entry.lastSent == nil {
                     Label("First transfer to this address. Sending a small test amount first is the safe habit.", systemImage: "exclamationmark.triangle.fill")

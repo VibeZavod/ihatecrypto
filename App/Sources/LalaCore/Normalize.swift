@@ -128,7 +128,7 @@ public enum ChatRouter {
       move N USDC from <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo> to <another of them|Hyperliquid>   (straight over Relay, no Solana in between; no N = all of it)
       add gas on <Base|Arbitrum|Polygon|Ethereum|Robinhood> [for N USDC]   (that network's own coin for fees, over Relay; no N = $1. Gas is never a dead end:
       a move short of it tops it up by itself, so «not enough ETH» is fixed with this form, never refused)
-      send N USDC to <NAME from the address book> | top up (where to send money into ihatecrypto)
+      send N USDC to <NAME from the address book> [on <network the user names — any, Ethereum mainnet too; they decide about the fee>] | top up (where to send money into ihatecrypto)
       send N NEAR to <NAME from the address book> | send all NEAR to <NAME> | close the NEAR account into <NAME>
       send N SOL to <NAME from the address book>
     PAYING FOR A SERVICE (MPP on Tempo, the x402 way: an API that charges per request — search, data, email, phone calls, mailed letters,
