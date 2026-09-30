@@ -1073,7 +1073,8 @@ struct StudioCanvas: View {
                               (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty {
                         // Never blank while something is under way: whatever path left nothing live, the canvas's last
                         // board stays until the answer or the outcome takes its place. The empty canvas is for when nothing runs.
-                        if ws.thinking || ws.busy || ws.executing || ws.preparing,
+                        // A traded plan whose position isn't there (a limit entry still waiting, or closed since) keeps it too.
+                        if ws.thinking || ws.busy || ws.executing || ws.preparing || ws.managesPosition,
                            let last = ws.canvases.first(where: { $0.id == ws.canvasID }), !last.bubbles.isEmpty {
                             SavedBoard(canvas: last)
                         } else {
