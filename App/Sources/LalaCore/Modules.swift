@@ -246,7 +246,7 @@ public struct Modules: Equatable, Sendable {
         case .buyNear, .sellNear: return r(.oneClick)
         case .sendNear, .closeNear: return refusal(network: .near, ru: ru)
         case .sendSol: return refusal(network: .solana, ru: ru)
-        case .allocate, .rebalance, .claimRewards:
+        case .allocate, .rebalance, .claimRewards, .sweepRewards:
             // Each vault is checked by the planner; with the whole kind off there's nothing to plan.
             return isOn(.earn) ? nil : ru ? "\(ModuleKind.earn.name) выключены в Settings › Modules." : "\(ModuleKind.earn.name) is off in Settings › Modules."
         case .pay: return r(.mpp)

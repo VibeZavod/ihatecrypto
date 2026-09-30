@@ -172,6 +172,9 @@ func moveMoney(_ text: String) async throws {
         guard !owed.isEmpty else { print("Nothing to claim on Merkl."); return }
         guard send else { print("Add --yes to claim it."); return }
         print(try await executor.claimRewards())
+    case .sweepRewards(let min, let into):
+        guard send else { print("Add --yes to claim and sell."); return }
+        print(try await executor.sweepRewards(minUSD: min, into: into))
     case .receive: print("Solana (USDC, SOL): \(signer.wallet.solana)\nBase / EVM (USDC, ETH): \(signer.wallet.evm)")
     case .rebalance(let share):
         let (text, ready, _) = try await executor.rebalance(maxShare: share ?? 50, execute: send)

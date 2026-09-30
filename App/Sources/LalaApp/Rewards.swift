@@ -20,9 +20,16 @@ extension Workspace {
                           "Забирать нечего: Merkl ничего не должен \(AddressCheck.ends(me).start) … \(AddressCheck.ends(me).end) ни на Base, ни на Arbitrum, Ethereum или Polygon. Награды появляются через несколько часов в хранилище, которое их платит (у Morpho, у части Aave)."), note: note)
                 return
             }
+            let worth = owed.compactMap(\.worthUSD).reduce(0, +)
+            // A sweep under its floor: nothing to sign, and a schedule of it just waits for the next run.
+            if case .sweepRewards(let min, _) = command, worth < Merkl.sweepFloor(min) {
+                let floor = Fmt.usd(Merkl.sweepFloor(min))
+                reply(say("Merkl owes \(owed.map(Self.shown).joined(separator: ", ")), ≈ \(Fmt.usd(worth)): under the \(floor) floor, so nothing is swept yet — the gas would eat it.",
+                          "Merkl должен \(owed.map(Self.shown).joined(separator: ", ")), ≈ \(Fmt.usd(worth)): меньше порога \(floor), поэтому пока ничего не забираю — газ съест."), note: note)
+                return
+            }
             rewards = owed
             pendingAction = .wallet(command)
-            let worth = owed.compactMap(\.worthUSD).reduce(0, +)
             reply(say("Merkl owes this wallet \(owed.map(Self.shown).joined(separator: ", "))\(worth > 0 ? ", ≈ \(Fmt.usd(worth))" : ""). The card is on the canvas — Confirm claims it.",
                       "Merkl должен кошельку \(owed.map(Self.shown).joined(separator: ", "))\(worth > 0 ? ", ≈ \(Fmt.usd(worth))" : ""). Карточка на холсте — Confirm заберёт."), note: note)
         } catch {
@@ -50,8 +57,20 @@ extension Workspace {
             steps.append(ActivityBubble(kind: "step", label: "TO · \(name.uppercased())", title: "this wallet",
                                         lines: ["the rewards stay there as tokens"], logo: logo, fill: fill))
         }
-        return MoveRoute(title: "Claim rewards · \(owed.map(Self.shown).joined(separator: ", "))",
+        // A sweep sells what it claimed: each reward worth a dollar or more, for USDC on Solana.
+        var into: String??
+        if case .wallet(.sweepRewards(_, let x))? = pendingAction { into = .some(x) }
+        if let into {
+            for r in Merkl.toSell(owed, into: into) {
+                let net = EVMNetwork.of(chainId: r.chainId), name = net?.name ?? "chain \(r.chainId)"
+                steps.append(ActivityBubble(kind: "step", label: "SELL · ON \(name.uppercased())", title: Self.shown(r),
+                                            lines: ["for USDC\ton Solana"] + (into.map { ["then buys\t\($0) on \(name)"] } ?? []),
+                                            logo: TokenLogo.name(forAsset: r.symbol) ?? "uni", fill: RouteFill.place(name)))
+            }
+        }
+        return MoveRoute(title: "\(into == nil ? "Claim" : "Sweep") rewards · \(owed.map(Self.shown).joined(separator: ", "))",
                          footer: "One \(names.joined(separator: ", ")) transaction a chain: Merkl's distributor pays each reward to this wallet — the signer refuses a claim that pays anyone else. "
+                            + (into == nil ? "" : "Then each reward worth $1 or more is sold for USDC on Solana (Relay's swap or Uniswap and the bridge, whichever leaves more), paying only this wallet; dust stays. ")
                             + "The proofs are asked for again right before signing; gas missing there comes from Solana over Relay. Say “do it” or press Confirm.",
                          steps: steps)
     }

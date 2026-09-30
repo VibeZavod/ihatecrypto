@@ -169,6 +169,10 @@ public enum WalletCommand: Equatable, Sendable {
     /// «claim rewards», «забери награды»: what Merkl owes this wallet (Morpho's, Aave's and other protocols' rewards)
     /// on Base, Arbitrum, Ethereum and Polygon, paid to it.
     case claimRewards
+    /// «sweep rewards over $10 into USDC», «продавай награды в стейблы»: Merkl's rewards, when together they're worth
+    /// `minUSD` or more (never under $5, or the gas eats them), claimed, and each sold for USDC on Solana, or `into` a token
+    /// bought with that USDC. Under the floor nothing is signed: a schedule of it just waits.
+    case sweepRewards(minUSD: Decimal?, into: String?)
 
     public static func parse(_ text: String) -> WalletCommand? {
         // «pay POST https://… {"q": 1}»: the URL and the body kept as written.
@@ -184,6 +188,13 @@ public enum WalletCommand: Equatable, Sendable {
             let usd = (q.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|usdg|\$|долл|dollars?|bucks|бакс)/)?.1)
                 .flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
             return .gas(net, usd: usd)
+        }
+        // Rewards to claim AND sell: before the plain claim below.
+        if q.contains(/\bsweep\s+(?:the\s+|my\s+)?rewards?|\bsell\s+(?:the\s+|my\s+|all\s+)?(?:claimed\s+)?rewards?|(?:прода|обменя|меня)\w*\s+(?:\w+\s+){0,2}?награ/) {
+            let min = q.firstMatch(of: /(?:over|above|at\s+least|≥|>=|от|больше|свыше|когда\s+(?:наберётся|наберется|будет))\s*\$?\s*(\d+(?:[.,]\d+)?)/)
+                .flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
+            let into = q.firstMatch(of: /\b(?:into|to|for)\s+\$?([a-z][a-z0-9]{1,9})\b|(?:\sв|\sна)\s+\$?([a-z][a-z0-9]{1,9})\b/).map { String($0.1 ?? $0.2 ?? "").uppercased() }
+            return .sweepRewards(minUSD: min, into: into.flatMap { $0.isEmpty || ["USDC", "USD", "STABLES", "STABLECOINS"].contains($0) ? nil : $0 })
         }
         // Rewards to collect, before «claim … from Aave» reads as a withdrawal and «claim yield» as the rates.
         if q.contains(/\bclaim|клейм|ревард|реворд/) || q.contains(/(?:забер|забра|собер|собра|получ|вывед|выве)\w*\s+(?:\w+\s+){0,2}?(?:награ|бонус)/) {
@@ -521,6 +532,7 @@ extension WalletCommand {
         case .gas(let place, let usd): return "add ≈ \(Fmt.usd(usd ?? 1)) of gas on \(Self.placeName(place))"
         case .bridge(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to))" + (to == "robinhood" ? " (arrives as USDG)" : "")
         case .claimRewards: return "claim rewards on Merkl"
+        case .sweepRewards(let min, let into): return "sweep Merkl rewards once worth \(Fmt.usd(max(min ?? 5, 5))) or more into \(into ?? "USDC")"
         }
     }
 }

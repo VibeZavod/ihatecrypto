@@ -96,7 +96,7 @@ extension Workspace {
         let chains: [String] = switch command {
         case .yields, .receive, .stopSchedules: []
         case .hlp: ["evm"]
-        case .withdrawToSolana, .aave, .morpho, .baseToSolana, .arbitrumToSolana, .evmToSolana, .robinhoodToSolana, .solanaTo, .buyStock, .sellStock, .buyOn, .sellOn, .pay, .claimRewards: ["evm", "solana"]
+        case .withdrawToSolana, .aave, .morpho, .baseToSolana, .arbitrumToSolana, .evmToSolana, .robinhoodToSolana, .solanaTo, .buyStock, .sellStock, .buyOn, .sellOn, .pay, .claimRewards, .sweepRewards: ["evm", "solana"]
         case .bridge: ["evm"]
         case .gas: ["evm", "solana"]
         case .sendNear, .closeNear: ["near"]

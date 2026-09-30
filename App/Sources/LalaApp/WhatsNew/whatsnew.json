@@ -30,6 +30,13 @@
         "color": "072723"
       },
       {
+        "title": "Rewards sell themselves",
+        "text": "«every hour: sweep rewards over $10 into USDC» claims what Merkl owes once it's worth $10 and sells it for USDC; under $5 nothing is signed. From the automation wallet it runs without Touch ID.",
+        "try": "every hour: sweep rewards over $10 into USDC",
+        "symbol": "arrow.triangle.2.circlepath",
+        "color": "2E57D8"
+      },
+      {
         "title": "/ and @ in the chat",
         "text": "Type / for the blocks you can add, with an example to finish. Type @ for names from your address book and favorite tokens.",
         "try": "/",

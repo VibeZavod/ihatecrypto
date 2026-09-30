@@ -308,3 +308,15 @@ import WalletCore
     #expect(Executor.worseByMoreThanTenPercent(first: 1000, now: 850) == 15)
     #expect(Executor.worseByMoreThanTenPercent(first: 1000, now: 1200) == nil)
 }
+
+/// A sweep claims only once the rewards are worth the floor (never under $5) and sells what's worth a dollar or more
+/// and isn't already the coin it ends in.
+@Test func rewardSweepSellsWhatIsWorthIt() {
+    func reward(_ symbol: String, worth: Decimal) -> Merkl.Reward {
+        Merkl.Reward(chainId: 8453, token: "0x" + symbol, symbol: symbol, decimals: 0, amount: 1, claimed: 0, proofs: [], root: "0x", price: worth)
+    }
+    #expect(Merkl.sweepFloor(nil) == 5 && Merkl.sweepFloor(2) == 5 && Merkl.sweepFloor(12) == 12)
+    let owed = [reward("MORPHO", worth: 7), reward("WELL", worth: Decimal(string: "0.4")!), reward("USDC", worth: 3), reward("WETH", worth: 2)]
+    #expect(Merkl.toSell(owed, into: nil).map(\.symbol) == ["MORPHO", "WETH"])
+    #expect(Merkl.toSell(owed, into: "weth").map(\.symbol) == ["MORPHO"])
+}

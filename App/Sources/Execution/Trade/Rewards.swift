@@ -44,6 +44,33 @@ extension Executor {
         return lines.joined(separator: "\n")
     }
 
+    /// «sweep rewards over $10 into USDC»: once Merkl's rewards together are worth the floor (Merkl.sweepFloor), they're
+    /// claimed, and each worth a dollar or more is sold for USDC on Solana (Relay's swap, or Uniswap and the bridge — what
+    /// leaves more; paying only this wallet); `into` a token, that USDC then buys it. Under the floor nothing is signed and the
+    /// line says so, so a schedule of it just waits for its next run. A token that can't be sold doesn't stop the others.
+    public func sweepRewards(minUSD: Decimal?, into: String?) async throws -> String {
+        let floor = Merkl.sweepFloor(minUSD), me = wallet.evm
+        let owed = try await Merkl.rewards(user: me)
+        let worth = owed.compactMap(\.worthUSD).reduce(0, +)
+        guard worth >= floor else {
+            return "Merkl rewards ≈ \(Fmt.usd(worth)), under \(Fmt.usd(floor)): nothing claimed yet, the gas would eat them."
+        }
+        var lines = [try await claimRewards()]
+        for r in Merkl.toSell(owed, into: into) {
+            guard let net = EVMNetwork.of(chainId: r.chainId) else { continue }
+            do {
+                let before = try await rpc.tokenBalance(owner: wallet.solana, mint: SpotAsset.usdc.mint)
+                lines.append(try await sellOn(net, r.token, amount: r.claimable))
+                guard let into else { continue }
+                let after = try await rpc.tokenBalance(owner: wallet.solana, mint: SpotAsset.usdc.mint)
+                lines.append(try await buyOn(net, into, usdc: Decimal(after > before ? after - before : 0) / 1_000_000))
+            } catch {
+                lines.append("\(r.symbol) on \(net.name) stays as it is: \(error.localizedDescription)")
+            }
+        }
+        return lines.joined(separator: "\n")
+    }
+
     /// Each reward token's balance, in its smallest units (256-bit: an 18-decimal token passes 64 bits at 18.4 tokens).
     private func balances(_ rpc: EVMRPC, _ rewards: [Merkl.Reward], owner: String) async throws -> [Decimal] {
         var out: [Decimal] = []

@@ -1026,7 +1026,7 @@ extension Workspace {
         case .pay: payRoute(command)
         case .bridge(let from, let to, let amount): bridgeRoute(from, to, amount)
         case .gas(let place, let usd): gasRoute(place, usd ?? 1)
-        case .claimRewards: claimRoute()
+        case .claimRewards, .sweepRewards: claimRoute()
         default: ends(command).map { from, to in
             let footer = if case .sellStock = command {
                 "Two Robinhood Chain transactions: an exact approve and the Uniswap swap, which may only pay this wallet. Say “do it” or press Confirm; anything else cancels."
@@ -1684,6 +1684,7 @@ extension Workspace {
         if case .sendTo(let name, let amount, let net) = command { prepareTransfer(amount, to: name, network: net, note: note); return }
         if case .pay = command { await preparePayment(command, note: note); return }
         if case .claimRewards = command { await prepareClaim(command, note: note); return }
+        if case .sweepRewards = command { await prepareClaim(command, note: note); return }
         if case .receive = command {
             withAnimation(StudioView.spring) { showReceive = true }
             let sol = isSolanaAddress(solanaAddress) ? "Solana \(AddressCheck.ends(solanaAddress).start) … \(AddressCheck.ends(solanaAddress).end)" : nil

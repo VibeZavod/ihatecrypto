@@ -51,3 +51,13 @@ private func date(_ d: Int, _ h: Int, _ m: Int = 0, month: Int = 9) -> Date { ca
     _ = monthly.advance(now: monthly.next)
     #expect(monthly.next == date(30, 9, month: 10))   // ponytail: a month-end date drifts to the 30th
 }
+
+@Test func rewardSweepsParseAndScheduleHourly() throws {
+    #expect(WalletCommand.parse("sweep rewards over $10 into USDC") == .sweepRewards(minUSD: 10, into: nil))
+    #expect(WalletCommand.parse("sweep rewards into WETH") == .sweepRewards(minUSD: nil, into: "WETH"))
+    #expect(WalletCommand.parse("sell my rewards for usdc") == .sweepRewards(minUSD: nil, into: nil))
+    #expect(WalletCommand.parse("продавай награды в USDC, когда наберётся $10") == .sweepRewards(minUSD: 10, into: nil))
+    #expect(WalletCommand.parse("claim rewards") == .claimRewards)   // claiming alone keeps them
+    let task = try #require(ScheduledTask.parse("every hour: sweep rewards over $10 into USDC"))
+    #expect(task.every == .hours(1) && task.steps == ["sweep rewards over $10 into USDC"])
+}

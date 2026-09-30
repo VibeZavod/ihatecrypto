@@ -35,6 +35,14 @@ public enum Merkl {
         public var worthUSD: Decimal? { price.map { claimable * $0 } }
     }
 
+    /// A sweep's floor: what the user said, never under $5 — below it the claim and the sale cost most of it in gas.
+    public static func sweepFloor(_ asked: Decimal?) -> Decimal { max(asked ?? 5, 5) }
+
+    /// What a sweep sells: each reward worth a dollar or more that isn't already the coin it ends in. Dust stays.
+    public static func toSell(_ owed: [Reward], into: String?) -> [Reward] {
+        owed.filter { ($0.worthUSD ?? 0) >= 1 && !["USDC", "USDG", into?.uppercased()].contains($0.symbol.uppercased()) }
+    }
+
     /// What `user` can claim now on `chains`; a reward claimed in full isn't listed.
     public static func rewards(user: String, chains: [UInt64] = chains) async throws -> [Reward] {
         var out: [Reward] = []

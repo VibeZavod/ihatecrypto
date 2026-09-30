@@ -411,6 +411,9 @@ extension Workspace {
             case .claimRewards:
                 reply(try await e.claimRewards(), note: "Merkl")
                 rewards = nil
+            case .sweepRewards(let min, let into):
+                reply(try await e.sweepRewards(minUSD: min, into: into), note: "Merkl · Uniswap")
+                rewards = nil
             case .receive: showReceive = true
             case .allocate(let symbol, let share, let limit):
                 // Two steps: the plan first, the deposits only after «do it».

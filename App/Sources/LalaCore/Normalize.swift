@@ -122,6 +122,7 @@ public enum ChatRouter {
         USDC idle on Solana AND on Base, Arbitrum, Polygon, Ethereum, Robinhood and Tempo — each slice takes the money where it is, so never put a
         move before a spread: «разложи 1000 USDC с Base» = spread 1000 USDC across the best rates)
       claim rewards   (what Merkl owes the wallet: Morpho's, Aave's and other protocols' rewards on Base, Arbitrum, Ethereum and Polygon)
+      sweep rewards [over $N] [into <USDC|TICKER>]   (claim AND sell them for USDC on Solana, only once worth $N (≥ $5); «every hour: sweep rewards over $10 into USDC» = «продавай награды раз в час, когда наберётся $10»)
       rebalance USDC [max N% per protocol]   (moves money ALREADY in vaults to better rates: «переложи», «перекинь депозиты», «перебалансируй», «rebalance». «spread» / «разложи» / «распредели» is only for FREE USDC, on any network)
     MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from <Base|Arbitrum|Polygon|Ethereum|Tempo> to Solana
       move N USDC from Solana to <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo>   (arrives as USDG on Robinhood Chain)
