@@ -143,6 +143,8 @@ public enum ChatRouter {
       chart token <CONTRACT or MINT> on <solana|robinhood|base|arbitrum|ethereum>   (any token's card: price chart, market cap, liquidity, volume, links)
     P/L: profit and loss [today|week|month|all] [for <ASSET>]   (how much they made or lost, on trading and on the whole portfolio)
     APP: new canvas | clear the plan | lock
+    FOLDERS: save this canvas to folder <NAME> | write to folder <NAME>: <TEXT>   (a folder in the sidebar; a new name makes it;
+      «сохрани в папку Ресерч», «запиши в папку Идеи: …» — the text kept whole as a note there)
     NOW, IN STEPS (what no single form does, built from the forms above, up to 5): COMMAND then COMMAND [then COMMAND…]
       («выведи 5 с хайпера и положи в камино» = withdraw 5 USDC to Solana then deposit 5 USDC to kamino). The user confirms the chain once, at its first
       money move, and each step after it runs by itself once the one before went through. Moving money between places costs a
@@ -264,7 +266,8 @@ public enum ChatRouter {
     public static func route(
         _ text: String, context: Context, client: any LLMClient, model: String, markets: Set<String>? = nil,
         lookup: @escaping @Sendable (Lookup) async -> String = { _ in "Lookups aren't available here." },
-        check: (@Sendable (String) async -> String?)? = nil
+        check: (@Sendable (String) async -> String?)? = nil,
+        draft: (@Sendable (String) -> Void)? = nil
     ) async throws -> Reading {
         var asked: [Lookup] = [], found: [String] = [], corrected: String?
         var brief = brief(text, context)
@@ -278,7 +281,10 @@ public enum ChatRouter {
         }
         var messages = [LLMMessage(.system, system), LLMMessage(.user, brief)]
         for round in 0...rounds {
-            let full = try await client.complete(LLMRequest(model: model, messages: messages, wantsJSON: true))
+            // An answer's words show while the model still writes them (a chat or clarify reply; never a command's).
+            let full = try await client.stream(LLMRequest(model: model, messages: messages, wantsJSON: true)) { text in
+                if let draft, let words = partialReply(text) { draft(words) }
+            }
             // A model sometimes writes its lookup and then guesses the answer after it: only the first object counts.
             let reply = firstObject(in: full) ?? full
             // A reply that isn't the JSON asked for goes back once more, saying what's wrong, before the chat gives up on it.
@@ -536,7 +542,7 @@ public enum ChatRouter {
            !["risk", "stop", "take", "leverage", "by", "on", "limit", "trailing"].contains(m.1.lowercased()),
            !m.1.hasSuffix("USDC"), Double(m.1) == nil, IntentParser.namedAsset(String(m.1), markets: markets) == nil { return false }
         return ["new canvas", "clear the plan", "lock"].contains(c.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! ")))
-            || WalletCommand.parse(c) != nil || TokenCommand.parse(c) != nil || PositionCommand.parse(c) != nil
+            || WalletCommand.parse(c) != nil || TokenCommand.parse(c) != nil || PositionCommand.parse(c) != nil || FolderCommand.parse(c) != nil
             || ChartCommand.parse(c, markets: markets) != nil || AlertCommand.parse(c, markets: markets) != nil || AddressBookCommand.parse(c) != nil
             || PnLCommand.parse(c, markets: markets) != nil || ScheduledTask.parse(c) != nil || ScheduledTask.cancelsAll(c)
             || TakeStyle.asksForChoice(c) || IntentParser.apply(c, to: TradeIntent(), markets: markets) != nil
@@ -545,6 +551,29 @@ public enum ChatRouter {
     /// A command is one short line; a paid request carries its JSON body (a question for Grok's X search runs past 200).
     /// A chain of steps has room for each («chart token 0x… on base» three times ran past 200 and the answer was dropped).
     static func maxCommand(_ c: String) -> Int { c.hasPrefix("pay ") ? 2000 : steps(c) != nil ? 1200 : 200 }
+
+    /// The words of a chat or clarify answer while its JSON is still being written: `{"route": "chat", "reply": "Bitc…`
+    /// → «Bitc…». nil before the reply starts, or for a lookup or a command.
+    public static func partialReply(_ json: String) -> String? {
+        guard json.firstMatch(of: /"route"\s*:\s*"(?:chat|clarify)"/) != nil,
+              let start = json.firstMatch(of: /"reply"\s*:\s*"/)?.range.upperBound else { return nil }
+        var out = "", chars = json[start...].makeIterator()
+        while let c = chars.next() {
+            if c == "\"" { break }
+            guard c == "\\" else { out.append(c); continue }
+            guard let e = chars.next() else { break }
+            switch e {
+            case "n": out.append("\n")
+            case "t": out.append("\t")
+            case "u":
+                var hex = ""
+                while hex.count < 4, let h = chars.next() { hex.append(h) }
+                if hex.count == 4, let v = UInt32(hex, radix: 16), let scalar = Unicode.Scalar(v) { out.append(Character(scalar)) }
+            default: out.append(e)
+            }
+        }
+        return out.isEmpty ? nil : out
+    }
 
     static func decode(_ json: Data) throws -> Route {
         struct Answer: Decodable { let route: String; let command: String?; let reply: String? }

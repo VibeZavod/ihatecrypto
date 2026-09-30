@@ -12,6 +12,8 @@ struct ChatHistory: View, Equatable {
     var thinking = false
     /// What the model is looking up right now.
     var step: String?
+    /// The answer as far as the model has written it.
+    var draft: String?
 
     var body: some View {
         let items = ChatItem.group(messages)
@@ -23,7 +25,10 @@ struct ChatHistory: View, Equatable {
             case .steps(let steps): StepsCard(steps: steps, running: running && steps.last?.id == messages.last?.id)
             }
         }
-        if thinking, messages.last?.fromUser == true { ThinkingDots(label: step).transition(.opacity) }
+        if thinking, messages.last?.fromUser == true {
+            // The answer's first words replace the dots as soon as the model writes them.
+            if let draft { Reply(message: Message(fromUser: false, text: draft)).opacity(0.85).transition(.opacity) } else { ThinkingDots(label: step).transition(.opacity) }
+        }
         // Scroll here for the newest line: a step inside a card has no view of its own.
         Color.clear.frame(height: 0).id(Self.end)
     }

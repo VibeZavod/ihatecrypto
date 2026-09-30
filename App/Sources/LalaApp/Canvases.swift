@@ -194,6 +194,29 @@ extension Workspace {
         canvases[i].folder = to
     }
 
+    /// «save this canvas to folder X» moves the open canvas there; «write to folder X: …» keeps the text there as a canvas of
+    /// its own (its first message, titled by it) while the open canvas stays open. A new folder name makes the folder.
+    func folderCommand(_ command: FolderCommand, note: String? = nil) {
+        switch command {
+        case .save(let folder):
+            saveCanvas()
+            guard let id = canvasID else {
+                newCanvasFolder = folder
+                createFolder(folder)
+                reply(say("This canvas goes to «\(folder)» as soon as it has something on it.", "Холст попадёт в «\(folder)», как только на нём что-то появится."), note: note)
+                return
+            }
+            moveCanvas(id, to: folder)
+            reply(say("Saved this canvas to «\(folder)».", "Сохранил этот холст в папку «\(folder)»."), note: note)
+        case .note(let folder, let text):
+            createFolder(folder)
+            var c = CanvasSession(providerID: providerID, model: model, messages: [Message(fromUser: true, text: text)], intent: TradeIntent(), folder: folder)
+            c.title = text.count > 48 ? String(text.prefix(48)) + "…" : text
+            canvases.insert(c, at: 0)
+            reply(say("Wrote it to «\(folder)»: it's a note there now, in the sidebar.", "Записал в папку «\(folder)»: теперь это заметка там, в боковой панели."), note: note)
+        }
+    }
+
     /// An empty name makes nothing.
     func createFolder(_ name: String) {
         if let f = Self.folderName(name), !folders.contains(f) { folders.append(f) }
@@ -1517,6 +1540,7 @@ extension Workspace {
 
     /// The last few lines of this canvas's chat, for a model reading a follow-up like «1» or «yes».
     func recentChat() -> [String] {
-        messages.dropFirst().suffix(6).map { ($0.fromUser ? "user: " : "ihatecrypto: ") + $0.text.prefix(300) }
+        // A long message the person wrote is read whole (up to 3000 characters); our own replies only need their gist.
+        messages.dropFirst().suffix(6).map { $0.fromUser ? "user: " + $0.text.prefix(3000) : "ihatecrypto: " + $0.text.prefix(600) }
     }
 }

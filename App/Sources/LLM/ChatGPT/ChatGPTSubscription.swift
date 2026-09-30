@@ -129,7 +129,13 @@ actor ChatGPTClient: LLMClient {
         self.save = save
     }
 
-    func complete(_ r: LLMRequest) async throws -> String {
+    func complete(_ r: LLMRequest) async throws -> String { try await stream(r) { _ in } }
+
+    /// One id for this run of the app, and a cache key from the instructions: the same 20K-character system prompt every
+    /// turn is then read from the backend's prompt cache instead of anew (a new session id per request defeated it).
+    static let session = UUID().uuidString
+
+    func stream(_ r: LLMRequest, partial: @escaping @Sendable (String) -> Void) async throws -> String {
         let (token, account) = try await credentials()
         let request = try HTTP.request(
             ChatGPTSubscription.backend, method: "POST",
@@ -137,7 +143,7 @@ actor ChatGPTClient: LLMClient {
             headers: [
                 "Authorization": "Bearer \(token)", "chatgpt-account-id": account,
                 "OpenAI-Beta": "responses=experimental", "originator": "codex_cli_rs",
-                "session_id": UUID().uuidString, "Accept": "text/event-stream",
+                "session_id": Self.session, "Accept": "text/event-stream",
             ],
             timeout: 120
         )
@@ -149,7 +155,9 @@ actor ChatGPTClient: LLMClient {
         }
         var stream = CodexStream()
         for try await line in bytes.lines {
+            let before = stream.text.count
             if try stream.feed(line) { break }
+            if stream.text.count != before { partial(stream.text) }
         }
         guard !stream.text.isEmpty else { throw LLMError("ChatGPT returned an empty reply.") }
         return stream.text
@@ -191,7 +199,13 @@ actor ChatGPTClient: LLMClient {
             },
             "store": false,
             "stream": true,
+            "prompt_cache_key": "ihatecrypto-" + cacheKey(r.system),
         ]
+    }
+
+    /// FNV-1a of the instructions, the same across launches: a changed prompt gets a cache of its own.
+    static func cacheKey(_ text: String) -> String {
+        String(text.utf8.reduce(UInt64(14_695_981_039_346_656_037)) { ($0 ^ UInt64($1)) &* 1_099_511_628_211 }, radix: 36)
     }
 }
 

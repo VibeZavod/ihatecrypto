@@ -2110,7 +2110,7 @@ struct FloatingChat: View {
                 ScrollView {
                     // Not lazy: a lazy stack anchored at the bottom dropped the first message when it replaced the intro.
                     VStack(alignment: .leading, spacing: 14) {
-                        ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing, thinking: ws.thinking, step: ws.agentStep)
+                        ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing, thinking: ws.thinking, step: ws.agentStep, draft: ws.draftReply)
                         if ws.messages.count <= 1 {
                             Text("Your portfolio is on the canvas. Tell me what to do with your money — in any language — and I’ll build the plan next to it. Nothing moves without your signature.")
                                 .font(.ui(14)).foregroundStyle(.secondary)
@@ -2382,6 +2382,12 @@ private struct ChatComposer: View {
                 .tint(Brand.accent)
                 .padding(.vertical, 8)
                 .onSubmit(send)
+                // ↑ in an empty field brings back the last message, to send again or edit.
+                .onKeyPress(.upArrow) {
+                    guard ws.draft.isEmpty, let last = ws.messages.last(where: \.fromUser)?.text else { return .ignored }
+                    ws.draft = last
+                    return .handled
+                }
             Button { Task { await ws.voice.start() } } label: {
                 Image(systemName: "mic").font(.system(size: 14, weight: .semibold))
                     .frame(width: 34, height: 34).contentShape(Circle())
@@ -2432,7 +2438,6 @@ struct ChatModelMenu: View {
             if open { open = false; return }
             guard Date.now.timeIntervalSince(closedAt) > 0.3 else { return }
             linked = Set(LLMCatalog.all.map(\.info.id).filter { Keychain.load($0) != nil })
-            Task { await ws.refreshLiveModels() }
             let twoWay = ModelCompany.all.filter { $0.ids.count > 1 }
             expanded = (twoWay.first { $0.ids.contains(ws.providerID) } ?? twoWay.first)?.name
             open = true
@@ -2453,8 +2458,11 @@ struct ChatModelMenu: View {
         .fixedSize()
         .help("\(ws.provider.info.name) · \(ws.model). The model for this canvas; it never sees your wallet key.")
         .popover(isPresented: $open, arrowEdge: .top) { menu }
+        // The live list is read when the chip appears and after the menu closes — never while it's open, where a new list
+        // swapped the rows under the pointer («модели прыгают»).
+        .task { await ws.refreshLiveModels() }
         .onChange(of: open) {
-            if !open { closedAt = .now }
+            if !open { closedAt = .now; Task { await ws.refreshLiveModels() } }
             // Closing doesn't clear what Settings, opened from this menu, has just set.
             if open { ws.tuning = "Picking a model" } else if ws.tuning == "Picking a model" { ws.tuning = nil }
         }
@@ -2516,7 +2524,8 @@ struct ChatModelMenu: View {
             let current = ws.modelChoices[info.id] ?? info.defaultModel
             // A model typed in Settings stays listed while it's in use.
             let checked = ws.liveModels[info.id] ?? info.models
-            let list = checked.contains(current) || current.isEmpty ? checked : [current] + checked
+            // A model typed in Settings goes last, so the listed ones keep their places.
+            let list = checked.contains(current) || current.isEmpty ? checked : checked + [current]
             ForEach(list, id: \.self) { id in
                 MenuRow(title: LLMCatalog.displayName(model: id), detail: id == info.defaultModel ? "recommended" : nil,
                         checked: id == current) {

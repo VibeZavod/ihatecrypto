@@ -36,7 +36,7 @@ extension Workspace {
         let m = Set(markets.keys), s = step.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! "))
         return s == "lock" || s == "clear the plan" || TokenCommand.parse(step) != nil || ChartCommand.parse(step, markets: m) != nil
             || PnLCommand.parse(step, markets: m) != nil || AlertCommand.parse(step, markets: m) != nil
-            || AddressBookCommand.parse(step) != nil || WalletCommand.parse(step) != nil || PositionCommand.parse(step) != nil
+            || AddressBookCommand.parse(step) != nil || FolderCommand.parse(step) != nil || WalletCommand.parse(step) != nil || PositionCommand.parse(step) != nil
             || (IntentParser.startsPlan(step, markets: m) && IntentParser.apply(step, to: TradeIntent(), markets: m) != nil)
     }
 

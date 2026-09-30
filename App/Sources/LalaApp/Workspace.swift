@@ -30,6 +30,9 @@ final class Workspace {
     var busy = false
     /// From a sent message until its first reply: the chat shows LALA reading it.
     var thinking = false
+    /// The model's answer while it's still being written (ChatRouter's `draft`): shown in place of the dots, gone once the
+    /// finished reply lands.
+    var draftReply: String?
 
     var markets: [String: Market] = [:]
     /// The market picker's lists, names by group, most traded first. Set only when they change, so the picker
@@ -500,7 +503,10 @@ final class Workspace {
 
     /// A subscription's models as it lists them now (ChatGPT's Codex backend), for the chat's menu. API keys keep the
     /// checked list there: their /models lists everything, image and speech models too.
-    var liveModels: [String: [String]] = [:]
+    /// Kept between launches, so the menu opens with the list it will show and never swaps rows under the pointer.
+    var liveModels: [String: [String]] = UserDefaults.standard.dictionary(forKey: "liveModels") as? [String: [String]] ?? [:] {
+        didSet { UserDefaults.standard.set(liveModels, forKey: "liveModels") }
+    }
 
     func refreshLiveModels() async {
         let p = provider, id = p.info.id
@@ -567,7 +573,8 @@ final class Workspace {
         stepContext = nil
         messages.append(Message(fromUser: true, text: step.map { "«\($0.title)»\n" + text } ?? text))
         thinking = true
-        defer { thinking = false }
+        draftReply = nil
+        defer { thinking = false; draftReply = nil }
         finishedAction = nil
         // The answer goes on the plan canvas; scheduling opens the Schedule canvas again.
         showSchedule = false
@@ -721,6 +728,7 @@ final class Workspace {
             await tokenCommand(command)
             return
         }
+        if let command = FolderCommand.parse(text) { folderCommand(command); return }
         if let command = AddressBookCommand.parse(text) {
             addressBookCommand(command)
             return
@@ -850,7 +858,8 @@ final class Workspace {
             do {
                 // Before the markets load a trade can't be checked: the model's command goes through as it is.
                 reading = try await ChatRouter.route(text, context: context, client: client, model: model,
-                                                     markets: markets.isEmpty ? nil : Set(markets.keys), lookup: lookup, check: check)
+                                                     markets: markets.isEmpty ? nil : Set(markets.keys), lookup: lookup, check: check,
+                                                     draft: { [weak self] words in Task { @MainActor in if self?.thinking == true { self?.draftReply = words } } })
             } catch {
                 failure = error.localizedDescription
                 unreadable = error is ChatRouter.Unreadable
@@ -1018,6 +1027,7 @@ final class Workspace {
             alertCommand(command, note: note)
             return true
         }
+        if let command = FolderCommand.parse(canonical) { folderCommand(command, note: note); return true }
         if let command = AddressBookCommand.parse(canonical) {
             // The model only rewords: an address it wrote must be in the user's own message, character for character.
             if case .save(let address, _, _) = command, !text.contains(address) { return false }
@@ -1103,6 +1113,7 @@ final class Workspace {
     func reply(_ text: String, note: String? = nil) {
         // The executor reports its last line and the move returns it too: say it once.
         if let last = messages.last, !last.fromUser, last.text == text { return }
+        draftReply = nil
         messages.append(Message(fromUser: false, text: text, note: note))
         updateActivity { $0.lines.append(text) }
         saveCanvas()

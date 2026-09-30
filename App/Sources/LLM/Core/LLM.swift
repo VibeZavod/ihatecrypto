@@ -31,6 +31,17 @@ public struct LLMRequest: Sendable {
 /// A ready connection to one model service. The app talks only to this.
 public protocol LLMClient: Sendable {
     func complete(_ request: LLMRequest) async throws -> String
+    /// The same answer, with `partial` told the text so far as it arrives, so a reader can start before it ends.
+    func stream(_ request: LLMRequest, partial: @escaping @Sendable (String) -> Void) async throws -> String
+}
+
+extension LLMClient {
+    /// A service that can't stream answers once, at the end.
+    public func stream(_ request: LLMRequest, partial: @escaping @Sendable (String) -> Void) async throws -> String {
+        let text = try await complete(request)
+        partial(text)
+        return text
+    }
 }
 
 public enum ProviderKind: String, Sendable, CaseIterable {
