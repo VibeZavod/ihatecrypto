@@ -13,19 +13,18 @@ public struct LedgerHID: LedgerTransport {
 
     public init() {}
 
-    /// «Nano S Plus», «Nano X»… of the first Ledger plugged in, or nil when none is.
+    /// «Nano S Plus», «Nano X»… of the first Ledger plugged in, or nil when none is. Only lists devices, so it
+    /// doesn't wait behind an exchange that waits for the person.
     public static func connected() -> String? {
-        queue.sync {
-            guard let device = find() else { return nil }
-            let product = IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? Int ?? 0
-            return switch product >> 8 {
-            case 0x10: "Nano S"
-            case 0x40: "Nano X"
-            case 0x50: "Nano S Plus"
-            case 0x60: "Stax"
-            case 0x70: "Flex"
-            default: IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String ?? "Ledger"
-            }
+        guard let device = find() else { return nil }
+        let product = IOHIDDeviceGetProperty(device, kIOHIDProductIDKey as CFString) as? Int ?? 0
+        return switch product >> 8 {
+        case 0x10: "Nano S"
+        case 0x40: "Nano X"
+        case 0x50: "Nano S Plus"
+        case 0x60: "Stax"
+        case 0x70: "Flex"
+        default: IOHIDDeviceGetProperty(device, kIOHIDProductKey as CFString) as? String ?? "Ledger"
         }
     }
 

@@ -71,7 +71,8 @@ extension Workspace {
             return true
         }
         if lower.wholeMatch(of: /\s*(?:(?:connect|add|pair|set\s*up|link|подключи\w*|добавь|привяжи|подсоедини)\s+(?:my\s+|a\s+|мой\s+)?)?(?:ledger|л[еэ]дж[еэ]р\w*)(?:\s+(?:nano\s*\w*|flex|stax))?\s*[.!?]?\s*/) != nil {
-            await connectLedger()
+            // The card on the canvas follows it; the chat stays free while the person is at the device.
+            Task { await connectLedger() }
             return true
         }
         return false
