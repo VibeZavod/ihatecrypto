@@ -1659,6 +1659,6 @@ extension Workspace {
     /// The last few lines of this canvas's chat, for a model reading a follow-up like «1» or «yes».
     func recentChat() -> [String] {
         // A long message the person wrote is read whole (up to 3000 characters); our own replies only need their gist.
-        messages.dropFirst().suffix(6).map { $0.fromUser ? "user: " + $0.text.prefix(3000) : "ihatecrypto: " + $0.text.prefix(600) }
+        messages.dropFirst().suffix(12).map { $0.fromUser ? "user: " + $0.text.prefix(3000) : "ihatecrypto: " + $0.text.prefix(600) }
     }
 }
