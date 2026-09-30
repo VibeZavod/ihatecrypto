@@ -138,7 +138,7 @@ extension Executor {
 
     /// Buys a token on Base or Arbitrum for `usdc` from Solana, the better of the two ways (or the one picked).
     public func buyOn(_ net: EVMNetwork, _ ref: String, usdc: Decimal, prefer: String? = nil) async throws -> String {
-        guard let uni = UniswapV3.on(net.rpc.chainId) else { throw ExecutionError("ihatecrypto swaps on Base and Arbitrum only.") }
+        guard let uni = UniswapV3.on(net.rpc.chainId) else { throw ExecutionError("ihatecrypto swaps on Solana, Base, Arbitrum, Polygon and Ethereum.") }
         let token = try await evmToken(ref, on: net), me = wallet.evm
         let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
         guard units >= 500_000 else { throw ExecutionError("At least 0.5 USDC: less isn't worth the bridge.") }
@@ -213,7 +213,7 @@ extension Executor {
                 let gas = try await gasUSD(50_000 + (best.hops == 1 ? 160_000 : 240_000), on: net, uni)
                 let worth = best.out / scale * price - gas + (topup ? net.topupUSD : 0)
                 ways.append(SwapWay(name: "uniswap", out: best.out, worth: worth,
-                                    line: "Relay bridge + Uniswap: \(amount(best.out)) ≈ \(Fmt.usd(worth)) after \(Fmt.usd(gas)) of gas\(topup ? " (ETH for gas rides along)" : "")"))
+                                    line: "Relay bridge + Uniswap: \(amount(best.out)) ≈ \(Fmt.usd(worth)) after \(Fmt.usd(gas)) of gas\(topup ? " (\(net.gasCoin) for gas rides along)" : "")"))
                 uniswap = (arrive, topup)
             }
         }
@@ -223,7 +223,7 @@ extension Executor {
     /// Sells a token on Base or Arbitrum back to USDC on Solana; nil = all of it. The better of Relay's swap-and-bridge
     /// and Uniswap on the chain followed by the Relay bridge.
     public func sellOn(_ net: EVMNetwork, _ ref: String, amount: Decimal?, prefer: String? = nil) async throws -> String {
-        guard let uni = UniswapV3.on(net.rpc.chainId) else { throw ExecutionError("ihatecrypto swaps on Base and Arbitrum only.") }
+        guard let uni = UniswapV3.on(net.rpc.chainId) else { throw ExecutionError("ihatecrypto swaps on Solana, Base, Arbitrum, Polygon and Ethereum.") }
         let token = try await evmToken(ref, on: net), me = wallet.evm
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
         let held = try await balance(token.address, on: net.rpc)

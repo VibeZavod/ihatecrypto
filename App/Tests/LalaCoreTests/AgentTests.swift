@@ -199,6 +199,9 @@ private final class Script: LLMClient, @unchecked Sendable {
     let aero = "0x940181a94A35A4569E4529A3CDfB74e38FD98631"
     #expect(WalletCommand.parse("buy AERO on base for 5 USDC") == .buyOn("base", token: "AERO", usdc: 5))
     #expect(WalletCommand.parse("купи ARB на арбитруме на 5$") == .buyOn("arbitrum", token: "ARB", usdc: 5))
+    #expect(WalletCommand.parse("купи AAVE на полигоне на 10 usdc") == .buyOn("polygon", token: "AAVE", usdc: 10))
+    #expect(WalletCommand.parse("buy UNI on ethereum for 50 USDC") == .buyOn("ethereum", token: "UNI", usdc: 50))
+    #expect(WalletCommand.parse("sell all LINK on polygon") == .sellOn("polygon", token: "LINK", amount: nil))
     #expect(WalletCommand.parse("sell all DEGEN on base") == .sellOn("base", token: "DEGEN", amount: nil))
     #expect(WalletCommand.parse("sell 12.5 AERO on base") == .sellOn("base", token: "AERO", amount: Decimal(string: "12.5")!))
     #expect(WalletCommand.parse("buy token \(aero) on base for 3 USDC") == .buyOn("base", token: aero, usdc: 3))
@@ -207,7 +210,7 @@ private final class Script: LLMClient, @unchecked Sendable {
     // Not these: a contract without a network stays Robinhood's; moving USDC is a bridge.
     #expect(WalletCommand.parse("buy token \(aero) for 3 USDC") == .buyStock(symbol: aero, usdc: 3))
     #expect(WalletCommand.parse("move 2 USDC from Solana to Base") == .solanaTo("base", 2))
-    #expect(ChatRouter.forms.contains("buy <TICKER> on <base|arbitrum> for N USDC") && ChatRouter.forms.contains("buy <TICKER> on solana for N USDC"))
+    #expect(ChatRouter.forms.contains("buy <TICKER> on <base|arbitrum|polygon|ethereum> for N USDC") && ChatRouter.forms.contains("buy <TICKER> on solana for N USDC"))
 }
 
 @Test func aTickerFindsJupitersVerifiedTokenNotItsNamesakes() throws {

@@ -111,8 +111,8 @@ public enum ChatRouter {
     STOCK TOKENS ON ROBINHOOD CHAIN: buy <COMPANY or TICKER> stock for N USDC | sell <TICKER> stock | move USDG from Robinhood to Solana
     ANY TOKEN BY ITS CONTRACT (Robinhood Chain): buy token <0xCONTRACT> for N USDC | sell [N] tokens <0xCONTRACT>
     TOKENS ON BASE AND ARBITRUM (Relay's swap or Relay's bridge + Uniswap, whichever leaves more; a sale comes back as USDC on Solana):
-      buy <TICKER> on <base|arbitrum> for N USDC | sell [N] <TICKER> on <base|arbitrum>   (tickers from Uniswap's list: AERO, DEGEN, VIRTUAL, cbBTC, WETH on Base; ARB, GMX, PENDLE, LINK, UNI on Arbitrum)
-      buy token <0xCONTRACT> on <base|arbitrum> for N USDC | sell [N] tokens <0xCONTRACT> on <base|arbitrum>
+      buy <TICKER> on <base|arbitrum|polygon|ethereum> for N USDC | sell [N] <TICKER> on <base|arbitrum|polygon|ethereum>   (tickers from Uniswap's list: AERO, DEGEN, VIRTUAL, cbBTC, WETH on Base; ARB, GMX, PENDLE, LINK, UNI on Arbitrum; AAVE, LINK, WPOL on Polygon; UNI, PEPE, LDO on Ethereum, where gas costs dollars)
+      buy token <0xCONTRACT> on <base|arbitrum|polygon|ethereum> for N USDC | sell [N] tokens <0xCONTRACT> on <base|arbitrum|polygon|ethereum>
     ANY SOLANA TOKEN BY ITS MINT (Jupiter; only while Safe search is off): buy token <MINT> for N USDC | sell [N] tokens <MINT>
     EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault") | withdraw [N] <USDC|SOL> from the vault
       deposit N <USDC|SOL> to kamino | withdraw <USDC|SOL> from kamino | stake N SOL | unstake N JitoSOL

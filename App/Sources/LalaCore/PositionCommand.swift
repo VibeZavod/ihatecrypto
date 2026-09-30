@@ -219,10 +219,10 @@ public enum WalletCommand: Equatable, Sendable {
         }
         // A token on a named network: «buy AERO on base for 5 USDC», «sell all DEGEN on base», «buy BONK on solana for 5
         // USDC», «купи ARB на арбитруме на 5$», «buy token 0x… on arbitrum for 3 USDC».
-        if let m = text.firstMatch(of: /(?i)\b(buy|купи\w*|sell|прода\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь)\s+)?(?:(?:the\s+)?tokens?\s+|токен\w*\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11})\s+(?:on|на|в)\s+(solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*)\b/),
+        if let m = text.firstMatch(of: /(?i)\b(buy|купи\w*|sell|прода\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь)\s+)?(?:(?:the\s+)?tokens?\s+|токен\w*\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11})\s+(?:on|на|в)\s+(solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*)\b/),
            !["usdc", "usdg", "tokens", "token"].contains(String(m.3).lowercased()) {
             let token = String(m.3), place = String(m.4).lowercased()
-            let chain = place.hasPrefix("sol") || place.hasPrefix("сол") ? "solana" : place.hasPrefix("b") || place.hasPrefix("бейс") ? "base" : "arbitrum"
+            let chain = place.hasPrefix("sol") || place.hasPrefix("сол") ? "solana" : Self.network(place) ?? "base"
             let count = m.2.flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
             let sell = String(m.1).lowercased().hasPrefix("s") || String(m.1).lowercased().hasPrefix("прод")
             if chain == "solana", !token.hasPrefix("0x") {

@@ -1305,10 +1305,10 @@ extension Workspace {
     /// A token on Base or Arbitrum, bought with USDC from Solana or sold back to it. The way (Relay's swap, or Relay's
     /// bridge and Uniswap) is chosen when it runs, by what leaves more after gas.
     private func swapRoute(_ place: String, _ token: String, usdc: Decimal?, sell: Decimal?) -> MoveRoute {
-        let name = ["base": "Base", "arbitrum": "Arbitrum"][place] ?? place
-        let fill: RouteFill = place == "base" ? .base : .arbitrum
+        let name = WalletCommand.placeName(place)
+        let fill = RouteFill(rawValue: place) ?? .check
         let label = token.hasPrefix("0x") ? tokenSymbol(token) ?? "\(token.prefix(6))…\(token.suffix(4))" : token.uppercased()
-        let logo = place == "arbitrum" ? "arb" : place
+        let logo = ModuleNetwork(place: place)?.logo ?? place
         let command: WalletCommand = usdc != nil ? .buyOn(place, token: token, usdc: usdc) : .sellOn(place, token: token, amount: sell)
         // The way picked in the step's details, else the one that leaves more now (quoted while the card waits).
         let way = switch routeWays[Self.wayKey(place, token)] {
@@ -1331,7 +1331,7 @@ extension Workspace {
             ], warning: token.hasPrefix("0x") ? "A token by its contract is anyone’s coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose." : nil)
         }
         return MoveRoute(title: "Sell \(sell.map { Fmt.num($0) } ?? "all") \(label) on \(name) → Solana", footer: footer, steps: [
-            step(logo, "FROM · \(name.uppercased())", "\(sell.map { Fmt.num($0) } ?? "all") \(label)", "ETH for gas comes along when there’s none", fill),
+            step(logo, "FROM · \(name.uppercased())", "\(sell.map { Fmt.num($0) } ?? "all") \(label)", "\(EVMNetwork.named(place)?.gasCoin ?? "ETH") for gas comes along when there’s none", fill),
         ] + (viaUniswap ? [approve("\(sell.map { Fmt.num($0) } ?? "all") \(label)", for: "Uniswap", logo: "uni", fill)] : []) + [
             way,
             step("sol", "TO · SOLANA", "USDC", "your wallet", .solana),
@@ -1364,8 +1364,7 @@ extension Workspace {
         case .sellOn(let p, let t, let a): (place, token, usdc, sell) = (p, t, nil, a)
         default: return
         }
-        guard let wallet = previewWallet else { return }
-        let net: EVMNetwork = place == "arbitrum" ? .arbitrum : .base
+        guard let wallet = previewWallet, let net = EVMNetwork.named(place) else { return }
         while !Task.isCancelled {
             let ways = try? await executor(wallet).swapQuotes(net, token, usdc: usdc, sell: sell)
             guard !Task.isCancelled else { return }

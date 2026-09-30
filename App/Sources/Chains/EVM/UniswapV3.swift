@@ -2,7 +2,8 @@ import Foundation
 import WalletCore
 
 /// Uniswap v3: Robinhood Chain from developers.uniswap.org (v3-robinhood-chain-deployments), 2026-09-27; Base and
-/// Arbitrum are the canonical deployments, checked on-chain 2026-09-29 (router and quoter report the v3 factory).
+/// Arbitrum are the canonical deployments, checked on-chain 2026-09-29, Ethereum and Polygon 2026-10-01 (router and
+/// quoter report the v3 factory 0x1F98…F984 and their WETH9: WETH on Ethereum, WPOL on Polygon, which prices its gas too).
 public enum UniswapV3 {
     public static let robinhoodFactory = "0x1f7d7550b1b028f7571e69a784071f0205fd2efa"
     public static let robinhoodQuoter = "0x33e885ed0ec9bf04ecfb19341582aadcb4c8a9e7"
@@ -23,6 +24,10 @@ public enum UniswapV3 {
                               weth: "0x4200000000000000000000000000000000000006")
         case 42161: Deployment(quoter: "0x61ffe014ba17989e743c5f6cb21bf9697530b21e", router: "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45",
                                weth: "0x82af49447d8a07e3bd95bd0d56f35241523fbab1")
+        case 1: Deployment(quoter: "0x61ffe014ba17989e743c5f6cb21bf9697530b21e", router: "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45",
+                           weth: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")
+        case 137: Deployment(quoter: "0x61ffe014ba17989e743c5f6cb21bf9697530b21e", router: "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45",
+                             weth: "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270")
         default: nil
         }
     }
