@@ -2526,19 +2526,23 @@ struct ChatModelMenu: View {
         }
     }
 
+    /// A subscription stands out in the menu: its models come with what's already paid for, no key and no per-request bill.
+    static let subscriptionInk = Color(light: 0x1F7A4A, dark: 0x6FD39C)
+
     @ViewBuilder private func way(_ info: ProviderInfo) -> some View {
-        let icon = info.kind == .subscription ? "person.crop.circle" : info.kind == .local ? "desktopcomputer" : "key"
+        let icon = info.kind == .subscription ? "person.crop.circle.fill" : info.kind == .local ? "desktopcomputer" : "key"
+        let iconTint = info.kind == .subscription ? Self.subscriptionInk : nil
         let list = connected(info) && info.unavailable == nil ? models(info) : []
         if list.isEmpty {
             // Nothing to choose inside it: the way in is the choice, or its sign-in.
             MenuRow(title: info.name, detail: info.unavailable == nil ? detail(info) : "not open to apps yet — use the API key",
-                    icon: icon, checked: info.id == ws.providerID) { pick(info) }
+                    icon: icon, iconTint: iconTint, checked: info.id == ws.providerID) { pick(info) }
                 .disabled(info.unavailable != nil)
                 .opacity(info.unavailable != nil ? 0.5 : 1)
                 .help(info.unavailable ?? info.note)
         } else {
             HStack(spacing: 10) {
-                Image(systemName: icon).frame(width: 18)
+                Image(systemName: icon).frame(width: 18).foregroundStyle(iconTint ?? .secondary)
                 Text(info.name).font(.ui(11, .semibold))
                 Spacer(minLength: 8)
                 Text(info.kind == .local ? "on this Mac" : "connected").font(.ui(10))

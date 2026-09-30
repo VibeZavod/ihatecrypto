@@ -671,6 +671,8 @@ struct MenuRow: View {
     let title: String
     var detail: String?
     var icon: String?
+    /// The icon's own color, when it tells something (a subscription in the model menu).
+    var iconTint: Color?
     var shortcut: String?
     var checked = false
     var tint: Color = .primary
@@ -680,7 +682,7 @@ struct MenuRow: View {
     var body: some View {
         Button(action: action) {
             HStack(spacing: 10) {
-                if let icon { Image(systemName: icon).frame(width: 18).foregroundStyle(tint == .primary ? .secondary : tint) }
+                if let icon { Image(systemName: icon).frame(width: 18).foregroundStyle(iconTint ?? (tint == .primary ? .secondary : tint)) }
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.ui(13, .semibold)).foregroundStyle(tint)
                     if let detail { Text(detail).font(.ui(10)).foregroundStyle(.secondary).lineLimit(2) }
