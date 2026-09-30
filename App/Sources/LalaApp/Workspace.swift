@@ -82,6 +82,8 @@ final class Workspace {
     }
     /// «Connect your Ledger» on the canvas while it runs or until closed (Ledger.swift).
     var ledgerConnect: LedgerConnect?
+    /// What already said it waits for the Ledger (a scheduled buy's symbol, «guardian»): said once, not every tick.
+    @ObservationIgnored var ledgerWaitNotified: Set<String> = []
     /// The in-app dApp browser; its wallet is the signer's.
     @ObservationIgnored let browser = Browser()
     /// A chart, an explorer or a transaction opened beside the canvas (WebPanel.swift), not in a browser.
@@ -1339,9 +1341,11 @@ final class Workspace {
         let near = onLedger ? nil : status.hasWallet == true && status.nearAddress == nil && phrase ? try? await SignerClient().send(.nearAddress).nearAddress : status.nearAddress
         let nearChanged = nearAddress != near
         nearAddress = near
-        // The trading key is the signer's, for its own wallet: on a Ledger each order is approved on the device.
-        agentAddress = onLedger ? nil : status.agentAddress
-        agentActive = onLedger ? false : status.agentActive ?? false
+        // On a Ledger, the trading key it approved for its own Hyperliquid account; otherwise the signer wallet's.
+        var agent: SignerReply?
+        if onLedger, let evm = ledger?.evm { agent = try? await SignerClient().send(.ledgerAgent(owner: evm, create: false)) }
+        agentAddress = onLedger ? agent?.agentAddress : status.agentAddress
+        agentActive = onLedger ? agent?.agentActive ?? false : status.agentActive ?? false
         sessionLength = status.sessionLength ?? SignerSession.standard
         if let ledger, onLedger {
             let solana = ledger.solana ?? "", evm = ledger.evm ?? ""

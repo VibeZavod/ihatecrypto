@@ -39,6 +39,15 @@ public enum EIP712 {
         public var digest: Data { Keccak.hash256(Data([0x19, 0x01]) + domain + message) }
     }
 
+    /// Typed data as a whole: what a Ledger takes to show each field by name before it signs.
+    public struct Typed: Sendable {
+        public let domain: [Field]
+        public let type: String
+        public let message: [Field]
+        public init(domain: [Field], type: String, message: [Field]) { (self.domain, self.type, self.message) = (domain, type, message) }
+        public func parts() throws -> Parts { try EIP712.parts(domain: domain, type: type, message: message) }
+    }
+
     public static func parts(domain: [Field], type: String, message: [Field]) throws -> Parts {
         Parts(domain: try hashStruct("EIP712Domain", domain), message: try hashStruct(type, message))
     }

@@ -121,6 +121,25 @@ enum SignerSelfTest {
             check(try await signer.send(.signNearIntentDeposit(amount: "1", depositAddress: "evil.near", nonce: 5, blockHash: hash32)).ok == false,
                   "NEAR to a named account instead of a 1Click deposit not signed")
 
+            // A Ledger's trading key: made in the signer for the Ledger's account, orders only, off until turned on, paused by lock.
+            let ledger = "0x" + String(repeating: "1d", count: 20)
+            let made = try await signer.send(.ledgerAgent(owner: ledger, create: true))
+            check(made.ok && made.agentAddress != nil, "Ledger trading key made in the signer: \(made.agentAddress ?? "none")")
+            _ = try await signer.send(.setLedgerAgentActive(owner: ledger, active: false))
+            let off = try? await signer.send(.signLedgerAgentL1(owner: ledger, action: cancel, nonce: 1_700_000_000_004))
+            check(off?.signature == nil, "Ledger trading key off: nothing signed")
+            _ = try await signer.send(.setLedgerAgentActive(owner: ledger, active: true))
+            let order = try await signer.send(.signLedgerAgentL1(owner: ledger, action: cancel, nonce: 1_700_000_000_005))
+            let signedBy = try order.signature.map { try EVMSigner.recover(digest: try HLSigner.l1Parts(cancel, nonce: 1_700_000_000_005, mainnet: true).digest, signature: $0) }
+            check(signedBy != nil && signedBy == made.agentAddress, "Ledger trading key signs an order, as itself")
+            let withdraw = HLSigner.usdSendAction(destination: scamEVM, amount: "1", time: 1_700_000_000_006, mainnet: true)
+            check((try? await signer.send(.signLedgerAgentL1(owner: ledger, action: withdraw, nonce: 1_700_000_000_006)))?.signature == nil,
+                  "Ledger trading key refuses a withdrawal")
+            _ = try await signer.send(.lock)
+            check((try? await signer.send(.signLedgerAgentL1(owner: ledger, action: cancel, nonce: 1_700_000_000_007)))?.signature == nil,
+                  "lock pauses the Ledger trading key")
+            check(try await signer.send(.ledgerAgent(owner: ledger, create: false)).agentActive == false, "paused key reported off")
+
             _ = try await signer.send(.forget)
             check(try await signer.send(.status).hasWallet == false, "key removed from the Keychain")
         } catch {

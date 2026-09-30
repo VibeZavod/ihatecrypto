@@ -35,14 +35,8 @@ enum Signer {
             let owner = try address("evm")
             var agentKey = AgentStore.load()
             if agentKey == nil {
-                // 32 random bytes; retried in the vanishing case they are not a valid secp256k1 key.
-                for _ in 0..<4 where agentKey == nil {
-                    var bytes = Data(count: 32)
-                    guard bytes.withUnsafeMutableBytes({ SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }) == errSecSuccess else { continue }
-                    if (try? EVMAccount.address(privateKey: bytes)) != nil { agentKey = bytes }
-                }
-                guard let agentKey else { throw WalletError("Couldn't create the agent key.") }
-                try AgentStore.save(agentKey)
+                agentKey = try AgentStore.make()
+                try AgentStore.save(agentKey!)
             }
             let agent = try EVMAccount.address(privateKey: agentKey!)
             guard agent.lowercased() != owner.lowercased() else { throw WalletError("The agent key matches the main key.") }
@@ -136,9 +130,55 @@ enum Signer {
             }
             return r
 
+        case .ledgerAgent(let owner, let create):
+            let id = try ledgerAgentID(owner)
+            var key = AgentStore.load(id: id)
+            if key == nil, create {
+                key = try AgentStore.make()
+                try AgentStore.save(key!, id: id)
+            }
+            var r = SignerReply(ok: true)
+            r.agentAddress = key.flatMap { try? EVMAccount.address(privateKey: $0) }
+            r.agentActive = r.agentAddress != nil && defaults.string(forKey: "agentActive-" + id) == "on"
+            return r
+
+        case .setLedgerAgentActive(let owner, let on):
+            let id = try ledgerAgentID(owner)
+            guard AgentStore.load(id: id) != nil else { throw WalletError("This Ledger has no trading key yet: approve one on the Ledger first.") }
+            // Back on after a lock is the user's decision, as for a wallet's own key.
+            if on, defaults.string(forKey: "agentActive-" + id) == "paused" {
+                try SeedStore.confirm("turn the Hyperliquid trading key of your Ledger \(owner) back on")
+            }
+            defaults.set(on ? "on" : "paused", forKey: "agentActive-" + id)
+            var r = SignerReply(ok: true)
+            r.agentActive = on
+            return r
+
+        case .signLedgerAgentL1(let owner, let action, let nonce):
+            let id = try ledgerAgentID(owner)
+            guard HLSigner.isTrading(action) else {
+                var v = Verdict()
+                v.problems.append("The Ledger's trading key signs orders, cancels and leverage only; anything else is signed on the Ledger.")
+                return refused(v)
+            }
+            guard defaults.string(forKey: "agentActive-" + id) == "on", var agent = AgentStore.load(id: id) else {
+                throw WalletError("The Ledger's trading key is off: approve it on the Ledger, or turn it back on.")
+            }
+            defer { SeedStore.wipe(&agent) }
+            let verdict = HLGuard.check(action, owner: owner, recipients: [])
+            guard verdict.ok else { return refused(verdict) }
+            var r = SignerReply(ok: true)
+            r.signature = try HLSigner.signL1(action, privateKey: agent, nonce: nonce, mainnet: true)
+            r.checks = verdict.checks
+            return r
+
         case .lock:
             SeedStore.endSession()
             defaults.set(false, forKey: agentActiveKey)
+            // A Ledger's trading keys pause too: turning one back on asks for Touch ID.
+            for (key, value) in defaults.dictionaryRepresentation() where key.hasPrefix("agentActive-ledger-") && value as? String == "on" {
+                defaults.set("paused", forKey: key)
+            }
             var r = SignerReply(ok: true)
             r.agentActive = false
             r.checks = ["Touch ID session ended; the trading key is paused."]
@@ -296,11 +336,8 @@ enum Signer {
             // Orders, cancels and leverage go through the agent when it is active: it cannot move money out,
             // so no Touch ID. Otherwise the main key signs.
             // The agent signs trading only; anything that moves money (a vault transfer) takes the main key.
-            let trading: Bool = if case .map(let pairs) = action, case .string(let t)? = pairs.first(where: { $0.0 == "type" })?.1 {
-                ["order", "cancel", "updateLeverage", "batchModify", "modify"].contains(t)
-            } else { false }
             var r = SignerReply(ok: true)
-            if trading, defaults.bool(forKey: agentActiveKey), var agent = AgentStore.load() {
+            if HLSigner.isTrading(action), defaults.bool(forKey: agentActiveKey), var agent = AgentStore.load() {
                 defer { SeedStore.wipe(&agent) }
                 r.signature = try HLSigner.signL1(action, privateKey: agent, nonce: nonce, mainnet: mainnet)
             } else {
@@ -386,6 +423,12 @@ enum Signer {
     }
 
     static var agentActiveKey: String { Wallets.scoped("agentActive") }
+
+    /// Where a Ledger's trading key is kept: by its account, which must be an EVM address.
+    static func ledgerAgentID(_ owner: String) throws -> String {
+        guard owner.wholeMatch(of: /0x[0-9a-fA-F]{40}/) != nil else { throw WalletError("Not an EVM address: \(owner).") }
+        return "ledger-" + owner.lowercased()
+    }
 
     /// A wallet's addresses for a Touch ID prompt: its name is the app's to set, its addresses are not.
     static func addresses(_ w: SignerWallet) -> String {

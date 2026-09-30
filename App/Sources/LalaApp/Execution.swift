@@ -542,7 +542,7 @@ extension Workspace {
     /// Turns the paused trading key back on; the signer asks for Touch ID first.
     func resumeTradingKey() async {
         do {
-            let r = try await SignerClient().send(.setAgentActive(true))
+            let r = try await SignerClient().send(ledgerActive ? .setLedgerAgentActive(owner: hlAddress, active: true) : .setAgentActive(true))
             await loadSigner()
             reply(r.ok && r.agentActive == true ? "Trading key on again: orders skip Touch ID, withdrawals still need it." : "The trading key stayed off.")
         } catch {
@@ -553,10 +553,7 @@ extension Workspace {
     /// The signer makes an agent key and signs its approval with the main key; the approval goes to Hyperliquid,
     /// and only when the exchange accepts it do orders switch to the agent.
     func enableAgent() async {
-        guard !ledgerActive else {
-            reply("The trading key belongs to ihatecrypto's own wallets. On a Ledger each order is approved on the device.")
-            return
-        }
+        if ledgerActive { await enableLedgerAgent(); return }
         executing = true
         defer { executing = false }
         do {
@@ -598,6 +595,17 @@ extension Workspace {
                 notify(.moves, say("Scheduled \(asset.symbol) buy skipped", "Регулярная покупка \(asset.symbol) пропущена"), off, schedule: "buy:\(asset.symbol)")
                 continue
             }
+            // On a Ledger a purchase needs the device and the person: while it's away the run stays due and says so once;
+            // when it's back, the buy runs and asks for its approval there.
+            if ledgerActive, !(await ledgerReachable()) {
+                if ledgerWaitNotified.insert(asset.symbol).inserted {
+                    notify(.signature, say("Scheduled \(asset.symbol) buy waits for your Ledger", "Регулярная покупка \(asset.symbol) ждёт Ledger"),
+                           say("Connect and unlock the Ledger: the buy runs then and asks you to approve it on the device.",
+                               "Подключи и разблокируй Ledger: покупка запустится и попросит подтверждение на устройстве."), schedule: "buy:\(asset.symbol)")
+                }
+                continue
+            }
+            ledgerWaitNotified.remove(asset.symbol)
             let usdc = schedules[index].usdc
             schedules[index].advance()
             executing = true
@@ -624,6 +632,16 @@ extension Workspace {
     /// Runs after each refresh while the app is open: breakeven after the partial take, trailing stops.
     func guardPositions() async {
         guard signerWallet != nil, !executing else { return }
+        // On a Ledger, stops move by themselves only through the trading key it approved: without it every move would
+        // wait for the device's buttons. The stop and take on the exchange protect the position meanwhile.
+        if ledgerActive, !agentActive {
+            if !exitRules.isEmpty, ledgerWaitNotified.insert("guardian").inserted {
+                notify(.positions, say("Trailing waits for the trading key", "Трейлинг ждёт торговый ключ"),
+                       say("On a Ledger, stops move by themselves once its trading key is approved — say “approve trading key”. The stop on the exchange protects the position meanwhile.",
+                           "На Ledger стопы двигаются сами, когда одобрен торговый ключ — скажи «approve trading key». Пока позицию защищает стоп на бирже."))
+            }
+            return
+        }
         // Rules live exactly as long as their position (or its waiting limit), however it was closed.
         for coin in exitRules.keys where !positions.contains(where: { $0.coin == coin }) && !orders.contains(where: { $0.coin == coin && !$0.isTrigger }) {
             exitRules[coin] = nil

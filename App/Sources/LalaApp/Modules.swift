@@ -348,7 +348,8 @@ struct PlaceDetailBoard: View {
                     .buttonStyle(.plain).modifier(HoverLift(radius: 12)).help("Open the \(IntentParser.pretty(p.coin)) chart")
             }
             if ws.positions.isEmpty { Text("No open positions.").font(.ui(10)).foregroundStyle(.secondary) }
-            Label(ws.agentActive ? "Trading key on: orders skip Touch ID, withdrawals still need it" : "Trading key paused: every order asks for Touch ID",
+            Label(ws.agentActive ? (ws.ledgerActive ? "Trading key on: orders skip the Ledger, withdrawals still need it" : "Trading key on: orders skip Touch ID, withdrawals still need it")
+                  : ws.ledgerActive ? "Trading key off: every order asks for the Ledger's buttons" : "Trading key paused: every order asks for Touch ID",
                   systemImage: ws.agentActive ? "key.horizontal.fill" : "lock").font(.ui(10)).foregroundStyle(.secondary)
         case "robinhood":
             if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }

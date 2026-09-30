@@ -6,7 +6,7 @@ import SolanaChain
 import TradeExecution
 import WalletCore
 
-/// `ledger [--speculos]`: the app open on the Ledger, its address, blind signing.
+/// `ledger [--speculos|--ble]`: the app open on the Ledger, its address, blind signing (USB unless told otherwise).
 /// `ledger sign [--speculos] [--shots=<dir>]`: the same requests a move makes, signed on the device through
 /// `LedgerSigner` (guard first, the signature checked against the device's address after). With --speculos the
 /// emulator's buttons are pressed through its API and each screen is printed (and saved as PNG with --shots).
@@ -15,8 +15,11 @@ func ledgerCheck(_ args: [String]) async throws {
     let speculos = args.contains("--speculos")
     let sign = args.contains("sign")
     let hand = speculos ? SpeculosHand(shots: args.first { $0.hasPrefix("--shots=") }.map { URL(fileURLWithPath: String($0.dropFirst(8))) }) : nil
-    let device = LedgerDevice(speculos ? LedgerTCPTransport() : LedgerHID())
-    if !speculos { print("USB: \(LedgerHID.connected() ?? "no Ledger found")") }
+    let ble = args.contains("--ble")
+    let transport: any LedgerTransport = if speculos { LedgerTCPTransport() } else if ble { LedgerBLE.shared } else { LedgerHID() }
+    let device = LedgerDevice(transport)
+    if ble { print("Bluetooth: \(await LedgerBLE.shared.connect(timeout: 30) ?? "no Ledger answered")") }
+    else if !speculos { print("USB: \(LedgerHID.connected() ?? "no Ledger found")") }
     let app = try await device.openApp()
     print("Open app: \(app.name) \(app.version)")
     // While the device waits for the person, the emulator's hand reads the screen and presses its buttons.
@@ -37,14 +40,37 @@ func ledgerCheck(_ args: [String]) async throws {
         print("✓ Base transaction signed and recovered to \(address): 0x\(plain.hex.prefix(24))… (\(plain.count) bytes)")
         let usdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", aave = "0xA238Dd80C259a72e81d7e4664a9801593F98d1c5"
         do {
+            let main = "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
+            let send = try await signer.signEVM(chainId: 8453, nonce: 10, maxPriorityFee: 1_000_000, maxFee: 20_000_000, gasLimit: 65_000,
+                                                to: usdc, data: try ERC20.transfer(to: main, amount: 25_000_000), recipients: [main])
+            print("✓ 25 USDC to Main on Base signed: 0x\(send.hex.prefix(24))…")
+        } catch { print("✗ USDC transfer: \(error.localizedDescription)") }
+        do {
             let approve = try await signer.signEVM(chainId: 8453, nonce: 8, maxPriorityFee: 1_000_000, maxFee: 20_000_000, gasLimit: 60_000,
                                                    to: usdc, data: try ERC20.approve(spender: aave, amount: 2_000_000), recipients: [])
             print("✓ Exact approve of 2 USDC to Aave signed: 0x\(approve.hex.prefix(24))…")
         } catch { print("✗ Exact approve: \(error.localizedDescription)") }
         do {
             let order = try await signer.signHyperliquid(HLAction.cancel([(asset: 4, oid: 1)]), nonce: 1_760_000_000_000)
-            print("✓ Hyperliquid action signed by hashes, recovered to \(address): r=0x\(order.r.hex.prefix(16))… v=\(order.v)")
+            print("✓ Hyperliquid action signed as typed data, recovered to \(address): r=0x\(order.r.hex.prefix(16))… v=\(order.v)")
         } catch { print("✗ Hyperliquid action: \(error.localizedDescription)") }
+        // The trading key's one approval: the device shows the key's address.
+        do {
+            _ = try await signer.approveAgent("0x7E5F4552091A69125d5DfCb7b8C2659029395Bdf", name: "ihatecrypto", nonce: 1_760_000_000_001)
+            print("✓ approveAgent signed on the device, recovered to \(address)")
+        } catch { print("✗ approveAgent: \(error.localizedDescription)") }
+        // A withdrawal is always the device's: destination and amount on its screen.
+        do {
+            let main = "0x90F79bf6EB2c4f870365E785982E1f101E93b906"
+            _ = try await signer.signHyperliquidUser(HLSigner.usdSendAction(destination: main, amount: "25", time: 1_760_000_000_002, mainnet: true), recipients: [main])
+            print("✓ usdSend of 25 USDC to Main signed on the device")
+        } catch { print("✗ usdSend: \(error.localizedDescription)") }
+        // With a trading key, orders don't reach the device at all.
+        let withAgent = LedgerSigner(device: device, wallet: TradeWallet(solana: "", evm: address),
+                                     agent: { action, nonce in try HLSigner.signL1(action, privateKey: Data(repeating: 1, count: 32), nonce: nonce, mainnet: true) },
+                                     prompt: prompt)
+        let byAgent = try await withAgent.signHyperliquid(HLAction.cancel([(asset: 4, oid: 1)]), nonce: 1_760_000_000_003)
+        print("✓ With a trading key the order is signed without the device: \(try EVMSigner.recover(digest: try HLSigner.l1Parts(HLAction.cancel([(asset: 4, oid: 1)]), nonce: 1_760_000_000_003, mainnet: true).digest, signature: byAgent))")
         // The guard stops a transfer to a stranger before the device is even asked.
         do {
             _ = try await signer.signEVM(chainId: 8453, nonce: 9, maxPriorityFee: 1, maxFee: 1, gasLimit: 60_000, to: usdc,
@@ -141,7 +167,8 @@ actor SpeculosHand {
                 }
             }
             // «Sign transaction», «Approve»…, and a warning page that says to press both buttons to go on.
-            let approves = texts.contains { $0.wholeMatch(of: /(?i)\s*(sign\s+(transaction|typed message|message|operation)\??|accept.*|approve|confirm|sign)\s*/) != nil }
+            // Not a bare «Approve»: that labels an ERC-20 approval's amount page.
+            let approves = texts.contains { $0.wholeMatch(of: /(?i)\s*(sign\s+(transaction|typed message|message|operation)\??|confirm)\s*/) != nil }
                 || texts.joined(separator: " ").lowercased().split(separator: " ").joined(separator: " ").contains("press both buttons")
             await press(approves ? "both" : "right")
             pages += 1

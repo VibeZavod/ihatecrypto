@@ -7,16 +7,30 @@ import WalletCore
 
 @Test func hidPacketsCarryTheLengthAndReassemble() throws {
     let apdu = Data((0..<200).map { UInt8($0 & 0xff) })
-    let packets = LedgerHIDFraming.packets(apdu)
+    let packets = LedgerFraming.packets(apdu)
     // 2 length bytes + 200 = 202 bytes in 59-byte slices.
     #expect(packets.count == 4)
     #expect(packets.allSatisfy { $0.count == 64 })
     #expect([UInt8](packets[0].prefix(7)) == [0x01, 0x01, 0x05, 0x00, 0x00, 0x00, 200])
     #expect([UInt8](packets[3].prefix(5)) == [0x01, 0x01, 0x05, 0x00, 0x03])
     // The device answers in the same framing; the reply is complete only with its last packet.
-    #expect(try LedgerHIDFraming.reply(Array(packets.prefix(3))) == nil)
-    #expect(try LedgerHIDFraming.reply(packets) == apdu)
-    #expect(throws: LedgerError.self) { try LedgerHIDFraming.reply([packets[1]]) }
+    #expect(try LedgerFraming.reply(Array(packets.prefix(3))) == nil)
+    #expect(try LedgerFraming.reply(packets) == apdu)
+    #expect(throws: LedgerError.self) { try LedgerFraming.reply([packets[1]]) }
+}
+
+@Test func blePacketsFitTheLinkAndReassemble() throws {
+    let apdu = Data((0..<200).map { UInt8($0 & 0xff) })
+    // MTU 20: 5 header bytes and 15 of data first, then 3 and 17 each.
+    let packets = LedgerFraming.packets(apdu, size: 20, hid: false)
+    #expect([UInt8](packets[0].prefix(5)) == [0x05, 0x00, 0x00, 0x00, 200])
+    #expect([UInt8](packets[1].prefix(3)) == [0x05, 0x00, 0x01])
+    #expect(packets.allSatisfy { $0.count <= 20 })
+    #expect(packets.count == 1 + Int(((200 - 15) + 16) / 17))
+    #expect(try LedgerFraming.reply(Array(packets.dropLast()), hid: false) == nil)
+    #expect(try LedgerFraming.reply(packets, hid: false) == apdu)
+    // The same APDU over USB is framed differently: HID packets are not BLE packets.
+    #expect(throws: LedgerError.self) { try LedgerFraming.reply(LedgerFraming.packets(apdu), hid: false) }
 }
 
 @Test func typedDataPartsGiveTheSameDigest() throws {

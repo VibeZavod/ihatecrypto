@@ -1,4 +1,5 @@
 import Foundation
+import HyperliquidSigning
 import Ledger
 import LalaCore
 import SignerAPI
@@ -17,8 +18,11 @@ struct LedgerAccount: Codable, Equatable {
     var solana: String?
     var evmPath = LedgerDevice.evmPath
     var solanaPath = LedgerDevice.solanaPath
+    /// Found over Bluetooth rather than USB; connecting again picks whichever answers.
+    var bluetooth: Bool?
 
     var wallet: SignerWallet { SignerWallet(id: Self.id, label: label, kind: "ledger", solana: solana, evm: evm, near: nil) }
+    var device: LedgerDevice { LedgerDevice(bluetooth == true ? LedgerBLE.shared : LedgerHID()) }
 
     static var saved: LedgerAccount? {
         get { UserDefaults.standard.data(forKey: "ledger").flatMap { try? JSONDecoder().decode(LedgerAccount.self, from: $0) } }
@@ -49,11 +53,60 @@ struct LedgerConnect: Equatable {
 extension Workspace {
     var ledgerActive: Bool { activeWallet?.kind == "ledger" }
 
-    /// The signer a move uses while the Ledger is active; the canvas shows what the device waits for.
+    /// The signer a move uses while the Ledger is active; the canvas shows what the device waits for. With the trading
+    /// key on, orders, cancels and leverage go to it in the signing process instead of the device.
     func ledgerSigner(_ wallet: TradeWallet) -> LedgerSigner {
         let account = LedgerAccount.saved ?? LedgerAccount()
-        return LedgerSigner(device: LedgerDevice(LedgerHID()), wallet: wallet, evmPath: account.evmPath, solanaPath: account.solanaPath) { text in
+        let owner = wallet.evm
+        var agent: (@Sendable (MsgPack, UInt64) async throws -> EVMSignature)?
+        if agentActive {
+            agent = { @Sendable action, nonce in
+                let r = try await SignerClient().send(.signLedgerAgentL1(owner: owner, action: action, nonce: nonce))
+                guard r.ok, let signature = r.signature else { throw ExecutionError(XPCTradeSigner.reason(r)) }
+                return signature
+            }
+        }
+        return LedgerSigner(device: account.device, wallet: wallet, evmPath: account.evmPath, solanaPath: account.solanaPath, agent: agent) { text in
             Task { @MainActor in SignerActivity.shared.ledger = text }
+        }
+    }
+
+    /// The trading key for the Ledger's Hyperliquid account: made in the signing process, approved once on the Ledger
+    /// (which shows its address), sent to Hyperliquid. Afterwards orders, stops, trailing and closes go without the
+    /// device; withdrawals and transfers are still signed on it.
+    func enableLedgerAgent() async {
+        guard ledgerActive, let wallet = signerWallet, isEVMAddress(wallet.evm), let account = LedgerAccount.saved else {
+            reply("Switch to your Ledger first (“use my Ledger”): the trading key belongs to its Hyperliquid account.")
+            return
+        }
+        // The Ledger's card follows the approval: what the device shows and waits for.
+        if ledgerConnect == nil {
+            ledgerConnect = LedgerConnect(model: account.model, evm: account.evm, solana: account.solana, status: "Making the trading key…", busy: true)
+        }
+        defer { ledgerConnect?.busy = false }
+        executing = true
+        defer { executing = false }
+        do {
+            let made = try await SignerClient().send(.ledgerAgent(owner: wallet.evm, create: true))
+            guard made.ok, let agent = made.agentAddress else { throw ExecutionError(XPCTradeSigner.reason(made)) }
+            if made.agentActive == true {
+                reply("Your Ledger's trading key is already on: \(agent.prefix(6))…\(agent.suffix(4)).")
+                return
+            }
+            reply("Approve the trading key on your Ledger. Its screen must show agentAddress \(agent.prefix(6))…\(agent.suffix(4)) and agentName ihatecrypto.")
+            ledgerConnect?.status = "Approve the trading key on your Ledger: agentAddress \(agent.prefix(6))…\(agent.suffix(4))."
+            let nonce = UInt64(Date().timeIntervalSince1970 * 1000)
+            let (action, signature) = try await ledgerSigner(wallet).approveAgent(agent, name: "ihatecrypto", nonce: nonce)
+            let result = HLReply.parse(try await HLExchange.send(action: action, nonce: nonce, signature: signature, mainnet: true))
+            guard !result.isError else { throw ExecutionError("Hyperliquid rejected the key: \(result). Its account needs a deposit first.") }
+            let on = try await SignerClient().send(.setLedgerAgentActive(owner: wallet.evm, active: true))
+            guard on.ok else { throw ExecutionError(XPCTradeSigner.reason(on)) }
+            await loadSigner()
+            ledgerConnect?.status = "Trading key on: orders go without the Ledger's buttons."
+            reply("Trading key on for your Ledger: \(agent.prefix(10))…. Orders, stops, trailing and closes now go without the device; withdrawals and transfers are still signed on the Ledger. “lock” pauses it.")
+        } catch {
+            ledgerConnect?.status = "The trading key stayed off."
+            reply("Trading key not turned on: \(error.localizedDescription)")
         }
     }
 
@@ -64,6 +117,10 @@ extension Workspace {
         if lower.wholeMatch(of: /\s*(?:use|switch\s+to|sign\s+with|используй|переключи\w*\s+на|подписывай\s+(?:с|на))\s+(?:my\s+|мой\s+|моём\s+|мо[йеё]м?\s+)?(?:ledger|л[еэ]дж[еэ]р\w*)\s*[.!]?\s*/) != nil,
            let account = LedgerAccount.saved {
             await switchWallet(account.wallet)
+            return true
+        }
+        if lower.contains(/trading\s+key|agent|торгов\w*\s+ключ|агент/) {
+            Task { await enableLedgerAgent() }
             return true
         }
         if lower.wholeMatch(of: /\s*(?:forget|remove|disconnect|забудь|удали|отключи)\s+(?:my\s+|мой\s+)?(?:ledger|л[еэ]дж[еэ]р\w*)\s*[.!]?\s*/) != nil {
@@ -83,29 +140,36 @@ extension Workspace {
     func connectLedger() async {
         ledgerConnect = LedgerConnect()
         reply(say("Connecting your Ledger — follow the card on the canvas.", "Подключаю Ledger — следи за карточкой на холсте."))
-        let device = LedgerDevice(LedgerHID())
+        // USB when it's plugged in; otherwise Bluetooth (Nano X, Stax, Flex, Apex), looked for in short rounds.
         var found = LedgerHID.connected()
-        for _ in 0..<60 where found == nil {
-            ledgerConnect?.status = "Plug your Ledger in over USB and unlock it with your PIN."
+        var bluetooth = false
+        for _ in 0..<12 where found == nil {
+            ledgerConnect?.status = "Plug your Ledger in over USB and unlock it — or, on a Nano X, Stax or Flex, unlock it with Bluetooth on and keep it close."
+            if let model = await LedgerBLE.shared.connect(timeout: 4) { found = model; bluetooth = true; break }
             try? await Task.sleep(for: .seconds(1))
             guard ledgerConnect != nil else { return }
             found = LedgerHID.connected()
         }
         guard let model = found else {
-            ledgerConnect?.problem = "No Ledger showed up on USB in a minute. Plug it in, unlock it and press Try again."
+            ledgerConnect?.problem = "No Ledger answered over USB or Bluetooth in a minute. Plug it in or turn its Bluetooth on, unlock it and press Try again."
             ledgerConnect?.busy = false
             return
         }
-        ledgerConnect?.model = model
+        ledgerConnect?.model = model + (bluetooth ? " · Bluetooth" : " · USB")
         var account = LedgerAccount.saved ?? LedgerAccount()
         account.model = model
+        account.bluetooth = bluetooth
+        let device = account.device
         do {
             ledgerConnect?.status = "Open the Ethereum app on your Ledger — or allow it when the Ledger asks."
             try await device.open("Ethereum")
             account.evm = try await device.evmAddress(account.evmPath)
             ledgerConnect?.evm = account.evm
-            if let blind = try? await device.evmBlindSigning(), !blind.on {
-                ledgerConnect?.notes.append("Ethereum \(blind.version): turn on «Blind signing» in the app's settings for swaps, Aave, Morpho and Hyperliquid orders. Plain sends work without it.")
+            if let blind = try? await device.evmBlindSigning() {
+                // The app doesn't report «Raw messages»; it is what lets the Ledger show a Hyperliquid approval or
+                // withdrawal field by field.
+                ledgerConnect?.notes.append("Ethereum \(blind.version): turn on «Raw messages» in the app's settings — then the Ledger shows Hyperliquid approvals and withdrawals field by field."
+                    + (blind.on ? "" : " «Blind signing» is needed too for swaps, Aave, Morpho and bridges."))
             }
             ledgerConnect?.status = "Now the Solana app: allow it when the Ledger asks."
             do {
@@ -132,7 +196,7 @@ extension Workspace {
     /// device says is the truth even if this Mac is not.
     func showOnLedger(solana: Bool) async {
         guard let account = LedgerAccount.saved else { return }
-        let device = LedgerDevice(LedgerHID())
+        let device = account.device
         ledgerConnect?.problem = nil
         ledgerConnect?.status = "Compare the address on your Ledger with the one here, then approve it there."
         do {
@@ -149,10 +213,18 @@ extension Workspace {
         }
     }
 
+    /// Whether the Ledger answers now: plugged in, or linked over Bluetooth within a few seconds.
+    func ledgerReachable() async -> Bool {
+        guard let account = LedgerAccount.saved else { return false }
+        return account.bluetooth == true ? await LedgerBLE.shared.connect(timeout: 3) != nil : LedgerHID.connected() != nil
+    }
+
     /// Takes the Ledger off the list (its addresses only; nothing is on this Mac to wipe). The signing process's
     /// wallet signs again.
     func forgetLedger() async {
-        guard LedgerAccount.saved != nil else { reply("No Ledger is connected."); return }
+        guard let account = LedgerAccount.saved else { reply("No Ledger is connected."); return }
+        // Its trading key stops signing; connecting the same Ledger again brings it back with Touch ID.
+        if let evm = account.evm { _ = try? await SignerClient().send(.setLedgerAgentActive(owner: evm, active: false)) }
         LedgerAccount.active = false
         LedgerAccount.saved = nil
         ledgerConnect = nil
@@ -196,7 +268,24 @@ struct LedgerBoard: View {
                 row("USB", c.model.map { "\($0) found" }, done: c.model != nil)
                 row("ETHEREUM APP · EVM", c.evm.map { "\($0.prefix(6))…\($0.suffix(4))" }, done: c.evm != nil, solana: false)
                 row("SOLANA APP", c.solana.map { "\($0.prefix(4))…\($0.suffix(4))" }, done: c.solana != nil, solana: true)
-                Label(c.status, systemImage: c.busy ? "hand.point.up.left.fill" : "checkmark.seal.fill")
+                if ws.ledgerActive, c.evm != nil {
+                    // Orders without the buttons once the Ledger approves a key that can't withdraw.
+                    HStack(spacing: 10) {
+                        Image(systemName: ws.agentActive ? "key.horizontal.fill" : "key.horizontal")
+                            .foregroundStyle(ws.agentActive ? Brand.profit : .secondary).frame(width: 20)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("HYPERLIQUID TRADING KEY").font(.ui(9, .heavy)).tracking(0.4).opacity(0.7)
+                            Text(ws.agentActive ? "on · orders, stops and trailing without the buttons" : "off · every order asks the Ledger")
+                                .font(.ui(12))
+                        }
+                        Spacer()
+                        if !ws.agentActive, !c.busy {
+                            Button("Approve on Ledger") { Task { await ws.enableLedgerAgent() } }.controlSize(.small)
+                                .help("The Ledger signs one approval of a key that can trade but not withdraw; withdrawals stay on the device")
+                        }
+                    }
+                }
+                Label(SignerActivity.shared.ledger ?? c.status, systemImage: c.busy ? "hand.point.up.left.fill" : "checkmark.seal.fill")
                     .font(.ui(12, .semibold)).foregroundStyle(c.busy ? Brand.accentInk : Brand.profit)
                 if let problem = c.problem {
                     HStack(alignment: .top) {

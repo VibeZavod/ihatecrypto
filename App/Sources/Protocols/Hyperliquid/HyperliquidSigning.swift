@@ -141,6 +141,12 @@ public enum HLAction {
 }
 
 public enum HLSigner {
+    /// Orders, cancels and leverage: what a trading (agent) key may sign. Nothing here moves money out of the account.
+    public static func isTrading(_ action: MsgPack) -> Bool {
+        guard case .map(let pairs) = action, case .string(let t)? = pairs.first(where: { $0.0 == "type" })?.1 else { return false }
+        return ["order", "cancel", "updateLeverage", "batchModify", "modify"].contains(t)
+    }
+
     /// keccak256(msgpack(action) ‖ nonce ‖ vault flag [‖ vault] [‖ 0x00 ‖ expiresAfter]).
     public static func actionHash(_ action: MsgPack, vault: String?, nonce: UInt64, expiresAfter: UInt64? = nil) throws -> Data {
         var data = action.packed
@@ -168,8 +174,12 @@ public enum HLSigner {
 
     /// The typed data an L1 action is signed as, in the two hashes a Ledger signs.
     public static func l1Parts(_ action: MsgPack, vault: String? = nil, nonce: UInt64, expiresAfter: UInt64? = nil, mainnet: Bool) throws -> EIP712.Parts {
+        try l1Typed(action, vault: vault, nonce: nonce, expiresAfter: expiresAfter, mainnet: mainnet).parts()
+    }
+
+    public static func l1Typed(_ action: MsgPack, vault: String? = nil, nonce: UInt64, expiresAfter: UInt64? = nil, mainnet: Bool) throws -> EIP712.Typed {
         let hash = try actionHash(action, vault: vault, nonce: nonce, expiresAfter: expiresAfter)
-        return try EIP712.parts(
+        return EIP712.Typed(
             domain: [
                 .init("name", "string", .string("Exchange")),
                 .init("version", "string", .string("1")),
@@ -193,7 +203,11 @@ public enum HLSigner {
     }
 
     public static func userParts(_ type: String, fields: [EIP712.Field], mainnet: Bool) throws -> EIP712.Parts {
-        try EIP712.parts(
+        try userTyped(type, fields: fields, mainnet: mainnet).parts()
+    }
+
+    public static func userTyped(_ type: String, fields: [EIP712.Field], mainnet: Bool) -> EIP712.Typed {
+        EIP712.Typed(
             domain: [
                 .init("name", "string", .string("HyperliquidSignTransaction")),
                 .init("version", "string", .string("1")),
@@ -273,8 +287,12 @@ public enum HLSigner {
     }
 
     public static func relayNonceMappingParts(wallet: String, depositor: String, id: Data, nonce: UInt64) throws -> EIP712.Parts {
+        try relayNonceMappingTyped(wallet: wallet, depositor: depositor, id: id, nonce: nonce).parts()
+    }
+
+    public static func relayNonceMappingTyped(wallet: String, depositor: String, id: Data, nonce: UInt64) throws -> EIP712.Typed {
         guard id.count == 32 else { throw WalletError("Invalid Relay mapping id.") }
-        return try EIP712.parts(
+        return EIP712.Typed(
             domain: [.init("name", "string", .string("RelayNonceMapping")), .init("version", "string", .string("2")),
                      .init("chainId", "uint256", .uint(1)), .init("verifyingContract", "address", .address("0x0000000000000000000000000000000000000000"))],
             type: "NonceMapping",
@@ -323,16 +341,22 @@ public enum HLSigner {
     /// The one approval that lets a separate agent key trade (but not withdraw) for this account.
     /// Signed by the main key; afterwards orders are signed by the agent key.
     public static func approveAgent(agent: String, name: String, nonce: UInt64, privateKey: Data, mainnet: Bool) throws -> (MsgPack, EVMSignature) {
-        let signature = try signUserAction("ApproveAgent", fields: [
+        let (action, typed) = approveAgentTyped(agent: agent, name: name, nonce: nonce, mainnet: mainnet)
+        return (action, try EVMSigner.sign(digest: try typed.parts().digest, privateKey: privateKey))
+    }
+
+    /// The approval as typed data, for a key held elsewhere (a Ledger signs it and shows the agent's address).
+    public static func approveAgentTyped(agent: String, name: String, nonce: UInt64, mainnet: Bool) -> (MsgPack, EIP712.Typed) {
+        let typed = userTyped("ApproveAgent", fields: [
             .init("agentAddress", "address", .address(agent)),
             .init("agentName", "string", .string(name)),
             .init("nonce", "uint64", .uint(nonce)),
-        ], privateKey: privateKey, mainnet: mainnet)
+        ], mainnet: mainnet)
         let action = MsgPack.map([
             ("type", .string("approveAgent")), ("agentAddress", .string(agent)), ("agentName", .string(name)),
             ("nonce", .uint(nonce)), ("signatureChainId", .string("0x66eee")), ("hyperliquidChain", .string(mainnet ? "Mainnet" : "Testnet")),
         ])
-        return (action, signature)
+        return (action, typed)
     }
 }
 

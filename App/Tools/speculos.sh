@@ -1,5 +1,6 @@
 #!/bin/bash
 # Ledger emulator (Speculos in Docker), fixed test seed, APDU 127.0.0.1:9999 + REST 127.0.0.1:5000: speculos.sh eth|sol [nanosp|flex] | stop
+# --pki-prod: the device trusts Ledger's production certificates, so the descriptors Ledger's servers sign verify here too.
 set -euo pipefail
 C=ihc-speculos
 DIR="$HOME/Library/Caches/ihatecrypto-speculos"
@@ -28,7 +29,7 @@ fi
 docker rm -f $C >/dev/null 2>&1 || true
 docker run --rm -d --name $C -v "$DIR/apps:/apps:ro" -p 127.0.0.1:9999:9999 -p 127.0.0.1:5000:5000 \
   ghcr.io/ledgerhq/speculos:latest --model "$model" "/apps/$elf" --seed "$SEED" \
-  --display headless --apdu-port 9999 --api-port 5000 >/dev/null
+  --display headless --apdu-port 9999 --api-port 5000 --pki-prod >/dev/null
 # Docker's port proxy accepts at once, so wait for speculos itself to say it listens.
 for _ in $(seq 60); do
   docker logs $C 2>&1 | grep -q "Server started on 0.0.0.0:9999" && { echo "$elf ready on 127.0.0.1:9999 (REST :5000)"; exit 0; }

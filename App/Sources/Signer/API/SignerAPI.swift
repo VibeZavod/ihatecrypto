@@ -55,6 +55,16 @@ public enum SignerRequest: Codable, Sendable {
     /// The app reports whether Hyperliquid accepted the approval; only then do orders use the agent key.
     /// Turning it back on asks for Touch ID when the key is paused.
     case setAgentActive(Bool)
+    /// A Hyperliquid trading key for a Ledger's account (`owner`: the Ledger's EVM address), made inside the signer once
+    /// when `create`. The Ledger signs its approval itself, so the signer never holds the Ledger's key, and this key
+    /// can't withdraw. Reply: agentAddress (nil when there is none), agentActive.
+    case ledgerAgent(owner: String, create: Bool)
+    /// The app reports whether Hyperliquid accepted the Ledger's approval of that key. Turning a key back on after
+    /// `lock` paused it asks for Touch ID.
+    case setLedgerAgentActive(owner: String, active: Bool)
+    /// An order, cancel or leverage change for the Ledger's account, signed by its trading key; nothing else. Money
+    /// that leaves the account is signed on the Ledger.
+    case signLedgerAgentL1(owner: String, action: MsgPack, nonce: UInt64)
     /// The NEAR implicit account of the same phrase (m/44'/397'/0'). Wallets imported before NEAR have it derived
     /// here once, which unlocks the seed; afterwards `status` returns it without touching the seed.
     case nearAddress
@@ -187,7 +197,7 @@ public final class SignerClient: @unchecked Sendable {
     public func send(_ request: SignerRequest) async throws -> SignerReply {
         if Self.untrusted {
             switch request {
-            case .status, .nearAddress, .endSession: break
+            case .status, .nearAddress, .endSession, .ledgerAgent(_, false): break
             case .signSolana, .signEVMTransaction, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
                  .signNearIntentDeposit, .signNearTransfer, .signNearDeleteAccount:
                 let status = try await Self.$untrusted.withValue(false) { try await send(.status) }

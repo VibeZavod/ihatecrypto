@@ -256,18 +256,27 @@ enum AgentStore {
             kSecUseDataProtectionKeychain as String: true,
         ]
     }
-    static var base: [String: Any] { query(Wallets.activeID) }
-
-    static func load() -> Data? {
-        var q = base
+    /// `id`: a wallet's, or «ledger-0x…» for the key a Ledger approved for its own account.
+    static func load(id: String = Wallets.activeID) -> Data? {
+        var q = query(id)
         q[kSecReturnData as String] = true
         var out: CFTypeRef?
         return SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess ? out as? Data : nil
     }
 
-    static func save(_ key: Data) throws {
-        SecItemDelete(base as CFDictionary)
-        var q = base
+    /// 32 random bytes that make a valid secp256k1 key; retried in the vanishing case they don't.
+    static func make() throws -> Data {
+        for _ in 0..<4 {
+            var bytes = Data(count: 32)
+            guard bytes.withUnsafeMutableBytes({ SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }) == errSecSuccess else { continue }
+            if (try? EVMAccount.address(privateKey: bytes)) != nil { return bytes }
+        }
+        throw WalletError("Couldn't create the agent key.")
+    }
+
+    static func save(_ key: Data, id: String = Wallets.activeID) throws {
+        SecItemDelete(query(id) as CFDictionary)
+        var q = query(id)
         q[kSecValueData as String] = key
         q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
         let status = SecItemAdd(q as CFDictionary, nil)

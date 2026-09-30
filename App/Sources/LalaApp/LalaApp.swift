@@ -617,7 +617,8 @@ struct SettingsView: View {
             .disabled(ws.signerWallet == nil)
             Text("One move: one Touch ID covers that move's signatures (at most a minute) and ends when it's done. With 5–30 min, signatures in that time need no new one. Each still passes the guard and Jev; locking the screen or sleep ends it. A longer time asks for Touch ID.")
                 .font(.ui(10)).foregroundStyle(.secondary)
-            Label(ws.agentActive ? "Hyperliquid trading key on: orders only, can't withdraw" : "Hyperliquid trading key off: every order asks for Touch ID",
+            Label(ws.agentActive ? "Hyperliquid trading key on: orders only, can't withdraw"
+                  : ws.ledgerActive ? "Hyperliquid trading key off: every order asks for the Ledger's buttons" : "Hyperliquid trading key off: every order asks for Touch ID",
                   systemImage: ws.agentActive ? "checkmark.circle.fill" : "circle")
             if ws.signerWallet != nil {
                 Button("Forget the key on this Mac…", role: .destructive) { confirmForget = true }

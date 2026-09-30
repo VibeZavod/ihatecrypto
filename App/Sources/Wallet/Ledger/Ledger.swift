@@ -34,33 +34,36 @@ public struct LedgerError: LocalizedError, Equatable {
     }
 }
 
-/// Ledger's HID framing: channel 0x0101, tag 0x05, a sequence number, and on the first packet the APDU's length.
-public enum LedgerHIDFraming {
-    public static let packetSize = 64
+/// Ledger's framing: tag 0x05, a sequence number, and on the first packet the APDU's length. Over USB (HID) each
+/// packet starts with channel 0x0101 and is padded to 64 bytes; over Bluetooth there is neither, and a packet is at
+/// most the link's MTU.
+public enum LedgerFraming {
+    public static let hidPacketSize = 64
 
-    public static func packets(_ apdu: Data) -> [Data] {
+    public static func packets(_ apdu: Data, size: Int = hidPacketSize, hid: Bool = true) -> [Data] {
         var rest = Data([UInt8(apdu.count >> 8), UInt8(apdu.count & 0xff)]) + apdu
         var out: [Data] = []
         repeat {
-            var p = Data([0x01, 0x01, 0x05, UInt8(out.count >> 8), UInt8(out.count & 0xff)])
-            let take = min(packetSize - 5, rest.count)
+            var p = (hid ? Data([0x01, 0x01]) : Data()) + Data([0x05, UInt8(out.count >> 8), UInt8(out.count & 0xff)])
+            let take = min(size - p.count, rest.count)
             p += rest.prefix(take)
             rest = Data(rest.dropFirst(take))
-            p += Data(count: packetSize - p.count)
+            if hid { p += Data(count: size - p.count) }
             out.append(p)
         } while !rest.isEmpty
         return out
     }
 
     /// The reply once every packet of it has arrived; nil while more are due.
-    public static func reply(_ packets: [Data]) throws -> Data? {
+    public static func reply(_ packets: [Data], hid: Bool = true) throws -> Data? {
         var body = Data()
+        let head = hid ? 5 : 3
         for (i, p) in packets.enumerated() {
             let b = [UInt8](p)
-            guard b.count >= 5, b[0] == 1, b[1] == 1, b[2] == 5, Int(b[3]) << 8 | Int(b[4]) == i else {
+            guard b.count >= head, !hid || (b[0] == 1 && b[1] == 1), b[head - 3] == 5, Int(b[head - 2]) << 8 | Int(b[head - 1]) == i else {
                 throw LedgerError("The Ledger sent a packet out of order.")
             }
-            body += b.dropFirst(5)
+            body += b.dropFirst(head)
         }
         guard body.count >= 2 else { return nil }
         let length = Int(body[body.startIndex]) << 8 | Int(body[body.startIndex + 1])
@@ -168,6 +171,12 @@ public struct LedgerDevice: Sendable {
         return (reply[reply.startIndex], Data(reply.dropFirst().prefix(32)), Data(reply.dropFirst(33).prefix(32)))
     }
 
+    /// Ledger's signed token descriptor (`LedgerDescriptors.erc20`), so the next transaction's ERC-20 transfer or
+    /// approval shows its amount and ticker instead of asking for blind signing.
+    public func provideERC20(_ payload: Data) async throws {
+        _ = try await send(0xe0, 0x0a, 0, 0, payload, app: "Ethereum")
+    }
+
     /// EIP-712 by its two hashes: the device shows them and signs keccak(0x1901 ‖ domain ‖ message).
     /// Needs «Blind signing»: the device can't show what the hashes stand for.
     public func signTypedDataHashes(_ parts: EIP712.Parts, path: String = evmPath) async throws -> EVMSignature {
@@ -175,6 +184,65 @@ public struct LedgerDevice: Sendable {
         guard r.count >= 65 else { throw LedgerError("The Ethereum app sent no signature.") }
         let v = Int(r[r.startIndex])
         return EVMSignature(r: Data(r.dropFirst().prefix(32)), s: Data(r.dropFirst(33).prefix(32)), v: v < 27 ? v + 27 : v)
+    }
+
+    /// EIP-712 in full: the Ledger gets the types and every value, hashes them itself and shows each field by name
+    /// («agentAddress», «destination», «amount») before it signs. The app may show a field as it arrives and wait for
+    /// the person, so every step may take as long as a signature.
+    public func signTypedData(_ typed: EIP712.Typed, path: String = evmPath) async throws -> EVMSignature {
+        for (name, fields) in [("EIP712Domain", typed.domain), (typed.type, typed.message)] {
+            _ = try await send(0xe0, 0x1a, 0, 0x00, Data(name.utf8), app: "Ethereum")
+            for f in fields {
+                _ = try await send(0xe0, 0x1a, 0, 0xff, try Self.fieldType(f.type) + Data([UInt8(f.name.utf8.count)]) + Data(f.name.utf8), app: "Ethereum")
+            }
+        }
+        for (name, fields) in [("EIP712Domain", typed.domain), (typed.type, typed.message)] {
+            _ = try await send(0xe0, 0x1c, 0, 0x00, Data(name.utf8), app: "Ethereum")
+            for f in fields {
+                let value = try Self.fieldValue(f.value)
+                var rest = Data([UInt8(value.count >> 8), UInt8(value.count & 0xff)]) + value
+                while !rest.isEmpty {
+                    let piece = Data(rest.prefix(255))
+                    rest = Data(rest.dropFirst(piece.count))
+                    _ = try await send(0xe0, 0x1c, rest.isEmpty ? 0 : 1, 0xff, piece, app: "Ethereum", timeout: Self.confirmTimeout)
+                }
+            }
+        }
+        let r = try await send(0xe0, 0x0c, 0, 0x01, try Self.path(path), app: "Ethereum", timeout: Self.confirmTimeout)
+        guard r.count >= 65 else { throw LedgerError("The Ethereum app sent no signature.") }
+        let v = Int(r[r.startIndex])
+        return EVMSignature(r: Data(r.dropFirst().prefix(32)), s: Data(r.dropFirst(33).prefix(32)), v: v < 27 ? v + 27 : v)
+    }
+
+    /// A field's type as the Ethereum app reads it: a kind in the low bits, 0x40 when a byte size follows.
+    static func fieldType(_ type: String) throws -> Data {
+        switch type {
+        case "string": return Data([0x05])
+        case "address": return Data([0x03])
+        case "bool": return Data([0x04])
+        case "bytes": return Data([0x07])
+        default:
+            for (prefix, kind) in [("uint", UInt8(2)), ("int", 1), ("bytes", 6)] where type.hasPrefix(prefix) {
+                guard let n = Int(type.dropFirst(prefix.count)) else { break }
+                return Data([0x40 | kind, UInt8(prefix == "bytes" ? n : n / 8)])
+            }
+            throw LedgerError("The Ledger can't be sent a field of type \(type).")
+        }
+    }
+
+    /// A value as raw bytes: an integer in as few bytes as it needs, an address in 20.
+    static func fieldValue(_ value: EIP712.Value) throws -> Data {
+        switch value {
+        case .string(let s): return Data(s.utf8)
+        case .address(let a):
+            guard let bytes = Data(hex: a), bytes.count == 20 else { throw LedgerError("Invalid address: \(a)") }
+            return bytes
+        case .uint(let n):
+            let be = withUnsafeBytes(of: n.bigEndian) { Data($0) }
+            return Data(be.drop { $0 == 0 }).isEmpty ? Data([0]) : Data(be.drop { $0 == 0 })
+        case .bool(let b): return Data([b ? 1 : 0])
+        case .bytes32(let d): return d
+        }
     }
 
     // MARK: Solana app
@@ -186,6 +254,24 @@ public struct LedgerDevice: Sendable {
         let r = try await send(0xe0, 0x05, show ? 1 : 0, 0, try Self.path(path), app: "Solana", timeout: show ? Self.confirmTimeout : 10)
         guard r.count == 32 else { throw LedgerError("The Solana app sent no address.") }
         return Base58.encode(r)
+    }
+
+    /// A certificate Ledger signed with its root (`LedgerDescriptors.trustedNameCertificate`): the key the next name
+    /// descriptors are checked with. An OS command, answered by whichever app is open.
+    public func loadCertificate(_ payload: Data, usage: UInt8 = 0x04, app: String) async throws {
+        _ = try await send(0xb0, 0x06, usage, 0, payload, app: app)
+    }
+
+    /// Four fresh bytes the next trusted-name descriptor must carry, so an old one can't be replayed.
+    public func challenge(app: String) async throws -> Data {
+        let r = try await send(0xe0, 0x20, app: app)
+        guard r.count == 4 else { throw LedgerError("The \(app) app sent no challenge.") }
+        return r
+    }
+
+    /// «This token account is that owner's», signed by Ledger for the challenge: the Solana app then names the recipient.
+    public func provideTrustedName(_ tlv: Data, app: String) async throws {
+        _ = try await send(0xe0, 0x21, 0, 0, tlv, app: app)
     }
 
     public func solanaBlindSigning() async throws -> (on: Bool, version: String) {

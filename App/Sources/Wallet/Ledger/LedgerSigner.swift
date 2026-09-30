@@ -15,12 +15,18 @@ public struct LedgerSigner: TradeSigner {
     public let wallet: TradeWallet
     public var evmPath = LedgerDevice.evmPath
     public var solanaPath = LedgerDevice.solanaPath
+    /// «Nano S Plus», «Flex»…: Ledger's certificates are per model.
+    public var model: String?
     /// What the person has to do on the device now («Open the Solana app…», «Review … on your Ledger»); nil when done.
     public let prompt: @Sendable (String?) -> Void
+    /// The trading key the Ledger approved for its Hyperliquid account, in the signing process: orders, cancels and
+    /// leverage go there without the device. Nil while there is none or it is paused.
+    public var agent: (@Sendable (MsgPack, UInt64) async throws -> EVMSignature)?
 
     public init(device: LedgerDevice, wallet: TradeWallet, evmPath: String = LedgerDevice.evmPath, solanaPath: String = LedgerDevice.solanaPath,
+                model: String? = nil, agent: (@Sendable (MsgPack, UInt64) async throws -> EVMSignature)? = nil,
                 prompt: @escaping @Sendable (String?) -> Void = { _ in }) {
-        (self.device, self.wallet, self.evmPath, self.solanaPath, self.prompt) = (device, wallet, evmPath, solanaPath, prompt)
+        (self.device, self.wallet, self.evmPath, self.solanaPath, self.model, self.agent, self.prompt) = (device, wallet, evmPath, solanaPath, model, agent, prompt)
     }
 
     /// `hash`: what the device shows when it can't show the details (blind signing), so the person can compare it
@@ -42,15 +48,45 @@ public struct LedgerSigner: TradeSigner {
         guard verdict.ok else { throw Self.refuse(verdict) }
         let payer = try Base58.decode(wallet.solana)
         let (message, slot) = try SolanaTransaction.unsigned(wire, payer: payer)
-        let what = verdict.checks.first { $0.contains("→") } ?? "a Solana transaction"
         let hash = Base58.encode(Data(SHA256.hash(data: message)))
-        let signature = try await onDevice("Solana", what, hash: hash) { try await device.signSolana(message, path: solanaPath) }
+        let transfer = Self.tokenTransfer(try SolanaMessage.parse(transaction: wire), accounts: accounts, owners: recipients + [wallet.solana])
+        let what = transfer.map { "a token transfer to \($0.owner.prefix(4))…\($0.owner.suffix(4))" } ?? verdict.checks.first { $0.contains("→") } ?? "a Solana transaction"
+        let certificate = transfer == nil ? nil : try? await LedgerDescriptors.trustedNameCertificate(model: model)
+        let signature = try await onDevice("Solana", what, hash: hash) {
+            // A USDC transfer shows its amount and recipient when Ledger vouches for whose token account it pays;
+            // without that (no network, a token Ledger doesn't know), it stays blind-signed.
+            if let transfer, let certificate {
+                do {
+                    try await device.loadCertificate(certificate, app: "Solana")
+                    let challenge = try await device.challenge(app: "Solana")
+                    let tlv = try await LedgerDescriptors.solanaTokenAccount(owner: transfer.owner, mint: transfer.mint, tokenAccount: transfer.account, challenge: challenge)
+                    try await device.provideTrustedName(tlv, app: "Solana")
+                } catch let e as LedgerError where e.declined { throw e } catch {}
+            }
+            return try await device.signSolana(message, path: solanaPath)
+        }
         guard try Curve25519.Signing.PublicKey(rawRepresentation: payer).isValidSignature(signature, for: message) else {
             throw LedgerError("The Ledger's signature isn't from \(wallet.solana): is it the Ledger you connected?")
         }
         var signed = wire
         signed.replaceSubrange(slot, with: signature)
         return signed
+    }
+
+    /// The first SPL token transfer in the message and whose account it pays, when the payee is one of `owners` (our
+    /// own or an approved address): its associated account for the mint must be exactly the destination.
+    static func tokenTransfer(_ m: SolanaMessage, accounts: [String], owners: [String]) -> (account: String, owner: String, mint: String)? {
+        let programs: Set<String> = [SPL.tokenProgram, SPL.token2022Program]
+        for ix in m.instructions where ix.programIndex < accounts.count && programs.contains(accounts[ix.programIndex]) {
+            // TransferChecked: source, mint, destination, owner.
+            guard ix.data.first == 12, ix.accounts.count >= 4, ix.accounts[1] < accounts.count, ix.accounts[2] < accounts.count else { continue }
+            let mint = accounts[ix.accounts[1]], destination = accounts[ix.accounts[2]]
+            let program = accounts[ix.programIndex]
+            if let owner = owners.first(where: { (try? SPL.associatedAccount(owner: $0, mint: mint, program: program)) == destination }) {
+                return (destination, owner, mint)
+            }
+        }
+        return nil
     }
 
     /// The same calldata rules as the signing process: known networks, no unlimited approvals, tokens only to us or
@@ -66,8 +102,15 @@ public struct LedgerSigner: TradeSigner {
         let tx = EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee,
                                 gasLimit: gasLimit, to: to, value: 0, data: data)
         let hash = try tx.signingHash()
+        // A token transfer or approval shows «Send 25 USDC» / «Approve 2 USDC» when Ledger's descriptor for the token
+        // comes first; without it the Ethereum app asks for blind signing.
+        let token: Data? = switch call {
+        case .transfer, .approve: try? await LedgerDescriptors.erc20(chainId: chainId, contract: to)
+        default: nil
+        }
         let raw = try await onDevice("Ethereum", call.summary(chainId: chainId, to: to, value: 0), hash: "0x" + hash.hex) {
-            try await device.signEVMTransaction(try tx.unsignedPayload(), path: evmPath)
+            if let token { try? await device.provideERC20(token) }
+            return try await device.signEVMTransaction(try tx.unsignedPayload(), path: evmPath)
         }
         // The device's first byte is the parity for a typed transaction; recovering both settles it either way.
         for parity in [Int(raw.v & 1), Int(raw.v & 1) ^ 1] {
@@ -79,9 +122,18 @@ public struct LedgerSigner: TradeSigner {
         throw LedgerError("The Ledger's signature isn't from \(wallet.evm): is it the Ledger you connected?")
     }
 
-    /// Typed data by hash; the signature must recover to the Ledger's address.
-    func typed(_ parts: EIP712.Parts, _ what: String) async throws -> EVMSignature {
-        let signature = try await onDevice("Ethereum", what, hash: "0x" + parts.message.hex) { try await device.signTypedDataHashes(parts, path: evmPath) }
+    /// Typed data in full, so the Ledger shows each field by name; by its two hashes on an app too old for that.
+    /// The signature must recover to the Ledger's address.
+    func typed(_ typed: EIP712.Typed, _ what: String) async throws -> EVMSignature {
+        let parts = try typed.parts()
+        let signature = try await onDevice("Ethereum", what, hash: "0x" + parts.message.hex) {
+            do { return try await device.signTypedData(typed, path: evmPath) }
+            catch let e as LedgerError where e.status == 0x6d00 || e.status == 0x6e00 {
+                return try await device.signTypedDataHashes(parts, path: evmPath)
+            } catch let e as LedgerError where e.status == 0x6a80 {
+                throw LedgerError("The Ethereum app won't show this typed data: turn on «Raw messages» in its settings on the Ledger (it then shows every field), or «Blind signing».", status: 0x6a80)
+            }
+        }
         guard try EVMSigner.recover(digest: parts.digest, signature: signature).lowercased() == wallet.evm.lowercased() else {
             throw LedgerError("The Ledger's signature isn't from \(wallet.evm): is it the Ledger you connected?")
         }
@@ -91,21 +143,29 @@ public struct LedgerSigner: TradeSigner {
     public func signHyperliquid(_ action: MsgPack, nonce: UInt64) async throws -> EVMSignature {
         let verdict = HLGuard.check(action, owner: wallet.evm, recipients: [])
         guard verdict.ok else { throw Self.refuse(verdict) }
-        return try await typed(try HLSigner.l1Parts(action, nonce: nonce, mainnet: true), "a Hyperliquid order (hashes)")
+        if let agent, HLSigner.isTrading(action) { return try await agent(action, nonce) }
+        return try await typed(try HLSigner.l1Typed(action, nonce: nonce, mainnet: true), "a Hyperliquid order")
+    }
+
+    /// The one approval of a trading key for the Ledger's Hyperliquid account: the device shows the key's address,
+    /// which the person compares with the one on the canvas. The key can trade but not withdraw.
+    public func approveAgent(_ agent: String, name: String, nonce: UInt64) async throws -> (MsgPack, EVMSignature) {
+        let (action, typed) = HLSigner.approveAgentTyped(agent: agent, name: name, nonce: nonce, mainnet: true)
+        return (action, try await self.typed(typed, "let the trading key \(agent.prefix(6))…\(agent.suffix(4)) place orders for you on Hyperliquid; it can't withdraw"))
     }
 
     public func signHyperliquidUser(_ action: MsgPack, recipients: [String]) async throws -> EVMSignature {
         let verdict = HLGuard.check(action, owner: wallet.evm, recipients: Set(recipients))
         guard verdict.ok else { throw Self.refuse(verdict) }
         let (type, fields) = try HLSigner.userAction(action)
-        return try await typed(try HLSigner.userParts(type, fields: fields, mainnet: true), "a Hyperliquid transfer (hashes)")
+        return try await typed(HLSigner.userTyped(type, fields: fields, mainnet: true), "a Hyperliquid transfer")
     }
 
     public func signRelayMapping(wallet w: String, depositor: String, id: Data, nonce: UInt64) async throws -> EVMSignature {
         guard w.lowercased() == wallet.evm.lowercased(), depositor.lowercased() == wallet.evm.lowercased() else {
             throw ExecutionError("The deposit mapping isn't for your Ledger: \(w), \(depositor).")
         }
-        return try await typed(try HLSigner.relayNonceMappingParts(wallet: w, depositor: depositor, id: id, nonce: nonce), "link a withdrawal to a Relay order (hashes)")
+        return try await typed(try HLSigner.relayNonceMappingTyped(wallet: w, depositor: depositor, id: id, nonce: nonce), "link a withdrawal to a Relay order")
     }
 
     public func signNearIntentDeposit(amount: UInt128, depositAddress: String, nonce: UInt64, blockHash: Data) async throws -> Data {

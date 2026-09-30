@@ -60,9 +60,9 @@ public struct LedgerHID: LedgerTransport {
         defer { IOHIDDeviceClose(device, IOOptionBits(kIOHIDOptionsTypeNone)) }
 
         let inbox = Inbox()
-        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: LedgerHIDFraming.packetSize)
+        let buffer = UnsafeMutablePointer<UInt8>.allocate(capacity: LedgerFraming.hidPacketSize)
         let context = Unmanaged.passRetained(inbox)
-        IOHIDDeviceRegisterInputReportCallback(device, buffer, LedgerHIDFraming.packetSize, { context, _, _, _, _, report, length in
+        IOHIDDeviceRegisterInputReportCallback(device, buffer, LedgerFraming.hidPacketSize, { context, _, _, _, _, report, length in
             guard let context else { return }
             Unmanaged<Inbox>.fromOpaque(context).takeUnretainedValue().packets.append(Data(bytes: report, count: length))
         }, context.toOpaque())
@@ -70,12 +70,12 @@ public struct LedgerHID: LedgerTransport {
         IOHIDDeviceScheduleWithRunLoop(device, runLoop, CFRunLoopMode.defaultMode.rawValue)
         defer {
             IOHIDDeviceUnscheduleFromRunLoop(device, runLoop, CFRunLoopMode.defaultMode.rawValue)
-            IOHIDDeviceRegisterInputReportCallback(device, buffer, LedgerHIDFraming.packetSize, nil, nil)
+            IOHIDDeviceRegisterInputReportCallback(device, buffer, LedgerFraming.hidPacketSize, nil, nil)
             context.release()
             buffer.deallocate()
         }
 
-        for packet in LedgerHIDFraming.packets(apdu) {
+        for packet in LedgerFraming.packets(apdu) {
             let sent = packet.withUnsafeBytes {
                 IOHIDDeviceSetReport(device, kIOHIDReportTypeOutput, 0, $0.bindMemory(to: UInt8.self).baseAddress!, packet.count)
             }
@@ -83,7 +83,7 @@ public struct LedgerHID: LedgerTransport {
         }
         let deadline = Date().addingTimeInterval(timeout)
         while true {
-            if let reply = try LedgerHIDFraming.reply(inbox.packets) { return reply }
+            if let reply = try LedgerFraming.reply(inbox.packets) { return reply }
             guard Date() < deadline else { throw LedgerError("The Ledger didn't answer in time: check its screen and try again.") }
             CFRunLoopRunInMode(.defaultMode, 0.05, true)
         }
