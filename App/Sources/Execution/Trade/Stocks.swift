@@ -105,7 +105,7 @@ extension Executor {
         guard let pool = try await bestPool(usdg, token.address, amountIn: Decimal(units)) else {
             // No Uniswap v3 pool (MOO trades only on v4, against another token): Relay's swap on the chain itself.
             guard let listing else { throw ExecutionError(noPool(symbol, listing)) }
-            return try await relayBuy(token, units: units, listing: listing)
+            return try await relaySwap(token, buy: true, units: Decimal(units), listing: listing)
         }
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
         let price = (Decimal(units) / 1_000_000) / (pool.out / scale)
@@ -137,27 +137,36 @@ extension Executor {
     /// A token Uniswap v3 doesn't pool with USDG, bought by Relay's swap on Robinhood Chain: an exact USDG approve to the
     /// approval proxy Relay publishes for the chain, then its call to that same proxy, from and to this wallet; the price
     /// within 5% of DexScreener's and at most 3% (or $0.15) lost on the way.
-    private func relayBuy(_ token: RobinhoodStocks.Token, units: UInt64, listing: TokenLookup.Info) async throws -> String {
+    /// A token Uniswap v3 doesn't pool with USDG, bought (`buy`) or sold by Relay's swap on Robinhood Chain: an exact approve of
+    /// what goes in to the approval proxy Relay publishes for the chain, then its call to that same proxy, from and to this
+    /// wallet; the price within 5% of DexScreener's and at most 3% (or $0.15) lost. `units`: what goes in, smallest units.
+    private func relaySwap(_ token: RobinhoodStocks.Token, buy: Bool, units: Decimal, listing: TokenLookup.Info) async throws -> String {
         let rpc = EVMRPC.robinhood, usdg = EVMRPC.robinhoodUSDG, me = wallet.evm, chain = Relay.Chain.robinhood
-        let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1), spend = Decimal(units) / 1_000_000
-        try await ensureEVM(.robinhood, usdc: units)
+        let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
+        let tokenIn = buy ? usdg : token.address, tokenOut = buy ? token.address : usdg
+        let inScale: Decimal = buy ? 1_000_000 : scale, outScale: Decimal = buy ? scale : 1_000_000
+        let (inSymbol, outSymbol) = buy ? ("USDG", token.symbol) : (token.symbol, "USDG")
+        let amountIn = units / inScale
+        try await ensureEVM(.robinhood, usdc: buy ? NSDecimalNumber(decimal: units).uint64Value : 0)
         guard let proxy = try await Relay.approvalProxy(chainId: chain)?.lowercased() else { throw ExecutionError("Relay publishes no approval proxy for Robinhood Chain.") }
         /// Relay's quote with every check: from and to this wallet, its call to the proxy after an exact approve, the price.
         func checked() async throws -> (quote: Relay.Quote, call: Relay.EVMStep, price: Decimal, out: Decimal) {
             let quote = try await Relay.quote(user: me, recipient: me, originChain: chain, destinationChain: chain,
-                                              originCurrency: usdg, destinationCurrency: token.address, amount: units)
+                                              originCurrency: tokenIn, destinationCurrency: tokenOut, amount: 0, units: "\(units)")
             let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": quote.recipient.lowercased()],
                                              expected: ["sender": me.lowercased(), "recipient": me.lowercased()], subject: "Relay quote")
             guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
             guard let call = quote.evm.last, call.to.lowercased() == proxy, call.chainId == chain, call.value == "0" || call.value == "<null>",
-                  quote.evm.dropLast().allSatisfy({ exactApprove($0, token: usdg, spender: proxy, units: Decimal(units)) }) else {
+                  quote.evm.dropLast().allSatisfy({ exactApprove($0, token: tokenIn.lowercased(), spender: proxy, units: units) }) else {
                 throw ExecutionError("Relay's transactions don't go to the approval proxy it publishes for Robinhood Chain, for exactly this amount. Nothing was signed.")
             }
-            let out = (Decimal(string: quote.amountOut) ?? 0) / scale, worthOut = Decimal(string: quote.amountOutUSD) ?? 0
-            guard out > 0, spend - worthOut <= max(spend * Decimal(string: "0.03")!, Decimal(string: "0.15")!) else {
-                throw ExecutionError("Relay gives \(Fmt.usd(worthOut)) of \(token.symbol) for \(Fmt.num(spend)) USDG: more lost than allowed. Nothing was signed.")
+            let out = (Decimal(string: quote.amountOut) ?? 0) / outScale
+            // What goes in and what comes out, in dollars: USDG counts as a dollar, the token at Relay's own valuation.
+            let worthIn = buy ? amountIn : Decimal(string: quote.amountInUSD) ?? 0, worthOut = buy ? Decimal(string: quote.amountOutUSD) ?? 0 : out
+            guard out > 0, worthIn - worthOut <= max(worthIn * Decimal(string: "0.03")!, Decimal(string: "0.15")!) else {
+                throw ExecutionError("Relay gives \(Fmt.usd(worthOut)) for \(Fmt.usd(worthIn)) of \(inSymbol): more lost than allowed. Nothing was signed.")
             }
-            let price = spend / out
+            let price = buy ? amountIn / out : out / amountIn
             if let p = listing.priceUSD, price > p * Decimal(string: "1.05")! || price < p * Decimal(string: "0.95")! {
                 throw ExecutionError("Relay's price \(Fmt.usd(price)) is off DexScreener's \(Fmt.usd(p)) by more than 5%. Nothing was signed.")
             }
@@ -165,44 +174,49 @@ extension Executor {
         }
         var q = try await checked()
         let first = q
-        report("\(token.name) (\(token.symbol)): no Uniswap v3 pool with USDG, so Relay swaps it on Robinhood Chain: ≈ \(Fmt.usd(q.price)) a token.")
-        try await approve(rpc, token: usdg, spender: proxy, amount: units, note: "Approve exactly \(Fmt.num(spend)) USDG to Relay")
-        let before = try await balance(token.address, on: rpc)
+        report("\(token.name) (\(token.symbol)): no Uniswap v3 pool with USDG, so Relay \(buy ? "buys" : "sells") it on Robinhood Chain: ≈ \(Fmt.usd(q.price)) a token.")
+        try await approve(rpc, token: tokenIn, spender: proxy, units: units, note: "Approve exactly \(Fmt.num(amountIn, maxFraction: 6)) \(inSymbol) to Relay")
+        func held() async throws -> Decimal { buy ? try await balance(token.address, on: rpc) : Decimal(try await rpc.tokenBalance(usdg, owner: me)) }
+        let before = try await held()
         // Relay's route is priced for the moment it's quoted: after the approve's wait it's asked again, and a dry run that
         // still reverts (a pool moved: «T8: Insufficient Liquidity» on SHROOM) asks once more. The dry run comes before any
         // signature, so a retry signs nothing twice.
         var hash = ""
         for attempt in 0..<3 {
             q = try await checked()
-            // Asked again, the price may have moved: more than 10% fewer tokens than when the move started stops here and
-            // says so, rather than buying at a price nobody saw.
+            // Asked again, the price may have moved: more than 10% less out than when the move started stops here and says
+            // so, rather than trading at a price nobody saw.
             if let drop = Self.worseByMoreThanTenPercent(first: first.out, now: q.out) {
-                throw ExecutionError("⚠️ Asked again, Relay gives \(Fmt.num(q.out, maxFraction: 2)) \(token.symbol) for \(Fmt.num(spend)) USDG instead of \(Fmt.num(first.out, maxFraction: 2)) "
-                                     + "(−\(Fmt.num(drop))%): more than 10% worse, so nothing was swapped. "
-                                     + "The exact approve stays; say «do it» again to buy at the new price.")
+                throw ExecutionError("⚠️ Asked again, Relay gives \(Fmt.num(q.out, maxFraction: 2)) \(outSymbol) for \(Fmt.num(amountIn, maxFraction: 6)) \(inSymbol) instead of "
+                                     + "\(Fmt.num(first.out, maxFraction: 2)) (−\(Fmt.num(drop))%): more than 10% worse, so nothing was swapped. "
+                                     + "The exact approve stays; say «do it» again to \(buy ? "buy" : "sell") at the new price.")
             }
             do {
-                hash = try await sendEVM(rpc, to: q.call.to, data: q.call.data, note: "Relay: buy \(token.symbol) for \(Fmt.num(spend)) USDG")
+                hash = try await sendEVM(rpc, to: q.call.to, data: q.call.data, note: "Relay: \(buy ? "buy" : "sell") \(token.symbol) for \(buy ? "\(Fmt.num(amountIn)) USDG" : "USDG")")
                 break
             } catch where "\(error.localizedDescription)".contains("eth_estimateGas") {
                 guard attempt < 2 else {
-                    throw ExecutionError("Relay couldn't route \(Fmt.num(spend)) USDG into \(token.symbol) just now (\(error.localizedDescription)). Nothing was swapped; "
-                                         + "the exact approve stays for the next try. Try again in a minute, or with less.")
+                    throw ExecutionError("Relay couldn't route \(Fmt.num(amountIn, maxFraction: 6)) \(inSymbol) into \(outSymbol) just now (\(error.localizedDescription)). "
+                                         + "Nothing was swapped; the exact approve stays for the next try. Try again in a minute, or with less.")
                 }
                 report("Relay's route for \(token.symbol) moved before the swap: asking it again.")
                 try await Task.sleep(for: .seconds(2))
             }
         }
-        try journal.append(.init(chain: "relay", id: q.quote.requestId, kind: .signed, note: "Robinhood USDG→\(token.symbol), tx \(hash)"))
-        var after = try await balance(token.address, on: rpc)
+        try journal.append(.init(chain: "relay", id: q.quote.requestId, kind: .signed, note: "Robinhood \(inSymbol)→\(outSymbol), tx \(hash)"))
+        var after = try await held()
         for _ in 0..<30 where after <= before {
             try await Task.sleep(for: .seconds(1))
-            after = try await balance(token.address, on: rpc)
+            after = try await held()
         }
-        guard after > before else { throw ExecutionError("Relay took the USDG but no \(token.symbol) arrived yet. Order \(q.quote.requestId) is in the journal. \(EVMNetwork.robinhood.explorer)/tx/\(hash)") }
-        let got = (after - before) / scale
-        return "Bought \(Fmt.num(got, maxFraction: 6)) \(token.symbol) (\(token.name)) for \(Fmt.num(spend)) USDG via Relay — ≈ \(Fmt.usd(spend / got)) a token. "
-            + "You hold \(Fmt.num(after / scale, maxFraction: 6)) \(token.symbol) on Robinhood Chain. \(EVMNetwork.robinhood.explorer)/tx/\(hash)"
+        guard after > before else { throw ExecutionError("Relay took the \(inSymbol) but no \(outSymbol) arrived yet. Order \(q.quote.requestId) is in the journal. \(EVMNetwork.robinhood.explorer)/tx/\(hash)") }
+        let got = (after - before) / outScale
+        if buy {
+            return "Bought \(Fmt.num(got, maxFraction: 6)) \(token.symbol) (\(token.name)) for \(Fmt.num(amountIn)) USDG via Relay — ≈ \(Fmt.usd(amountIn / got)) a token. "
+                + "You hold \(Fmt.num(after / scale, maxFraction: 6)) \(token.symbol) on Robinhood Chain. \(EVMNetwork.robinhood.explorer)/tx/\(hash)"
+        }
+        return "Sold \(Fmt.num(amountIn, maxFraction: 6)) \(token.symbol) for \(Fmt.num(got)) USDG via Relay. Say “move USDG from Robinhood to Solana” to bring it back. "
+            + "\(EVMNetwork.robinhood.explorer)/tx/\(hash)"
     }
 
     /// How much worse (%, one decimal) a fresh quote is than the first, when that's more than 10%; nil otherwise.
@@ -231,7 +245,11 @@ extension Executor {
         let held = try await balance(token.address, on: rpc)
         let wanted = (amount.map { min($0 * scale, held) } ?? held).rounded(0, .down)
         guard wanted > 0 else { throw ExecutionError("No \(symbol) on Robinhood Chain.") }
-        guard let pool = try await bestPool(token.address, usdg, amountIn: wanted) else { throw ExecutionError(noPool(symbol, listing)) }
+        guard let pool = try await bestPool(token.address, usdg, amountIn: wanted) else {
+            // Bought through Relay (no Uniswap v3 pool: MOO, SHROOM on v4) is sold back through Relay too.
+            guard let listing else { throw ExecutionError(noPool(symbol, listing)) }
+            return try await relaySwap(token, buy: false, units: wanted, listing: listing)
+        }
         try await ensureEVM(.robinhood, usdc: 0)
         try await approve(rpc, token: token.address, spender: UniswapV3.robinhoodRouter, units: wanted, note: "Approve exactly \(Fmt.num(wanted / scale, maxFraction: 6)) \(symbol) to Uniswap")
         let before = try await rpc.tokenBalance(usdg, owner: me)

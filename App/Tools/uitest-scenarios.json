@@ -253,5 +253,37 @@
       "no_pending": true,
       "reply": true
     }
+  },
+  {
+    "name": "gas is never a dead end → «добавь газа» is a card: Solana → Relay → gas",
+    "send": [
+      "добавь газа на робингуд на 3 бакса"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "drawn_route": true,
+      "steps": [
+        "SOLANA",
+        "RELAY",
+        "GAS"
+      ],
+      "title_contains": "Gas"
+    }
+  },
+  {
+    "name": "between two EVM networks straight → Base → Relay → Robinhood, no Solana",
+    "send": [
+      "переведи 5 USDC из бейза на робингуд"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "drawn_route": true,
+      "steps": [
+        "BASE",
+        "RELAY",
+        "ROBINHOOD"
+      ],
+      "title_contains": "Base → Robinhood"
+    }
   }
 ]
