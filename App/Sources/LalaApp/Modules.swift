@@ -143,7 +143,7 @@ struct ChartBoard: View {
                     }
                 }
                 .chartYScale(domain: (bottom - pad)...(top + pad))
-                .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) }
+                .priceAxes(state.range)
                 .chartOverlay { proxy in ChartHover(proxy: proxy, points: state.candles.map { ($0.time, NSDecimalNumber(decimal: $0.close).doubleValue) }) }
                 .frame(height: 210)
             } else if let error = state.error {

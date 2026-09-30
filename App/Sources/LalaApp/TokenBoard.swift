@@ -136,8 +136,7 @@ struct TokenBoard: View {
                 }
             }
             .chartYScale(domain: (lo - pad)...(hi + pad))
-            .chartXAxis { AxisMarks(values: .automatic(desiredCount: 4)) }
-            .chartYAxis { AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) }
+            .priceAxes(range)
             .chartOverlay { proxy in TokenChartHover(proxy: proxy, points: points, pointer: pointer, tint: tint) }
             .frame(height: 190)
         } else if let error {
@@ -254,7 +253,32 @@ struct TokenBoard: View {
     var point: TokenMarket.Point?
 }
 
-/// The price at the pointer (or now) and beside it the pointer's time (or the move over the range).
+extension View {
+    /// Both price charts' axes: times short enough to read whole under the chart — the hour on a day's chart, the date on a
+    /// week's or a month's («Sep 29 at 1…» was cut) — and the prices on the right in the text's own colour, not faded.
+    func priceAxes(_ range: ChartCommand.Range) -> some View {
+        chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4)) { value in
+                AxisGridLine()
+                AxisValueLabel {
+                    if let date = value.as(Date.self) {
+                        Text(date, format: range == .day ? Date.FormatStyle(locale: Locale(identifier: "en_US")).hour()
+                                                         : Date.FormatStyle(locale: Locale(identifier: "en_US")).month(.abbreviated).day())
+                            .font(.ui(10)).foregroundStyle(.secondary).fixedSize()
+                    }
+                }
+            }
+        }
+        .chartYAxis {
+            AxisMarks(position: .trailing, values: .automatic(desiredCount: 4)) { value in
+                AxisGridLine()
+                AxisValueLabel().font(.ui(10, .semibold)).foregroundStyle(.primary)
+            }
+        }
+    }
+}
+
+/// The price at the pointer (or now) and under it the pointer's time (or the move over the range).
 private struct PointerPrice: View {
     let pointer: ChartPointer
     let now: Decimal?
@@ -263,11 +287,11 @@ private struct PointerPrice: View {
 
     var body: some View {
         let shown = pointer.point
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        VStack(alignment: .leading, spacing: 2) {
             Text((shown?.close ?? now).map(tokenPrice) ?? "—").font(.ui(28, .heavy)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.5).layoutPriority(1)
             if let shown {
                 Text(shown.time.formatted(Date.FormatStyle(locale: Locale(identifier: "en_US")).day().month(.abbreviated).hour().minute()))
-                    .font(.ui(10)).foregroundStyle(.secondary)
+                    .font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
             } else if let change {
                 Text("\(signedPct(change)) · \(rangeTitle)").font(.ui(10, .bold)).foregroundStyle(change < 0 ? Brand.loss : Brand.profit).lineLimit(1)
             }
