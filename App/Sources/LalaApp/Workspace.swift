@@ -1021,6 +1021,10 @@ final class Workspace {
         c.offered = offered.map { "\($0.title) → \($0.command)\($0.recommended ? " (recommended)" : "")" }
         if intent != TradeIntent(), let json = try? JSONEncoder().encode(intent) { c.plan = String(decoding: json, as: UTF8.self) }
         if let ch = chart { c.canvas.append("chart \(ch.coin) (\(ch.range.title))") }
+        // The rates board, best first: «ок, положи туда 500» after «где лучше держать доллары?» is its top place.
+        if let y = yieldOptions ?? heldAnswer?.yields, !y.isEmpty {
+            c.canvas.append("rates board, best first: " + y.prefix(8).map { "\($0.place) \($0.asset) \(Fmt.num($0.apy.rounded(2, .plain)))%" }.joined(separator: ", "))
+        }
         // With the route as its card draws it (amounts, fees, where the money comes from), so «а комиссия какая?» is
         // answered from the card's numbers.
         if let p = pendingText {

@@ -504,6 +504,14 @@ extension Executor {
             }
         }
         var all = places
+        // A known place whose rate, balance or gas didn't answer this time is named with why, not left out silently:
+        // Morpho on Ethereum vanished from a spread between two messages, and nothing said so.
+        if !isSOL {
+            let read = Set(evm.map(\.name))
+            for name in AaveV3.markets.map(\.place) + MorphoVault.vaults.map(\.place) where !read.contains(name) && modules.refusal(vault: name) == nil {
+                all.append(.init(name: name, apy: options.first { $0.place == name }?.apy ?? 0, blocked: "its rate, balance or gas couldn't be read just now — ask again in a minute"))
+            }
+        }
         for p in evm {
             // Worth it only when the round trip costs less than half a year of the slice's interest: on Ethereum that
             // takes a large slice, on the L2s a few dollars.

@@ -501,6 +501,14 @@ extension Workspace {
         case .lendDeposit("USDC", let asked?), .kamino(deposit: true, symbol: "USDC", amount: let asked?): return lacks(solana?.usdc, asked, "Solana")
         case .lendDeposit("SOL", let asked?), .kamino(deposit: true, symbol: "SOL", amount: let asked?), .stake(let asked?):
             return lacks(solana?.sol, asked, "Solana", "SOL")
+        case .sell(let a, let asked) where a.resolved:
+            // «продай весь мой JUP» with none made a card that could only fail at the swap.
+            guard let s = solana else { return nil }
+            let have = a.symbol == "SOL" ? s.sol : s.tokens.first { $0.contract == a.mint }?.amount ?? 0
+            if have <= 0 {
+                return say("There’s no \(a.symbol) on Solana to sell — nothing was prepared.", "На Solana нет \(a.symbol) — продавать нечего, ничего не готовлю.")
+            }
+            return lacks(have, asked, "Solana", a.symbol)
         case .sellNear(let asked):
             // What a sale keeps on the account while it is sent: storage and prepaid gas (sellNearRoute, intentDepositOverhead).
             let sellable = max(0, near - Decimal(string: "0.09")!)

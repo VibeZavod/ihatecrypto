@@ -1387,6 +1387,22 @@ extension Workspace {
     }
 
     /// USDC free at a place: Solana, Hyperliquid's withdrawable, each EVM network (Ethereum and Polygon from the tokens read).
+    /// A vault deposit whose own network and Solana are short, as steps: a straight move from the EVM network holding
+    /// the USDC, then the deposit. nil when they have enough (the deposit brings Solana's itself) or no network has it.
+    func fundedFromElsewhere(_ c: WalletCommand) -> [String]? {
+        let amount: Decimal, net: String
+        switch c {
+        case .aave(true, let a?, let n), .morpho(true, let a?, let n): (amount, net) = (a, n)
+        default: return nil
+        }
+        let short = amount - (usdc(on: net) ?? 0)
+        guard short > 0, (solana?.usdc ?? 0) < short else { return nil }
+        // Relay's fee comes out on the way (cents from an L2, under a dollar from Ethereum): a dollar more; what's left stays there.
+        let bring = (short + 1).rounded(0, .up)
+        guard let from = EVMNetwork.funding(bring, held: { $0 == net ? nil : self.usdc(on: $0) }) else { return nil }
+        return ["move \(Fmt.num(bring)) USDC from \(from.name) to \(WalletCommand.placeName(net))", c.summary]
+    }
+
     func usdc(on place: String) -> Decimal? {
         switch place {
         case "solana": solana?.usdc
@@ -1710,6 +1726,14 @@ extension Workspace {
         if let question = command.amountQuestion {
             awaitingAmount = command
             reply(say(question, "Сколько? Напиши число.") + amountHint(command), note: note)
+            return
+        }
+        // A deposit into Aave or Morpho takes the USDC on its own network first, then Solana's. When neither has enough
+        // but another EVM network does, that money comes straight from there, the way a trade's does: the move, then the
+        // deposit, one Confirm. «положи 300 в aave на арбитруме» with the USDC on Ethereum made a card that could only fail.
+        if !quiet, TaskRun.automation == nil, let steps = fundedFromElsewhere(command) {
+            reply(say("In steps: ", "По шагам: ") + steps.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " → "), note: note)
+            await runSteps(steps)
             return
         }
         // It reads the active wallet's balances: a task on the automation wallet leaves the check to the move itself.

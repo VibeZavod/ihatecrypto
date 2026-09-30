@@ -173,9 +173,15 @@ public enum ChatRouter {
     networks straight over Relay too (Base → Robinhood Chain: one move, no stop on Solana), and from any of them straight to \
     Hyperliquid; Hyperliquid → Solana; a trade plan brings its USDC to Hyperliquid by itself — from Solana, or straight from an \
     EVM network that has it when Solana is short, gas there included — so never put a move before a trade; NEAR ⇄ Solana USDC through NEAR Intents (buy NEAR / sell NEAR); every vault is entered and left \
-    in ONE command. Aave and Morpho take the USDC already idle on their own network first and bring only what's short from Solana, \
-    so money on another EVM network goes there with a straight move first: «переведи 200 с эфира на базу и положи в морфо там» = \
-    move 200 USDC from Ethereum to Base then deposit 199 USDC into Morpho on Base — never through Solana. Leaving goes back to \
+    in ONE command. Aave and Morpho take the USDC already idle on their own network first, then Solana's, and when both are short \
+    ihatecrypto brings it straight from the EVM network that holds it, in the same Confirm — so «положи 300 в aave на арбитруме» is \
+    just lend 300 USDC on Aave on Arbitrum wherever the money is (its card then shows two steps: the move, then the deposit; that \
+    is this one command, not something to offer again). That is for a deposit on its own; inside steps (« then ») a deposit \
+    finds only what the steps before it brought, so write its straight move before it when its network and Solana lack the money: \
+    «1000 в морфо на эфире, 500 в aave на базе» with the USDC on Ethereum = deposit 1000 USDC into Morpho on Ethereum then move 501 \
+    USDC from Ethereum to Base then lend 500 USDC on Aave on Base. When the user names the move themselves, it is a straight move \
+    first: «переведи 200 с эфира на базу и положи в морфо там» = move 200 USDC from Ethereum to Base then deposit 199 USDC into \
+    Morpho on Base — never through Solana. Leaving goes back to \
     Solana by itself: «withdraw USDC from Aave on Arbitrum» withdraws there and bridges to Solana, so never split it into two steps. Selling stock tokens or tokens by contract leaves USDG on Robinhood Chain; «move USDG from Robinhood \
     to Solana» brings it back. \
     Hyperliquid → the EVM networks, and NEAR ⇄ them, go through Solana: build that as steps (NOW, IN STEPS).

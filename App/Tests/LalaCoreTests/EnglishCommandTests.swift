@@ -285,3 +285,13 @@ import Testing
     // A network inside the name stays in it.
     #expect(WalletCommand.parse("send 0.5 USDC to My Base wallet") == .sendTo(name: "My Base wallet", amount: Decimal(string: "0.5")!))
 }
+
+/// A vault deposit funded from another EVM network runs as these two steps (Workspace.fundedFromElsewhere): both must read back.
+@Test func aVaultDepositFundedFromAnotherNetworkReadsBack() {
+    for c in [WalletCommand.aave(deposit: true, amount: 300, network: "arbitrum"), .morpho(deposit: true, amount: 200, network: "base"),
+              .morpho(deposit: true, amount: 50, network: "ethereum")] {
+        #expect(WalletCommand.parse(c.summary) == c, "\(c.summary)")
+    }
+    #expect(WalletCommand.parse("move 301 USDC from Ethereum to Arbitrum") == .bridge(from: "ethereum", to: "arbitrum", 301))
+    #expect(ChatRouter.steps("move 301 USDC from Ethereum to Arbitrum then deposit 300 USDC into Aave on Arbitrum")?.count == 2)
+}

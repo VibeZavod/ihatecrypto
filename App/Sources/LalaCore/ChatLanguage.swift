@@ -59,8 +59,22 @@ public enum ChatWords {
         "de", "por", "favor", "ya", "lo",
     ]
 
-    /// A whole-message «no»: «нет», «cancel», «no gracias», «déjalo».
+    /// A whole-message «no»: «нет», «cancel», «no gracias», «déjalo», «стоп, передумал», «nevermind, forget it».
+    /// Like a confirmation, only no-words and fillers: «не на арбитруме» is a change the model reads.
     public static func declines(_ text: String) -> Bool {
-        text.lowercased().wholeMatch(of: /\s*(?:no|nope|cancel|stop|нет|не\s+надо|отмена|отмени\w*|стоп|nein|abbrechen|non|annuler|cancelar|cancela|no\s+gracias|déjalo|dejalo|olvídalo|olvidalo|detente|para|não|nao|nie|anuluj)[.!\s]*/) != nil
+        let q = text.lowercased()
+        if q.wholeMatch(of: /\s*(?:no|nope|cancel|stop|нет|не\s+надо|отмена|отмени\w*|стоп|nein|abbrechen|non|annuler|cancelar|cancela|no\s+gracias|déjalo|dejalo|olvídalo|olvidalo|detente|para|não|nao|nie|anuluj)[.!\s]*/) != nil {
+            return true
+        }
+        let words = q.split { !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "’" }.map(String.init)
+        return !words.isEmpty && words.allSatisfy { no.contains($0) || noFiller.contains($0) } && words.contains(where: no.contains)
     }
+    static let no: Set<String> = [
+        "нет", "неа", "отмена", "отмени", "отменяй", "отменить", "стоп", "передумал", "передумала", "забей", "забудь", "cancel", "stop",
+        "nevermind", "never", "forget", "nvm", "no", "nope", "abort", "cancela", "cancelar", "olvídalo", "olvidalo", "déjalo", "dejalo",
+    ]
+    static let noFiller: Set<String> = [
+        "не", "надо", "нужно", "ну", "всё", "все", "это", "его", "её", "ее", "пожалуйста", "я", "давай", "лучше", "пока", "так",
+        "it", "that", "this", "please", "mind", "i", "changed", "my", "actually", "lo", "mejor", "no",
+    ]
 }

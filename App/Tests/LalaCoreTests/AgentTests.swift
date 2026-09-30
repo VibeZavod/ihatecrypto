@@ -343,6 +343,12 @@ private final class Script: LLMClient, @unchecked Sendable {
         #expect(!ChatWords.confirms(notYes), "\(notYes)")
     }
     for no in ["no", "No gracias", "cancela", "déjalo", "нет", "cancel"] { #expect(ChatWords.declines(no), "\(no)") }
+    for no in ["стоп, передумал", "не, передумал", "нет, отмени", "отмени это", "nevermind", "cancel that", "forget it, I changed my mind", "no, cancel it"] {
+        #expect(ChatWords.declines(no), "\(no)")
+    }
+    for notNo in ["не на арбитруме", "нет, лучше 150", "не надо в kamino", "no, make it 50", "stop at 2600", "cancel alerts", "давай"] {
+        #expect(!ChatWords.declines(notNo), "\(notNo)")
+    }
 }
 
 @Test func aStoppedPlanGetsTheOneChangeThatPasses() throws {
