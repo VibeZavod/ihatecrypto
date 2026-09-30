@@ -77,7 +77,7 @@ extension Workspace {
             // after, the next step's card was saved over it with its «Done» (a Base → Robinhood bridge vanished under
             // «Buy AI», and «Buy MOO» showed Done though it never ran).
             if confirmed { finishedAction = nil }
-            guard await runCanonical(step, userText: step, before: intent) else {
+            guard await runCanonical(step, userText: step, before: intent, inChain: true) else {
                 reply(say("ihatecrypto can’t do “\(step)” — the steps stop here.", "ihatecrypto не умеет «\(step)» — на этом шаги останавливаются."))
                 break
             }
@@ -101,6 +101,11 @@ extension Workspace {
                 rest = Array(steps[(k + 1)...])
                 // The Confirm covers the chain, so it names what follows.
                 if let p = pendingText, !rest.isEmpty { pendingText = ([p] + rest).joined(separator: " → ") }
+                // The step's card said nothing of its own (runCanonical inChain): one line for the chain.
+                if pendingAction != nil {
+                    reply(say("It’s on the canvas, every step in a row — one Confirm covers them all, or say anything else to cancel.",
+                              "Все шаги на холсте — один Confirm на всю цепочку, или напиши что-нибудь другое, чтобы отменить."))
+                }
                 break
             }
             // A move that didn't get to its Confirm (short of money, a rule, switched off) stops the rest: they may need its money.

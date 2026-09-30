@@ -1206,8 +1206,18 @@ extension Workspace {
     /// its money starts and its approves, marked to come after this move.
     func chainSteps() -> [ActivityBubble] {
         guard let q = taskQueue, q.canvas == canvasID else { return [] }
-        return q.steps.compactMap(WalletCommand.parse).compactMap(route).flatMap { r in
-            r.steps.filter { !$0.label.hasPrefix("FROM") && !$0.label.hasPrefix("APPROVE") }.map { var s = $0; s.status = "then"; return s }
+        return q.steps.compactMap(WalletCommand.parse).flatMap { c -> [ActivityBubble] in
+            switch c {
+            // Spread and rebalance have no route of their own: their split is planned when the money before them has landed.
+            case .allocate(let asset, let share, let amount):
+                return [ActivityBubble(kind: "step", label: "INTO · BEST RATES", title: amount.map { "\(Fmt.num($0)) \(asset)" } ?? "all free \(asset)",
+                                       lines: ["split\twhen the money lands", "max per place\t\(Fmt.pct(share ?? 50))"], status: "then", logo: "usdc", fill: .jupiter)]
+            case .rebalance(let share):
+                return [ActivityBubble(kind: "step", label: "REBALANCE · BEST RATES", title: "deposits",
+                                       lines: ["moves\twhen the money lands", "max per place\t\(Fmt.pct(share ?? 50))"], status: "then", logo: "usdc", fill: .jupiter)]
+            default:
+                return route(c)?.steps.filter { !$0.label.hasPrefix("FROM") && !$0.label.hasPrefix("APPROVE") }.map { var s = $0; s.status = "then"; return s } ?? []
+            }
         }
     }
 
@@ -1576,7 +1586,8 @@ extension Workspace {
 
     /// One path for every wallet command, typed or read by the model: a missing amount is asked for and remembered;
     /// money moves only after «do it» on the drawn route.
-    func handleWallet(_ command: WalletCommand, note: String? = nil) async {
+    /// `quiet`: a step of a chain; its card shows, the chain's own line already said what it is.
+    func handleWallet(_ command: WalletCommand, note: String? = nil, quiet: Bool = false) async {
         // A Solana token named by its mint: looked up first, and only with Safe search off (TokensUI.swift).
         var command = command
         switch command {
@@ -1629,6 +1640,7 @@ extension Workspace {
         default:
             pendingAction = .wallet(command)
             pendingText = readable(command.summary)
+            if quiet { return }
             reply(say("Understood: \(readable(command.summary)). It’s on the canvas — Sign it, or say anything else to cancel.",
                       "Понял: \(readable(command.summary)). Карточка на холсте — нажми Confirm или напиши что-нибудь другое, чтобы отменить."), note: note)
         }

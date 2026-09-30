@@ -63,6 +63,21 @@ extension Executor {
         }
     }
 
+    /// USDC (USDG on Robinhood Chain) lying unused on each EVM network Settings › Modules allows, from half a dollar
+    /// (a bridge's minimum). Not Ethereum, whose gas costs dollars. A network that can't be read counts as empty.
+    public func idleUSDC() async -> [(net: EVMNetwork, usdc: Decimal)] {
+        let modules = Modules.current, me = wallet.evm
+        guard modules.isOn(ModuleKind.bridges) else { return [] }
+        var out: [(net: EVMNetwork, usdc: Decimal)] = []
+        for net in EVMNetwork.all where net.key != "ethereum" {
+            guard let n = ModuleNetwork(place: net.key), modules.isOn(n),
+                  let have = try? await net.rpc.tokenBalance(net.usdc, owner: me), have > net.feeReserve else { continue }
+            let usdc = Decimal(have - net.feeReserve) / 1_000_000
+            if usdc >= Decimal(string: "0.5")! { out.append((net, usdc)) }
+        }
+        return out
+    }
+
     /// What a round trip to `net` costs today, in USD; nil when the fee or the gas coin's price can't be read.
     static func roundTrip(_ net: EVMNetwork, owner: String, gas units: UInt64, price: Decimal?) async -> Decimal? {
         guard let price, price > 0, let (tip, maxFee) = try? await net.rpc.fees(), let have = try? await net.rpc.balance(owner) else { return nil }

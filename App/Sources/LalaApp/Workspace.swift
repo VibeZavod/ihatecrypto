@@ -1010,8 +1010,9 @@ final class Workspace {
     }
 
     /// Runs the model's English command through the parsers. False when it is not a command they know.
-    func runCanonical(_ canonical: String, userText text: String, before: TradeIntent) async -> Bool {
-        updateActivity { $0.understood = canonical }
+    /// `inChain`: a step of «A then B», whose «In steps» line already said what was understood.
+    func runCanonical(_ canonical: String, userText text: String, before: TradeIntent, inChain: Bool = false) async -> Bool {
+        if !inChain { updateActivity { $0.understood = canonical } }
         let note = "understood as “\(canonical)” · \(model)"
         if ScheduledTask.cancelsAll(canonical) { cancelTasks(note: note); return true }
         if let task = ScheduledTask.parse(canonical) { schedule(task, note: note); return true }
@@ -1072,7 +1073,7 @@ final class Workspace {
             return true
         }
         if let command = WalletCommand.parse(canonical) {
-            await handleWallet(command, note: note)
+            await handleWallet(command, note: note, quiet: inChain)
             return true
         }
         if let coin = targetCoin(for: canonical), let command = PositionCommand.parse(canonical) {

@@ -3087,10 +3087,14 @@ struct AllocationBoard: View {
     private var steps: [ActivityBubble] {
         let placed = preview.slices.reduce(Decimal(0)) { $0 + $1.amount }
         let year = "≈ \(amount(preview.yearly))" + (preview.yearlyUSD.map { " (≈ \(Fmt.usd($0)))" } ?? "")
-        return [
-            ActivityBubble(kind: "step", label: "FROM · SOLANA", title: amount(placed),
-                           lines: ["free\t\(amount(preview.free))"] + (preview.leftover > 0 ? ["stays free\t\(amount(preview.leftover))"] : []),
-                           logo: unit == "SOL" ? "sol" : "usdc", fill: .solana),
+        // One card per place the free money is (Solana, idle USDC on Base…); the first carries the totals.
+        let sources = preview.sources.isEmpty ? [(place: "Solana", amount: preview.free)] : preview.sources
+        let from = sources.enumerated().map { k, s in
+            ActivityBubble(kind: "step", label: "FROM · \(s.place.uppercased())", title: amount(k == 0 && sources.count == 1 ? placed : s.amount),
+                           lines: k > 0 ? ["idle there"] : ["free\t\(amount(preview.free))"] + (preview.leftover > 0 ? ["stays free\t\(amount(preview.leftover))"] : []),
+                           logo: unit == "SOL" ? "sol" : "usdc", fill: RouteFill(rawValue: s.place.lowercased().components(separatedBy: " ")[0]) ?? .check)
+        }
+        return from + [
             ActivityBubble(kind: "step", label: "INTO · BEST RATES", title: "\(preview.slices.count) place\(preview.slices.count == 1 ? "" : "s")",
                            lines: ["a year\t\(year)", "max per place\t\(Fmt.pct(preview.maxShare))"], logo: "usdc", fill: .jupiter),
         ] + preview.slices.map { slice in

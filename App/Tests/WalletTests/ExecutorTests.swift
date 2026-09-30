@@ -65,3 +65,16 @@ import Testing
     #expect(EVMNetwork.funding(59, held: { ["arbitrum": 60, "ethereum": 9000][$0] })?.key == "arbitrum")
     #expect(EVMNetwork.funding(100, held: { ["ethereum": 9000][$0] }) == nil)
 }
+
+@Test func aSpreadTakesIdleUSDCWhereItIsAndPullsOnlyWhatSolanaLacks() {
+    // The live case: Morpho on Base from Base's own USDC, Jupiter Lend from Solana's 17.77 plus the rest pulled over.
+    let pulls = Executor.pullToSolana(slices: [(nil, Decimal(string: "1493.52")!), ("base", Decimal(string: "1494.52")!)],
+                                      idle: [("base", 2960), ("robinhood", Decimal(string: "10.27")!)], onSolana: Decimal(string: "17.77")!)
+    #expect(pulls.map(\.network) == ["base", "robinhood"])
+    #expect(pulls[0].usdc == Decimal(string: "1465.48")! && pulls[1].usdc == Decimal(string: "10.27")!)
+    // Enough on Solana already: nothing moves; an EVM slice alone never pulls its own network's money away.
+    #expect(Executor.pullToSolana(slices: [(nil, 10)], idle: [("base", 100)], onSolana: 20).isEmpty)
+    #expect(Executor.pullToSolana(slices: [("base", 80)], idle: [("base", 100)], onSolana: 0).isEmpty)
+    // Short by a few cents: under a bridge's half dollar, so no bridge; the slice takes what is there.
+    #expect(Executor.pullToSolana(slices: [(nil, Decimal(string: "20.2")!)], idle: [("base", 100)], onSolana: 20).isEmpty)
+}
