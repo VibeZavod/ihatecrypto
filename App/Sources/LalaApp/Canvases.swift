@@ -99,6 +99,8 @@ struct CanvasSession: Codable, Identifiable, Equatable {
     var chart: ChartState?
     /// When it was pinned to the top of the list; nil = not pinned. Pinned ones keep the order they were pinned in.
     var pinnedAt: Date?
+    /// A note written from the chat («запиши в папку ideas: …»): shown as a card on this canvas.
+    var note: String?
 
     var displayTitle: String { name ?? (title.isEmpty ? "Canvas" : title) }
 }
@@ -194,8 +196,9 @@ extension Workspace {
         canvases[i].folder = to
     }
 
-    /// «save this canvas to folder X» moves the open canvas there; «write to folder X: …» keeps the text there as a canvas of
-    /// its own (its first message, titled by it) while the open canvas stays open. A new folder name makes the folder.
+    /// «save this canvas to folder X» moves the open canvas there; «write to folder X: …» keeps the text there as a note: a
+    /// card on a canvas of its own, titled by it. Written on a new canvas, that canvas becomes the note; otherwise the open
+    /// canvas stays open and shows the card with «Open». A new folder name makes the folder.
     func folderCommand(_ command: FolderCommand, note: String? = nil) {
         switch command {
         case .save(let folder):
@@ -210,12 +213,25 @@ extension Workspace {
             reply(say("Saved this canvas to «\(folder)».", "Сохранил этот холст в папку «\(folder)»."), note: note)
         case .note(let folder, let text):
             createFolder(folder)
-            // The greeting first, as on every canvas: the chat shows everything after it.
-            var c = CanvasSession(providerID: providerID, model: model, messages: Array(messages.prefix(1)) + [Message(fromUser: true, text: text)],
-                                  intent: TradeIntent(), folder: folder)
-            c.title = text.count > 48 ? String(text.prefix(48)) + "…" : text
-            canvases.insert(c, at: 0)
-            reply(say("Wrote it to «\(folder)»: it's a note there now, in the sidebar.", "Записал в папку «\(folder)»: теперь это заметка там, в боковой панели."), note: note)
+            let title = text.count > 48 ? String(text.prefix(48)) + "…" : text
+            if canvasID == nil, messages.filter(\.fromUser).count <= 1 {
+                // A new canvas with only this message: it becomes the note, keeping the chat that wrote it.
+                newCanvasFolder = folder
+                saveCanvas()
+                if let id = canvasID, let i = canvases.firstIndex(where: { $0.id == id }) {
+                    canvases[i].note = text
+                    canvases[i].title = title
+                    noteCard = NoteCard(canvas: id, folder: folder, text: text)
+                }
+            } else {
+                // Only the greeting, as on every canvas: the note is its card, not a message.
+                var c = CanvasSession(providerID: providerID, model: model, messages: Array(messages.prefix(1)), intent: TradeIntent(), folder: folder)
+                c.title = title
+                c.note = text
+                canvases.insert(c, at: 0)
+                noteCard = NoteCard(canvas: c.id, folder: folder, text: text)
+            }
+            reply(say("Saved the note to «\(folder)» — it's on the canvas.", "Записал заметку в «\(folder)» — она на холсте."), note: note)
         }
     }
 
@@ -272,8 +288,10 @@ extension Workspace {
     private func load(_ c: CanvasSession) {
         clearCanvas()
         canvasID = c.id
-        // A note saved without the greeting (before 2026-10-01) gets it back, or the chat would hide the note behind it.
-        messages = c.messages.first?.fromUser == true && messages.first?.fromUser == false ? Array(messages.prefix(1)) + c.messages : c.messages
+        // A note is a card on the canvas. One written before 2026-10-01 was kept as the only message of a canvas in a folder.
+        let oldNote = c.note == nil && c.folder != nil && c.messages.count == 1 && c.messages[0].fromUser ? c.messages[0].text : nil
+        messages = oldNote == nil ? c.messages : Array(messages.prefix(1))
+        noteCard = (c.note ?? oldNote).map { NoteCard(canvas: c.id, folder: c.folder, text: $0) }
         intent = c.intent
         executed = c.executed ? c.intent : nil
         if LLMCatalog.provider(id: c.providerID) != nil {
@@ -308,6 +326,7 @@ extension Workspace {
         finishedAction = nil
         planReview = nil
         savedBoard = nil
+        noteCard = nil
         chart = nil
         currentActivity = nil
         draft = ""
@@ -405,6 +424,40 @@ extension CanvasList {
             withAnimation(StudioView.spring) { ws.openCanvas(c) }
             close?()
         }
+    }
+}
+
+/// A note on the canvas it was written to.
+struct NoteCard: Equatable {
+    var canvas: UUID
+    var folder: String?
+    var text: String
+}
+
+/// A note from the chat as a card: on its own canvas in the folder, and where it was written (there with «Open»).
+struct NoteBoard: View {
+    @Environment(Workspace.self) private var ws
+    let note: NoteCard
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 8) {
+                Image(systemName: "note.text").font(.system(size: 15, weight: .semibold)).foregroundStyle(Brand.accentInk)
+                Text(note.folder.map { "Note · \($0)" } ?? "Note").font(.ui(13, .semibold)).foregroundStyle(.secondary)
+                Spacer()
+                if note.canvas != ws.canvasID, let c = ws.canvases.first(where: { $0.id == note.canvas }) {
+                    Button("Open") { withAnimation(StudioView.spring) { ws.openCanvas(c) } }
+                        .buttonStyle(.bordered).controlSize(.small).disabled(ws.busy)
+                        .help("The note's own canvas, in its folder")
+                }
+            }
+            Text(note.text).font(.ui(16, .medium)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+        }
+        .padding(18)
+        .frame(width: 470, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 26).fill(Brand.card).shadow(color: .black.opacity(0.08), radius: 18, y: 10))
+        .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Brand.cardBorder, lineWidth: 1.5))
+        .transition(.opacity)
     }
 }
 
@@ -584,7 +637,7 @@ struct CanvasRow: View {
             } else {
                 RoundedRectangle(cornerRadius: 8).fill(Brand.glassFill).frame(width: 26, height: 26)
                     .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Brand.glassRim))
-                    .overlay(Image(systemName: canvas.bubbles.isEmpty ? "bubble.left" : "square.grid.2x2").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary))
+                    .overlay(Image(systemName: canvas.note != nil ? "note.text" : canvas.bubbles.isEmpty ? "bubble.left" : "square.grid.2x2").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary))
             }
             VStack(alignment: .leading, spacing: 1) {
                 if renaming {

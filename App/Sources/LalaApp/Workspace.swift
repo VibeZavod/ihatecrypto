@@ -241,6 +241,8 @@ final class Workspace {
     }
     /// A reopened canvas whose board isn't a live plan: drawn as it was.
     var savedBoard: CanvasSession?
+    /// A note's card: on its own canvas, or where it was just written until the next message.
+    var noteCard: NoteCard?
     /// The open canvas once its money move is carried out: its route stays on screen, marked Done or Failed with the
     /// time, until a new board replaces it.
     var finishedCanvas: CanvasSession? { canvases.first { $0.id == canvasID && $0.outcome != nil } }
@@ -581,6 +583,7 @@ final class Workspace {
         // The cards of the last answer go with any new message; the model still knows them («да», «второй»).
         let offered = nextSteps?.options ?? []
         nextSteps = nil
+        if noteCard?.canvas != canvasID { noteCard = nil }
         // Every message starts an activity; whatever is on the canvas when it's handled is frozen into it.
         beginActivity(.request, request: text)
         defer { snapshotCanvas(); saveCanvas() }

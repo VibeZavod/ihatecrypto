@@ -297,12 +297,25 @@
     }
   },
   {
-    "name": "write a note to a folder → a note of its own there",
+    "name": "write a note to a folder → a note card on the canvas",
     "send": [
       "запиши в папку UITest: проверить Ledger завтра"
     ],
     "expect": {
       "no_pending": true,
+      "reply_contains": "UITest",
+      "note": "проверить Ledger"
+    }
+  },
+  {
+    "name": "a note written on a canvas with other things → its card there, the note in its folder",
+    "send": [
+      "chart SOL for a week",
+      "запиши в папку UITest: вернуться к SOL в пятницу"
+    ],
+    "expect": {
+      "note": "вернуться к SOL",
+      "chart": "SOL",
       "reply_contains": "UITest"
     }
   }

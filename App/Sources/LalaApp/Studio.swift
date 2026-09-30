@@ -1006,6 +1006,7 @@ struct StudioCanvas: View {
             }
             // The model's ways to go on, under the block its answer opened; with a plan they go under the plan, in its list.
             if nodes.isEmpty, let steps = ws.nextSteps, steps.canvas == ws.canvasID { NextStepsBoard(steps: steps).padding(.bottom, 10) }
+            if let note = ws.noteCard { NoteBoard(note: note).padding(.bottom, 10) }
             // The rail's buttons put their boards here too.
             if ws.showReceive { ReceiveBoard() }
             LedgerBoard()
