@@ -345,6 +345,8 @@ enum ChatText {
     /// The chat redraws on every keystroke in the field; each message is parsed once.
     // ponytail: grows with the messages seen this run (hundreds of short strings); evict if chats get huge.
     private static var cache: [String: AttributedString] = [:]
+    /// A contract's ticker when the app knows it (Workspace sets it).
+    static var tokenName: (String) -> String? = { _ in nil }
 
     private static func parse(_ text: String, emphasis: Bool) -> AttributedString {
         var s = (try? AttributedString(markdown: text, options: .init(interpretedSyntax: .inlineOnlyPreservingWhitespace))) ?? AttributedString(text)
@@ -359,7 +361,9 @@ enum ChatText {
         replace(in: &s, #/0x[0-9a-fA-F]{40,64}/#) { hex in
             var short = AttributedString("\(hex.prefix(6))…\(hex.suffix(4))")
             short.inlinePresentationIntent = .code
-            return short
+            // A token's contract goes by its ticker, the contract after it: «AI 0x2E8c…1e18».
+            guard hex.count == 42, let symbol = tokenName(hex) else { return short }
+            return AttributedString("\(symbol) ") + short
         }
         if emphasis {
             style(in: &s, #/\$\d[\d,]*(?:\.\d+)?|\d[\d,]*(?:\.\d+)? [A-Z]{2,6}\b/#) { $0.inlinePresentationIntent = .stronglyEmphasized }

@@ -69,6 +69,14 @@ func notCharts(_ phrase: String) {
     #expect(infos[0].priceUSD == Decimal(string: "0.2352")!)
 }
 
+@Test func lookalikeTickersAreSuspicious() {
+    let usdc = "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913", genuine: Set = [usdc.lowercased()]
+    #expect(!TokenLookup.suspicious("USDC", contract: usdc, genuine: genuine))
+    #expect(TokenLookup.suspicious("USDC", contract: "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18", genuine: genuine))
+    #expect(TokenLookup.suspicious("USD\u{0421}", contract: usdc, genuine: genuine))   // Cyrillic «С»
+    #expect(!TokenLookup.suspicious("AI", contract: "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18", genuine: genuine))
+}
+
 @Test func pinchKeepsThePointUnderTheFingers() {
     let pan = (x: 40.0, y: -30.0), scale = 0.8, fingers = (x: 300.0, y: 220.0)
     // The content point under the fingers before the pinch…

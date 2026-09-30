@@ -1186,12 +1186,52 @@ extension Workspace {
     }
 
     /// A Robinhood Stock Token bought with USDC from Solana: bridge, then Uniswap on Robinhood Chain.
-    /// A token's name for people: the favorite's symbol for its contract, else the contract shortened.
+    /// A token's name for people: «AI (0x2E8c…1e18)», with ⚠ before a symbol that imitates another; the contract
+    /// shortened until its symbol is known.
     func tokenLabel(_ symbolOrContract: String) -> String {
         guard symbolOrContract.hasPrefix("0x") else { return symbolOrContract }
         let short = "\(symbolOrContract.prefix(6))…\(symbolOrContract.suffix(4))"
-        return favoriteToken(symbolOrContract).map { "\($0.symbol) (\(short))" } ?? short
+        guard let symbol = tokenSymbol(symbolOrContract) else { return short }
+        return "\(TokenLookup.suspicious(symbol, contract: symbolOrContract, genuine: Self.genuineContracts) ? "⚠ " : "")\(symbol) (\(short))"
     }
+
+    /// A contract's symbol: the favorite's, else one learned before. An unknown one is looked up once (DexScreener)
+    /// and shows as soon as it's found.
+    func tokenSymbol(_ contract: String) -> String? {
+        let key = contract.lowercased()
+        if let s = favoriteToken(contract)?.symbol ?? tokenNames[key] { return s }
+        if tokenNamesAsked.insert(key).inserted { Task { await learnTokenName(contract) } }
+        return nil
+    }
+
+    func learnTokenName(_ contract: String) async {
+        let key = contract.lowercased()
+        guard favoriteToken(contract) == nil, tokenNames[key] == nil,
+              let symbol = try? await TokenLookup.lookup(contract).first?.symbol else { return }
+        tokenNames[key] = symbol
+    }
+
+    /// Names every contract in a line before it's written down for good (a chat reply). Waits 3 s at most: a name
+    /// found later still shows on the card.
+    func learnTokenNames(in text: String) async {
+        let contracts = text.matches(of: /0x[0-9a-fA-F]{40}/).map { String($0.0) }
+        guard contracts.contains(where: { favoriteToken($0) == nil && tokenNames[$0.lowercased()] == nil }) else { return }
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask { for c in contracts { await self.learnTokenName(c) } }
+            group.addTask { try? await Task.sleep(for: .seconds(3)) }
+            await group.next()
+            group.cancelAll()
+        }
+    }
+
+    /// The real dollars and wrapped ether where the app moves money: their tickers on any other contract are a fake.
+    static let genuineContracts = Set(EVMNetwork.all.map { $0.usdc.lowercased() } + [
+        "0x4200000000000000000000000000000000000006",   // WETH · Base
+        "0x82af49447d8a07e3bd95bd0d56f35241523fbab1",   // WETH · Arbitrum
+        "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2",   // WETH · Ethereum
+        "0xdac17f958d2ee523a2206206994597c13d831ec7",   // USDT · Ethereum
+        "0xfd086bc7cd5c481dcc9c85ebe478a1c0b69fcbb9",   // USDT · Arbitrum
+    ])
 
     func favoriteToken(_ contract: String) -> FavoriteToken? {
         favoriteTokens.first { $0.address.lowercased() == contract.lowercased() }
@@ -1225,7 +1265,7 @@ extension Workspace {
         // A contract («купи 0x…»): its name and price from the favorites when it's there.
         let contract = symbolOrContract.hasPrefix("0x")
         let favorite = favoriteTokens.first { $0.address.lowercased() == symbolOrContract.lowercased() }
-        let symbol = favorite?.symbol ?? (contract ? "\(symbolOrContract.prefix(6))…\(symbolOrContract.suffix(4))" : symbolOrContract)
+        let symbol = contract ? tokenSymbol(symbolOrContract) ?? "\(symbolOrContract.prefix(6))…\(symbolOrContract.suffix(4))" : symbolOrContract
         let price = contract ? favorite.flatMap { tokenInfo[$0.id]?.priceUSD } : markets["xyz:\(symbolOrContract)"]?.markPx
         // USDG already on Robinhood Chain pays first (a bridge from Base leaves it there): Solana only brings what's missing.
         let usdg = robinhood?.usdg ?? 0, bring = max(0, usdc - usdg)
@@ -1253,7 +1293,7 @@ extension Workspace {
     private func swapRoute(_ place: String, _ token: String, usdc: Decimal?, sell: Decimal?) -> MoveRoute {
         let name = ["base": "Base", "arbitrum": "Arbitrum"][place] ?? place
         let fill: RouteFill = place == "base" ? .base : .arbitrum
-        let label = token.hasPrefix("0x") ? "\(token.prefix(6))…\(token.suffix(4))" : token.uppercased()
+        let label = token.hasPrefix("0x") ? tokenSymbol(token) ?? "\(token.prefix(6))…\(token.suffix(4))" : token.uppercased()
         let logo = place == "arbitrum" ? "arb" : place
         let command: WalletCommand = usdc != nil ? .buyOn(place, token: token, usdc: usdc) : .sellOn(place, token: token, amount: sell)
         // The way picked in the step's details, else the one that leaves more now (quoted while the card waits).
@@ -1638,6 +1678,7 @@ extension Workspace {
             // Read-only, or with a board and a step of their own.
             await move(command)
         default:
+            await learnTokenNames(in: command.summary)
             pendingAction = .wallet(command)
             pendingText = readable(command.summary)
             if quiet { return }

@@ -221,6 +221,11 @@ final class Workspace {
         set { if newValue != tokenInfoRead { tokenInfoRead = newValue } }
     }
     private var tokenInfoRead: [String: TokenLookup.Info] = [:]
+    /// Symbols of contracts that aren't favorites, by lowercased contract, learned when one is shown (Canvases.swift).
+    var tokenNames: [String: String] = LocalStore.load("tokennames.json") ?? [:] {
+        didSet { LocalStore.save(tokenNames, "tokennames.json") }
+    }
+    @ObservationIgnored var tokenNamesAsked: Set<String> = []
     var tokenBalances: [String: Decimal] {
         get { tokenBalancesRead }
         set { if newValue != tokenBalancesRead { tokenBalancesRead = newValue } }
@@ -359,6 +364,8 @@ final class Workspace {
 
     init() {
         restoreLastCanvas()
+        // The chat names a contract it knows; it never looks one up itself (a wallet's address isn't DexScreener's business).
+        ChatText.tokenName = { [weak self] contract in self.flatMap { $0.favoriteToken(contract)?.symbol ?? $0.tokenNames[contract.lowercased()] } }
         // What is on the open canvas at quit (a chart opened by a click, a board that finished building) is kept too.
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: .main) { [weak self] _ in
             // Then every file saved so far is written before the app goes (LocalStore writes off the main thread).

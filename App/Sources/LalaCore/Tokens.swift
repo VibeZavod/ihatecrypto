@@ -16,6 +16,14 @@ public enum TokenLookup {
         public let pairURL: URL?
     }
 
+    /// A symbol to warn about: letters outside ASCII (a Cyrillic «С» in «USDС»), or a major coin's ticker on a
+    /// contract that isn't one of that coin's `genuine` (lowercased) contracts.
+    public static func suspicious(_ symbol: String, contract: String, genuine: Set<String>) -> Bool {
+        if symbol.unicodeScalars.contains(where: { !$0.isASCII }) { return true }
+        let majors: Set = ["USDC", "USDT", "USDG", "DAI", "ETH", "WETH", "BTC", "WBTC", "SOL"]
+        return majors.contains(symbol.uppercased()) && !genuine.contains(contract.lowercased())
+    }
+
     public static func lookup(_ address: String) async throws -> [Info] {
         let (data, _) = try await URLSession.shared.data(from: URL(string: "https://api.dexscreener.com/latest/dex/tokens/\(address)")!)
         return parse(data, address: address)
