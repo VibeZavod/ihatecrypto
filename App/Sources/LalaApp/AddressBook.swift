@@ -63,21 +63,9 @@ struct AddressIconView: View {
     var size: CGFloat = 38
 
     var body: some View {
-        switch entry.icon {
-        case .logo(let name)?: TokenLogo(name: name, size: size)
-        case .symbol(let name)?: symbol(name)
-        case .emoji(let e)?:
-            Circle().fill(Brand.accent.opacity(0.1)).frame(width: size, height: size)
-                .overlay(Text(e).font(.ui(size * 0.56)))
-        case .image(let file)?:
-            if let image = AddressIcons.image(file) {
-                Image(nsImage: image).resizable().scaledToFill().frame(width: size, height: size).clipShape(Circle())
-            } else {
-                letter
-            }
-        case nil:
-            if let sign = Self.symbol(for: entry.label) { symbol(sign) } else { letter }
-        }
+        if let icon = entry.icon { PickedIcon(icon: icon, size: size, letter: entry.name) }
+        else if let sign = Self.symbol(for: entry.label) { PickedIcon(icon: .symbol(sign), size: size, letter: entry.name) }
+        else { PickedIcon.letter(entry.name, size: size) }
     }
 
     static func symbol(for category: String?) -> String? {
@@ -89,14 +77,36 @@ struct AddressIconView: View {
         return nil
     }
 
-    private func symbol(_ name: String) -> some View {
-        Circle().fill(Brand.accent.opacity(0.12)).frame(width: size, height: size)
-            .overlay(Image(systemName: name).font(.system(size: size * 0.42, weight: .semibold)).foregroundStyle(Brand.accentInk))
+}
+
+/// A picture from the icon library (IconPicker): an address book entry's or a canvas's.
+struct PickedIcon: View {
+    let icon: AddressIcon
+    var size: CGFloat = 38
+    /// Shown by its first letter when the picture's file is gone.
+    var letter = ""
+
+    var body: some View {
+        switch icon {
+        case .logo(let name): TokenLogo(name: name, size: size)
+        case .symbol(let name):
+            Circle().fill(Brand.accent.opacity(0.12)).frame(width: size, height: size)
+                .overlay(Image(systemName: name).font(.system(size: size * 0.42, weight: .semibold)).foregroundStyle(Brand.accentInk))
+        case .emoji(let e):
+            Circle().fill(Brand.accent.opacity(0.1)).frame(width: size, height: size)
+                .overlay(Text(e).font(.ui(size * 0.56)))
+        case .image(let file):
+            if let image = AddressIcons.image(file) {
+                Image(nsImage: image).resizable().scaledToFill().frame(width: size, height: size).clipShape(Circle())
+            } else {
+                Self.letter(letter, size: size)
+            }
+        }
     }
 
-    private var letter: some View {
+    static func letter(_ name: String, size: CGFloat) -> some View {
         Circle().fill(Brand.accent.opacity(0.12)).frame(width: size, height: size)
-            .overlay(Text(entry.name.prefix(1).uppercased()).font(.ui(size * 0.45, .bold)).foregroundStyle(Brand.accentInk))
+            .overlay(Text(name.prefix(1).uppercased()).font(.ui(size * 0.45, .bold)).foregroundStyle(Brand.accentInk))
     }
 }
 
@@ -504,17 +514,29 @@ struct IconPicker: View {
     @State private var domain = ""
     @State private var fetching = false
     @State private var error: String?
+    @State private var search = ""
 
-    static let logos = ["sol", "usdc", "eth", "base", "arb", "hype", "btc", "jup", "kamino", "jitosol", "relay", "aave", "robinhood"]
+    /// Every token and network logo in the app (Logos/, bundled flat): the library, searched by ticker.
+    static let logos: [String] = Set(["png", "svg"].flatMap { Bundle.main.urls(forResourcesWithExtension: $0, subdirectory: nil) ?? [] }
+        .map { $0.deletingPathExtension().lastPathComponent }).sorted()
     static let symbols = ["building.columns", "wallet.pass", "person.fill", "person.2.fill", "creditcard.fill", "banknote.fill", "bag.fill",
                           "cart.fill", "briefcase.fill", "gift.fill", "heart.fill", "star.fill", "house.fill", "lock.fill", "bolt.fill", "flame.fill"]
     static let emoji = ["🏦", "💼", "🐋", "🚀", "💎", "🔥", "🐸", "🦄", "🍀", "👑", "🧊", "🌙"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            section("LOGOS") {
-                ForEach(Self.logos, id: \.self) { l in pick(.logo(l)) { TokenLogo(name: l, size: 26) } }
+            HStack {
+                Text("TOKENS AND NETWORKS").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
+                TextField("Search, e.g. sol, aapl", text: $search).textFieldStyle(.roundedBorder).font(.ui(11))
             }
+            ScrollView {
+                LazyVGrid(columns: Array(repeating: GridItem(.fixed(32), spacing: 6), count: 9), alignment: .leading, spacing: 6) {
+                    ForEach(Self.logos.filter { search.isEmpty || $0.contains(search.lowercased()) }, id: \.self) { l in
+                        pick(.logo(l)) { TokenLogo(name: l, size: 26) }.help(l.uppercased())
+                    }
+                }
+            }
+            .frame(height: 150)
             section("SYMBOLS") {
                 ForEach(Self.symbols, id: \.self) { s in pick(.symbol(s)) { Image(systemName: s).font(.system(size: 15)).frame(width: 26, height: 26) } }
             }

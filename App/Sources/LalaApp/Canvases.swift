@@ -102,6 +102,8 @@ struct CanvasSession: Codable, Identifiable, Equatable {
     /// A note written from the chat («запиши в папку ideas: …»): shown as a card on this canvas.
     var note: String?
 
+    /// Picked from the icon library (the row's «Change icon…»); nil = the sign of what the canvas holds.
+    var icon: AddressIcon?
     var displayTitle: String { name ?? (title.isEmpty ? "Canvas" : title) }
 }
 
@@ -176,6 +178,11 @@ extension Workspace {
     }
 
     /// An empty name gives the canvas back its automatic title.
+    func setCanvasIcon(_ id: UUID, _ icon: AddressIcon?) {
+        guard let i = canvases.firstIndex(where: { $0.id == id }) else { return }
+        canvases[i].icon = icon
+    }
+
     func renameCanvas(_ id: UUID, to name: String) {
         guard let i = canvases.firstIndex(where: { $0.id == id }) else { return }
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -589,6 +596,7 @@ struct CanvasRow: View {
     @State private var draft = ""
     @State private var newFolder = false
     @State private var folderName = ""
+    @State private var picking = false
     @FocusState private var nameFocused: Bool
 
     var body: some View {
@@ -621,6 +629,9 @@ struct CanvasRow: View {
         .onHover { hover = $0 }
         .help("\(canvas.displayTitle) · \(LLMCatalog.provider(id: canvas.providerID)?.info.name ?? canvas.providerID) · \(canvas.model)")
         .contextMenu { actions }
+        .popover(isPresented: $picking, arrowEdge: .trailing) {
+            IconPicker(icon: Binding(get: { canvas.icon }, set: { ws.setCanvasIcon(canvas.id, $0) }), name: canvas.displayTitle)
+        }
         .alert("New folder", isPresented: $newFolder) {
             TextField("Folder name", text: $folderName)
             Button("Create") { withAnimation(.snappy) { ws.moveCanvas(canvas.id, to: folderName) } }
@@ -632,7 +643,9 @@ struct CanvasRow: View {
 
     private var content: some View {
         HStack(spacing: 9) {
-            if canvas.intent != TradeIntent() {
+            if let icon = canvas.icon {
+                PickedIcon(icon: icon, size: 26, letter: canvas.displayTitle)
+            } else if canvas.intent != TradeIntent() {
                 AssetBadge(coin: canvas.intent.asset, size: 26, dark: true)
             } else {
                 RoundedRectangle(cornerRadius: 8).fill(Brand.glassFill).frame(width: 26, height: 26)
@@ -678,6 +691,7 @@ struct CanvasRow: View {
             renaming = true
             DispatchQueue.main.async { nameFocused = true }
         }
+        Button("Change icon…") { picking = true }
         Menu("Move to folder") {
             let others = ws.canvasFolders.filter { $0 != canvas.folder }
             ForEach(others, id: \.self) { f in
