@@ -858,6 +858,9 @@ final class Workspace {
         case .transfer(let entry, let amount): await transfer(amount, to: entry)
         case .address(let entry):
             addressBook.append(entry)
+            // Its card stays on the canvas, as Done.
+            finishedAction = ("Save “\(entry.name)” to Addresses", CanvasOutcome(at: Date(), ok: true),
+                              [ActivityBubble(kind: "free", label: "Save · \(entry.network.title)", title: entry.name, logo: entry.network.logo)])
             reply("Saved “\(entry.name)” in Addresses (\(entry.network.title)). Star it there or say “add \(entry.name) to favorites”.")
         }
     }

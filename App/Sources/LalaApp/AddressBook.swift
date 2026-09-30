@@ -742,13 +742,15 @@ extension Workspace {
         guard let wallet = signerWallet else { reply("Transfers work in the app once the key is in secure storage."); return }
         if let off = transferRefusal(entry) { reply(off); return }
         executing = true
-        defer { executing = false }
+        defer { executing = false; runningAction = nil }
         let title = "Send \(Fmt.num(amount)) USDC to \(entry.name)"
         let bubble = ActivityBubble(kind: "deposit", label: "Send · \(entry.network.title)", title: entry.name, lines: ["\(Fmt.num(amount)) USDC"], logo: entry.network.logo)
         updateActivity { a in
             a.title = title
             a.bubbles = [bubble]
         }
+        // The card stays on the canvas while it's signed and sent; Done or Failed takes its place in the same frame.
+        runningAction = (title, [bubble], [], Date())
         do {
             let destination: TradeExecution.Executor.Destination = switch entry.network {
             case .solana: .solana(entry.address)
@@ -763,13 +765,17 @@ extension Workspace {
             }
             let text = try await executor(wallet).sendUSDC(amount, to: destination, label: entry.name)
             if let i = addressBook.firstIndex(where: { $0.id == entry.id }) { addressBook[i].lastSent = Date() }
+            runningAction = nil
             finishedAction = (title, CanvasOutcome(at: Date(), ok: true), [bubble])
             recordFlow(-amount, "sent to \(entry.name)")
             reply(text, note: "transfer")
         } catch {
+            runningAction = nil
             finishedAction = (title, CanvasOutcome(at: Date(), ok: false), [bubble])
             reply("Failed: \(error.localizedDescription)")
         }
+        // The outcome board comes from the saved canvas: now, not after the refresh (a repeated reply doesn't save).
+        saveCanvas()
         await refresh()
     }
 }

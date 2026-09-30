@@ -1598,28 +1598,35 @@ struct PositionMoveBoard: View {
     @Environment(Workspace.self) private var ws
 
     var body: some View {
-        if case .position(.close(let share), let coin)? = ws.pendingAction, let p = ws.positions.first(where: { $0.coin == coin }) {
-            let name = coin.hasPrefix("xyz:") ? String(coin.dropFirst(4)) : coin
-            let side = p.size > 0 ? "long" : "short"
-            let pnl = p.unrealizedPnl * share
-            let steps = [
-                ActivityBubble(kind: "step", label: "CLOSE · \(name.uppercased()) \(side.uppercased())", title: "\(pnl < 0 ? "−" : "+")\(Fmt.usd(abs(pnl)))",
-                               lines: ["share\t\(Fmt.pct(share * 100))", "size\t\(Fmt.num(abs(p.size) * share, maxFraction: 6)) \(name)", "entry\t\(Fmt.price(p.entry))"]
-                                   + (ws.markets[coin].map { ["now\t≈ \(Fmt.price($0.markPx))"] } ?? []),
-                               logo: TokenLogo.name(forAsset: coin) ?? "hype", fill: .hyperliquid),
-                ActivityBubble(kind: "step", label: "TO · HYPERLIQUID", title: "USDC", lines: ["back to the trading balance"], logo: "hype", fill: .hyperliquid),
-            ]
+        if case .position(.close(let share), let coin)? = ws.pendingAction, let route = ws.closeRoute(share, coin: coin) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
-                    Text("Close \(share == 1 ? "" : Fmt.pct(share * 100) + " of ")\(name) \(side)").font(.ui(14, .semibold))
+                    Text(route.title).font(.ui(14, .semibold))
                     StatusChip(text: "waiting for the signature", tint: Brand.profit).fixedSize()
                     Spacer(minLength: 12)
                     PendingButtons()
                 }
-                RouteCards(steps: steps, build: true)
+                RouteCards(steps: route.steps, build: true)
             }
             .transition(.opacity)
         }
+    }
+}
+
+extension Workspace {
+    /// A close as the canvas draws it: waiting for Confirm, while it goes through, and as Done or Failed after.
+    func closeRoute(_ share: Decimal, coin: String) -> (title: String, steps: [ActivityBubble])? {
+        guard let p = positions.first(where: { $0.coin == coin }) else { return nil }
+        let name = coin.hasPrefix("xyz:") ? String(coin.dropFirst(4)) : coin
+        let side = p.size > 0 ? "long" : "short"
+        let pnl = p.unrealizedPnl * share
+        return ("Close \(share == 1 ? "" : Fmt.pct(share * 100) + " of ")\(name) \(side)", [
+            ActivityBubble(kind: "step", label: "CLOSE · \(name.uppercased()) \(side.uppercased())", title: "\(pnl < 0 ? "−" : "+")\(Fmt.usd(abs(pnl)))",
+                           lines: ["share\t\(Fmt.pct(share * 100))", "size\t\(Fmt.num(abs(p.size) * share, maxFraction: 6)) \(name)", "entry\t\(Fmt.price(p.entry))"]
+                               + (markets[coin].map { ["now\t≈ \(Fmt.price($0.markPx))"] } ?? []),
+                           logo: TokenLogo.name(forAsset: coin) ?? "hype", fill: .hyperliquid),
+            ActivityBubble(kind: "step", label: "TO · HYPERLIQUID", title: "USDC", lines: ["back to the trading balance"], logo: "hype", fill: .hyperliquid),
+        ])
     }
 }
 

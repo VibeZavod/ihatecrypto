@@ -507,8 +507,17 @@ extension Workspace {
             return
         }
         executing = true
-        defer { executing = false }
-        do { _ = try await executor(wallet).manage(command, asset: coin) } catch { reply(say("Failed: ", "Не вышло: ") + error.localizedDescription) }
+        defer { executing = false; runningAction = nil }
+        // A close keeps its card on the canvas while it goes through, then leaves it as Done or Failed: nothing vanishes.
+        let shown = if case .close(let share) = command { closeRoute(share, coin: coin) } else { nil as (title: String, steps: [ActivityBubble])? }
+        if let shown { runningAction = (shown.title, shown.steps, [], Date()) }
+        var ok = true
+        do { _ = try await executor(wallet).manage(command, asset: coin) } catch { ok = false; reply(say("Failed: ", "Не вышло: ") + error.localizedDescription) }
+        if let shown {
+            runningAction = nil
+            finishedAction = (shown.title, CanvasOutcome(at: Date(), ok: ok), shown.steps)
+            saveCanvas()
+        }
         await refresh()
     }
 
