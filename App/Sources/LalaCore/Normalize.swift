@@ -426,7 +426,7 @@ public enum ChatRouter {
         lines.append("Open positions: " + (context.positions.isEmpty ? "none" : context.positions.joined(separator: "; ")))
         if !context.favorites.isEmpty { lines.append("Favorite tokens: " + context.favorites.joined(separator: "; ")) }
         if !context.addressBook.isEmpty {
-            lines.append("Address book, each name with the network it's saved on (a send goes on that network; write only the name in a command): "
+            lines.append("Address book, each name with the network it's saved on (a send goes there unless the user names another network: then \"send N USDC to NAME on <network>\" at once, any EVM network, Ethereum mainnet too — the fee is the user's call, the card warns; write only the name): "
                          + context.addressBook.joined(separator: ", "))
         }
         if !context.balances.isEmpty { lines.append("Balances: " + context.balances.joined(separator: "; ")) }
