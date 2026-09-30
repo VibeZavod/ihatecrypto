@@ -668,10 +668,18 @@ final class Workspace {
 
         // «делай» / «do it» right after a plan that waits for it carries it out; anything else drops it.
         let confirms = ChatWords.confirms(text)
-        // Anything but a confirmation, or the amount a step asked for, takes over from the steps that waited for it.
-        if !confirms, awaitingAmount == nil || WalletCommand.amountAnswer(text) == nil { taskQueue = nil }
         let declines = ChatWords.declines(text)
-        if let pending = pendingAllocation {
+        // Read once per message: each read is a Keychain round trip and a JSON decode.
+        let client = llmClient()
+        // Anything but a confirmation, or the amount a step asked for, takes over from the steps that waited for it
+        // (with a model, once it reads a command: a question about the card keeps them, see below).
+        if !confirms, client == nil || declines, awaitingAmount == nil || WalletCommand.amountAnswer(text) == nil { taskQueue = nil }
+        // With a model, a card waiting for Confirm stays while the model reads the message with it in view: a question
+        // about it («это точно лучший маршрут?», «а комиссия какая?») is answered and the card keeps waiting; only a new
+        // command or plan takes its place (routeWithModel). Before, any message dropped it first, and the model answered
+        // «there's no plan on the canvas».
+        let asksModel = !confirms && !declines && client != nil
+        if let pending = pendingAllocation, !asksModel {
             pendingAllocation = nil
             if confirms { await move(pending, confirmed: true); return }
             if declines {
@@ -681,7 +689,7 @@ final class Workspace {
                 return
             }
         }
-        if let pending = pendingAction, step == nil || confirms || declines {
+        if let pending = pendingAction, step == nil || confirms || declines, !asksModel {
             pendingAction = nil
             pendingText = nil
             if declines {
@@ -716,8 +724,6 @@ final class Workspace {
             reply(say("OK — nothing was waiting, nothing moved.", "Хорошо — ничего не ждало подтверждения, ничего не ушло."))
             return
         }
-        // Read once per message: each read is a Keychain round trip and a JSON decode.
-        let client = llmClient()
         // «да» with nothing waiting answers LALA's last question: the model reads it with the chat. Without a model
         // there is nothing to answer.
         if client == nil, ChatWords.confirms(text) {
@@ -794,7 +800,7 @@ final class Workspace {
         // as typed when no model is connected or it can't be reached.
         if let client {
             await routeWithModel(step.map { "About the step «\($0.title)» of the route on the canvas: \(text)" } ?? text,
-                                 client: client, before: before, offered: offered)
+                                 client: client, before: before, offered: offered, aboutStep: step != nil)
             return
         }
         // No model connected: the local parsers read the message as typed.
@@ -908,7 +914,7 @@ final class Workspace {
     /// The model's reading of the message (ChatRouter) — the only reading while a model is connected: keywords guess,
     /// and a wrong guess about money is worse than a question. The model is asked twice; if it still can't be reached,
     /// nothing is done and the chat says so.
-    private func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent, offered: [ChatRouter.Option] = []) async {
+    private func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent, offered: [ChatRouter.Option] = [], aboutStep: Bool = false) async {
         busy = true
         var reading: ChatRouter.Reading?
         var failure = "", unreadable = false
@@ -973,6 +979,7 @@ final class Workspace {
                       "Не достучался до \(model) (\(failure.prefix(140))), поэтому ничего не сделал — ничего не ушло. Отправь ещё раз или выбери другую модель сверху."), note: model)
         case .question?: await answer(text)
         case .plan?:
+            dropWaiting()
             // With both perps and xyz markets off there's no trade to build; otherwise Execute checks the market.
             if let off = Modules.current.refusal(trade: false, bridges: false, ru: modulesRussian),
                Modules.current.refusal(trade: true, bridges: false) != nil {
@@ -983,6 +990,8 @@ final class Workspace {
             }
         case .chat(let r)?, .clarify(let r)?: reply(r, note: note)
         case .command(let canonical)?:
+            // A new command takes the place of the card that waited; a chart or the rates beside it don't.
+            if !Self.displays(canonical) { dropWaiting(keepAction: aboutStep) }
             guard ChatRouter.addressesAllowed(canonical, userText: text, known: favoriteTokens.map(\.address) + (Self.displays(canonical) ? reading?.found ?? [] : [])) else {
                 reply(say("I read that as “\(canonical)”, but its address is neither in your message nor among your favorites, so I won’t use it. Paste the address itself.",
                           "Я понял это как «\(canonical)», но этого адреса нет ни в твоём сообщении, ни в избранном, поэтому я его не использую. Вставь сам адрес."), note: model)
@@ -995,6 +1004,15 @@ final class Workspace {
         }
     }
 
+    /// A new command or plan read from the message takes the place of the card that waited for Confirm, and of the
+    /// chain's steps after it. A question about the card (chat, clarify) leaves them. Asked about one route step
+    /// («Why?» on its card), the move keeps waiting as before.
+    private func dropWaiting(keepAction: Bool = false) {
+        if pendingAllocation != nil { pendingAllocation = nil; allocationPreview = nil; rebalancePlan = nil }
+        if !keepAction { pendingAction = nil; pendingText = nil }
+        taskQueue = nil
+    }
+
     /// What the model may know besides the message: the chat, the plan, positions, favorites, address book names and
     /// the main balances. Never keys or the user's own addresses.
     private func routerContext(offered: [ChatRouter.Option] = []) -> ChatRouter.Context {
@@ -1003,12 +1021,23 @@ final class Workspace {
         c.offered = offered.map { "\($0.title) → \($0.command)\($0.recommended ? " (recommended)" : "")" }
         if intent != TradeIntent(), let json = try? JSONEncoder().encode(intent) { c.plan = String(decoding: json, as: UTF8.self) }
         if let ch = chart { c.canvas.append("chart \(ch.coin) (\(ch.range.title))") }
-        if let p = pendingText { c.canvas.append("waiting for Confirm: \(p)") }
+        // With the route as its card draws it (amounts, fees, where the money comes from), so «а комиссия какая?» is
+        // answered from the card's numbers.
+        if let p = pendingText {
+            var steps: [ActivityBubble] = []
+            if case .wallet(let command)? = pendingAction { steps = route(command)?.steps ?? [] }
+            c.canvas.append("waiting for Confirm: \(p)" + (steps.isEmpty ? "" : " — its route: "
+                + steps.map { "\($0.label) \(readable($0.title))" + ($0.lines.isEmpty ? "" : " (\($0.lines.joined(separator: ", ")))") }.joined(separator: " → ")))
+        }
         // A spread or rebalance on the canvas has no pendingText: without this the model answered «there's no plan on the canvas».
         if pendingText == nil, let p = pendingAllocation {
+            // Its whole math, so «это точно лучший маршрут?» and «а почему не Morpho?» are answered from it, not guessed.
             c.canvas.append("waiting for Confirm: \(p.summary)" + (allocationPreview.map { a in
-                " — " + a.slices.map { "\($0.place) \(Fmt.num($0.amount)) \(a.asset)" }.joined(separator: ", ") + ", from " +
-                    (a.sources.isEmpty ? "Solana" : a.sources.map { "\(Fmt.num($0.amount)) on \($0.place)" }.joined(separator: " + "))
+                " — " + a.slices.map { "\($0.place) \(Fmt.num($0.amount)) \(a.asset) at \(Fmt.num($0.apy.rounded(2, .plain)))%" }.joined(separator: ", ")
+                    + ", from " + (a.sources.isEmpty ? "Solana" : a.sources.map { "\(Fmt.num($0.amount)) on \($0.place)" }.joined(separator: " + "))
+                    + "; at most \(Fmt.pct(a.maxShare)) per protocol; ≈ \(Fmt.num(a.yearly)) \(a.asset) a year"
+                    + (a.leftover > 0 ? "; left free \(Fmt.num(a.leftover))" : "")
+                    + (a.skipped.isEmpty ? "" : "; skipped: " + a.skipped.map { "\($0.place) \(Fmt.num($0.apy.rounded(2, .plain)))% (\($0.reason))" }.joined(separator: "; "))
             } ?? ""))
         }
         c.canvas += alerts.map { a in

@@ -337,6 +337,11 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(ChatLanguage.en.name(recentUserMessages: ["compra sol"]) == "English")
     for yes in ["sí", "Sí, hazlo", "dale", "si", "ok", "Ок", "vale!", "do it", "делай", "да"] { #expect(ChatWords.confirms(yes), "\(yes)") }
     for notYes in ["si quieres compra sol", "ok but lower the risk", "long eth"] { #expect(!ChatWords.confirms(notYes), "\(notYes)") }
+    // A confirmation is the whole message: with a change in it, the model reads it and the card waits again.
+    for yes in ["да, давай", "давай делай", "ок, погнали", "yes, do it now", "go ahead", "let's do it", "sí, hazlo ya", "De acuerdo!"] { #expect(ChatWords.confirms(yes), "\(yes)") }
+    for notYes in ["давай на 30", "да, но без камино", "yes but 50", "go long eth", "sign it with 30 USDC", "да сделай 200", "давай лучше в морфо", "ok тогда 200"] {
+        #expect(!ChatWords.confirms(notYes), "\(notYes)")
+    }
     for no in ["no", "No gracias", "cancela", "déjalo", "нет", "cancel"] { #expect(ChatWords.declines(no), "\(no)") }
 }
 

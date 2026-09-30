@@ -172,9 +172,11 @@ public enum ChatRouter {
     How money moves: Solana ⇄ Base, Arbitrum, Polygon, Ethereum, Robinhood Chain and Tempo over Relay, and between any two of those EVM \
     networks straight over Relay too (Base → Robinhood Chain: one move, no stop on Solana), and from any of them straight to \
     Hyperliquid; Hyperliquid → Solana; a trade plan brings its USDC to Hyperliquid by itself — from Solana, or straight from an \
-    EVM network that has it when Solana is short, gas there included — so never put a move before a trade; NEAR ⇄ Solana USDC through NEAR Intents (buy NEAR / sell NEAR); every vault is entered from Solana and left back to Solana \
-    in ONE command — Aave and Morpho too: «withdraw USDC from Aave on Arbitrum» withdraws there and bridges to Solana by itself, so never \
-    split it into two steps. Selling stock tokens or tokens by contract leaves USDG on Robinhood Chain; «move USDG from Robinhood \
+    EVM network that has it when Solana is short, gas there included — so never put a move before a trade; NEAR ⇄ Solana USDC through NEAR Intents (buy NEAR / sell NEAR); every vault is entered and left \
+    in ONE command. Aave and Morpho take the USDC already idle on their own network first and bring only what's short from Solana, \
+    so money on another EVM network goes there with a straight move first: «переведи 200 с эфира на базу и положи в морфо там» = \
+    move 200 USDC from Ethereum to Base then deposit 199 USDC into Morpho on Base — never through Solana. Leaving goes back to \
+    Solana by itself: «withdraw USDC from Aave on Arbitrum» withdraws there and bridges to Solana, so never split it into two steps. Selling stock tokens or tokens by contract leaves USDG on Robinhood Chain; «move USDG from Robinhood \
     to Solana» brings it back. \
     Hyperliquid → the EVM networks, and NEAR ⇄ them, go through Solana: build that as steps (NOW, IN STEPS).
     Buying and selling a token by its contract works on Robinhood Chain, Base and Arbitrum. On Solana ihatecrypto buys \
@@ -235,6 +237,11 @@ public enum ChatRouter {
       Resolve references from the chat: «да», «давай», «do it», «ok» after your own suggestion or question is that suggestion \
       (after cards you offered, the recommended one; «второй», «the first one» by their order); «то же для ETH», \
       «а теперь половину», «покажи его чарт» build on the last request.
+      A card «waiting for Confirm» on the canvas is what «это», «маршрут», «план» mean. A question about it — is it the best \
+      route, what it costs, why this vault and not another — is "chat" answered from its numbers (look up what it lacks, e.g. \
+      rates), and the card keeps waiting; don't send its command again. A change to it is its command again with the change \
+      applied to the WHOLE of it: «добавь ещё 300» to a waiting «spread 500 USDC» = spread 800 USDC across the best rates; \
+      «не больше 40% в один» = the same spread with max 40% per protocol; «лучше 150» to «move 100 USDC …» = move 150 USDC ….
       Keep numbers, tickers, prices and percentages as meant; never invent an amount: leave it out and ihatecrypto asks for it.
       A token they name by symbol that is among their favorites is written with that favorite's contract. Any other address \
       must be one they wrote (repaired by the token lookup is fine) — never one you remember or made up. «$2», «2 бакса», \

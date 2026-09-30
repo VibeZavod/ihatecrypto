@@ -39,12 +39,25 @@ public enum ChatLanguage: String, CaseIterable, Sendable {
 
 /// Short replies read without the model: a «yes» to a card waiting for Confirm, a «no» that drops it.
 public enum ChatWords {
-    /// «делай», «do it», «sí», «dale» start a confirmation; «ok», «si», «vale» only on their own («si quieres…» is an «if»).
+    /// A confirmation is the whole message: «делай», «да, давай», «yes, do it», «sí, hazlo», «ok». Anything more is a
+    /// change or a question the model reads: «давай на 30» signed the waiting 20 when a confirmation only had to start
+    /// with «давай»; «si quieres…» is an «if».
     public static func confirms(_ text: String) -> Bool {
-        let q = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        return q.contains(/^(?:делай|да|давай|подтверждаю|раскладывай|го|do\s+it|go|yes|confirm|sign|sí|dale|hazlo|confirmo|adelante)\b/)
-            || q.wholeMatch(of: /(?:ok|okay|ок|окей|ага|угу|yep|yeah|sure|si|vale|claro|de\s+acuerdo)[.!\s]*/) != nil
+        let words = text.lowercased().split { !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "’" }.map(String.init)
+        return !words.isEmpty && words.allSatisfy { yes.contains($0) || filler.contains($0) } && words.contains(where: yes.contains)
     }
+    static let yes: Set<String> = [
+        "делай", "делаем", "да", "давай", "подтверждаю", "подтверди", "раскладывай", "го", "гоу", "погнали", "поехали", "жми",
+        "подписывай", "подписываю", "запускай", "ок", "окей", "ага", "угу", "согласен", "согласна",
+        "do", "go", "yes", "confirm", "confirmed", "sign", "ok", "okay", "yep", "yeah", "sure", "proceed",
+        "sí", "si", "dale", "hazlo", "confirmo", "adelante", "vale", "claro", "acuerdo",
+    ]
+    /// Words that can go with a «yes» without changing it: «да, давай, сделай это», «yes please, do it now».
+    static let filler: Set<String> = [
+        "это", "его", "её", "ее", "сделай", "сейчас", "теперь", "пожалуйста", "плиз", "так", "ну", "и", "вперёд", "вперед", "конечно", "хорошо",
+        "it", "this", "that", "now", "please", "pls", "ahead", "let's", "let’s", "lets", "let", "us", "and", "then", "just", "right",
+        "de", "por", "favor", "ya", "lo",
+    ]
 
     /// A whole-message «no»: «нет», «cancel», «no gracias», «déjalo».
     public static func declines(_ text: String) -> Bool {

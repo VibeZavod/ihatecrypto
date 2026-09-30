@@ -421,7 +421,10 @@ extension Workspace {
                 pendingAllocation = ready ? command : nil
                 allocationPreview = confirmed ? nil : preview
                 if !confirmed {
-                    reply(ready ? "The plan is on the canvas. Sign it, or ask for another limit, e.g. “max \(share.map { $0 == 70 ? 50 : 70 } ?? 70)% per protocol”." : "Nowhere to put it now — see the canvas.", note: "DeFi")
+                    let other = share.map { $0 == 70 ? 50 : 70 } ?? 70
+                    reply(ready ? say("The plan is on the canvas. Sign it, ask about it, or ask for another limit, e.g. “max \(other)% per protocol”.",
+                                      "План на холсте. Подпиши, спроси о нём или попроси другой лимит, например «не больше \(other)% в один протокол».")
+                                : say("Nowhere to put it now — see the canvas.", "Сейчас некуда положить — смотри холст."), note: "DeFi")
                 }
             case .rebalance(let share):
                 // Like «spread»: the plan first, the moves only after «do it».
@@ -430,8 +433,10 @@ extension Workspace {
                 if canvasID == nil { saveCanvas() }   // a new canvas gets its id on its first save: the card belongs to it
                 rebalancePlan = confirmed ? nil : (canvasID, plan, share ?? 50)
                 if !confirmed {
-                    reply(ready ? "The moves are on the canvas with their math. Sign them, or ask for another limit, e.g. “rebalance, max \(share.map { $0 == 70 ? 50 : 70 } ?? 70)% per protocol”."
-                                : plan.notes.first ?? "Nothing worth moving now — see the canvas.", note: "DeFi")
+                    let other = share.map { $0 == 70 ? 50 : 70 } ?? 70
+                    reply(ready ? say("The moves are on the canvas with their math. Sign them, ask about them, or ask for another limit, e.g. “rebalance, max \(other)% per protocol”.",
+                                      "Переводы на холсте с расчётом. Подпиши, спроси о них или попроси другой лимит, например «перебалансируй, не больше \(other)% в протокол».")
+                                : plan.notes.first ?? say("Nothing worth moving now — see the canvas.", "Сейчас нечего перекладывать — смотри холст."), note: "DeFi")
                 }
             case .schedule(let asset, let usdc, let days):
                 // The per-purchase rule applies to each run; a schedule adds up, so it is shown per month too.

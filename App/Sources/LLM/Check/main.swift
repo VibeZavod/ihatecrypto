@@ -52,6 +52,10 @@ if prompt == "--route" {
     context.recent = env["LALA_ROUTE_RECENT"].map { $0.components(separatedBy: "|") } ?? []
     // `LALA_SAFE_SEARCH=0`: as with Safe search off in Settings.
     context.safeSearch = env["LALA_SAFE_SEARCH"] != "0"
+    // `LALA_ROUTE_CANVAS="waiting for Confirm: …|chart ETH (1 day)"` and `LALA_ROUTE_BALANCES="Ethereum 18,587 USDC idle|…"`:
+    // the canvas and the money as the app gives them, for follow-ups about a waiting card.
+    if let canvas = env["LALA_ROUTE_CANVAS"] { context.canvas = canvas.components(separatedBy: "|") }
+    if let b = env["LALA_ROUTE_BALANCES"] { context.balances = b.components(separatedBy: "|") }
     let client = try provider.client(credential, save: { _ in })
     // `LALA_MARKETS="BTC,ETH,…,xyz:CL"`: Hyperliquid's real list, for the plans test.
     let markets: Set<String> = env["LALA_MARKETS"].map { Set($0.components(separatedBy: ",")) } ?? ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]
