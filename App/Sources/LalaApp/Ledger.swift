@@ -113,14 +113,17 @@ extension Workspace {
     /// «connect ledger», «подключи леджер», «use my Ledger»: true when the message was about the Ledger.
     func ledgerCommand(_ text: String) async -> Bool {
         let lower = text.lowercased()
-        guard lower.contains(/ledger|л[еэ]дж[еэ]р/) else { return false }
+        let aboutLedger = lower.contains(/ledger|л[еэ]дж[еэ]р/)
+        // «approve trading key» while the Ledger signs: its own key, approved on the device. «resume the trading key»
+        // after a lock stays with the usual command (Touch ID).
+        if aboutLedger || ledgerActive, lower.contains(/trading\s+key|торгов\w*\s+ключ/), !lower.contains(/resume|unpause|верни/) {
+            Task { await enableLedgerAgent() }
+            return true
+        }
+        guard aboutLedger else { return false }
         if lower.wholeMatch(of: /\s*(?:use|switch\s+to|sign\s+with|используй|переключи\w*\s+на|подписывай\s+(?:с|на))\s+(?:my\s+|мой\s+|моём\s+|мо[йеё]м?\s+)?(?:ledger|л[еэ]дж[еэ]р\w*)\s*[.!]?\s*/) != nil,
            let account = LedgerAccount.saved {
             await switchWallet(account.wallet)
-            return true
-        }
-        if lower.contains(/trading\s+key|agent|торгов\w*\s+ключ|агент/) {
-            Task { await enableLedgerAgent() }
             return true
         }
         if lower.wholeMatch(of: /\s*(?:forget|remove|disconnect|забудь|удали|отключи)\s+(?:my\s+|мой\s+)?(?:ledger|л[еэ]дж[еэ]р\w*)\s*[.!]?\s*/) != nil {
