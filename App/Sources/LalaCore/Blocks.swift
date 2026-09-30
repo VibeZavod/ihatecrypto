@@ -69,6 +69,8 @@ public enum BlockCatalog {
               example: "deposit 5 USDC to HLP", fill: "hlp", logo: "hype"),
         Block(group: "Earn", label: "STAKE · JITO", title: "Stake SOL", form: "stake N SOL · unstake N JitoSOL",
               example: "stake 0.01 SOL", fill: "jito", logo: "jitosol"),
+        Block(group: "Earn", label: "SELL · REWARDS", title: "Sell rewards", form: "sweep rewards [over $N] [into TOKEN] · every hour: sweep rewards over $10 into USDC",
+              example: "every day: sweep rewards over $10 into USDC", fill: "morpho", logo: "usdc"),
         Block(group: "Earn", label: "INTO · BEST RATES", title: "The best rates", form: "spread N USDC across the best rates · rebalance USDC",
               example: "spread USDC across the best rates", fill: "jupiter", logo: "usdc"),
 

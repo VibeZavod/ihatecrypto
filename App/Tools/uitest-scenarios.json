@@ -328,5 +328,25 @@
       "no_pending": true,
       "reply_contains": "сохранённые адреса"
     }
+  },
+  {
+    "name": "rewards to sweep with nothing owed → the chat says so, nothing to sign",
+    "send": [
+      "продай награды, когда наберётся $10, в USDC"
+    ],
+    "expect": {
+      "no_pending": true,
+      "reply_contains": "Merkl"
+    }
+  },
+  {
+    "name": "a site to use with the wallet → it opens beside the chat, no card",
+    "send": [
+      "открой сайт kamino.com"
+    ],
+    "expect": {
+      "no_pending": true,
+      "reply_contains": "kamino.com"
+    }
   }
 ]
