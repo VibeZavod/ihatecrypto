@@ -193,6 +193,12 @@ final class Workspace {
     var canvases: [CanvasSession] = LocalStore.load("canvases.json") ?? [] {
         didSet { LocalStore.save(canvases, "canvases.json") }
     }
+    /// Canvas folders made or used in the sidebar; they stay while empty.
+    var folders: [String] = UserDefaults.standard.stringArray(forKey: "canvasFolders") ?? [] {
+        didSet { UserDefaults.standard.set(folders, forKey: "canvasFolders") }
+    }
+    /// The folder a fresh canvas goes into once it's kept («New canvas here» on a folder).
+    var newCanvasFolder: String?
     /// The portfolio's value every ten minutes for 30 days (Alerts.swift).
     var equityHistory: [EquityPoint] = LocalStore.load(Workspace.scoped("equity") + ".json") ?? [] {
         didSet { LocalStore.save(equityHistory, Workspace.scoped("equity", activeWalletID) + ".json") }

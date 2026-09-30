@@ -122,7 +122,7 @@ extension Workspace {
     func saveCanvas() {
         guard messages.contains(where: \.fromUser) || canvasBubbles() != nil else { return }
         let old = canvases.first { $0.id == canvasID }
-        var c = old ?? CanvasSession(providerID: providerID, model: model, messages: [], intent: intent)
+        var c = old ?? CanvasSession(providerID: providerID, model: model, messages: [], intent: intent, folder: newCanvasFolder)
         c.providerID = providerID
         c.model = model
         c.messages = messages
@@ -180,11 +180,43 @@ extension Workspace {
         canvases[i].name = trimmed.isEmpty ? nil : String(trimmed.prefix(80))
     }
 
-    /// nil takes it out of its folder.
+    /// A fresh canvas that goes into `folder` as soon as it's kept.
+    func newCanvas(in folder: String) {
+        newCanvas()
+        newCanvasFolder = folder
+    }
+
+    /// nil takes it out of its folder. Both folders stay in the list, even emptied.
     func moveCanvas(_ id: UUID, to folder: String?) {
         guard let i = canvases.firstIndex(where: { $0.id == id }) else { return }
-        let trimmed = folder?.trimmingCharacters(in: .whitespacesAndNewlines)
-        canvases[i].folder = trimmed?.isEmpty == false ? String(trimmed!.prefix(40)) : nil
+        let to = folder.flatMap(Self.folderName)
+        for f in [canvases[i].folder, to].compactMap({ $0 }) where !folders.contains(f) { folders.append(f) }
+        canvases[i].folder = to
+    }
+
+    /// An empty name makes nothing.
+    func createFolder(_ name: String) {
+        if let f = Self.folderName(name), !folders.contains(f) { folders.append(f) }
+    }
+
+    /// Its canvases go with it; merging into a folder of that name if one exists.
+    func renameFolder(_ old: String, to name: String) {
+        guard let new = Self.folderName(name), new != old else { return }
+        for i in canvases.indices where canvases[i].folder == old { canvases[i].folder = new }
+        folders = folders.filter { $0 != old && $0 != new } + [new]
+        if newCanvasFolder == old { newCanvasFolder = new }
+    }
+
+    /// The folder goes; its canvases stay, out of any folder.
+    func deleteFolder(_ name: String) {
+        for i in canvases.indices where canvases[i].folder == name { canvases[i].folder = nil }
+        folders.removeAll { $0 == name }
+        if newCanvasFolder == name { newCanvasFolder = nil }
+    }
+
+    private static func folderName(_ raw: String) -> String? {
+        let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        return trimmed.isEmpty ? nil : String(trimmed.prefix(40))
     }
 
     /// At most this many canvases stay pinned to the top of the list.
@@ -197,7 +229,7 @@ extension Workspace {
         canvases[i].pinnedAt = on ? Date() : nil
     }
 
-    var canvasFolders: [String] { Array(Set(canvases.compactMap(\.folder))).sorted { $0.localizedStandardCompare($1) == .orderedAscending } }
+    var canvasFolders: [String] { Array(Set(folders + canvases.compactMap(\.folder))).sorted { $0.localizedStandardCompare($1) == .orderedAscending } }
 
     func deleteCanvas(_ id: UUID) {
         if id == canvasID { newCanvas() }
@@ -239,6 +271,7 @@ extension Workspace {
     /// What belongs to one canvas only: boards, waiting confirmations, the draft.
     private func clearCanvas() {
         if let pendingAction, let canvasID { parkedPending[canvasID] = (pendingAction, pendingText, Date()) }
+        newCanvasFolder = nil
         takeChoices = nil
         nextSteps = nil
         yieldOptions = nil
@@ -274,12 +307,18 @@ struct CanvasList: View {
     var close: (() -> Void)?
     /// Folded folders, one name per line; kept between launches.
     @AppStorage("foldedCanvasFolders") var foldedRaw = ""
+    @State private var newFolder = false
+    @State private var folderName = ""
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
                 Text("Canvases").font(.ui(12)).foregroundStyle(.secondary).padding(.leading, 4)
                 Spacer()
+                Button { folderName = ""; newFolder = true } label: {
+                    Image(systemName: "folder.badge.plus").font(.system(size: 12, weight: .semibold))
+                }
+                .buttonStyle(.hoverIcon).help("New folder — drag canvases into it")
                 // The whole pill is the button and lights up under the pointer, not only its glyphs.
                 Button { withAnimation(StudioView.spring) { ws.newCanvas() }; close?() } label: {
                     Label("New", systemImage: "square.and.pencil").font(.ui(10, .semibold)).padding(.horizontal, 8)
@@ -291,7 +330,16 @@ struct CanvasList: View {
             if items.isEmpty {
                 Text("Each conversation gets its own canvas and is kept here.").font(.ui(10)).foregroundStyle(.tertiary)
             }
+            // A canvas dropped anywhere but on a folder leaves its folder.
             ScrollView { rows(items) }.scrollIndicators(.never)
+                .modifier(CanvasDrop { id in withAnimation(.snappy) { ws.moveCanvas(id, to: nil) } })
+        }
+        .alert("New folder", isPresented: $newFolder) {
+            TextField("Folder name", text: $folderName)
+            Button("Create") { withAnimation(.snappy) { ws.createFolder(folderName) } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Drag canvases into it, or start one there from its menu.")
         }
     }
 }
@@ -306,15 +354,19 @@ extension CanvasList {
         return LazyVStack(alignment: .leading, spacing: 2) {
             ForEach(pinned) { row($0) }
             if !pinned.isEmpty, !items.isEmpty { Divider().padding(.vertical, 4).padding(.horizontal, 8) }
-            ForEach(ws.canvasFolders.filter { f in items.contains { $0.folder == f } }, id: \.self) { folder in
-                FolderRow(name: folder, count: items.filter { $0.folder == folder }.count, folded: folded.contains(folder)) {
-                    var set = folded
-                    if set.contains(folder) { set.remove(folder) } else { set.insert(folder) }
-                    withAnimation(.snappy) { foldedRaw = set.sorted().joined(separator: "\n") }
+            ForEach(ws.canvasFolders, id: \.self) { folder in
+                let inside = items.filter { $0.folder == folder }
+                VStack(alignment: .leading, spacing: 2) {
+                    FolderRow(name: folder, count: inside.count, folded: folded.contains(folder)) {
+                        var set = folded
+                        if set.contains(folder) { set.remove(folder) } else { set.insert(folder) }
+                        withAnimation(.snappy) { foldedRaw = set.sorted().joined(separator: "\n") }
+                    }
+                    if !folded.contains(folder) {
+                        ForEach(inside) { row($0).padding(.leading, 12) }
+                    }
                 }
-                if !folded.contains(folder) {
-                    ForEach(items.filter { $0.folder == folder }) { row($0).padding(.leading, 12) }
-                }
+                .modifier(CanvasDrop { id in withAnimation(.snappy) { ws.moveCanvas(id, to: folder) } })
             }
             ForEach(items.filter { $0.folder == nil }) { row($0) }
         }
@@ -328,29 +380,77 @@ extension CanvasList {
     }
 }
 
-/// A folder of canvases: a click folds or unfolds it.
+/// A folder of canvases: a click folds or unfolds it; canvases are dragged onto it.
 struct FolderRow: View {
+    @Environment(Workspace.self) private var ws
     let name: String
     let count: Int
     let folded: Bool
     let toggle: () -> Void
+    @State private var hover = false
+    @State private var renaming = false
+    @State private var draft = ""
 
     var body: some View {
-        Button(action: toggle) {
-            HStack(spacing: 8) {
-                Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(.tertiary)
-                    .rotationEffect(.degrees(folded ? 0 : 90))
-                Image(systemName: folded ? "folder" : "folder.fill").font(.system(size: 12)).foregroundStyle(Brand.accentInk)
-                Text(name).font(.ui(12.5, .semibold)).lineLimit(1)
-                Spacer(minLength: 0)
-                Text("\(count)").font(.ui(10)).foregroundStyle(.tertiary).monospacedDigit()
+        HStack(spacing: 4) {
+            Button(action: toggle) {
+                HStack(spacing: 8) {
+                    Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(.tertiary)
+                        .rotationEffect(.degrees(folded ? 0 : 90))
+                    Image(systemName: folded ? "folder" : "folder.fill").font(.system(size: 12)).foregroundStyle(Brand.accentInk)
+                    Text(name).font(.ui(12.5, .semibold)).lineLimit(1)
+                    Spacer(minLength: 0)
+                    Text("\(count)").font(.ui(10)).foregroundStyle(.tertiary).monospacedDigit()
+                }
+                .contentShape(Rectangle())
             }
-            .padding(.horizontal, 8).padding(.vertical, 6)
-            .contentShape(Rectangle())
+            .buttonStyle(.plain)
+            .pointerStyle(.link)
+            .help(folded ? "Show the canvases in \(name)" : "Fold \(name)")
+            Menu { actions } label: {
+                Image(systemName: "ellipsis").font(.system(size: 12, weight: .bold)).foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22).contentShape(Rectangle())
+            }
+            .menuStyle(.borderlessButton).menuIndicator(.hidden).fixedSize()
+            .pointerStyle(.link)
+            .opacity(hover ? 1 : 0)
+            .allowsHitTesting(hover)
+            .help("New canvas here, rename, delete")
         }
-        .buttonStyle(.plain)
-        .pointerStyle(.link)
-        .help(folded ? "Show the canvases in \(name)" : "Fold \(name)")
+        .padding(.horizontal, 8).padding(.vertical, 4)
+        .onHover { hover = $0 }
+        .contextMenu { actions }
+        .alert("Rename folder", isPresented: $renaming) {
+            TextField("Folder name", text: $draft)
+            Button("Rename") { withAnimation(.snappy) { ws.renameFolder(name, to: draft) } }
+            Button("Cancel", role: .cancel) {}
+        }
+    }
+
+    @ViewBuilder private var actions: some View {
+        Button { withAnimation(StudioView.spring) { ws.newCanvas(in: name) } } label: {
+            Label("New canvas here", systemImage: "square.and.pencil")
+        }
+        .disabled(ws.busy)
+        Button("Rename") { draft = name; renaming = true }
+        Divider()
+        Button("Delete folder (canvases stay)", role: .destructive) { withAnimation(.snappy) { ws.deleteFolder(name) } }
+    }
+}
+
+/// Takes a canvas dragged from the list; its edge lights while one is over it.
+private struct CanvasDrop: ViewModifier {
+    let drop: (UUID) -> Void
+    @State private var over = false
+
+    func body(content: Content) -> some View {
+        content
+            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Brand.accent, lineWidth: 1.5).opacity(over ? 1 : 0))
+            .dropDestination(for: String.self) { items, _ in
+                let ids = items.compactMap(UUID.init(uuidString:))
+                ids.forEach(drop)
+                return !ids.isEmpty
+            } isTargeted: { over = $0 }
     }
 }
 
@@ -372,6 +472,7 @@ struct CanvasRow: View {
                 content
             } else {
                 Button(action: open) { content }.buttonStyle(.plain)
+                    .draggable(canvas.id.uuidString)
             }
             // The three dots show under the pointer, like ChatGPT's sidebar; they stay in the layout so an open menu
             // keeps its anchor when the pointer moves onto it.
