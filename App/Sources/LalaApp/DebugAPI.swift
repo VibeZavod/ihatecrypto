@@ -173,11 +173,15 @@ final class DebugAPI {
                 try? await Task.sleep(for: .milliseconds(8))
             }
             return (200, "text/plain", Data("ok\n".utf8))
+        case ("GET", "/crashes"):
+            // Kept crash reports, newest first: file (in Application Support/LALA/Crashes), date, summary.
+            _ = Crashes.collect()
+            return (200, "application/json", json(["crashes": Crashes.all.map { ["file": $0.file, "date": Fmt.date($0.date), "summary": $0.summary] }]))
         case ("GET", "/screenshot"):
             guard let png = screenshot() else { return (500, "text/plain", Data("no window\n".utf8)) }
             return (200, "image/png", png)
         default:
-            return (404, "text/plain", Data("GET /state · POST /send {\"text\":…} · GET /screenshot · POST /reset · POST /cancel · POST /restore {\"canvas\":…}\n".utf8))
+            return (404, "text/plain", Data("GET /state · POST /send {\"text\":…} · GET /screenshot · GET /crashes · POST /reset · POST /cancel · POST /restore {\"canvas\":…}\n".utf8))
         }
     }
 

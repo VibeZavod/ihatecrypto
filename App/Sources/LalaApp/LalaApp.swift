@@ -274,6 +274,11 @@ struct ContentView: View {
             }
             #endif
             await ws.refresh()
+            // A crash since the last launch: one line in the chat; the report is kept (Crashes.swift).
+            if let crash = Crashes.collect().first {
+                ws.reply(ws.say("ihatecrypto closed unexpectedly on \(Fmt.date(crash.date)) — \(crash.summary). The report is kept in Application Support/LALA/Crashes.",
+                                "ihatecrypto упал \(Fmt.date(crash.date)) — \(crash.summary). Отчёт сохранён в Application Support/LALA/Crashes."))
+            }
             // `-openPlace kamino`: opens that place's card from the rail, to check the canvas layout in a screenshot;
             // `history` and `favorites` open the boards of the rail's buttons, `settings` Settings (the tab: `-settingsTab modules`). Only shows cards, so it stays in Release builds.
             switch UserDefaults.standard.string(forKey: "openPlace") {
