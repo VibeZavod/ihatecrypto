@@ -1,0 +1,33 @@
+[
+  {
+    "version": "0.2",
+    "stories": [
+      {
+        "title": "Updates by themselves",
+        "text": "ihatecrypto looks for a new version once a day. When one is ready you get a notification; Install shows what changed first.",
+        "try": "check for updates",
+        "symbol": "arrow.down.circle.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "A sound for each thing",
+        "text": "A coin rings when money arrives or a move finishes, a soft chime when something wants a look, a low knock when a move fails.",
+        "symbol": "bell.badge.fill",
+        "color": "4615C8"
+      },
+      {
+        "title": "Tickers, not addresses",
+        "text": "A token's contract shows as its ticker: AERO (0x9401…8631). A ticker that imitates another, like USDC on the wrong contract, gets ⚠.",
+        "symbol": "textformat.abc",
+        "color": "072723"
+      },
+      {
+        "title": "/ and @ in the chat",
+        "text": "Type / for the blocks you can add, with an example to finish. Type @ for names from your address book and favorite tokens.",
+        "try": "/",
+        "symbol": "command",
+        "color": "2775CA"
+      }
+    ]
+  }
+]

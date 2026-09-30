@@ -276,6 +276,13 @@ struct StudioView: View {
             return .handled
         })
         .overlay { EdgePulse(trigger: edgePulse) }
+        // «What's new» over everything, the chat too; «Try it» leaves its phrase in the chat's field.
+        .overlay {
+            if let release = WhatsNew.shared.showing {
+                StoriesView(release: release) { ws.draft = $0 }.transition(.opacity)
+            }
+        }
+        .animation(.easeOut(duration: 0.2), value: WhatsNew.shared.showing?.version)
         .onReceive(NotificationCenter.default.publisher(for: .lalaEdgePulse)) { _ in edgePulse += 1 }
         // One ground under the rail and the canvas, so the glass has the same dots behind it on both sides.
         .background { ZStack { Brand.canvas; DotGrid() }.ignoresSafeArea() }
@@ -523,7 +530,7 @@ struct StudioRail: View {
                 .frame(height: Self.lightsRow)
             }
             HStack(spacing: 8) {
-                LalaLogo(size: 30)
+                WhatsNewLogo()
                 Text("ihatecrypto").font(.brand(19)).lineLimit(1).fixedSize()
                 Spacer(minLength: 0)
                 if fullScreen { collapseButton }

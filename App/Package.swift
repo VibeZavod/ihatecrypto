@@ -76,8 +76,8 @@ let package = Package(
             name: "LalaApp",
             dependencies: ["LalaCore", "LLMCore", "LLMCatalog", "WalletCore", "TxGuard", "GuardJev", "SignerAPI", "HyperliquidSigning", "SolanaChain",
                            "TradeExecution", "ExecutionCore", "DeFiJupiterLend", "EVMChain", "DeFiKamino", "DeFiYields", "Ledger"],
-            // Chain logos and notification sounds are bundled by the Xcode project; `swift run` shows lettered circles instead.
-            exclude: ["Logos", "Sounds"],
+            // Logos, sounds and the stories are bundled by the Xcode project; `swift run` shows lettered circles instead.
+            exclude: ["Logos", "Sounds", "WhatsNew"],
             swiftSettings: [.defaultIsolation(MainActor.self)]
         ),
 
