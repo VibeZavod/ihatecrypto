@@ -35,6 +35,13 @@ enum Notice: String, CaseIterable {
     nonisolated static let log = Logger(subsystem: "app.lala.mac", category: "notifications")
 
     var isOn: Bool { UserDefaults.standard.object(forKey: "notice.\(rawValue)") as? Bool ?? true }
+
+    /// Sounds/, drawn by App/Tools/make-sounds.py: a coin when money arrived or moved, a chime when something wants a
+    /// look, a low knock when a move failed. A changed sound gets a new name: macOS keeps playing the old one otherwise.
+    func sound(failed: Bool = false) -> UNNotificationSound {
+        let name = failed ? "knock-1.caf" : [.incoming, .orders, .moves, .hlp].contains(self) ? "coin-1.caf" : "chime-1.caf"
+        return UNNotificationSound(named: UNNotificationSoundName(name))
+    }
 }
 
 /// Settings → Chat and notifications.
@@ -105,6 +112,7 @@ private struct NoticePermission: View {
         let content = UNMutableNotificationContent()
         content.title = "ihatecrypto"
         content.body = "Notifications work: scheduled tasks, stops, alerts and moves waiting for Confirm show up here."
+        content.sound = Notice.incoming.sound()
         try? await center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
         sent = true
     }

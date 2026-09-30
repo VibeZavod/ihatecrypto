@@ -293,7 +293,7 @@ extension Workspace {
             saveCanvas()
             notify(.moves, confirmedRoute?.title ?? readable(Self.canvasTitle(command)),
                    ok ? say("Done — checked, signed and confirmed.", "Готово — проверено, подписано и подтверждено сетью.")
-                      : say("It didn’t go through; the chat says why.", "Не прошло — причина в чате."), record: false)
+                      : say("It didn’t go through; the chat says why.", "Не прошло — причина в чате."), record: false, failed: !ok)
         }
         if movesMoney(command, confirmed: confirmed) {
             withAnimation(StudioView.spring) {
@@ -592,7 +592,7 @@ extension Workspace {
             // Jupiter or Solana switched off: this run is skipped, the schedule stays.
             if let off = Modules.current.refusal(.jupiter, ru: modulesRussian) {
                 schedules[index].advance()
-                notify(.moves, say("Scheduled \(asset.symbol) buy skipped", "Регулярная покупка \(asset.symbol) пропущена"), off, schedule: "buy:\(asset.symbol)")
+                notify(.moves, say("Scheduled \(asset.symbol) buy skipped", "Регулярная покупка \(asset.symbol) пропущена"), off, schedule: "buy:\(asset.symbol)", failed: true)
                 continue
             }
             // On a Ledger a purchase needs the device and the person: while it's away the run stays due and says so once;
@@ -623,7 +623,7 @@ extension Workspace {
             } catch {
                 let text = "Scheduled \(asset.symbol) purchase failed: \(error.localizedDescription). Next one: \(Fmt.date(schedules[index].next))."
                 reply(text)
-                notify(.moves, say("\(asset.symbol) purchase failed", "Покупка \(asset.symbol) не прошла"), text, schedule: "buy:\(asset.symbol)")
+                notify(.moves, say("\(asset.symbol) purchase failed", "Покупка \(asset.symbol) не прошла"), text, schedule: "buy:\(asset.symbol)", failed: true)
             }
             executing = false
         }
@@ -709,7 +709,7 @@ extension Workspace {
     /// `record`: what LALA did on its own (guardian, schedules, arrivals) is an activity too; a move the user
     /// confirmed already has one.
     /// `schedule`: the Schedule canvas item it ran for («buy:SOL», «perp:BTC»).
-    func notify(_ kind: Notice, _ title: String, _ body: String, record: Bool = true, schedule: String? = nil) {
+    func notify(_ kind: Notice, _ title: String, _ body: String, record: Bool = true, schedule: String? = nil, failed: Bool = false) {
         if record {
             beginActivity(.automatic, title: title, schedule: schedule)
             updateActivity { $0.lines.append(body) }
@@ -725,6 +725,9 @@ extension Workspace {
             let content = UNMutableNotificationContent()
             content.title = title
             content.body = body
+            content.sound = kind.sound(failed: failed)
+            // One stack per position, schedule or kind in Notification Center.
+            content.threadIdentifier = schedule ?? kind.rawValue
             center.add(UNNotificationRequest(identifier: UUID().uuidString, content: content, trigger: nil))
         }
     }
