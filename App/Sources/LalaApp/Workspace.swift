@@ -92,6 +92,8 @@ final class Workspace {
     /// A chart, an explorer or a transaction opened beside the canvas (WebPanel.swift), not in a browser.
     @ObservationIgnored let sidePage = SidePage()
     var showWeb = false
+    /// The panel shows the dApp browser, with the wallet, instead of a plain page.
+    var webWallet = false
     /// The signer's Hyperliquid agent: orders without Touch ID, no withdrawals.
     var agentAddress: String?
     var agentActive = false
@@ -747,6 +749,14 @@ final class Workspace {
         }
         if text.lowercased().wholeMatch(of: /\s*(?:lock|lock\s+(?:it|the\s+wallet|signing)|заблокируй\w*|блокир\w*)\s*[.!]?\s*/) != nil {
             await lockSigner()
+            return
+        }
+        // «open jup.ag», «открой сайт raydium.io»: the site with the wallet, in the panel beside the chat (WebPanel.swift).
+        if let m = text.wholeMatch(of: /\s*(?:open|go\s+to|открой|зайди\s+на|перейди\s+на)\s+(?:the\s+site\s+|site\s+|сайт\s+)?((?:https?:\/\/)?[a-z0-9-]+(?:\.[a-z0-9-]+)+(?:\/\S*)?)\s*/.ignoresCase()) {
+            let site = String(m.1)
+            openSite(site)
+            reply(say("\(site) is open beside the chat with your wallet: the site asks to connect first, and every signature shows here before it's made.",
+                      "\(site) открыт рядом с чатом, с кошельком: сайт сначала попросит подключиться, и каждую подпись ты увидишь до того, как она сделана."))
             return
         }
         // «what's new»: the version's stories over the window (WhatsNew.swift).

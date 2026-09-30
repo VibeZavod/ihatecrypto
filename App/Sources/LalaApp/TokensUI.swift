@@ -237,6 +237,7 @@ func tokenPrice(_ d: Decimal) -> String {
     while x < 1, x > 0, digits < 10 { x *= 10; digits += 1 }
     return "$" + Fmt.num(d, maxFraction: min(digits + 2, 12))
 }
+
 /// The rosette with a check: the real token, verified by a list that can't be faked by opening a pool (Jupiter's on
 /// Solana, Robinhood's registry for stock tokens, a market list elsewhere). Copies under the same name never get it.
 /// Blue like the verified marks people already know, so it reads at a glance.

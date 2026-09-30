@@ -140,6 +140,7 @@ public struct PnLCommand: Equatable, Sendable {
         return PnLCommand(period: period, coin: IntentParser.namedAsset(text, markets: markets))
     }
 }
+
 /// What a token bought in the app cost, for the P/L on its holding row: the average cost. A buy with USDC adds its
 /// tokens and dollars; a sale takes out the same share of both. Tokens that came some other way have no cost here and
 /// count for nothing in the P/L; a token with no known cost shows none.

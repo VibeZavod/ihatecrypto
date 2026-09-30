@@ -62,6 +62,8 @@ final class Browser {
     var host = ""
     /// The last page that failed to load, shown under the address bar.
     var loadError: String?
+    /// A host on MetaMask's phishing list that the browser refused to open (Phishing.swift).
+    var blocked: String?
     /// Origins the user connected in this session.
     private var connected: Set<String> = []
     private var connectedEVM: Set<String> = []
@@ -84,12 +86,29 @@ final class Browser {
         webView = WKWebView(frame: .zero, configuration: config)
         webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Safari/605.1.15"
         bridge.browser = self
+        Task { await PhishingList.shared.refresh() }
+    }
+
+    /// The open page's origin, as WebKit names it for the page's requests.
+    private var origin: String? {
+        URL(string: address).flatMap { u in u.host().map { "\(u.scheme ?? "https")://\($0)\(u.port.map { ":\($0)" } ?? "")" } }
+    }
+    /// The open site has the wallet (Solana or EVM) in this session.
+    var connectedHere: Bool { origin.map { connected.contains($0) || connectedEVM.contains($0) } ?? false }
+
+    /// Takes the wallet away from the open site and reloads it, so the page forgets the address too.
+    func disconnectHere() {
+        guard let origin else { return }
+        connected.remove(origin)
+        connectedEVM.remove(origin)
+        webView.reload()
     }
 
     func open(_ text: String) {
         var t = text.trimmingCharacters(in: .whitespaces)
         if !t.contains("://") { t = "https://" + t }
         guard let url = URL(string: t) else { return }
+        blocked = nil
         address = url.absoluteString
         if url.isFileURL { webView.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent()) }
         else { webView.load(URLRequest(url: url)) }
@@ -109,6 +128,9 @@ final class Browser {
         }
         guard let owner = workspace?.signerWallet?.solana else {
             throw SiteError("The ihatecrypto wallet isn't in secure storage: save the key via “Addresses from phrase…”.")
+        }
+        guard !PhishingList.shared.contains(host) else {
+            throw SiteError((method == "eth" ? "4100|" : "") + "\(host) is on MetaMask's list of phishing sites: ihatecrypto gives it no wallet.")
         }
         let site = SiteCheck.check(host: host)
         // A site's signature is a move of its own: its Touch ID doesn't carry over to the next request.
@@ -464,6 +486,15 @@ final class Browser {
             FileHandle.standardError.write(Data("LALA browser: \(browser?.loadError ?? "")\n".utf8))
         }
         func webView(_ webView: WKWebView, didCommit navigation: WKNavigation!) { browser?.pageChanged() }
+
+        /// A page on MetaMask's phishing list never loads: not by a link, a redirect or a new window.
+        func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction) async -> WKNavigationActionPolicy {
+            guard navigationAction.targetFrame?.isMainFrame != false, let host = navigationAction.request.url?.host(),
+                  PhishingList.shared.contains(host) else { return .allow }
+            browser?.blocked = host
+            FileHandle.standardError.write(Data("LALA browser: blocked \(host) (phishing list)\n".utf8))
+            return .cancel
+        }
     }
 
     func attachDelegate() { webView.navigationDelegate = bridge }
@@ -480,6 +511,8 @@ struct SiteError: LocalizedError {
 struct BrowserView: View {
     @Environment(Workspace.self) private var ws
     @State private var typed = ""
+    /// Its own window; false inside the panel on the canvas (WebPanel.swift).
+    var window = true
 
     var body: some View {
         let browser = ws.browser
@@ -493,16 +526,28 @@ struct BrowserView: View {
                     .padding(.horizontal, 12).padding(.vertical, 6)
                     .background(RoundedRectangle(cornerRadius: 8).fill(.fill.tertiary))
                     .onSubmit { browser.open(typed) }
+                if browser.connectedHere {
+                    Button { browser.disconnectHere() } label: { Label("Connected · Disconnect", systemImage: "link") }
+                        .buttonStyle(.plain).font(.ui(11, .semibold)).foregroundStyle(Brand.profit)
+                        .help("The site sees your wallet's address this session. Disconnect takes it away and reloads the page.")
+                }
                 Text(ws.signerWallet.map { "wallet \($0.solana.prefix(4))…\($0.solana.suffix(4))" } ?? "no key")
                     .font(.ui(10)).foregroundStyle(.secondary)
             }
             .padding(10)
+            if let host = browser.blocked {
+                Label("\(host) is on MetaMask's list of phishing sites, so ihatecrypto didn't open it and offers it no wallet. If you typed it, check the address letter by letter.",
+                      systemImage: "hand.raised.fill")
+                    .font(.ui(12, .semibold)).foregroundStyle(Brand.blockedInk)
+                    .frame(maxWidth: .infinity, alignment: .leading).padding(10)
+                    .background(Brand.blockedTint)
+            }
             if let error = browser.loadError {
                 Text(error).font(.ui(10)).foregroundStyle(.red).frame(maxWidth: .infinity, alignment: .leading).padding(.horizontal, 12).padding(.bottom, 6)
             }
             WebViewHost(webView: browser.webView)
         }
-        .frame(minWidth: 900, minHeight: 700)
+        .frame(minWidth: window ? 900 : nil, minHeight: window ? 700 : nil)
         .onAppear {
             browser.workspace = ws
             browser.attachDelegate()

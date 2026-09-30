@@ -155,6 +155,10 @@ struct StudioView: View {
     @AppStorage("chatY") private var chatY = 0.0
     /// The header's pull while the chat is being moved.
     @State private var moving: CGSize = .zero
+    /// Where the web panel was moved by its header, from its place beside the chat (both ≤ 0), and its pull.
+    @AppStorage("webX") private var webX = 0.0
+    @AppStorage("webY") private var webY = 0.0
+    @State private var webMoving: CGSize = .zero
     @AppStorage("railCollapsed") private var railCollapsed = true
     @State private var railFoldedForRoom = false
     /// Counts the orange waves around the window's edge (EdgePulse); each new value runs one.
@@ -212,9 +216,18 @@ struct StudioView: View {
                         // A page opened from a board or the chat: beside the docked chat, under the chat when it's moved.
                         if ws.showWeb {
                             let beside = docked ? width + 32 : 16
-                            WebPanel()
-                                .frame(width: min(760, max(380, (geo.size.width - beside) * 0.62)))
+                            let panelWidth = min(760, max(380, (geo.size.width - beside) * 0.62))
+                            // Moved by its header anywhere left of its place, never out of the canvas; home again within 40 pt.
+                            let webRoom = CGSize(width: max(0, geo.size.width - beside - panelWidth - 16), height: 0)
+                            WebPanel(drag: $webMoving, endDrag: { pull in
+                                let end = Self.clamp(CGSize(width: webX + pull.width, height: webY + pull.height), room: webRoom)
+                                webX = end.width > -40 ? 0 : end.width
+                                webY = 0
+                                webMoving = .zero
+                            }, dock: { webX = 0; webY = 0 })
+                                .frame(width: panelWidth)
                                 .frame(maxHeight: max(300, geo.size.height - 32))
+                                .offset(Self.clamp(CGSize(width: webX + webMoving.width, height: 0), room: webRoom))
                                 .padding(.top, 16).padding(.trailing, beside)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
                                 .transition(.opacity)
@@ -932,7 +945,7 @@ struct ProfileMenu: View {
             MenuRow(title: "Models and sign-ins", detail: "\(ws.provider.info.name) · \(ws.model)", icon: "sparkles") { go { ws.openSettings(.signIns) } }
             MenuRow(title: "Key and signing", detail: ws.signerWallet == nil ? "import a wallet" : "Touch ID, key in a separate process", icon: "key") { go { openWindow(id: "import") } }
             MenuRow(title: "Risk rules", detail: "at most \(Fmt.pct(ws.policy.maxRiskPct)) per trade", icon: "shield.lefthalf.filled") { go { ws.openSettings(.general) } }
-            MenuRow(title: "dApp browser", icon: "globe") { go { openWindow(id: "browser") } }
+            MenuRow(title: "dApp browser", icon: "globe") { go { ws.openSite(ws.browser.address) } }
             Divider().padding(.vertical, 4)
             if ws.signerWallet != nil {
                 MenuRow(title: "Lock — Touch ID again", detail: "the next signature asks; the trading key pauses", icon: "lock") {

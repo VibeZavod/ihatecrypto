@@ -303,6 +303,17 @@ private struct StubModel: LLMClient {
     #expect(SiteCheck.check(host: "") == .local)
 }
 
+@Test func phishingListBlocksADomainAndEverythingUnderIt() {
+    let blocked: Set = ["polymaraket.com", "evil.github.io"], allowed: Set = ["relay.walletconnect.org"]
+    #expect(SiteCheck.listed(host: "polymaraket.com", blocked: blocked, allowed: allowed))
+    #expect(SiteCheck.listed(host: "app.Polymaraket.com", blocked: blocked, allowed: allowed))
+    #expect(SiteCheck.listed(host: "evil.github.io", blocked: blocked, allowed: allowed))
+    #expect(!SiteCheck.listed(host: "github.io", blocked: blocked, allowed: allowed))   // not the domain above an entry
+    #expect(!SiteCheck.listed(host: "jup.ag", blocked: blocked, allowed: allowed))
+    #expect(!SiteCheck.listed(host: "relay.walletconnect.org", blocked: blocked.union(["walletconnect.org"]), allowed: allowed))
+    #expect(!SiteCheck.listed(host: "", blocked: blocked, allowed: allowed))
+}
+
 @Test func riskFollowedByACommaIsStillRead() throws {
     // Found live: «риск $1, стоп…» lost the risk because the comma looked like a decimal separator.
     #expect(IntentParser.apply("шорт нефти риск $1, стоп и тейк как учат", to: TradeIntent(), markets: ["xyz:CL", "ETH"])?.riskUSD == 1)

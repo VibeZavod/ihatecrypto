@@ -67,6 +67,7 @@ private let funding = [PnL.Funding(time: ago(10.2), coin: "xyz:CL", usdc: Decima
     let json = Data(#"[{"time":1790323200066,"delta":{"type":"funding","coin":"xyz:CL","usdc":"-0.000062","szi":"-0.369"}}]"#.utf8)
     #expect(TradeHistory.funding(json) == [PnL.Funding(time: Date(timeIntervalSince1970: 1_790_323_200.066), coin: "xyz:CL", usdc: Decimal(string: "-0.000062")!)])
 }
+
 @Test func spotCostIsTheAverageAndASaleTakesItsShare() throws {
     var basis = CostBasis()
     basis.bought(100, for: 10)   // $0.10 each

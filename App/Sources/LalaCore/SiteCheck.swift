@@ -17,6 +17,14 @@ public enum SiteCheck {
         return .unknown
     }
 
+    /// On MetaMask's phishing list (eth-phishing-detect): the host or any domain above it is blocked, unless the list's
+    /// allowlist names one of them («evil.github.io» is blocked by its own entry, not by github.io).
+    public static func listed(host: String, blocked: Set<String>, allowed: Set<String>) -> Bool {
+        let parts = host.lowercased().split(separator: ".")
+        let domains = (0..<max(parts.count - 1, 0)).map { parts[$0...].joined(separator: ".") }
+        return !domains.contains(where: allowed.contains) && domains.contains(where: blocked.contains)
+    }
+
     static func distance(_ a: String, _ b: String) -> Int {
         let a = Array(a), b = Array(b)
         var row = Array(0...b.count)
