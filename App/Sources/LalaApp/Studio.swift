@@ -2425,9 +2425,10 @@ private struct ChatComposer: View {
 struct ChatModelMenu: View {
     @Environment(Workspace.self) private var ws
     @State private var open = false
-    /// The two-way company standing open: the current one's when the menu opens, else the first.
-    // ponytail: equal height holds while every multi-way company has exactly two ways.
-    @State private var expanded: String?
+    /// The company whose ways in and models the right column shows: the one in use when the menu opens.
+    @State private var shown: String?
+    /// The companies' column height; the right column scrolls within it, so the menu never changes size.
+    @State private var listHeight: CGFloat = 420
     /// When the popover last closed: a click on the chip closes it first, and the same click must not reopen it.
     @State private var closedAt = Date.distantPast
     /// Providers with a saved login, read once per opening: each Keychain read is a round trip to securityd.
@@ -2438,8 +2439,7 @@ struct ChatModelMenu: View {
             if open { open = false; return }
             guard Date.now.timeIntervalSince(closedAt) > 0.3 else { return }
             linked = Set(LLMCatalog.all.map(\.info.id).filter { Keychain.load($0) != nil })
-            let twoWay = ModelCompany.all.filter { $0.ids.count > 1 }
-            expanded = (twoWay.first { $0.ids.contains(ws.providerID) } ?? twoWay.first)?.name
+            shown = (ModelCompany.of(ws.providerID) ?? ModelCompany.all.first)?.name
             open = true
         } label: {
             // A chip above the chat's field, next to the networks.
@@ -2470,10 +2470,25 @@ struct ChatModelMenu: View {
 
     private var menu: some View {
         VStack(alignment: .leading, spacing: 2) {
-            caption("MODEL FOR THIS CANVAS")
-            ForEach(ModelCompany.all.filter { !$0.local }) { company($0) }
-            caption("ON THIS MAC · NO INTERNET").padding(.top, 6)
-            ForEach(ModelCompany.all.filter(\.local)) { company($0) }
+            // Two columns, so nothing opens between the rows and nothing moves under the pointer: the companies on the
+            // left, the chosen one's ways in and models on the right.
+            HStack(alignment: .top, spacing: 8) {
+                VStack(alignment: .leading, spacing: 2) {
+                    caption("MODEL FOR THIS CANVAS")
+                    ForEach(ModelCompany.all.filter { !$0.local }) { companyRow($0) }
+                    caption("ON THIS MAC · NO INTERNET").padding(.top, 6)
+                    ForEach(ModelCompany.all.filter(\.local)) { companyRow($0) }
+                }
+                .frame(width: 230)
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { listHeight = $0 }
+                Divider()
+                ScrollView {
+                    if let c = ModelCompany.all.first(where: { $0.name == shown }) {
+                        ways(c).id(c.name).transition(.opacity)
+                    }
+                }
+                .frame(width: 260, height: listHeight)
+            }
             Divider().padding(.vertical, 4)
             HStack {
                 Label("The model never sees your wallet key.", systemImage: "lock.shield").font(.ui(10)).foregroundStyle(.secondary)
@@ -2487,7 +2502,6 @@ struct ChatModelMenu: View {
             .padding(.horizontal, 10).padding(.bottom, 4)
         }
         .padding(8)
-        .frame(width: 340)
     }
 
     private func caption(_ text: String) -> some View {
@@ -2495,59 +2509,75 @@ struct ChatModelMenu: View {
             .padding(.horizontal, 10).padding(.top, 6).padding(.bottom, 4)
     }
 
-    /// A company's row; a tap opens its ways in (closing the open one), or picks its only way.
-    @ViewBuilder private func company(_ c: ModelCompany) -> some View {
+    /// A company on the left: a tap shows its ways in on the right; nothing is picked until a model is.
+    private func companyRow(_ c: ModelCompany) -> some View {
         let ways = c.ids.compactMap { LLMCatalog.provider(id: $0)?.info }
         let current = ways.first { $0.id == ws.providerID }
-        let isOpen = ways.count > 1 && expanded == c.name
-        CompanyRow(company: c, detail: summary(ways, current: isOpen ? nil : current), current: current != nil,
-                   disclosure: ways.count > 1 ? isOpen : nil) {
-            if ways.count > 1 { expanded = c.name } else if let only = ways.first { pick(only) }
-        }
-        if ways.count == 1, let only = ways.first { models(only).padding(.leading, 26) }
-        if isOpen {
-            ForEach(ways) { info in
-                MenuRow(title: info.name, detail: info.unavailable == nil ? detail(info) : "not open to apps yet — use the API key",
-                        icon: info.kind == .subscription ? "person.crop.circle" : "key", checked: info.id == ws.providerID) { pick(info) }
-                    .disabled(info.unavailable != nil)
-                    .opacity(info.unavailable != nil ? 0.5 : 1)
-                    .help(info.unavailable ?? info.note)
-                    .padding(.leading, 26)
-                models(info).padding(.leading, 52)
-            }
+        return CompanyRow(company: c, detail: summary(ways, current: current), current: current != nil, selected: shown == c.name) {
+            withAnimation(.easeOut(duration: 0.12)) { shown = c.name }
         }
     }
 
-    /// Under the way in that's in use: its models, the one in use checked; a pick switches this canvas to it.
-    @ViewBuilder private func models(_ info: ProviderInfo) -> some View {
-        if info.id == ws.providerID, connected(info) {
-            let current = ws.modelChoices[info.id] ?? info.defaultModel
-            // A model typed in Settings stays listed while it's in use.
-            let checked = ws.liveModels[info.id] ?? info.models
-            // A model typed in Settings goes last, so the listed ones keep their places.
-            let list = checked.contains(current) || current.isEmpty ? checked : checked + [current]
+    /// The company's ways in, each with its models. Only the model in use is checked.
+    private func ways(_ c: ModelCompany) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            caption(c.name.uppercased())
+            ForEach(c.ids.compactMap { LLMCatalog.provider(id: $0)?.info }) { way($0) }
+        }
+    }
+
+    @ViewBuilder private func way(_ info: ProviderInfo) -> some View {
+        let icon = info.kind == .subscription ? "person.crop.circle" : info.kind == .local ? "desktopcomputer" : "key"
+        let list = connected(info) && info.unavailable == nil ? models(info) : []
+        if list.isEmpty {
+            // Nothing to choose inside it: the way in is the choice, or its sign-in.
+            MenuRow(title: info.name, detail: info.unavailable == nil ? detail(info) : "not open to apps yet — use the API key",
+                    icon: icon, checked: info.id == ws.providerID) { pick(info) }
+                .disabled(info.unavailable != nil)
+                .opacity(info.unavailable != nil ? 0.5 : 1)
+                .help(info.unavailable ?? info.note)
+        } else {
+            HStack(spacing: 10) {
+                Image(systemName: icon).frame(width: 18)
+                Text(info.name).font(.ui(11, .semibold))
+                Spacer(minLength: 8)
+                Text(info.kind == .local ? "on this Mac" : "connected").font(.ui(10))
+            }
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 2)
+            .help(info.note)
             ForEach(list, id: \.self) { id in
                 MenuRow(title: LLMCatalog.displayName(model: id), detail: id == info.defaultModel ? "recommended" : nil,
-                        checked: id == current) {
-                    ws.model = id
-                    ws.saveCanvas()
-                    open = false
-                }
-                .help(id)
+                        checked: info.id == ws.providerID && id == chosen(info)) { pick(info, model: id) }
+                    .padding(.leading, 28)
+                    .help(id)
             }
         }
     }
 
-    /// Under the company: what's in use, or else the ways in.
+    /// A way's models: the live list for a subscription, else the checked one. A model typed in Settings goes last,
+    /// so the listed ones keep their places.
+    private func models(_ info: ProviderInfo) -> [String] {
+        let chosen = chosen(info), listed = ws.liveModels[info.id] ?? info.models
+        return listed.contains(chosen) || chosen.isEmpty ? listed : listed + [chosen]
+    }
+
+    private func chosen(_ info: ProviderInfo) -> String { ws.modelChoices[info.id] ?? info.defaultModel }
+
+    /// Under the company: the model in use, or else how to get in.
     private func summary(_ ways: [ProviderInfo], current: ProviderInfo?) -> String {
+        if let current {
+            let model = chosen(current)
+            return (model.isEmpty ? current.name : LLMCatalog.displayName(model: model)) + " · in use"
+        }
         if ways.count == 1, let only = ways.first { return detail(only) }
-        if let current { return "\(current.kind == .subscription ? "Subscription" : "API key") · \(detail(current))" }
         return ways.filter { $0.unavailable == nil }.map { $0.kind == .subscription ? "Subscription" : "API key" }
             .joined(separator: " or ")
     }
 
-    private func pick(_ info: ProviderInfo) {
+    private func pick(_ info: ProviderInfo, model: String? = nil) {
         ws.providerID = info.id
+        if let model { ws.model = model }
         ws.saveCanvas()
         open = false
         if !connected(info) { ws.openSettings(.signIns) }
@@ -2556,7 +2586,7 @@ struct ChatModelMenu: View {
     private func connected(_ info: ProviderInfo) -> Bool { info.kind == .local || linked.contains(info.id) }
 
     private func detail(_ info: ProviderInfo) -> String {
-        let model = ws.modelChoices[info.id] ?? info.defaultModel
+        let model = chosen(info)
         let state = info.kind == .local ? "on this Mac" : connected(info) ? "connected" : "sign-in needed"
         let shown = info.takesKey && !connected(info) ? "any model by key" : model.isEmpty ? "" : LLMCatalog.displayName(model: model)
         return [shown, state].filter { !$0.isEmpty }.joined(separator: " · ")
@@ -2622,9 +2652,10 @@ struct ModelCompanyLogo: View {
 private struct CompanyRow: View {
     let company: ModelCompany
     let detail: String
+    /// The model in use is this company's.
     let current: Bool
-    /// Open or closed for a company with several ways in; nil when a tap picks it.
-    let disclosure: Bool?
+    /// Its ways in are the ones on the right.
+    let selected: Bool
     let action: () -> Void
     @State private var hover = false
 
@@ -2634,19 +2665,14 @@ private struct CompanyRow: View {
                 ModelCompanyLogo(company: company)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(company.name).font(.ui(13, .semibold))
-                    Text(detail).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
+                    Text(detail).font(.ui(10)).foregroundStyle(current ? AnyShapeStyle(Brand.accentInk) : AnyShapeStyle(.secondary)).lineLimit(1)
                 }
                 Spacer(minLength: 8)
-                if let disclosure {
-                    Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary)
-                        .rotationEffect(.degrees(disclosure ? 90 : 0))
-                } else if current {
-                    Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Brand.accentInk)
-                }
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold))
+                    .foregroundStyle(selected ? .secondary : .tertiary)
             }
             .padding(.horizontal, 8).padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 10).fill(
-                current && disclosure != true ? Brand.accent.opacity(0.09) : hover ? Color.primary.opacity(0.06) : .clear))
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(selected ? 0.08 : hover ? 0.05 : 0)))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

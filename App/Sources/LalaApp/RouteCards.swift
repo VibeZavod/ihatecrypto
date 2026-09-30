@@ -1116,9 +1116,6 @@ struct StepDetails: View {
                     .buttonStyle(.hoverIcon).help("Step \((index + 1) % count + 1)")
                     .keyboardShortcut(keys ? KeyboardShortcut(.rightArrow, modifiers: []) : nil)
             }
-            Button(action: close) { Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).frame(width: 30, height: 30) }
-                .buttonStyle(.hoverIcon).help("Close")
-                .keyboardShortcut(.cancelAction)
         }
     }
 
@@ -1205,10 +1202,11 @@ struct StepDetails: View {
             .help("Attaches this step to your next message")
             Spacer()
             if pending != nil {
-                Button("Cancel", action: close).buttonStyle(.bordered).controlSize(.large)
+                // Esc too: the corner ✕ went, these close it.
+                Button("Cancel", action: close).buttonStyle(.bordered).controlSize(.large).keyboardShortcut(.cancelAction)
                 Button("Save", action: save).buttonStyle(.borderedProminent).controlSize(.large).disabled(ws.busy)
             } else {
-                Button("Close", action: close).buttonStyle(.bordered).controlSize(.large)
+                Button("Close", action: close).buttonStyle(.bordered).controlSize(.large).keyboardShortcut(.cancelAction)
             }
         }
     }
