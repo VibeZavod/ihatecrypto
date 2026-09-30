@@ -166,6 +166,12 @@ private struct WalletMenu: View {
                     close(); openWindow(id: "import")
                 }
             }
+            if !ws.wallets.contains(where: \.isAutomation), !ws.wallets.isEmpty {
+                MenuRow(title: "New automation wallet…", detail: "scheduled tasks spend from it · no Touch ID", icon: "clock.arrow.circlepath") {
+                    close()
+                    Task { await ws.createAutomationWallet() }
+                }
+            }
             MenuRow(title: "Manage wallets…", detail: "create, import, remove", icon: "key") { close(); openWindow(id: "import") }
             Text("Switching asks for Touch ID. A test wallet signs its moves without it — Claude can test with it; keep only a few dollars there.")
                 .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 10).padding(.top, 4)
@@ -179,8 +185,8 @@ private struct WalletMenu: View {
         return HStack(spacing: 10) {
             Group {
                 if w.kind == "ledger" { LedgerGlyph(size: 16) } else {
-                    Image(systemName: w.isTest ? "flask.fill" : "lock.fill").font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(w.isTest ? Color.orange : Color.secondary)
+                    Image(systemName: w.isTest ? "flask.fill" : w.isAutomation ? "clock.arrow.circlepath" : "lock.fill").font(.system(size: 12, weight: .semibold))
+                        .foregroundStyle(w.isTest || w.isAutomation ? Color.orange : Color.secondary)
                 }
             }
             .frame(width: 18)
@@ -190,7 +196,7 @@ private struct WalletMenu: View {
                 } else {
                     Text(w.label).font(.ui(13, .semibold))
                 }
-                Text((w.kind == "ledger" ? "On the device · " : w.isTest ? "Test · no Touch ID · " : "Touch ID · ") + short(w)).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
+                Text((w.kind == "ledger" ? "On the device · " : w.isTest ? "Test · no Touch ID · " : w.isAutomation ? "Scheduled tasks · no Touch ID · " : "Touch ID · ") + short(w)).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
             if active { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Brand.accentInk) }

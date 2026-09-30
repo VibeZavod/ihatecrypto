@@ -1,4 +1,5 @@
 import LalaCore
+import SignerAPI
 import SwiftUI
 
 extension Workspace {
@@ -23,6 +24,7 @@ extension Workspace {
                 return
             }
             var alert = PriceAlert(coin: coin, above: up, price: price, steps: steps.isEmpty ? nil : steps)
+            if SignerClient.untrusted { alert.untrusted = true }
             // «add it to the plan»: a step that is this canvas's plan (its market and side) ties the alert to the plan.
             // It becomes the plan's first step, one per plan: a new level replaces the old.
             let tied = intent != TradeIntent() && !managesPosition && steps.contains { planStep($0).map { $0.asset == intent.asset && $0.side == intent.side } == true }
@@ -85,7 +87,9 @@ extension Workspace {
                 }
                 let because = say("\(IntentParser.pretty(a.coin)) went \(a.above ? "above" : "below") \(Fmt.price(a.price))",
                                   "\(IntentParser.pretty(a.coin)) \(a.above ? "выше" : "ниже") \(Fmt.price(a.price))")
-                tasks.append(ScheduledTask(steps: steps, next: Date(), every: nil, because: because))
+                var task = ScheduledTask(steps: steps, next: Date(), every: nil, because: because)
+                task.untrusted = a.untrusted
+                tasks.append(task)
                 continue
             }
             let text = say("\(IntentParser.pretty(a.coin)) is \(a.above ? "above" : "below") \(Fmt.price(a.price)): now \(Fmt.price(mark)).",

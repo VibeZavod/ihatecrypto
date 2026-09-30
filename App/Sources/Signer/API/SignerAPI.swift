@@ -86,6 +86,13 @@ public enum SignerRequest: Codable, Sendable {
     /// DeleteAccount of the wallet's NEAR account into `beneficiary` (one of `recipients`), after a Touch ID prompt that
     /// says so in plain words.
     case signNearDeleteAccount(beneficiary: String, recipients: [String], nonce: UInt64, blockHash: Data)
+    /// A new automation wallet (one at most, next to a Touch ID one): a phrase made here that signs without Touch ID,
+    /// for the budget of scheduled tasks. Asks for Touch ID first; the wallet that signs stays the same.
+    case createAutomationWallet
+    /// `request` signed by the automation wallet `id` while another wallet stays active: a scheduled task's move.
+    /// Only a money move's signature passes (no wallet changes, no site messages), with the same guard, and «our
+    /// addresses» and the approved ones are that wallet's own.
+    indirect case asWallet(id: String, request: SignerRequest)
 }
 
 /// One wallet the signer holds, public parts only: its name, what it can sign for, its addresses.
@@ -100,12 +107,16 @@ public struct SignerWallet: Codable, Sendable, Equatable, Identifiable {
     /// A test wallet: made fresh in the app for small amounts, it signs without Touch ID (nil in older registries: no).
     /// Only it may sign what came through the local debug API.
     public var test: Bool?
+    /// The automation wallet: made fresh in the app for scheduled tasks' budget, it signs without Touch ID, and only
+    /// what a task asks for by its id (`SignerRequest.asWallet`), never from the debug API. It isn't a test wallet.
+    public var automation: Bool?
 
-    public init(id: String, label: String, kind: String, solana: String?, evm: String?, near: String?, test: Bool? = nil) {
-        (self.id, self.label, self.kind, self.solana, self.evm, self.near, self.test) = (id, label, kind, solana, evm, near, test)
+    public init(id: String, label: String, kind: String, solana: String?, evm: String?, near: String?, test: Bool? = nil, automation: Bool? = nil) {
+        (self.id, self.label, self.kind, self.solana, self.evm, self.near, self.test, self.automation) = (id, label, kind, solana, evm, near, test, automation)
     }
 
     public var isTest: Bool { test == true }
+    public var isAutomation: Bool { automation == true }
 
     /// Wallet «1» is the one LALA held before several wallets: its Keychain items keep their old names.
     public static let firstID = "1"

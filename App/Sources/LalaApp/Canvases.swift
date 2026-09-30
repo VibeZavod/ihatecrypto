@@ -1711,7 +1711,8 @@ extension Workspace {
             reply(say(question, "Сколько? Напиши число.") + amountHint(command), note: note)
             return
         }
-        if let why = refusalBeforeCard(command) { reply(why, note: note); return }
+        // It reads the active wallet's balances: a task on the automation wallet leaves the check to the move itself.
+        if TaskRun.automation == nil, let why = refusalBeforeCard(command) { reply(why, note: note); return }
         switch command {
         case .yields, .allocate, .rebalance, .schedule, .stopSchedules:
             // Read-only, or with a board and a step of their own.

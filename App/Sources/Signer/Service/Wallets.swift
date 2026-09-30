@@ -22,7 +22,12 @@ enum Wallets {
 
     static func save(_ list: [SignerWallet]) { defaults.set(try? JSONEncoder().encode(list), forKey: "wallets") }
 
+    /// The automation wallet for one request (Signer.handle's `.asWallet`): while it's set, the key, «our addresses»,
+    /// the approved addresses and every per-wallet name follow it instead of the active wallet.
+    @TaskLocal static var signing: SignerWallet?
+
     static var active: SignerWallet? {
+        if let signing { return signing }
         let list = all
         return list.first { $0.id == defaults.string(forKey: "activeWallet") } ?? list.first
     }

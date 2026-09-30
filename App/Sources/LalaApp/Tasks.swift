@@ -1,7 +1,14 @@
 import AppKit
 import LalaCore
+import SignerAPI
 import SwiftUI
 import WalletCore
+
+/// The automation wallet a scheduled task is running on, for the moves inside that run only (`executor` picks it up):
+/// a Confirm pressed meanwhile in the window is another task and still signs with the active wallet.
+nonisolated enum TaskRun {
+    @TaskLocal static var automation: SignerWallet?
+}
 
 // Scheduled tasks («in 1 week: rebalance USDC», «every day at 09:00: sell SOL then lend USDC» — ScheduledTask) and
 // Settings › General › Keep running, which keeps the app up so they run.
@@ -14,12 +21,18 @@ extension Workspace {
                       "Запланировать могу, но «\(unknown)» ihatecrypto пока не умеет — ничего не запланировано."), note: note)
             return
         }
+        var task = task
+        if SignerClient.untrusted { task.untrusted = true }
         tasks.append(task)
         // The Schedule canvas shows it in detail: the chat keeps one line.
         scheduleItem = "task:\(task.id)"
         showSchedule = true
         let what = task.steps.joined(separator: say(", then ", ", потом "))
-        reply(say("Scheduled: \(what) — \(task.when). It’s on the canvas.", "Запланировано: \(what) — \(task.when). Это на канвасе."), note: note)
+        let how = wallets.contains(where: \.isAutomation) && task.untrusted != true
+            ? say(" Its moves run by themselves from the automation wallet, no Touch ID.", " Движения пойдут сами с кошелька автоматизации, без Touch ID.")
+            : say(" Its moves will wait for your Confirm; to run them by themselves, say «create an automation wallet».",
+                  " Движения будут ждать твоего Confirm; чтобы шли сами, скажи «создай кошелёк автоматизации».")
+        reply(say("Scheduled: \(what) — \(task.when). It’s on the canvas.", "Запланировано: \(what) — \(task.when). Это на канвасе.") + how, note: note)
     }
 
     func cancelTasks(note: String? = nil) {
@@ -52,7 +65,11 @@ extension Workspace {
         messages.append(Message(fromUser: true, text: request))
         beginActivity(.request, request: request, schedule: "task:\(task.id)")
         let run = currentActivity
-        await runSteps(task.steps)
+        // With an automation wallet the task's moves go through at once from it, without Touch ID — never one typed
+        // through the debug API. Without one, each move waits on its canvas for Confirm.
+        let automation = task.untrusted == true ? nil : wallets.first(where: \.isAutomation)
+        if let automation { reply(say("From the automation wallet «\(automation.label)», no Touch ID.", "С кошелька автоматизации «\(automation.label)», без Touch ID.")) }
+        await TaskRun.$automation.withValue(automation) { await runSteps(task.steps, confirmed: automation != nil) }
         // The Schedule canvas opens the canvas it ran on (saved by now).
         if let i = activities.lastIndex(where: { $0.id == run }) { activities[i].canvas = canvasID }
         // A trade plan waits for Execute the way a move waits for Confirm; one a rule stops needs the user just as much.
@@ -131,6 +148,35 @@ extension Workspace {
         taskQueue = nil
         guard q.canvas == canvasID, finishedAction?.outcome.ok == true, Date().timeIntervalSince(q.since) < 1800 else { return }
         Task { await runSteps(q.steps, confirmed: true) }
+    }
+}
+
+extension Workspace {
+    /// «create an automation wallet»: a wallet the signer makes (Touch ID first) that signs scheduled tasks' moves
+    /// without Touch ID. The active wallet stays; «Automation» goes into Addresses (Solana and Base) so «send 20 USDC
+    /// to Automation» tops it up — the signer asks Touch ID for that new address once, with the address on the prompt.
+    func createAutomationWallet(note: String? = nil) async {
+        do {
+            let r = try await SignerClient().send(.createAutomationWallet)
+            guard r.ok, let w = r.wallets?.first(where: \.isAutomation) else { throw WalletError(r.error ?? "The signer refused.") }
+            await loadSigner()
+            for (address, network) in [(w.solana, AddressCheck.Network.solana), (w.evm, .base)] {
+                guard let address, !addressBook.contains(where: { $0.address == address && $0.network == network }) else { continue }
+                addressBook.append(SavedAddress(name: w.label, address: address, network: network, category: "Your wallet",
+                                                icon: .symbol("clock.arrow.circlepath"), source: "signer"))
+            }
+            reply(say("The automation wallet is made: scheduled tasks now spend only from it, without Touch ID. Put their budget on it — "
+                      + "keep only that there; if this Mac's keychain is lost, so is what's on it.",
+                      "Кошелёк автоматизации создан: задачи по расписанию тратят только с него, без Touch ID. Положи туда их бюджет — "
+                      + "и только его: если связка ключей этого Мака пропадёт, пропадёт и то, что на нём."), note: note)
+            nextSteps = NextSteps(options: [
+                ChatRouter.Option(title: say("Top up 20 USDC", "Пополнить на 20 USDC"),
+                                  comment: say("From your wallet on Solana: Touch ID once for the new address.", "С твоего кошелька на Solana: Touch ID один раз на новый адрес."),
+                                  command: "send 20 USDC to \(w.label)", recommended: true),
+            ], userText: "", found: [], canvas: canvasID)
+        } catch {
+            reply(say("No automation wallet: ", "Кошелёк автоматизации не создан: ") + error.localizedDescription, note: note)
+        }
     }
 }
 

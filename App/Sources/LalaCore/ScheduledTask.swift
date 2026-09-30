@@ -11,6 +11,9 @@ public struct ScheduledTask: Codable, Equatable, Sendable, Identifiable {
     public var every: Every?
     /// What started it when the clock didn't: «ETH went below 2,680» for a price alert's steps.
     public var because: String?
+    /// Made through the local debug API, not by the user in the window: it never runs on the automation wallet by
+    /// itself, its moves wait for Confirm.
+    public var untrusted: Bool?
 
     public enum Every: Codable, Equatable, Sendable {
         case hours(Int), days(Int), months(Int)

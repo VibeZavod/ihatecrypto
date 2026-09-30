@@ -69,3 +69,25 @@ private let rfcPublic = Data(hex: "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62
     let round = try JSONDecoder().decode(SignerWallet.self, from: JSONEncoder().encode(test))
     #expect(round.isTest && round == test)
 }
+
+@Test func theAutomationWalletIsNeverReachedFromTheDebugAPI() async throws {
+    // Old registries and test wallets aren't automation wallets; the flag survives the registry's JSON.
+    let auto = SignerWallet(id: "a1", label: "Automation", kind: "phrase", solana: "S3", evm: "E3", near: nil, automation: true)
+    let round = try JSONDecoder().decode(SignerWallet.self, from: JSONEncoder().encode(auto))
+    #expect(round.isAutomation && !round.isTest && round == auto)
+    // A task's signature travels wrapped with the wallet's id, whole.
+    let wrapped = SignerRequest.asWallet(id: "a1", request: .signEVMTransaction(chainId: 8453, nonce: 1, maxPriorityFee: 1, maxFee: 2, gasLimit: 21_000,
+                                                                                  to: "0x0", value: 0, data: Data(), recipients: []))
+    guard case .asWallet("a1", .signEVMTransaction(8453, 1, _, _, _, _, _, _, _)) = try JSONDecoder().decode(SignerRequest.self, from: JSONEncoder().encode(wrapped)) else {
+        Issue.record("asWallet didn't round-trip"); return
+    }
+    // What came through the debug API can neither make the automation wallet nor sign with it: refused before the signer is asked.
+    for request in [SignerRequest.createAutomationWallet, wrapped] {
+        do {
+            _ = try await SignerClient.$untrusted.withValue(true) { try await SignerClient().send(request) }
+            Issue.record("the debug API reached the signer")
+        } catch let e as WalletError {
+            #expect(e.message.contains("debug API"), "refused by the gate, not by a missing signer: \(e.message)")
+        }
+    }
+}

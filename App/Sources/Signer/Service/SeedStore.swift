@@ -132,11 +132,14 @@ enum SeedStore {
     }
     private static let lock = NSLock()
 
-    static func load(reason: String, id: String) throws -> Data {
+    /// `session: false` — a key sealed without Touch ID (the automation wallet's) opens on a context of its own: it
+    /// neither reuses the Touch ID session nor leaves its reason on it for the next prompt.
+    static func load(reason: String, id: String, session useSession: Bool = true) throws -> Data {
         let context: LAContext = lock.withLock {
-            if let s = session, Date().timeIntervalSince(s.since) < TimeInterval(sessionLength) { return s.context }
             let fresh = LAContext()
             fresh.localizedReason = reason
+            guard useSession else { return fresh }
+            if let s = session, Date().timeIntervalSince(s.since) < TimeInterval(sessionLength) { return s.context }
             session = (fresh, Date())
             return fresh
         }
@@ -161,7 +164,7 @@ enum SeedStore {
             guard id == SignerWallet.firstID, let seed = read(legacyAccount, context: context) else { throw WalletError("No wallet imported.") }
             return seed
         } catch {
-            lock.withLock { session = nil } // a cancelled or failed prompt must not be reused
+            if useSession { lock.withLock { session = nil } } // a cancelled or failed prompt must not be reused
             throw error
         }
     }

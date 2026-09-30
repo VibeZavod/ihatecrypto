@@ -144,7 +144,8 @@ public enum ChatRouter {
       (at: no side said, «алерт на 2600» — ihatecrypto picks it from the price)
       chart token <CONTRACT or MINT> on <solana|robinhood|base|arbitrum|ethereum>   (any token's card: price chart, market cap, liquidity, volume, links)
     P/L: profit and loss [today|week|month|all] [for <ASSET>]   (how much they made or lost, on trading and on the whole portfolio)
-    APP: new canvas | clear the plan | lock
+    APP: new canvas | clear the plan | lock | create an automation wallet   (a wallet without Touch ID that scheduled tasks spend from by
+      themselves: «создай кошелёк автоматизации», «чтобы расписание работало без пальца»)
     FOLDERS: save this canvas to folder <NAME> | write to folder <NAME>: <TEXT>   (a folder in the sidebar; a new name makes it;
       «сохрани в папку Ресерч», «запиши в папку Идеи: …» — the text kept whole as a note there)
     NOW, IN STEPS (what no single form does, built from the forms above, up to 5): COMMAND then COMMAND [then COMMAND…]

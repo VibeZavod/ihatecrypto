@@ -1086,6 +1086,9 @@ final class Workspace {
         case "lock":
             await lockSigner()
             return true
+        case "create an automation wallet":
+            await createAutomationWallet(note: note)
+            return true
         default: break
         }
         if let command = TokenCommand.parse(canonical) {

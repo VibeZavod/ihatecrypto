@@ -14,6 +14,8 @@ public struct PriceAlert: Codable, Equatable, Sendable, Identifiable {
     /// The canvas whose trade plan it prepares: drawn as that plan's first step, and when it fires it prepares the plan
     /// as it is on that canvas then, edits included (`steps` holds it as it was when set).
     public var plan: UUID?
+    /// Set through the local debug API: its steps never run on the automation wallet by themselves (ScheduledTask).
+    public var untrusted: Bool?
 
     public init(coin: String, above: Bool, price: Decimal, steps: [String]? = nil) {
         self.coin = coin

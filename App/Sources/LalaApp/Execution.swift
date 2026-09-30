@@ -24,6 +24,13 @@ final class SignerActivity {
 }
 
 nonisolated struct XPCTradeSigner: TradeSigner {
+    /// The automation wallet's id while a scheduled task runs on it (TaskRun): every signature is asked of it by id.
+    var asWallet: String?
+
+    private func send(_ request: SignerRequest) async throws -> SignerReply {
+        try await SignerClient().send(asWallet.map { .asWallet(id: $0, request: request) } ?? request)
+    }
+
     /// Counts the signature while the signer has it: Touch ID or the password may be up, and the canvas says so.
     private static func signing<T: Sendable>(_ body: () async throws -> T) async throws -> T {
         await MainActor.run { SignerActivity.shared.waiting += 1 }
@@ -32,51 +39,51 @@ nonisolated struct XPCTradeSigner: TradeSigner {
     }
 
     func signSolana(_ wire: Data, accounts: [String], recipients: [String], tokenOwners: [String: String]) async throws -> Data {
-        let reply = try await Self.signing { try await SignerClient().send(.signSolana(wire: wire, accounts: accounts, recipients: recipients, tokenOwners: tokenOwners)) }
+        let reply = try await Self.signing { try await send(.signSolana(wire: wire, accounts: accounts, recipients: recipients, tokenOwners: tokenOwners)) }
         guard reply.ok, let signed = reply.signedWire else { throw ExecutionError(Self.reason(reply)) }
         return signed
     }
 
     func signHyperliquid(_ action: MsgPack, nonce: UInt64) async throws -> EVMSignature {
-        let reply = try await Self.signing { try await SignerClient().send(.signHyperliquidL1(action: action, nonce: nonce, mainnet: true)) }
+        let reply = try await Self.signing { try await send(.signHyperliquidL1(action: action, nonce: nonce, mainnet: true)) }
         guard reply.ok, let signature = reply.signature else { throw ExecutionError(Self.reason(reply)) }
         return signature
     }
 
     func signHyperliquidUser(_ action: MsgPack, recipients: [String]) async throws -> EVMSignature {
-        let reply = try await Self.signing { try await SignerClient().send(.signHyperliquidUser(action: action, mainnet: true, recipients: recipients)) }
+        let reply = try await Self.signing { try await send(.signHyperliquidUser(action: action, mainnet: true, recipients: recipients)) }
         guard reply.ok, let signature = reply.signature else { throw ExecutionError(Self.reason(reply)) }
         return signature
     }
 
     func signRelayMapping(wallet: String, depositor: String, id: Data, nonce: UInt64) async throws -> EVMSignature {
-        let reply = try await Self.signing { try await SignerClient().send(.signRelayNonceMapping(wallet: wallet, depositor: depositor, id: id, nonce: nonce)) }
+        let reply = try await Self.signing { try await send(.signRelayNonceMapping(wallet: wallet, depositor: depositor, id: id, nonce: nonce)) }
         guard reply.ok, let signature = reply.signature else { throw ExecutionError(Self.reason(reply)) }
         return signature
     }
 
     func signEVM(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                  to: String, data: Data, recipients: [String]) async throws -> Data {
-        let reply = try await Self.signing { try await SignerClient().send(.signEVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFee: maxPriorityFee, maxFee: maxFee,
+        let reply = try await Self.signing { try await send(.signEVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFee: maxPriorityFee, maxFee: maxFee,
                                                                       gasLimit: gasLimit, to: to, value: 0, data: data, recipients: recipients)) }
         guard reply.ok, let raw = reply.signedRaw else { throw ExecutionError(Self.reason(reply)) }
         return raw
     }
 
     func signNearIntentDeposit(amount: UInt128, depositAddress: String, nonce: UInt64, blockHash: Data) async throws -> Data {
-        let reply = try await Self.signing { try await SignerClient().send(.signNearIntentDeposit(amount: "\(amount)", depositAddress: depositAddress, nonce: nonce, blockHash: blockHash)) }
+        let reply = try await Self.signing { try await send(.signNearIntentDeposit(amount: "\(amount)", depositAddress: depositAddress, nonce: nonce, blockHash: blockHash)) }
         guard reply.ok, let raw = reply.signedRaw else { throw ExecutionError(Self.reason(reply)) }
         return raw
     }
 
     func signNearTransfer(amount: UInt128, receiver: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data {
-        let reply = try await Self.signing { try await SignerClient().send(.signNearTransfer(amount: "\(amount)", receiver: receiver, recipients: recipients, nonce: nonce, blockHash: blockHash)) }
+        let reply = try await Self.signing { try await send(.signNearTransfer(amount: "\(amount)", receiver: receiver, recipients: recipients, nonce: nonce, blockHash: blockHash)) }
         guard reply.ok, let raw = reply.signedRaw else { throw ExecutionError(Self.reason(reply)) }
         return raw
     }
 
     func signNearDeleteAccount(beneficiary: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data {
-        let reply = try await Self.signing { try await SignerClient().send(.signNearDeleteAccount(beneficiary: beneficiary, recipients: recipients, nonce: nonce, blockHash: blockHash)) }
+        let reply = try await Self.signing { try await send(.signNearDeleteAccount(beneficiary: beneficiary, recipients: recipients, nonce: nonce, blockHash: blockHash)) }
         guard reply.ok, let raw = reply.signedRaw else { throw ExecutionError(Self.reason(reply)) }
         return raw
     }
@@ -101,7 +108,11 @@ extension Workspace {
     func executor(_ wallet: TradeWallet) -> Executor {
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "LALA")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        let signer: any TradeSigner = ledgerActive ? ledgerSigner(wallet) : XPCTradeSigner()
+        // A scheduled task on the automation wallet (Tasks.swift): its addresses, and the signer told which wallet signs.
+        let automation = TaskRun.automation
+        let wallet = automation.map { TradeWallet(solana: $0.solana ?? wallet.solana, evm: $0.evm ?? wallet.evm) } ?? wallet
+        let signer: any TradeSigner = if let automation { XPCTradeSigner(asWallet: automation.id) }
+            else if ledgerActive { ledgerSigner(wallet) } else { XPCTradeSigner() }
         return Executor(wallet: wallet, signer: signer, journal: Journal(url: folder.appending(path: "journal.jsonl"))) { [weak self] text in
             Task { @MainActor in
                 self?.reply(text, note: "execution")

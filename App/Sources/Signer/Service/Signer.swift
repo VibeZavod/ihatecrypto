@@ -71,6 +71,25 @@ enum Signer {
             r.phrase = phrase
             return r
 
+        case .createAutomationWallet:
+            // Next to a Touch ID wallet only, and one: it's a budget beside the real money, never the only key.
+            guard !Wallets.all.isEmpty, !Wallets.all.contains(where: \.isAutomation) else {
+                throw WalletError(Wallets.all.isEmpty ? "Add your main wallet first." : "There is an automation wallet already.")
+            }
+            try confirmInPerson("add an AUTOMATION wallet: scheduled tasks sign with it WITHOUT Touch ID — keep only their budget on it")
+            return try store(phrase: Mnemonic.generate(), passphrase: "", requirePresence: false, test: true, automation: true)
+
+        case .asWallet(let id, let inner):
+            guard let wallet = Wallets.all.first(where: { $0.id == id }), wallet.isAutomation else {
+                throw WalletError("Only the automation wallet signs for a scheduled task.")
+            }
+            switch inner {
+            case .signSolana, .signEVMTransaction, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
+                 .signNearIntentDeposit, .signNearTransfer: break
+            default: throw WalletError("The automation wallet signs only a task's moves.")
+            }
+            return try Wallets.$signing.withValue(wallet) { try handle(inner) }
+
         case .importMnemonic(let phrase, let passphrase, let requirePresence):
             _ = try Mnemonic.validate(phrase) // a mistyped phrase fails before any prompt
             try confirmInPerson("add a wallet from a recovery phrase to ihatecrypto and sign with it")
@@ -376,29 +395,37 @@ enum Signer {
     }
 
     /// A phrase wallet: its seed and the public addresses derived from it.
-    static func store(phrase: String, passphrase: String, requirePresence: Bool, test: Bool = false) throws -> SignerReply {
+    static func store(phrase: String, passphrase: String, requirePresence: Bool, test: Bool = false, automation: Bool = false) throws -> SignerReply {
         var seed = try Mnemonic.seed(phrase, passphrase: passphrase)
         defer { SeedStore.wipe(&seed) }
         return try add(secret: seed, kind: "phrase",
                        solana: try SolanaAccount.address(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.solana(0))),
                        evm: try EVMAccount.address(privateKey: Derivation.secp256k1(seed: seed, path: WalletPath.evm(0))),
                        near: try NearAccount.implicit(privateKey: Derivation.ed25519(seed: seed, path: WalletPath.near(0))),
-                       requirePresence: requirePresence, test: test)
+                       requirePresence: requirePresence, test: test, automation: automation)
     }
 
     /// Adds a wallet (or re-seals the same one: same kind and addresses keep its id, trading key and approved
-    /// addresses) and signs with it from now on.
+    /// addresses) and signs with it from now on — except the automation wallet, which signs only a task's moves.
+    /// `test`: sealed without Touch ID (a test or the automation wallet).
     static func add(secret: Data, kind: String, solana: String?, evm: String?, near: String?, requirePresence: Bool,
-                    test: Bool = false) throws -> SignerReply {
+                    test: Bool = false, automation: Bool = false) throws -> SignerReply {
         var list = Wallets.all
         let same = list.first { $0.kind == kind && $0.solana == solana && $0.evm?.lowercased() == evm?.lowercased() }
         let id = same?.id ?? (list.isEmpty ? SignerWallet.firstID : String(UUID().uuidString.prefix(8)).lowercased())
         try SeedStore.save(secret, requirePresence: requirePresence, id: id, test: test)
         let tests = list.filter(\.isTest).count
-        let wallet = SignerWallet(id: id, label: same?.label ?? (test ? (tests == 0 ? "Test" : "Test \(tests + 1)") : list.isEmpty ? "Main" : "Wallet \(list.count + 1)"),
-                                  kind: kind, solana: solana, evm: evm, near: near, test: test ? true : nil)
+        let wallet = SignerWallet(id: id, label: same?.label ?? (automation ? "Automation" : test ? (tests == 0 ? "Test" : "Test \(tests + 1)") : list.isEmpty ? "Main" : "Wallet \(list.count + 1)"),
+                                  kind: kind, solana: solana, evm: evm, near: near, test: test && !automation ? true : nil, automation: automation ? true : nil)
         if let i = list.firstIndex(where: { $0.id == id }) { list[i] = wallet } else { list.append(wallet) }
         Wallets.save(list)
+        if automation {
+            var r = SignerReply(ok: true)
+            r.hasWallet = true
+            r.wallets = list
+            r.activeWallet = Wallets.active?.id
+            return r
+        }
         Wallets.activate(wallet)
         var r = SignerReply(ok: true)
         r.hasWallet = true
@@ -441,7 +468,7 @@ enum Signer {
     static func withKey<T>(_ chain: String, reason: String, _ body: (Data) throws -> T) throws -> T {
         guard let wallet = Wallets.active else { throw WalletError("No wallet imported.") }
         if let missing = wallet.missing(chain) { throw WalletError(missing) }
-        var secret = try SeedStore.load(reason: reason, id: wallet.id)
+        var secret = try SeedStore.load(reason: reason, id: wallet.id, session: Wallets.signing == nil)
         defer { SeedStore.wipe(&secret) }
         guard wallet.kind == "phrase" else { return try body(secret) } // a key wallet holds that chain's key itself
         var key = switch chain {
@@ -454,7 +481,7 @@ enum Signer {
     }
 
     /// The public BIP-39 test phrase («abandon … about»): anyone can sign for it, so the self-test runs without prompts.
-    static var holdsPublicTestWallet: Bool { defaults.string(forKey: "solana") == "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk" }
+    static var holdsPublicTestWallet: Bool { (try? address("solana")) == "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk" }
 
     /// Adding, switching or removing a wallet once there is one is the user's act, in person: Touch ID or the password.
     /// A program that talks to the signer as LALA can't slip in its own wallet and wait for the user's deposits.
@@ -467,7 +494,7 @@ enum Signer {
     /// the prompt, and remembered in the signer's own Keychain. The app saying «the user approved it» isn't enough.
     static func approve(_ recipients: [String]) throws {
         guard !holdsPublicTestWallet else { return }
-        let own = Set([defaults.string(forKey: "solana"), defaults.string(forKey: "evm")?.lowercased()].compactMap { $0 })
+        let own = Set([try? address("solana"), (try? address("evm"))?.lowercased()].compactMap { $0 })
         let known = RecipientStore.all()
         let new = Array(Set(recipients.map(RecipientStore.key).filter { !known.contains($0) && !own.contains($0) })).sorted()
         guard !new.isEmpty else { return }
@@ -486,12 +513,18 @@ enum Signer {
     static func withNearKey<T>(reason: String, _ body: (Data, String) throws -> T) throws -> T {
         try withKey("near", reason: reason) { secret in
             let account = try NearAccount.implicit(privateKey: secret)
-            if let known = defaults.string(forKey: "near"), known != account { throw WalletError("The NEAR key doesn't match this wallet's NEAR account.") }
+            if let known = try? address("near"), known != account { throw WalletError("The NEAR key doesn't match this wallet's NEAR account.") }
             return try body(secret, account)
         }
     }
 
+    /// The signing wallet's own address on `chain`: the active wallet's (mirrored in defaults), or the automation
+    /// wallet's while it signs a task's move.
     static func address(_ chain: String) throws -> String {
+        if let w = Wallets.signing {
+            if let a = chain == "solana" ? w.solana : chain == "evm" ? w.evm : w.near { return a }
+            throw WalletError(w.missing(chain) ?? "No \(chain) address.")
+        }
         if let a = defaults.string(forKey: chain) { return a }
         if let missing = Wallets.active?.missing(chain) { throw WalletError(missing) }
         throw WalletError("No wallet imported.")
