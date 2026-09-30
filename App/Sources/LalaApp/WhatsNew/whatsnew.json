@@ -16,9 +16,17 @@
         "color": "4615C8"
       },
       {
-        "title": "Tickers, not addresses",
-        "text": "A token's contract shows as its ticker: AERO (0x9401…8631). A ticker that imitates another, like USDC on the wrong contract, gets ⚠.",
-        "symbol": "textformat.abc",
+        "title": "The real token wears a badge",
+        "text": "A token shows by its ticker, and the verified one has a blue rosette. «buy STONK» takes the real STONK, not a copy with a fake pool; what you bought here shows its profit next to the amount.",
+        "try": "show token STONK",
+        "symbol": "checkmark.seal.fill",
+        "color": "1D9BF0"
+      },
+      {
+        "title": "Any site, with your wallet",
+        "text": "«open kamino.com» opens the site beside the chat with your wallet, and every signature shows first. Drag the panel anywhere. Sites on MetaMask's phishing list don't open.",
+        "try": "open kamino.com",
+        "symbol": "globe",
         "color": "072723"
       },
       {
