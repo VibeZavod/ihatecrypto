@@ -86,6 +86,22 @@ extension Workspace {
             }) .joined(separator: "\n")
                 + "\nFree on Solana: \(solana.map { "\(Fmt.num($0.usdc)) USDC, \(Fmt.num($0.sol, maxFraction: 4)) SOL" } ?? "unknown")."
                 + (held.isEmpty ? " Nothing in vaults now." : " Already in vaults: " + held.joined(separator: ", ") + ".")
+        case "gas":
+            // «сколько газа уйдёт?»: today's gas on an EVM network and what the calls ihatecrypto makes there cost.
+            agentStep = say("Checking gas", "Смотрю газ")
+            let asked = EVMNetwork.named(l.arg.lowercased().trimmingCharacters(in: .whitespaces))
+            var lines: [String] = []
+            for net in asked.map({ [$0] }) ?? EVMNetwork.searched where net.feeToken == nil {
+                guard let price = markets[net.gasCoin]?.markPx,
+                      let (tip, maxFee) = try? await net.rpc.fees() else { lines.append("\(net.name): gas couldn't be read."); continue }
+                let wei = (maxFee - tip) / 2 + tip   // fees() doubles the base fee for headroom
+                func usd(_ units: Decimal) -> String { Fmt.usd(units * Decimal(wei) / 1_000_000_000_000_000_000 * price) }
+                lines.append("\(net.name): \(Fmt.num(Decimal(wei) / 1_000_000_000, maxFraction: 3)) gwei, \(net.gasCoin) \(Fmt.price(price)) → "
+                             + "an exact approve + Relay's deposit (≈ 150k gas) \(usd(150_000)); approve + Aave supply (≈ 250k) \(usd(250_000)); "
+                             + "approve + Morpho deposit (≈ 500k) \(usd(500_000)); a Uniswap swap (≈ 200k) \(usd(200_000)); a transfer (≈ 65k) \(usd(65_000)).")
+            }
+            return (lines.isEmpty ? ["No EVM network by «\(l.arg)»."] : lines).joined(separator: "\n")
+                + "\nRelay's own fee for a bridge is apart: it is on the move's card. Tempo has no gas coin: its fees come out of the USDC."
         case "movers":
             let list = moverList()
             func line(_ m: (coin: String, price: Decimal, change: Decimal)) -> String { "\(IntentParser.pretty(m.coin)) \(Fmt.price(m.price)) \(signedPct(m.change))" }
@@ -98,7 +114,7 @@ extension Workspace {
             agentStep = say("Reading the service's docs", "Читаю документацию сервиса")
             return await MPP.service(l.arg)
         default:
-            return "There is no «\(l.tool)» lookup. Lookups: portfolio, market <ASSET>, token <ADDRESS or NAME>, rates <USDC|SOL>, movers, services <WORDS>, service <ID>."
+            return "There is no «\(l.tool)» lookup. Lookups: portfolio, market <ASSET>, token <ADDRESS or NAME>, rates <USDC|SOL>, gas [<NETWORK>], movers, services <WORDS>, service <ID>."
         }
     }
 

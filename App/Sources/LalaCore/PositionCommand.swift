@@ -117,7 +117,8 @@ public enum WalletCommand: Equatable, Sendable {
     case hlp(deposit: Bool, amount: Decimal?)
     /// «Разложи USDC по лучшим ставкам»: the asset and the most one protocol may hold, % (nil = 50).
     /// `amount`: spread at most this much of it (nil = all that is free).
-    case allocate(String, maxShare: Decimal?, amount: Decimal? = nil)
+    /// `without`: protocols left out, as asked («без kamino»): keys of `spreadProtocols`.
+    case allocate(String, maxShare: Decimal?, amount: Decimal? = nil, without: [String] = [])
     /// «Переложи в лучшие ставки»: USDC already deposited moves to better rates, at most this % per protocol (nil = 50),
     /// only where the extra interest pays the move back within 30 days.
     case rebalance(maxShare: Decimal?)
@@ -222,7 +223,10 @@ public enum WalletCommand: Equatable, Sendable {
         if q.contains(/разлож|распредел|раскид|размест|spread|allocate|distribute|split/), q.contains(/ставк|доходн|протокол|лучш|хранилищ|rates?|yields?|protocols?|best|vaults?/) {
             let share = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*%/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
             let isSOL = q.contains(/\bsol\b|солан|\bсол\b/)
-            return .allocate(isSOL ? "SOL" : "USDC", maxShare: share, amount: isSOL ? coins : amount ?? coins)
+            // «… without kamino, aave», «без камино»: the protocols named after the word are left out.
+            let tail = q.firstMatch(of: /(?:\bwithout\b|\bexcept\b|\bбез\b|\bкроме\b)(.*)/).map { String($0.1) } ?? ""
+            let without = Self.spreadProtocols.filter { p in (try? Regex(p.words)).map { tail.contains($0) } ?? false }.map(\.key)
+            return .allocate(isSOL ? "SOL" : "USDC", maxShare: share, amount: isSOL ? coins : amount ?? coins, without: without)
         }
         if q.contains(/доходност|где\s+(?:лучше\s+)?держать|куда\s+(?:лучше\s+)?(?:положить|вложить|деть)|\bapy\b|ставк[иа]\s+(?:по\s+)?депозит|where\s+(?:to|should\s+i|can\s+i)\s+(?:keep|put|park|hold)|best\s+(?:rates?|yields?)|\byields?\b/) {
             let sol = q.contains(/\bsol\b|солан|\bсол\b|solana/), usd = q.contains(/usdc|стейбл|доллар|stable/)
@@ -491,6 +495,12 @@ extension WalletCommand {
     }
 
     /// In words, for the confirm button and the reply: «deposit 1 USDC into Jupiter Lend».
+    /// What a spread can leave out: the key a place's name contains, its name, and how it's said.
+    public static let spreadProtocols: [(key: String, name: String, words: String)] = [
+        ("jupiter", "Jupiter Lend", #"jupiter|jupyter|юпитер|джупитер|\bjup\b"#), ("kamino", "Kamino", "kamino|камино"),
+        ("aave", "Aave", #"aave|ааве|\bаав"#), ("morpho", "Morpho", "morpho|морфо"), ("jitosol", "JitoSOL", "jito|джито|стейк|stak"),
+    ]
+
     public var summary: String {
         func n(_ d: Decimal?) -> String { d.map { Fmt.num($0, maxFraction: 6) } ?? "all" }
         switch self {
@@ -508,7 +518,9 @@ extension WalletCommand {
         case .unstake(let x): return "unstake \(n(x)) JitoSOL"
         case .yields(let a): return "rates for \(a ?? "USDC and SOL")"
         case .hlp(let d, let x): return d ? "deposit \(n(x)) USDC into HLP" : "withdraw \(n(x)) USDC from HLP"
-        case .allocate(let s, let share, let x): return "spread \(x.map { "\(Fmt.num($0)) " } ?? "")\(s) across the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
+        case .allocate(let s, let share, let x, let without):
+            return "spread \(x.map { "\(Fmt.num($0)) " } ?? "")\(s) across the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
+                + (without.isEmpty ? "" : " without " + without.compactMap { k in Self.spreadProtocols.first { $0.key == k }?.name }.joined(separator: ", "))
         case .rebalance(let share): return "move deposited USDC to the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
         case .aave(let d, let x, let net):
             return d ? "deposit \(n(x)) USDC into Aave on \(Self.placeName(net))" : "withdraw \(n(x)) USDC from Aave on \(Self.placeName(net)) to Solana"

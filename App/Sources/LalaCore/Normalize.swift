@@ -118,7 +118,8 @@ public enum ChatRouter {
       deposit N <USDC|SOL> to kamino | withdraw <USDC|SOL> from kamino | stake N SOL | unstake N JitoSOL
       deposit N USDC to HLP | withdraw from HLP | lend N USDC on Aave [on <Base|Arbitrum|Polygon|Ethereum>] | withdraw USDC from Aave [on <network>]
       deposit N USDC into Morpho [on <Base|Arbitrum|Ethereum>] | withdraw USDC from Morpho [on <network>]   (no network = Base; name it only when the user does)
-      where to keep <USDC|SOL> | spread [N] <USDC|SOL> across the best rates [max N% per protocol]   (N = at most that much; none = all that is free:
+      where to keep <USDC|SOL> | spread [N] <USDC|SOL> across the best rates [max N% per protocol] [without <jupiter|kamino|aave|morpho>[, …]]
+        («без kamino», «только aave и морфо» = without the others; N = at most that much; none = all that is free:
         USDC idle on Solana AND on Base, Arbitrum, Polygon, Ethereum, Robinhood and Tempo — each slice takes the money where it is, so never put a
         move before a spread: «разложи 1000 USDC с Base» = spread 1000 USDC across the best rates)
       claim rewards   (what Merkl owes the wallet: Morpho's, Aave's and other protocols' rewards on Base, Arbitrum, Ethereum and Polygon)
@@ -221,12 +222,13 @@ public enum ChatRouter {
     liquidity, volume, buyers and sellers, age, holders, safety flags, links. It repairs an address pasted with extra characters. \
     By name it lists the matches and gives the deepest one in full, so look up another only when they mean a different one.
       rates <USDC|SOL>        where the money can earn now: each vault ihatecrypto can use and its yearly rate
+      gas [<NETWORK>]         today's gas on an EVM network (all of them without one) and what ihatecrypto's calls there cost in dollars
       movers                  the Hyperliquid markets that moved most today
       services <WORDS>        paid APIs that take MPP payments on Tempo (mpp.dev's directory): what each does, its endpoints and prices
       service <ID> [<PATH>]   one of them in full: every endpoint, its price, and the docs of that endpoint with the request's fields
     Look things up whenever the answer depends on data you don't have below: a pasted address or a token's name → token; \
     how they're doing, what they hold or did → portfolio; a price or «should I long X» → market, plus portfolio for the size; \
-    where to earn → rates; paying for something, a service or an API («оплати», «купи звонок», «отправь письмо почтой», «сколько \
+    where to earn → rates; what a move costs in gas («сколько газа уйдёт», «комиссия сети») → gas; paying for something, a service or an API («оплати», «купи звонок», «отправь письмо почтой», «сколько \
     стоит найти…») → services, then service for the fields and the price. \
     Token research goes deeper through paid services on Tempo when the free token lookup isn't enough or they ask for more (price \
     history, onchain trades and holders, wallet balances and PnL, the news, what people say on X): Codex (onchain token data by \
@@ -247,7 +249,8 @@ public enum ChatRouter {
       route, what it costs, why this vault and not another — is "chat" answered from its numbers (look up what it lacks, e.g. \
       rates), and the card keeps waiting; don't send its command again. A change to it is its command again with the change \
       applied to the WHOLE of it: «добавь ещё 300» to a waiting «spread 500 USDC» = spread 800 USDC across the best rates; \
-      «не больше 40% в один» = the same spread with max 40% per protocol; «лучше 150» to «move 100 USDC …» = move 150 USDC ….
+      «не больше 40% в один» = the same spread with max 40% per protocol; «а без kamino?» = the same spread without kamino (keep its \
+      limit); «лучше 150» to «move 100 USDC …» = move 150 USDC ….
       Keep numbers, tickers, prices and percentages as meant; never invent an amount: leave it out and ihatecrypto asks for it.
       A token they name by symbol that is among their favorites is written with that favorite's contract. Any other address \
       must be one they wrote (repaired by the token lookup is fine) — never one you remember or made up. «$2», «2 бакса», \

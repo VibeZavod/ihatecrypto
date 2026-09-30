@@ -454,7 +454,7 @@ extension Executor {
     /// deposited, and with `execute` carries the slices out one by one through the same checked paths.
     /// USDC is counted in dollars, SOL in SOL; SOL keeps 0.02 for fees and account rent.
     /// Returns the text and whether there is anything to confirm.
-    public func allocate(_ symbol: String, maxShare: Decimal = 50, limit: Decimal? = nil, execute: Bool) async throws -> (text: String, ready: Bool, preview: AllocationPreview) {
+    public func allocate(_ symbol: String, maxShare: Decimal = 50, limit: Decimal? = nil, without: [String] = [], execute: Bool) async throws -> (text: String, ready: Bool, preview: AllocationPreview) {
         let isSOL = symbol.uppercased() == "SOL"
         let asset = isSOL ? "SOL" : "USDC"
         let onSolana: Decimal = isSOL
@@ -486,18 +486,19 @@ extension Executor {
         let evm = isSOL ? [] : await evmPlaces()
         let total = free + jupiter + kamino + jito + evm.reduce(0) { $0 + $1.supplied }
         let kaminoRentUSD = Decimal(string: "0.0298")! * solPrice
-        // A vault switched off in Settings › Modules is skipped, with the reason in the notes.
+        // A vault switched off in Settings › Modules is skipped, with the reason in the notes; so is one they asked to leave out.
         let modules = Modules.current
+        func leftOut(_ place: String) -> String? { without.contains { place.lowercased().contains($0) } ? "left out, as asked" : nil }
         let places: [Allocation.Place] = options.compactMap { o in
             switch o.place {
-            case "Jupiter Lend": return .init(name: o.place, apy: o.apy, existing: jupiter, blocked: modules.refusal(vault: o.place))
-            case "JitoSOL staking": return .init(name: o.place, apy: o.apy, existing: jito, blocked: modules.refusal(vault: o.place))
+            case "Jupiter Lend": return .init(name: o.place, apy: o.apy, existing: jupiter, blocked: leftOut(o.place) ?? modules.refusal(vault: o.place))
+            case "JitoSOL staking": return .init(name: o.place, apy: o.apy, existing: jito, blocked: leftOut(o.place) ?? modules.refusal(vault: o.place))
             case "Kamino Lend":
                 // The first deposit's rent is a cost, not a refundable deposit: worth it only for a big enough slice.
                 let slice = min(free, total * maxShare / 100 - kamino) * (isSOL ? solPrice : 1)
                 let blocked = kamino == 0 && kaminoRentUSD > slice / 10
                     ? "the first deposit creates Kamino accounts for ≈ \(Fmt.usd(kaminoRentUSD)) of rent, more than 10% of the \(Fmt.usd(slice)) slice" : nil
-                return .init(name: o.place, apy: o.apy, existing: kamino, blocked: modules.refusal(vault: o.place) ?? blocked)
+                return .init(name: o.place, apy: o.apy, existing: kamino, blocked: leftOut(o.place) ?? modules.refusal(vault: o.place) ?? blocked)
             case "HLP (Hyperliquid)":
                 return .init(name: o.place, apy: o.apy, blocked: "another network: bridge, $5 minimum and a 4-day lock — use a separate command, «deposit 5 USDC to HLP»")
             default: return nil
@@ -509,7 +510,7 @@ extension Executor {
         if !isSOL {
             let read = Set(evm.map(\.name))
             for name in AaveV3.markets.map(\.place) + MorphoVault.vaults.map(\.place) where !read.contains(name) && modules.refusal(vault: name) == nil {
-                all.append(.init(name: name, apy: options.first { $0.place == name }?.apy ?? 0, blocked: "its rate, balance or gas couldn't be read just now — ask again in a minute"))
+                all.append(.init(name: name, apy: options.first { $0.place == name }?.apy ?? 0, blocked: leftOut(name) ?? "its rate, balance or gas couldn't be read just now — ask again in a minute"))
             }
         }
         for p in evm {
@@ -517,7 +518,7 @@ extension Executor {
             // takes a large slice, on the L2s a few dollars.
             let slice = max(0, min(free, total * maxShare / 100 - p.supplied))
             all.append(.init(name: p.name, apy: p.apy, existing: p.supplied,
-                             blocked: modules.refusal(vault: p.name) ?? p.tooCostly(yearly: slice * p.apy / 100), protocol: p.protocolName))
+                             blocked: leftOut(p.name) ?? modules.refusal(vault: p.name) ?? p.tooCostly(yearly: slice * p.apy / 100), protocol: p.protocolName))
         }
         let plan = Allocation.plan(free: free, places: all, maxShare: maxShare, minSlice: isSOL ? Decimal(string: "0.003")! : Decimal(string: "0.5")!)
         func amount(_ d: Decimal) -> String { Fmt.num(d, maxFraction: isSOL ? 6 : 2) + " " + asset }

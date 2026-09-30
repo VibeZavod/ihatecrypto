@@ -1274,7 +1274,7 @@ extension Workspace {
         return q.steps.compactMap(WalletCommand.parse).flatMap { c -> [ActivityBubble] in
             switch c {
             // Spread and rebalance have no route of their own: their split is planned when the money before them has landed.
-            case .allocate(let asset, let share, let amount):
+            case .allocate(let asset, let share, let amount, _):
                 return [ActivityBubble(kind: "step", label: "INTO · BEST RATES", title: amount.map { "\(Fmt.num($0)) \(asset)" } ?? "all free \(asset)",
                                        lines: ["split\twhen the money lands", "max per place\t\(Fmt.pct(share ?? 50))"], status: "then", logo: "usdc", fill: .jupiter)]
             case .rebalance(let share):

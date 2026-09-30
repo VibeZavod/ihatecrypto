@@ -41,6 +41,11 @@ import Testing
     #expect(WalletCommand.parse("spread 2 USDC across the best rates") == .allocate("USDC", maxShare: nil, amount: 2))
     #expect(WalletCommand.parse("разложи 2 USDC по лучшим ставкам, не больше 70% в один") == .allocate("USDC", maxShare: 70, amount: 2))
     #expect(WalletCommand.parse("spread 0.5 SOL across the best rates") == .allocate("SOL", maxShare: nil, amount: Decimal(string: "0.5")))
+    // «а без kamino можно?»: a spread leaves protocols out, and its summary reads back the same.
+    let without = WalletCommand.allocate("USDC", maxShare: 34, amount: 900, without: ["kamino", "aave"])
+    #expect(WalletCommand.parse("spread 900 USDC across the best rates max 34% per protocol without kamino, aave") == without)
+    #expect(WalletCommand.parse(without.summary) == without)
+    #expect(WalletCommand.parse("разложи 900 USDC по лучшим ставкам без камино") == .allocate("USDC", maxShare: nil, amount: 900, without: ["kamino"]))
     #expect(WalletCommand.parse("spread 2 USDC across the best rates")?.summary == "spread 2 USDC across the best rates")
     #expect(WalletCommand.parse("buy SOL for 2 USDC") == .buy(sol, usdc: 2))
     #expect(WalletCommand.parse("buy SOL for 2 USDC every week") == .schedule(sol, usdc: 2, days: 7))
