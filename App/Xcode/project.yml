@@ -7,6 +7,10 @@ options:
 packages:
   Lala:
     path: ..
+  # Updates for the copy downloaded from the site (release.sh). An App Store build must leave it out.
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: 2.10.0
 settings:
   configs:
     # Release is what runs with real money: no get-task-allow, so nothing — not even root with SIP on — can attach a
@@ -31,12 +35,17 @@ targets:
     dependencies:
       - package: Lala
         product: LalaKit
+      - package: Sparkle
       - target: LalaSigner
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: app.lala.mac
         PRODUCT_NAME: ihatecrypto
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
+        # Sparkle's keys, merged into the generated plist. The feed is empty in a local build (no update checks);
+        # release.sh passes the site's appcast.
+        INFOPLIST_FILE: LALA-Info.plist
+        SPARKLE_FEED_URL: ""
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.finance
         # The chat's microphone: speech becomes text in the field, which the person reads and sends.

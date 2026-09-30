@@ -36,6 +36,7 @@ struct LalaApp: App {
             // menu bar until ⌘Q.
             let ws = workspace
             Task { await ws.watch() }
+            Updater.shared.start(ws)
             #if DEBUG
             // `-browserResultAfter N`: after N seconds prints the browser page's text and quits (the browser test).
             let resultAfter = UserDefaults.standard.double(forKey: "browserResultAfter")
@@ -92,6 +93,10 @@ struct LalaApp: App {
             // Settings open in the main window, in place of the canvas: no separate Settings window.
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { workspace.openSettings(); StatusItem.shared.openMain() }.keyboardShortcut(",")
+            }
+            // Only in the copy from the site: a local build has no feed.
+            CommandGroup(after: .appInfo) {
+                if Updater.shared.available { Button("Check for Updates…") { Updater.shared.check() } }
             }
         }
 

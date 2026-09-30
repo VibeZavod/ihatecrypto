@@ -163,6 +163,11 @@ enum KeepRunning {
         }
     }
 
+    /// Sparkle is about to swap the app: the agent rests, or it could open the old copy mid-swap (Updater.swift).
+    static func pause() { launchctl("bootout", "gui/\(getuid())/\(label)") }
+    /// At launch of a copy that updates itself: the agent runs again if the switch is on (already running is fine).
+    static func resume() { if isOn { launchctl("bootstrap", "gui/\(getuid())", plist.path) } }
+
     @discardableResult private static func launchctl(_ args: String...) -> Int32 {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/launchctl")

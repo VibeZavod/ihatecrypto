@@ -746,6 +746,17 @@ final class Workspace {
             reply(say("What's new is on screen.", "Что нового — на экране."))
             return
         }
+        // «check for updates», «обнови приложение»: Sparkle's window (Updater.swift), in the copy from the site.
+        if lower.wholeMatch(of: /\s*(?:check\s+for\s+updates?|update\s+(?:the\s+)?app|any\s+updates\??|(?:проверь|есть|нет\s+ли)\s+обновлени\w*|обнови(?:сь|\s+(?:приложение|ihatecrypto|апп?ку?)))\s*[.!?]?\s*/) != nil {
+            if Updater.shared.available {
+                Updater.shared.check()
+                reply(say("Checking for a new version: Sparkle's window shows what it finds.", "Проверяю новую версию: окно Sparkle покажет, что нашлось."))
+            } else {
+                reply(say("This copy was built on this Mac, so it doesn't update itself. The copy from the site checks once a day.",
+                          "Эта копия собрана на этом Маке, поэтому сама не обновляется. Копия с сайта проверяет обновления раз в день."))
+            }
+            return
+        }
         // «connect ledger», «use my Ledger»: an exact app command, read before the model like a wallet switch.
         if await ledgerCommand(text) { return }
         // «переключись на кошелёк Main»: the wallet by its name; the signer asks for Touch ID.

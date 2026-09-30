@@ -16,7 +16,7 @@ extension Workspace {
 
 /// What a notification is about; each kind can be turned off in Settings.
 enum Notice: String, CaseIterable {
-    case incoming, positions, orders, alerts, moves, hlp, signature, confirm
+    case incoming, positions, orders, alerts, moves, hlp, signature, confirm, update
 
     var title: String {
         switch self {
@@ -28,6 +28,7 @@ enum Notice: String, CaseIterable {
         case .hlp: "The HLP deposit unlocked"
         case .signature: "A scheduled buy waits for Touch ID"
         case .confirm: "A move or a trade waits for your Confirm"
+        case .update: "A new version of ihatecrypto is ready"
         }
     }
 
@@ -146,9 +147,12 @@ final class NoticeDelegate: NSObject, UNUserNotificationCenterDelegate {
     }
 
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        let update = response.notification.request.content.threadIdentifier == Notice.update.rawValue
         await MainActor.run {
             NSApp.activate()
             StatusItem.shared.openWindow?(id: "main")
+            // «ihatecrypto 0.3 is ready»: Sparkle's window with the notes and Install.
+            if update { Updater.shared.check() }
         }
     }
 }

@@ -15,3 +15,6 @@ xcuserdata/
 *.p12
 *.key
 *wallet*.txt
+
+# Release output (release.sh): archives and the appcast go to the site, not the repo
+App/dist/
