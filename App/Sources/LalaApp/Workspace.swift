@@ -600,6 +600,18 @@ final class Workspace {
         busy = false
         FileHandle.standardError.write(Data("LALA screen: ok=\(screen.ok) \(screen.checks + screen.problems)\n".utf8))
         guard screen.ok else {
+            // The user's own «переведи 2 USDC на 0x…»: no attack, just the rule that money goes to saved addresses only.
+            // The chat offers the save instead, ready in the field; the address becomes a recipient only on its card.
+            let found = InjectionHeuristics.findings(text)
+            if screen.problems.count == 1, found.commands.isEmpty, found.transferVerb, let address = found.addresses.first {
+                let lower = text.lowercased()
+                let net = address.hasPrefix("0x") ? ["arbitrum", "ethereum", "hyperliquid"].first { lower.contains($0) } ?? "base" : "solana"
+                draft = say("save \(address) as NAME on \(net)", "сохрани \(address) как ИМЯ на \(net)")
+                reply(say("Money goes only to saved addresses, so a swapped address can't receive it. Save this one first: the phrase is in the field — put a name instead of NAME (and another network if it isn't \(net)), send it, and check the address on the card. Then say “send <amount> USDC to <name>”.",
+                          "Деньги уходят только на сохранённые адреса — так подменённый адрес ничего не получит. Сначала сохрани этот: фраза уже в поле — впиши имя вместо ИМЯ (и другую сеть, если не \(net)), отправь и сверь адрес на карточке. Потом скажи «переведи <сумма> USDC <имя>»."),
+                      note: "guard: sends go to saved addresses")
+                return
+            }
             let pastedAddress = text.contains(/0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/)
             reply(say("This looks like an attempt to steer the assistant or swap an address. ", "Похоже на попытку управлять ассистентом или подменить адрес. ")
                   + screen.problems.joined(separator: " ")

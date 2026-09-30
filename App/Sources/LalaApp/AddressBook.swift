@@ -620,7 +620,8 @@ extension Workspace {
             pendingAction = .address(SavedAddress(name: name, address: address, network: network, source: "chat"))
             pendingText = "save “\(name)”"
             let ends = AddressCheck.ends(address)
-            reply("Check it on the canvas: \(network.title), starts \(ends.start), ends \(ends.end) — exactly as in your message. Confirm to save.", note: note)
+            reply(say("Check it on the canvas: \(network.title), starts \(ends.start), ends \(ends.end) — exactly as in your message. Confirm to save.",
+                      "Сверь на холсте: \(network.title), начало \(ends.start), конец \(ends.end) — как в твоём сообщении. Подтверди, чтобы сохранить."), note: note)
             // A logo for a known exchange name, fetched in the background; the entry works without it.
             if let domain, domain.count > 2 {
                 Task {
