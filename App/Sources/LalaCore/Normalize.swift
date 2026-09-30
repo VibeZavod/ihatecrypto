@@ -423,7 +423,10 @@ public enum ChatRouter {
         if !context.canvas.isEmpty { lines.append("Other blocks on the canvas: " + context.canvas.joined(separator: "; ")) }
         lines.append("Open positions: " + (context.positions.isEmpty ? "none" : context.positions.joined(separator: "; ")))
         if !context.favorites.isEmpty { lines.append("Favorite tokens: " + context.favorites.joined(separator: "; ")) }
-        if !context.addressBook.isEmpty { lines.append("Address book names: " + context.addressBook.joined(separator: ", ")) }
+        if !context.addressBook.isEmpty {
+            lines.append("Address book, each name with the network it's saved on (a send goes on that network; write only the name in a command): "
+                         + context.addressBook.joined(separator: ", "))
+        }
         if !context.balances.isEmpty { lines.append("Balances: " + context.balances.joined(separator: "; ")) }
         if let capital = context.capital { lines.append("Capital the risk rules measure: " + capital) }
         if !context.off.isEmpty {

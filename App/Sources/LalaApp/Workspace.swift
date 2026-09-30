@@ -562,8 +562,22 @@ final class Workspace {
 
     // MARK: Chat
 
+    /// The message with each address already saved in Addresses written as its name, when it asks to send: a saved
+    /// address was confirmed on its card, so writing it is the same as writing the name. On several networks, the one the
+    /// message names («по эфир сети») wins.
+    func savedNames(in text: String) -> String {
+        let found = InjectionHeuristics.findings(text)
+        guard found.transferVerb else { return text }
+        let want = AddressBookCommand.network(text.lowercased())
+        return found.addresses.reduce(text) { out, address in
+            let saved = addressBook.filter { address.hasPrefix("0x") ? $0.address.lowercased() == address.lowercased() : $0.address == address }
+            guard let entry = saved.first(where: { $0.network.rawValue == want }) ?? saved.first else { return out }
+            return out.replacingOccurrences(of: address, with: entry.name)
+        }
+    }
+
     func send(_ raw: String) async {
-        let text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !busy else { return }
         if SeedGuard.containsMnemonic(text) {
             reply(say("That looks like a recovery phrase. I don’t show it, store it or send it anywhere. Import a phrase in its own window.",
@@ -591,6 +605,9 @@ final class Workspace {
         // Before the parser or any model sees it: local rules, plus Jev if the user turned it on.
         // The classifier reads what looks pasted — an address or a link — where an injection could hide; it took the
         // user's own «не хочу, отмени» for steering and «переведи на арбитрум» for a redirect. Local rules read everything.
+        // An address already saved in Addresses is that entry, as if its name were written: «переведи 2 USDC на 0x5333…»
+        // goes to «main wallet». Only a saved (confirmed) address: any other still never becomes a recipient.
+        text = savedNames(in: text)
         let pasted = text.contains(/0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|https?:\/\/|www\./)
         let classifier: (any TextClassifier)? = jevScreening && pasted ? openRouterKey.map { JevClassifier(apiKey: $0) } : nil
         busy = true
@@ -605,7 +622,7 @@ final class Workspace {
             let found = InjectionHeuristics.findings(text)
             if screen.problems.count == 1, found.commands.isEmpty, found.transferVerb, let address = found.addresses.first {
                 let lower = text.lowercased()
-                let net = address.hasPrefix("0x") ? ["arbitrum", "ethereum", "hyperliquid"].first { lower.contains($0) } ?? "base" : "solana"
+                let net = AddressBookCommand.network(lower) ?? (address.hasPrefix("0x") ? "base" : "solana")
                 draft = say("save \(address) as NAME on \(net)", "сохрани \(address) как ИМЯ на \(net)")
                 reply(say("Money goes only to saved addresses, so a swapped address can't receive it. Save this one first: the phrase is in the field — put a name instead of NAME (and another network if it isn't \(net)), send it, and check the address on the card. Then say “send <amount> USDC to <name>”.",
                           "Деньги уходят только на сохранённые адреса — так подменённый адрес ничего не получит. Сначала сохрани этот: фраза уже в поле — впиши имя вместо ИМЯ (и другую сеть, если не \(net)), отправь и сверь адрес на карточке. Потом скажи «переведи <сумма> USDC <имя>»."),
@@ -944,7 +961,8 @@ final class Workspace {
         }
         c.positions = positions.map { "\($0.size > 0 ? "long" : "short") \(IntentParser.pretty($0.coin))" }
         c.favorites = favoriteTokens.map { "\($0.symbol) (\($0.name)) = \($0.address) on \($0.chainTitle)" }
-        c.addressBook = addressBook.map(\.name)
+        // With its network, so «по эфир сети» to a Base entry is answered with Base, not a guess.
+        c.addressBook = addressBook.map { "\($0.name) (\($0.network.title))" }
         c.replyLanguage = replyLanguage
         c.off = Modules.current.offSummary
         c.safeSearch = safeSearch

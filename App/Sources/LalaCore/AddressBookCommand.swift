@@ -36,7 +36,7 @@ public enum AddressBookCommand: Equatable, Sendable {
         }
     }
 
-    static func network(_ q: String) -> String? {
+    public static func network(_ q: String) -> String? {
         // A NEAR account can only be on NEAR; «on near» names it too.
         if q.contains(/\b[0-9a-f]{64}\b|\.near\b|\b(?:on|in|в|на)\s+(?:the\s+)?(?:сети\s+)?(?:near|неар\w*)\b/) { return "near" }
         if q.contains(/\bbase\b|бейс/) { return "base" }
