@@ -184,6 +184,8 @@ extension Workspace {
     /// message it drops a card that waited for Confirm.
     func pick(_ option: ChatRouter.Option) async {
         guard !busy, let steps = nextSteps else { return }
+        heldAnswer = (nextSteps, yieldOptions, takeChoices)
+        defer { heldAnswer = nil }
         nextSteps = nil
         pendingAction = nil
         pendingText = nil

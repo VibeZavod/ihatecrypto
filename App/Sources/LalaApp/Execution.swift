@@ -222,9 +222,10 @@ extension Workspace {
         prepared = nil
         executing = true
         defer { executing = false }
+        var done = false
         do {
             let opened = try await executor(wallet).execute(p)
-            executed = intent
+            done = true
             // Always replaced: rules left from an earlier position in the same coin must not steer this one.
             let partial = opened.partialTake != nil || (opened.pending && p.intent.partialTake == true)
             if partial || p.intent.trailingPct != nil {
@@ -240,6 +241,9 @@ extension Workspace {
             reply("Execution stopped: \(error.localizedDescription)")
         }
         await refresh()
+        // Only now, with the new position loaded: flipped before, the plan left the canvas and the position's board
+        // came only after this refresh, so the canvas stood empty in between.
+        if done { executed = intent }
     }
 
     /// After execution «take closer» or «stop 2%» are about the open position: its orders move on the exchange

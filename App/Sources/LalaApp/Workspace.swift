@@ -292,6 +292,9 @@ final class Workspace {
     var takeChoices: [TakeStyle]?
     /// The ways to go on the model offered with its last answer, as cards on the canvas (Agent.swift).
     var nextSteps: NextSteps?
+    /// The last answer's cards while the next message or picked card is handled: drawn as they were, not clickable,
+    /// until the answer is on the canvas. Cleared at once for the logic, they'd leave the canvas blank while the model thinks.
+    var heldAnswer: (steps: NextSteps?, yields: [Yields.Option]?, takes: [TakeStyle]?)?
     /// What the model is looking up right now («Looking at the token»), under the chat's thinking dots.
     var agentStep: String?
     var schedules: [Schedule] = (UserDefaults.standard.data(forKey: Workspace.scoped("schedules")).flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) }) ?? [] {
@@ -604,6 +607,8 @@ final class Workspace {
         thinking = true
         draftReply = nil
         defer { thinking = false; draftReply = nil }
+        heldAnswer = (nextSteps, yieldOptions, takeChoices)
+        defer { heldAnswer = nil }
         finishedAction = nil
         // The answer goes on the plan canvas; scheduling opens the Schedule canvas again.
         showSchedule = false
@@ -1305,7 +1310,7 @@ final class Workspace {
             if let k { kamino = k.reduce(0) { $0 + $1.valueUSD } }
             if let n { near = n.near + n.wrapped }
         } catch {
-            solana = nil
+            // A failed read keeps the last balances: set to nil, the rail and the canvas's cards went blank until the next one.
             solanaError = error.localizedDescription
         }
     }
@@ -1329,8 +1334,10 @@ final class Workspace {
         }()
         do {
             let b = try await balance
-            let p = ((await openPositions) ?? []).filter { $0.size != 0 }
-            let o = (await openOrders) ?? [], v = await vault, d = await dexes
+            // A request that failed keeps what was read before: read as «none», the position left the canvas and
+            // looked closed by its stop («closed by the exchange» notice) until the next refresh brought it back.
+            let p = (await openPositions)?.filter { $0.size != 0 } ?? positions
+            let o = (await openOrders) ?? orders, v = await vault, d = await dexes
             // The week's closes are read again when the open positions changed: after the positions and their
             // notices, so a stop-out never waits on the fills request (one more redraw, only then).
             let readFills = recentlyClosed == nil || Set(positions.map(\.coin)) != Set(p.map(\.coin))
@@ -1366,7 +1373,7 @@ final class Workspace {
                 recentlyClosed = TradeHistory.stories(fills).filter { ($0.closed ?? .distantPast) > week }
             }
         } catch {
-            hl = nil
+            // As on Solana: the last balance stays through a failed read.
             hlError = error.localizedDescription
         }
     }
@@ -1401,6 +1408,9 @@ final class Workspace {
     /// The plan again from now: balances, prices and a new bridge quote, then a fresh preparation. For a canvas that has
     /// gone stale or a preparation that failed on old numbers.
     func rerunPlan() async {
+        // The sheet stays up («Preparing the trade») through the refresh instead of closing and coming back.
+        preparing = true
+        defer { preparing = false }
         prepared = nil
         executionError = nil
         quotedKey = nil

@@ -1012,7 +1012,9 @@ struct StudioCanvas: View {
                     .transition(.opacity)
             }
             // The model's ways to go on, under the block its answer opened; with a plan they go under the plan, in its list.
-            if nodes.isEmpty, let steps = ws.nextSteps, steps.canvas == ws.canvasID { NextStepsBoard(steps: steps).padding(.bottom, 10) }
+            if nodes.isEmpty, let steps = ws.nextSteps ?? ws.heldAnswer?.steps, steps.canvas == ws.canvasID {
+                NextStepsBoard(steps: steps).padding(.bottom, 10).allowsHitTesting(ws.nextSteps != nil)
+            }
             if let note = ws.noteCard { NoteBoard(note: note).padding(.bottom, 10) }
             // The rail's buttons put their boards here too.
             if ws.showReceive { ReceiveBoard() }
@@ -1051,8 +1053,8 @@ struct StudioCanvas: View {
             PnLBoard()
             if ws.showMovers { MoversBoard() }
             if ws.showAlerts, !ws.alerts.isEmpty { AlertsBoard() }
-            if let yields = ws.yieldOptions, !yields.isEmpty {
-                YieldBubbles(options: yields)
+            if let yields = ws.yieldOptions ?? ws.heldAnswer?.yields, !yields.isEmpty {
+                YieldBubbles(options: yields).allowsHitTesting(ws.yieldOptions != nil)
             }
             if let allocation = ws.allocationPreview {
                 AllocationBoard(preview: allocation)
@@ -1065,10 +1067,19 @@ struct StudioCanvas: View {
             TransferBoard()
             if let answer = ws.serviceAnswer { ServiceAnswerBoard(answer: answer) }
             if nodes.isEmpty {
-                if ws.yieldOptions == nil, ws.allocationPreview == nil, ws.rebalancePlan == nil {
+                if (ws.yieldOptions ?? ws.heldAnswer?.yields) == nil, ws.allocationPreview == nil, ws.rebalancePlan == nil {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
-                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, ws.nextSteps == nil, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
-                              (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty { placeholder }
+                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, (ws.nextSteps ?? ws.heldAnswer?.steps) == nil, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
+                              (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty {
+                        // Never blank while something is under way: whatever path left nothing live, the canvas's last
+                        // board stays until the answer or the outcome takes its place. The empty canvas is for when nothing runs.
+                        if ws.thinking || ws.busy || ws.executing || ws.preparing,
+                           let last = ws.canvases.first(where: { $0.id == ws.canvasID }), !last.bubbles.isEmpty {
+                            SavedBoard(canvas: last)
+                        } else {
+                            placeholder
+                        }
+                    }
                 }
             } else {
                 let route = ws.planRoute(nodes)
@@ -1078,7 +1089,7 @@ struct StudioCanvas: View {
                     .frame(maxWidth: 470, alignment: .leading)
                 // One list of ways on: what fits (checked by the code), the model's ideas, raising the limit.
                 let blocked = nodes.contains { $0.status == .blocked }
-                let ideas = ws.nextSteps.flatMap { $0.canvas == ws.canvasID ? $0 : nil }
+                let ideas = (ws.nextSteps ?? ws.heldAnswer?.steps).flatMap { $0.canvas == ws.canvasID ? $0 : nil }
                 if blocked || ideas != nil, ws.assembly == nil {
                     let fit = blocked ? ws.planFix.map { ChatRouter.Option(title: $0.title, comment: $0.detail, command: $0.command, recommended: true) } : nil
                     let overLimit = blocked && (ws.evaluation.sizing.map { s in (ws.equity ?? 0) > 0 && s.lossAtStopUSD / ws.equity! * 100 > ws.policy.maxRiskPct } ?? false)
@@ -1086,8 +1097,9 @@ struct StudioCanvas: View {
                         NextStepsBoard(steps: ideas, fit: fit, overLimit: overLimit)
                     }
                 }
-                if let choices = ws.takeChoices, ws.assembly == nil {
+                if let choices = ws.takeChoices ?? ws.heldAnswer?.takes, ws.assembly == nil {
                     TakeChoices(choices: choices, risk: ws.evaluation.sizing?.lossAtStopUSD)
+                        .allowsHitTesting(ws.takeChoices != nil)
                         .transition(.opacity)
                 }
             }
