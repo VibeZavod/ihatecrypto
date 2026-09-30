@@ -212,6 +212,10 @@ final class Workspace {
     var equityHistory: [EquityPoint] = LocalStore.load(Workspace.scoped("equity") + ".json") ?? [] {
         didSet { LocalStore.save(equityHistory, Workspace.scoped("equity", activeWalletID) + ".json") }
     }
+    /// What the Solana tokens bought here cost, by mint: the P/L on their portfolio rows. Kept per wallet.
+    var costBasis: [String: CostBasis] = LocalStore.load(Workspace.scoped("costbasis") + ".json") ?? [:] {
+        didSet { LocalStore.save(costBasis, Workspace.scoped("costbasis", activeWalletID) + ".json") }
+    }
     /// Tokens the user watches (TokensUI.swift), their DexScreener data and what the wallet holds of them.
     var favoriteTokens: [FavoriteToken] = LocalStore.load("tokens.json") ?? [] {
         didSet { LocalStore.save(favoriteTokens, "tokens.json") }

@@ -140,3 +140,33 @@ public struct PnLCommand: Equatable, Sendable {
         return PnLCommand(period: period, coin: IntentParser.namedAsset(text, markets: markets))
     }
 }
+/// What a token bought in the app cost, for the P/L on its holding row: the average cost. A buy with USDC adds its
+/// tokens and dollars; a sale takes out the same share of both. Tokens that came some other way have no cost here and
+/// count for nothing in the P/L; a token with no known cost shows none.
+public struct CostBasis: Codable, Equatable, Sendable {
+    public var amount: Decimal = 0
+    public var usd: Decimal = 0
+
+    public init() {}
+
+    public mutating func bought(_ tokens: Decimal, for dollars: Decimal) {
+        guard tokens > 0, dollars > 0 else { return }
+        amount += tokens
+        usd += dollars
+    }
+
+    public mutating func sold(_ tokens: Decimal) {
+        guard amount > 0, tokens > 0 else { return }
+        let left = max(0, amount - tokens)
+        usd = usd * left / amount
+        amount = left
+    }
+
+    /// The P/L of what's held now at `price`: only the tokens with a known cost (at most what was bought here).
+    public func pnl(held: Decimal, price: Decimal) -> (usd: Decimal, pct: Decimal)? {
+        guard amount > 0, usd > 0, held > 0 else { return nil }
+        let counted = min(held, amount)
+        let cost = usd * counted / amount
+        return (counted * price - cost, (counted * price - cost) / cost * 100)
+    }
+}

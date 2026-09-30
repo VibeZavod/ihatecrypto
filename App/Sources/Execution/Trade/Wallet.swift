@@ -247,6 +247,7 @@ extension Executor {
         if dryRun { return "Simulation (nothing signed): " + changes.joined(separator: "; ") }
         let outAfter = nativeOut ? try await rpc.balance(wallet.solana) : try await rpc.tokenBalance(owner: wallet.solana, mint: to.mint)
         var line = "Swapped \(Fmt.num(Decimal(units) / scale, maxFraction: 8)) \(from.symbol) → \(to.symbol) +\(Fmt.num(Decimal(Int64(outAfter) - Int64(outBefore)) / outScale, maxFraction: 8))\(nativeOut ? " (net of fees)" : "")."
+        swapped?(from, to, Decimal(units) / scale, Decimal(Int64(outAfter) - Int64(outBefore)) / outScale)
         // Out of a token entirely: its empty account still holds ~0.002 SOL of rent; closing returns it. A Token-2022
         // account would need that program, which the guard doesn't allow: its rent stays.
         if !nativeIn, !from.token2022, try await rpc.tokenBalance(owner: wallet.solana, mint: from.mint) == 0 {

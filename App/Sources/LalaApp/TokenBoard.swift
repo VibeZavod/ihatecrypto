@@ -25,6 +25,8 @@ struct TokenBoard: View {
     /// do, so a mouse move over the chart redraws those two, not the chart, the stats and the rest of the board.
     @State private var pointer = ChartPointer()
     @State private var copied = false
+    /// Checked by a list a copy can't get onto: Jupiter's on Solana, Robinhood's registry for its stock tokens.
+    @State private var verified: (by: String, ok: Bool)?
 
     static func place(chain: String, address: String) -> String { "token:\(chain):\(address)" }
 
@@ -64,6 +66,8 @@ struct TokenBoard: View {
         .task(id: address) {
             market = try? await TokenMarket.info(address, chain: chain)
             if market == nil { error = "No pool trades this token on \(chainTitle)." }
+            if chain == "solana" { verified = await TokenResearch.solanaToken(address).map { ("Jupiter", $0.verified) } }
+            else if holding != nil || isStock { verified = ("Robinhood's registry", true) }
         }
         .task(id: "\(market?.pool ?? "")·\(range)") {
             guard let pool = market?.pool else { return }
@@ -94,7 +98,13 @@ struct TokenBoard: View {
                 StockLogo(symbol: symbol, url: market?.imageURL, size: 38)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(name).font(.ui(16, .bold)).lineLimit(1).help(fullName)
+                HStack(spacing: 5) {
+                    Text(name).font(.ui(16, .bold)).lineLimit(1).help(fullName)
+                    if let v = verified {
+                        if v.ok { VerifiedBadge(size: 15, source: v.by) }
+                        else { Text("not verified").font(.ui(10, .semibold)).foregroundStyle(Brand.jevInk).help("\(v.by) hasn't verified it: it may be a copy under a famous name") }
+                    }
+                }
                 Text([symbol, chainTitle, market.map { "\($0.dex) · \($0.quote) pool" }].compactMap { $0 }.joined(separator: " · "))
                     .font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
             }

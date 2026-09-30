@@ -64,6 +64,8 @@ public actor Executor {
     let journal: Journal
     let rpc: SolanaRPC
     let report: @Sendable (String) -> Void
+    /// A Jupiter swap that went through: from, to, how much went in and how much arrived (the app keeps spot costs).
+    let swapped: (@Sendable (SpotAsset, SpotAsset, Decimal, Decimal) -> Void)?
     private var lastNonce: UInt64 = 0
 
     /// Worst price accepted for a market entry or exit, from the mark.
@@ -74,12 +76,13 @@ public actor Executor {
     static let triggerSlippage = Decimal(string: "0.1")!
 
     public init(wallet: TradeWallet, signer: any TradeSigner, journal: Journal, rpc: SolanaRPC = SolanaRPC(),
-                report: @escaping @Sendable (String) -> Void) {
+                report: @escaping @Sendable (String) -> Void, swapped: (@Sendable (SpotAsset, SpotAsset, Decimal, Decimal) -> Void)? = nil) {
         self.wallet = wallet
         self.signer = signer
         self.journal = journal
         self.rpc = rpc
         self.report = report
+        self.swapped = swapped
     }
 
     public struct Opened: Sendable {

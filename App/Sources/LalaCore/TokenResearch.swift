@@ -162,9 +162,22 @@ public enum TokenResearch {
 
     /// A name or ticker: the tokens called so, deepest pool first, and the deepest one in full (saves the model a round).
     static func search(_ query: String) async -> String {
-        guard let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed),
-              let data = try? await get("https://api.dexscreener.com/latest/dex/search?q=\(q)") else { return "DexScreener didn't answer the search." }
-        guard let (list, top) = searchFacts(data, query: query) else { return "No token called «\(query)» trades anywhere DexScreener sees." }
+        // A ticker Jupiter verified on Solana is that token. A pool anyone can open may claim any liquidity (a copy of
+        // STONK claimed $6 billion and came first), and the verified list can't be faked that way.
+        async let verified = query.count <= 12 && !query.contains(" ") ? solanaMint(symbol: query) : nil
+        let q = query.addingPercentEncoding(withAllowedCharacters: .urlQueryAllowed)
+        let data = try? await get("https://api.dexscreener.com/latest/dex/search?q=\(q ?? query)")
+        let found = data.flatMap { searchFacts($0, query: query) }
+        if let mint = await verified {
+            async let jupiter = jupiter(mint)
+            async let pools = dex(mint)
+            return (["«\(query)» on Solana is the Jupiter-verified token with mint \(mint); use this one. Other tokens under the name are copies."]
+                    + [await jupiter, await pools].compactMap { $0 }
+                    + (found.map { ["For comparison, everything DexScreener finds under the name (the copies claim any liquidity):", $0.text] } ?? []))
+                .joined(separator: "\n")
+        }
+        guard data != nil else { return "DexScreener didn't answer the search." }
+        guard let (list, top) = found else { return "No token called «\(query)» trades anywhere DexScreener sees." }
         async let jupiter = top.hasPrefix("0x") ? nil : jupiter(top)
         async let pools = dex(top)
         return ([list, "The deepest one in full:"] + [await jupiter, await pools].compactMap { $0 }).joined(separator: "\n")

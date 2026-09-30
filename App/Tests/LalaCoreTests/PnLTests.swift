@@ -67,3 +67,18 @@ private let funding = [PnL.Funding(time: ago(10.2), coin: "xyz:CL", usdc: Decima
     let json = Data(#"[{"time":1790323200066,"delta":{"type":"funding","coin":"xyz:CL","usdc":"-0.000062","szi":"-0.369"}}]"#.utf8)
     #expect(TradeHistory.funding(json) == [PnL.Funding(time: Date(timeIntervalSince1970: 1_790_323_200.066), coin: "xyz:CL", usdc: Decimal(string: "-0.000062")!)])
 }
+@Test func spotCostIsTheAverageAndASaleTakesItsShare() throws {
+    var basis = CostBasis()
+    basis.bought(100, for: 10)   // $0.10 each
+    basis.bought(100, for: 30)   // $0.30 each → average $0.20
+    #expect(basis.usd == 40)
+    let up = try #require(basis.pnl(held: 200, price: Decimal(string: "0.25")!))
+    #expect(up.usd == 10 && up.pct == 25)
+    basis.sold(50)               // a quarter out: a quarter of the cost goes with it
+    #expect(basis.amount == 150 && basis.usd == 30)
+    // Tokens that arrived from elsewhere don't count: only the 150 with a known cost.
+    let down = try #require(basis.pnl(held: 400, price: Decimal(string: "0.1")!))
+    #expect(down.usd == -15 && down.pct == -50)
+    basis.sold(1000)
+    #expect(basis.amount == 0 && basis.usd == 0 && basis.pnl(held: 5, price: 1) == nil)
+}

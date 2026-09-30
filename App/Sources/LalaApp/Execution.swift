@@ -107,6 +107,12 @@ extension Workspace {
                 self?.reply(text, note: "execution")
                 self?.runningAction?.lines.append(text)
             }
+        } swapped: { [weak self] from, to, spent, received in
+            // Bought with USDC: its cost; sold for USDC: that share of the cost goes. Other swaps (SOL ⇄ JitoSOL) have no dollar side.
+            Task { @MainActor in
+                if from == .usdc { self?.costBasis[to.mint, default: CostBasis()].bought(received, for: spent) }
+                if to == .usdc { self?.costBasis[from.mint]?.sold(spent) }
+            }
         }
     }
 

@@ -1438,7 +1438,7 @@ struct HoldingRow: View {
             }
             .help(token.chain.capitalized)
             Text(token.symbol).font(.ui(12, .semibold)).lineLimit(1)
-            if !token.verified { Text("unverified").font(.ui(9)).foregroundStyle(.secondary) }
+            if token.verified { VerifiedBadge(size: 12) } else { Text("unverified").font(.ui(9)).foregroundStyle(.secondary) }
             Spacer(minLength: 4)
             // 20 pt, under the row's own height: at the usual 28 the row grew while the pointer was on it, and the card's
             // new height redrew the whole canvas on every row the pointer crossed. Kept out of the row until hovered: one
@@ -1449,7 +1449,14 @@ struct HoldingRow: View {
             }
             VStack(alignment: .trailing, spacing: 0) {
                 Text(token.usd.map(Fmt.usd) ?? "no price").font(.ui(12, .bold)).monospacedDigit()
-                Text(Fmt.num(token.amount, maxFraction: 4)).font(.ui(9)).foregroundStyle(.secondary).monospacedDigit()
+                // What it made or lost since it was bought here; tokens that came from elsewhere have no cost to compare.
+                if let price = token.price, let pnl = ws.costBasis[token.contract]?.pnl(held: token.amount, price: price) {
+                    Text("\(Fmt.num(token.amount, maxFraction: 4)) · \(pnl.usd < 0 ? "−" : "+")\(Fmt.pct(abs(pnl.pct).rounded(1, .plain)))")
+                        .font(.ui(9, .semibold)).foregroundStyle(pnl.usd < 0 ? Brand.loss : Brand.profit).monospacedDigit()
+                        .help("\(pnl.usd < 0 ? "Loss" : "Profit") \(Fmt.usd(abs(pnl.usd))) on what was bought here")
+                } else {
+                    Text(Fmt.num(token.amount, maxFraction: 4)).font(.ui(9)).foregroundStyle(.secondary).monospacedDigit()
+                }
             }
         }
         .opacity(shown ? 1 : 0.6)
