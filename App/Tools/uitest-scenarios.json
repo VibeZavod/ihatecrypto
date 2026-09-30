@@ -285,5 +285,25 @@
       ],
       "title_contains": "Base → Robinhood"
     }
+  },
+  {
+    "name": "save the canvas to a folder by words → it goes there",
+    "send": [
+      "save this canvas to folder UITest"
+    ],
+    "expect": {
+      "no_pending": true,
+      "reply_contains": "UITest"
+    }
+  },
+  {
+    "name": "write a note to a folder → a note of its own there",
+    "send": [
+      "запиши в папку UITest: проверить Ledger завтра"
+    ],
+    "expect": {
+      "no_pending": true,
+      "reply_contains": "UITest"
+    }
   }
 ]

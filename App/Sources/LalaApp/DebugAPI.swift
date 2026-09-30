@@ -49,6 +49,8 @@ final class DebugAPI {
     }
     /// /reset opened a fresh canvas: the first /send's canvas is a test canvas.
     private var freshCanvas = false
+    /// Folders a scenario made («write to folder …»): /restore removes them with the test canvases.
+    private var testFolders: Set<String> = []
 
     func start(_ ws: Workspace) {
         guard listener == nil, let port = NWEndpoint.Port(rawValue: Self.port) else { return }
@@ -112,8 +114,12 @@ final class DebugAPI {
             guard !text.isEmpty else { return (400, "text/plain", Data("no text\n".utf8)) }
             guard !ws.busy else { return (409, "text/plain", Data("busy\n".utf8)) }
             let before = ws.messages.count
+            let knownCanvases = Set(ws.canvases.map(\.id)), knownFolders = Set(ws.folders)
             await SignerClient.$untrusted.withValue(true) { await ws.send(text) }
             if freshCanvas, let id = ws.canvasID { testCanvases.insert(id); freshCanvas = false }
+            // A note canvas or a folder the message made goes too, so a scenario leaves nothing in the sidebar.
+            testCanvases.formUnion(ws.canvases.map(\.id).filter { !knownCanvases.contains($0) })
+            testFolders.formUnion(ws.folders.filter { !knownFolders.contains($0) })
             return (200, "application/json", json(state(ws, since: before)))
         case ("POST", "/reset"):
             // A card waiting on the user's own canvas is never pushed aside by a test.
@@ -145,6 +151,8 @@ final class DebugAPI {
             if let id = ws.canvasID, testCanvases.contains(id) { ws.newCanvas() }
             for id in testCanvases { ws.deleteCanvas(id) }
             testCanvases = []
+            for f in testFolders { ws.deleteFolder(f) }
+            testFolders = []
             freshCanvas = false
             if let back, let canvas = ws.canvases.first(where: { $0.id == back }) { ws.openCanvas(canvas) }
             return (200, "application/json", json(state(ws, since: ws.messages.count)))
