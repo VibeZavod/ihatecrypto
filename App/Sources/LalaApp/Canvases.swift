@@ -210,7 +210,9 @@ extension Workspace {
             reply(say("Saved this canvas to «\(folder)».", "Сохранил этот холст в папку «\(folder)»."), note: note)
         case .note(let folder, let text):
             createFolder(folder)
-            var c = CanvasSession(providerID: providerID, model: model, messages: [Message(fromUser: true, text: text)], intent: TradeIntent(), folder: folder)
+            // The greeting first, as on every canvas: the chat shows everything after it.
+            var c = CanvasSession(providerID: providerID, model: model, messages: Array(messages.prefix(1)) + [Message(fromUser: true, text: text)],
+                                  intent: TradeIntent(), folder: folder)
             c.title = text.count > 48 ? String(text.prefix(48)) + "…" : text
             canvases.insert(c, at: 0)
             reply(say("Wrote it to «\(folder)»: it's a note there now, in the sidebar.", "Записал в папку «\(folder)»: теперь это заметка там, в боковой панели."), note: note)
@@ -270,7 +272,8 @@ extension Workspace {
     private func load(_ c: CanvasSession) {
         clearCanvas()
         canvasID = c.id
-        messages = c.messages
+        // A note saved without the greeting (before 2026-10-01) gets it back, or the chat would hide the note behind it.
+        messages = c.messages.first?.fromUser == true && messages.first?.fromUser == false ? Array(messages.prefix(1)) + c.messages : c.messages
         intent = c.intent
         executed = c.executed ? c.intent : nil
         if LLMCatalog.provider(id: c.providerID) != nil {
