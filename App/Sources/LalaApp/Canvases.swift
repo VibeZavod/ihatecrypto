@@ -764,8 +764,19 @@ struct SavedBoard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             if let o = canvas.outcome {
-                Label("\(o.ok ? "Executed" : "Failed") · \(Fmt.date(o.at))", systemImage: o.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
-                    .font(.ui(13, .semibold)).foregroundStyle(o.ok ? Brand.profit : Brand.loss)
+                HStack(spacing: 12) {
+                    Label("\(o.ok ? "Executed" : "Failed") · \(Fmt.date(o.at))", systemImage: o.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                        .font(.ui(13, .semibold)).foregroundStyle(o.ok ? Brand.profit : Brand.loss)
+                    // The same move again: a fresh card with new quotes, waiting for Confirm like the first time. What the
+                    // failed run already did stays done (USDC it bridged waits on that network; the chat said so).
+                    if !o.ok, let retry = ws.retryCommand, retry.canvas == canvas.id {
+                        Button { Task { await ws.handleWallet(retry.command) } } label: {
+                            Label("Try again", systemImage: "arrow.clockwise").font(.ui(12, .semibold))
+                        }
+                        .buttonStyle(.bordered).controlSize(.small)
+                        .help("Lays the same move out again with fresh quotes; nothing moves until you Confirm. What the failed run already did stays done.")
+                    }
+                }
             } else {
                 // Its Refresh is at the header's top right, where a live board has Cancel and Confirm.
                 Label("As it was · \(Fmt.date(canvas.boardAt ?? canvas.updated))", systemImage: "clock.arrow.circlepath")
@@ -1375,16 +1386,24 @@ extension Workspace {
         }
     }
 
-    /// USDC on an EVM network we read one by one (nil where it isn't read: Polygon, Ethereum).
+    /// USDC free at a place: Solana, Hyperliquid's withdrawable, each EVM network (Ethereum and Polygon from the tokens read).
     func usdc(on place: String) -> Decimal? {
         switch place {
+        case "solana": solana?.usdc
         case "base": base?.usdc
+        case "ethereum": heldUSDC("ethereum", EVMRPC.ethereumUSDC)
+        case "polygon": heldUSDC("polygon", EVMRPC.polygonUSDC)
         case "arbitrum": arbitrumUSDC
         case "robinhood": robinhood?.usdg
         case "tempo": tempoUSDC
         case "hyperliquid": hl?.withdrawable
         default: nil
         }
+    }
+
+    /// USDC read with the other networks' tokens; nil until they've been read.
+    func heldUSDC(_ chain: String, _ contract: String) -> Decimal? {
+        otherTokens.first { $0.chain == chain && $0.contract == contract }?.amount ?? (otherTokens.isEmpty ? nil : 0)
     }
 
     /// Gas for a network: Solana's USDC → Relay → the network's own coin at our address (half a dollar of USDC comes along).

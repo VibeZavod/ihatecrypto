@@ -2,6 +2,7 @@ import Foundation
 import HyperliquidSigning
 @testable import TradeExecution
 import Testing
+import WalletCore
 
 @Test func exchangeRepliesAreReadStrictly() {
     func reply(_ json: String) -> HLReply { HLReply.parse(Data(json.utf8)) }
@@ -77,4 +78,30 @@ import Testing
     #expect(Executor.pullToSolana(slices: [("base", 80)], idle: [("base", 100)], onSolana: 0).isEmpty)
     // Short by a few cents: under a bridge's half dollar, so no bridge; the slice takes what is there.
     #expect(Executor.pullToSolana(slices: [(nil, Decimal(string: "20.2")!)], idle: [("base", 100)], onSolana: 20).isEmpty)
+}
+
+@Test func aNodeIsAskedAgainOnlyWhenItsAnswerMayChange() async throws {
+    let ok = HTTPURLResponse(url: URL(string: "https://node")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
+    let busy = HTTPURLResponse(url: URL(string: "https://node")!, statusCode: 429, httpVersion: nil, headerFields: nil)!
+    func reader(_ data: Data, _ status: Int) throws -> String {
+        let text = String(decoding: data, as: UTF8.self)
+        if text.hasPrefix("error: ") { throw RPCRetry.Again(status == 429 || RPCRetry.transient(text), WalletError(text)) }
+        return text
+    }
+    // A throttle, a dropped connection, then the answer.
+    var script: [Result<(Data, URLResponse), Error>] = [.success((Data("error: busy".utf8), busy)), .failure(URLError(.networkConnectionLost)),
+                                                        .success((Data("0x1".utf8), ok))]
+    #expect(try await RPCRetry.run(delays: [.zero, .zero, .zero], { try script.removeFirst().get() }, answer: reader) == "0x1")
+    // A revert is final at once, though its text says «try again».
+    var asked = 0
+    await #expect(throws: WalletError.self) {
+        try await RPCRetry.run(delays: [.zero, .zero], { asked += 1; return (Data("error: execution reverted: try again later".utf8), ok) }, answer: reader)
+    }
+    #expect(asked == 1)
+    // A node that stays down: every retry, then its error.
+    asked = 0
+    await #expect(throws: WalletError.self) {
+        try await RPCRetry.run(delays: [.zero, .zero], { asked += 1; return (Data("error: over rate limit".utf8), ok) }, answer: reader)
+    }
+    #expect(asked == 3)
 }

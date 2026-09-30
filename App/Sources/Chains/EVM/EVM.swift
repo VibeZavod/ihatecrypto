@@ -248,18 +248,19 @@ public struct EVMRPC: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["jsonrpc": "2.0", "id": 1, "method": method, "params": params])
-        var (data, response) = try await URLSession.shared.data(for: request)
-        // Public nodes throttle bursts: wait and ask again (reads and sends alike are safe to repeat — a resent
-        // raw transaction is the same transaction).
-        for delay in [1, 2, 4] where (response as? HTTPURLResponse)?.statusCode == 429 || String(decoding: data.prefix(200), as: UTF8.self).contains("rate limit") {
-            try await Task.sleep(for: .seconds(delay))
-            (data, response) = try await URLSession.shared.data(for: request)
+        // Public nodes throttle bursts, drop connections and have bad seconds: wait and ask again, up to about half a
+        // minute (reads and sends alike are safe to repeat — a resent raw transaction is the same transaction). What
+        // the node answered on purpose (a revert, a short balance) is final at once.
+        return try await RPCRetry.run { try await URLSession.shared.data(for: request) } answer: { data, status in
+            guard let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                throw RPCRetry.Again(status >= 500 || status == 429, WalletError("EVM RPC \(method): HTTP \(status), response isn't JSON: \(String(decoding: data.prefix(120), as: UTF8.self))"))
+            }
+            if let error = reply["error"] as? [String: Any] {
+                let message = error["message"] as? String ?? "\(error)"
+                throw RPCRetry.Again(status == 429 || RPCRetry.transient(message), WalletError("EVM RPC \(method): \(message)"))
+            }
+            return reply["result"] ?? NSNull()
         }
-        guard let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            throw WalletError("EVM RPC \(method): response isn't JSON: \(String(decoding: data.prefix(120), as: UTF8.self))")
-        }
-        if let error = reply["error"] as? [String: Any] { throw WalletError("EVM RPC \(method): \(error["message"] as? String ?? "\(error)")") }
-        return reply["result"] ?? NSNull()
     }
 
     public func quantity(_ method: String, _ params: [Any]) async throws -> UInt64 {
@@ -290,8 +291,13 @@ public struct EVMRPC: Sendable {
     }
 
     public func send(_ raw: Data) async throws -> String {
-        guard let hash = try await call("eth_sendRawTransaction", ["0x" + raw.hex]) as? String else { throw WalletError("No transaction hash") }
-        return hash
+        do {
+            guard let hash = try await call("eth_sendRawTransaction", ["0x" + raw.hex]) as? String else { throw WalletError("No transaction hash") }
+            return hash
+        } catch let error as WalletError where error.message.lowercased().contains("already known") || error.message.lowercased().contains("known transaction") {
+            // A retry after the first send got through: it's the same transaction, waiting for its block.
+            return "0x" + Keccak.hash256(raw).hex
+        }
     }
 
     /// Runs the transaction on the latest block without sending it (eth_simulateV1): what `from` gains and loses.

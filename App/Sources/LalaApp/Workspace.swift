@@ -155,6 +155,8 @@ final class Workspace {
     /// The last money move carried out on this canvas: whether and when it went through, and its route as confirmed.
     /// The canvas keeps them in place of the «waiting for the signature» they replace.
     var finishedAction: (title: String, outcome: CanvasOutcome, route: [ActivityBubble])?
+    /// The move that just failed on a canvas: its board's «Try again» lays the same card out again, quoted afresh.
+    var retryCommand: (canvas: UUID?, command: WalletCommand)?
     enum PendingAction { case wallet(WalletCommand), position(PositionCommand, coin: String), address(SavedAddress), transfer(SavedAddress, Decimal) }
     /// The English command the pending action was understood as, for the confirm button.
     var pendingText: String?

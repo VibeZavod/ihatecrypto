@@ -14,30 +14,21 @@ public struct SolanaRPC: Sendable {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["jsonrpc": "2.0", "id": 1, "method": method, "params": params])
-        // ponytail: the public RPC answers 429 under bursts; three backed-off retries, then a clear error.
-        var attempt = 0
-        var data = Data()
-        while true {
-            let (body, response) = try await URLSession.shared.data(for: request)
-            data = body
-            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
-            if status == 429, attempt < 3 {
-                attempt += 1
-                try await Task.sleep(for: .milliseconds(800 * attempt))
-                continue
-            }
+        // The public RPC answers 429 under bursts and drops a connection now and then: backed-off retries (RPCRetry),
+        // then a clear error. A resent transaction is the same one (its signature), so sends retry too.
+        return try await RPCRetry.run { try await URLSession.shared.data(for: request) } answer: { data, status in
             guard (200..<300).contains(status) else {
-                throw WalletError("Solana RPC \(method): HTTP \(status) \(String(decoding: body.prefix(120), as: UTF8.self))")
+                throw RPCRetry.Again(status == 429 || status >= 500, WalletError("Solana RPC \(method): HTTP \(status) \(String(decoding: data.prefix(120), as: UTF8.self))"))
             }
-            break
+            guard let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
+                throw WalletError("Solana RPC \(method): response isn't JSON: \(String(decoding: data.prefix(120), as: UTF8.self))")
+            }
+            if let error = reply["error"] as? [String: Any] {
+                let message = error["message"] as? String ?? "\(error)"
+                throw RPCRetry.Again(RPCRetry.transient(message), WalletError("Solana RPC \(method): \(message)"))
+            }
+            return reply["result"] ?? NSNull()
         }
-        guard let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
-            throw WalletError("Solana RPC \(method): response isn't JSON: \(String(decoding: data.prefix(120), as: UTF8.self))")
-        }
-        if let error = reply["error"] as? [String: Any] {
-            throw WalletError("Solana RPC \(method): \(error["message"] as? String ?? "\(error)")")
-        }
-        return reply["result"] ?? NSNull()
     }
 
     public func balance(_ address: String) async throws -> UInt64 {
@@ -65,9 +56,14 @@ public struct SolanaRPC: Sendable {
 
     /// Simulates first (preflight), then broadcasts. Returns the signature, which is the transaction id.
     public func send(_ transaction: Data) async throws -> String {
-        let r = try await call("sendTransaction", [transaction.base64EncodedString(), ["encoding": "base64", "preflightCommitment": "confirmed", "maxRetries": 5]])
-        guard let signature = r as? String else { throw WalletError("sendTransaction returned no signature") }
-        return signature
+        do {
+            let r = try await call("sendTransaction", [transaction.base64EncodedString(), ["encoding": "base64", "preflightCommitment": "confirmed", "maxRetries": 5]])
+            guard let signature = r as? String else { throw WalletError("sendTransaction returned no signature") }
+            return signature
+        } catch let error as WalletError where error.message.contains("already been processed") && transaction.count > 65 {
+            // A retry after the first send got through: the same transaction, named by its first signature (after the count byte).
+            return Base58.encode(transaction[transaction.startIndex + 1 ..< transaction.startIndex + 65])
+        }
     }
 
     /// Runs the transaction without sending it, with signature checks on. nil error = it would succeed.

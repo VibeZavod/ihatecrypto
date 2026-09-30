@@ -288,6 +288,7 @@ extension Workspace {
             runningAction = nil
             guard movesMoney(command, confirmed: confirmed) else { return }
             finishedAction = (confirmedRoute?.title ?? readable(Self.canvasTitle(command)), CanvasOutcome(at: Date(), ok: ok), steps)
+            retryCommand = ok ? nil : (canvasID, command)
             // The outcome board comes from the saved canvas: save now, not after the balance refresh that follows,
             // or the canvas stays blank for those seconds.
             saveCanvas()
