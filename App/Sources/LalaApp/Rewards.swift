@@ -30,8 +30,9 @@ extension Workspace {
             }
             rewards = owed
             pendingAction = .wallet(command)
-            reply(say("Merkl owes this wallet \(owed.map(Self.shown).joined(separator: ", "))\(worth > 0 ? ", ≈ \(Fmt.usd(worth))" : ""). The card is on the canvas — Confirm claims it.",
-                      "Merkl должен кошельку \(owed.map(Self.shown).joined(separator: ", "))\(worth > 0 ? ", ≈ \(Fmt.usd(worth))" : ""). Карточка на холсте — Confirm заберёт."), note: note)
+            let sweep: Bool = if case .sweepRewards = command { true } else { false }
+            reply(say("Merkl owes this wallet \(owed.map(Self.shown).joined(separator: ", "))\(worth > 0 ? ", ≈ \(Fmt.usd(worth))" : ""). The card is on the canvas — Confirm claims it\(sweep ? " and sells it" : "").",
+                      "Merkl должен кошельку \(owed.map(Self.shown).joined(separator: ", "))\(worth > 0 ? ", ≈ \(Fmt.usd(worth))" : ""). Карточка на холсте — Confirm заберёт\(sweep ? " и продаст" : "")."), note: note)
         } catch {
             reply(say("Couldn't ask Merkl: ", "Не достучался до Merkl: ") + error.localizedDescription, note: note)
         }
