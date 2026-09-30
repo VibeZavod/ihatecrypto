@@ -2296,6 +2296,13 @@ private struct VoiceBars: View {
 private struct ChatComposer: View {
     @Environment(Workspace.self) private var ws
     @State private var templatesOpen = false
+    /// The highlighted row of the «/» or «@» list.
+    @State private var pick = 0
+    /// The field's text when Esc closed the list: it stays closed until the text changes.
+    @State private var dismissed: String?
+
+    private var suggestions: [ComposerSuggestion] { ws.draft == dismissed ? [] : ComposerSuggestion.for(ws.draft, ws: ws) }
+    private var picked: ComposerSuggestion? { let rows = suggestions; return rows.indices.contains(pick) ? rows[pick] : nil }
 
     var body: some View {
         let voice = ws.voice
@@ -2319,9 +2326,11 @@ private struct ChatComposer: View {
                 Label(why, systemImage: "mic.slash").font(.ui(10)).foregroundStyle(.orange).lineLimit(3)
             }
             if let step = ws.stepContext, !voice.listening { StepContextChip(step: step) }
+            if !voice.listening, case let rows = suggestions, !rows.isEmpty { suggestionList(rows) }
             if voice.listening { listening(voice) } else { field }
         }
         .padding(12)
+        .onChange(of: ws.draft) { pick = 0 }
         // Whatever was heard goes into the field when listening ends (Done, or the recognizer stopping by itself);
         // the person reads it and sends it.
         .onChange(of: voice.listening) { was, now in
@@ -2377,16 +2386,32 @@ private struct ChatComposer: View {
             .popover(isPresented: $templatesOpen, arrowEdge: .top) {
                 TemplatesPanel { phrase in ws.draft = phrase; templatesOpen = false }
             }
-            TextField(ws.stepContext == nil ? "What should we do?" : "Ask about this step…", text: Bindable(ws).draft, axis: .vertical)
-                .textFieldStyle(.plain).font(.ui(14)).lineLimit(1...5)
+            TextField(ws.stepContext == nil ? "What should we do? / for blocks, @ for names" : "Ask about this step…", text: Bindable(ws).draft, axis: .vertical)
+                .textFieldStyle(.plain).font(.ui(14)).lineLimit(1...8)
                 // The caret in the brand's orange.
                 .tint(Brand.accent)
                 .padding(.vertical, 8)
                 .onSubmit(send)
-                // ↑ in an empty field brings back the last message, to send again or edit.
+                // ↑↓ walk the «/» or «@» list; ↑ in an empty field brings back the last message, to send again or edit.
                 .onKeyPress(.upArrow) {
+                    if !suggestions.isEmpty { pick = max(0, pick - 1); return .handled }
                     guard ws.draft.isEmpty, let last = ws.messages.last(where: \.fromUser)?.text else { return .ignored }
                     ws.draft = last
+                    return .handled
+                }
+                .onKeyPress(.downArrow) {
+                    guard !suggestions.isEmpty else { return .ignored }
+                    pick = min(suggestions.count - 1, pick + 1)
+                    return .handled
+                }
+                .onKeyPress(.tab) {
+                    guard let row = picked else { return .ignored }
+                    choose(row)
+                    return .handled
+                }
+                .onKeyPress(.escape) {
+                    guard !suggestions.isEmpty else { return .ignored }
+                    dismissed = ws.draft
                     return .handled
                 }
             Button { Task { await ws.voice.start() } } label: {
@@ -2413,10 +2438,71 @@ private struct ChatComposer: View {
     }
 
     private func send() {
+        // Return with the list open puts the highlighted row in; the next Return sends.
+        if let row = picked { choose(row); return }
         let text = ws.draft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !ws.busy else { return }
         ws.draft = ""
         Task { await ws.send(text) }
+    }
+
+    private func choose(_ row: ComposerSuggestion) {
+        ws.draft = row.draft
+        // A block's example is finished and sent by the person: the list stays closed on it.
+        dismissed = row.draft
+    }
+
+    private func suggestionList(_ rows: [ComposerSuggestion]) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
+                Button { choose(row) } label: {
+                    HStack(spacing: 8) {
+                        Image(systemName: row.icon).font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(i == pick ? Brand.accentInk : Color.secondary).frame(width: 18)
+                        Text(row.title).font(.ui(12.5, .semibold)).lineLimit(1).layoutPriority(1)
+                        Text(row.detail).font(.ui(11.5)).foregroundStyle(.secondary).lineLimit(1)
+                        Spacer(minLength: 0)
+                    }
+                    .padding(.horizontal, 9).frame(height: 30)
+                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(i == pick ? Brand.accent.opacity(0.14) : .clear))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).pointerStyle(.link)
+                .onHover { if $0 { pick = i } }
+            }
+            Text("↑↓ choose · Return puts it in · Esc closes").font(.ui(10)).foregroundStyle(.tertiary).padding(.horizontal, 9).padding(.top, 2)
+        }
+        .padding(5)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Brand.glassFill))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Brand.glassRim))
+        .transition(.opacity)
+    }
+}
+
+/// A row over the chat's field. «/» lists the blocks (BlockCatalog): a pick puts its example in the field to finish.
+/// «@» at the start of a word lists the address book and the favorite tokens: a pick puts the name in its place.
+struct ComposerSuggestion: Identifiable, Equatable {
+    var id: String { icon + title + detail }
+    let icon: String
+    let title: String
+    let detail: String
+    /// The field's text once it's picked.
+    let draft: String
+
+    static func `for`(_ draft: String, ws: Workspace) -> [ComposerSuggestion] {
+        if draft.hasPrefix("/") {
+            let q = draft.dropFirst().lowercased().trimmingCharacters(in: .whitespaces)
+            return Array(BlockCatalog.all.filter { !$0.automatic && !$0.example.isEmpty }
+                .filter { q.isEmpty || "\($0.title) \($0.group) \($0.example)".lowercased().contains(q) }
+                .prefix(6).map { ComposerSuggestion(icon: "square.grid.2x2", title: $0.title, detail: $0.example, draft: $0.example) })
+        }
+        guard let at = draft.range(of: "@", options: .backwards), !draft[at.upperBound...].contains(where: \.isWhitespace),
+              at.lowerBound == draft.startIndex || draft[draft.index(before: at.lowerBound)].isWhitespace else { return [] }
+        let q = draft[at.upperBound...].lowercased(), head = String(draft[..<at.lowerBound])
+        let names = ws.addressBook.map { (icon: "person.crop.circle", title: $0.name, detail: $0.network.title) }
+            + ws.favoriteTokens.map { (icon: "star", title: $0.symbol, detail: "\($0.name) · \($0.chainTitle)") }
+        return Array(names.filter { q.isEmpty || $0.title.lowercased().contains(q) }.prefix(6)
+            .map { ComposerSuggestion(icon: $0.icon, title: $0.title, detail: $0.detail, draft: head + $0.title + " ") })
     }
 }
 
