@@ -47,6 +47,32 @@ extension Workspace {
         schedules.filter { $0.paused != true }.reduce(0) { $0 + $1.usdc * 7 / Decimal(max(1, $1.days)) }
     }
 
+    /// The scheduled item the open canvas shows, when it's one's own canvas.
+    var currentScheduleKey: String? { canvasID.flatMap { id in canvases.first { $0.id == id }?.schedule } }
+
+    /// A scheduled item opens on a canvas of its own, like a chat: made the first time, then the same one, in the list
+    /// with the others. Its card is there, and the chat on it can change it.
+    func openScheduleCanvas(_ key: String) {
+        scheduleItem = key
+        if let c = canvases.first(where: { $0.schedule == key }) {
+            if c.id != canvasID { openCanvas(c) }
+            return
+        }
+        guard !busy else { return }
+        // Only the greeting, as on every canvas: the item is its card, not a message.
+        var c = CanvasSession(providerID: providerID, model: model, messages: Array(messages.prefix(1)), intent: TradeIntent())
+        c.title = scheduleEntries.first { $0.id == key }?.title ?? "Scheduled"
+        c.schedule = key
+        canvases.insert(c, at: 0)
+        openCanvas(c)
+    }
+
+    /// «Run now»: due at once; the watch loop runs it within half a minute, on a canvas of its own like any run.
+    func runScheduledNow(_ key: String) {
+        if let i = tasks.firstIndex(where: { "task:\($0.id)" == key }) { tasks[i].next = Date() }
+        if let i = schedules.firstIndex(where: { "buy:\($0.symbol)" == key }) { schedules[i].next = Date() }
+    }
+
     func setPaused(_ id: String, _ paused: Bool) {
         if let i = tasks.firstIndex(where: { "task:\($0.id)" == id }) { tasks[i].paused = paused ? true : nil }
         if let i = schedules.firstIndex(where: { "buy:\($0.symbol)" == id }) { schedules[i].paused = paused ? true : nil }
@@ -227,8 +253,8 @@ struct ScheduleFrame: View {
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(ws.scheduleItem == e.id ? Brand.accent : Brand.cardBorder))
         .opacity(e.paused || ws.schedulePaused ? 0.55 : 1)
         .contentShape(Rectangle())
-        // Its page: steps, runs, Pause and Delete.
-        .onTapGesture { withAnimation(StudioView.spring) { ws.scheduleItem = e.id; ws.scheduleOpen = true } }
+        // Its own canvas: steps, runs, Pause and Delete, and the chat to change it.
+        .onTapGesture { ws.openScheduleCanvas(e.id) }
     }
 
     // MARK: History
@@ -257,7 +283,7 @@ struct ScheduleFrame: View {
             Text(title).font(.ui(12, .medium)).lineLimit(1)
             Spacer(minLength: 2)
             if let id = a.canvas, let c = ws.canvases.first(where: { $0.id == id }) {
-                Button { ws.scheduleOpen = false; ws.openCanvas(c) } label: { Image(systemName: "arrow.up.right") }
+                Button { ws.openCanvas(c) } label: { Image(systemName: "arrow.up.right") }
                     .buttonStyle(.hoverIcon).help("Open the canvas it ran on")
             }
         }
@@ -346,11 +372,57 @@ struct ScheduleTop3: View {
                 }
                 .opacity(e.paused || ws.schedulePaused ? 0.55 : 1)
                 .contentShape(Rectangle())
-                .onTapGesture { withAnimation(StudioView.spring) { ws.scheduleItem = e.id; ws.showSchedule = true } }
+                .onTapGesture { ws.openScheduleCanvas(e.id) }
             }
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 16).fill(Color.primary.opacity(0.03)))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.cardBorder))
+    }
+}
+
+/// A scheduled item on its own canvas: the task, the buy or the perp in detail, its switch, Run now, and every time it ran.
+struct ScheduleItemBoard: View {
+    @Environment(Workspace.self) private var ws
+    let key: String
+
+    var body: some View {
+        let entry = ws.scheduleEntries.first { $0.id == key }
+        let runs = Array(ws.activities.reversed().lazy.filter { $0.schedule == key }.prefix(50))
+        VStack(alignment: .leading, spacing: 14) {
+            if let t = ws.tasks.first(where: { "task:\($0.id)" == key }) {
+                TaskDetail(task: t)
+            } else if let b = ws.schedules.first(where: { "buy:\($0.symbol)" == key }) {
+                ScheduleBoard(schedule: b)
+            } else if let p = ws.positions.first(where: { "perp:\($0.coin)" == key }) {
+                PositionBoard(position: p)
+            } else {
+                // Done or cancelled: what it did is all that's left.
+                Text("No longer scheduled — what it did is below.").font(.ui(13, .semibold)).foregroundStyle(.secondary)
+            }
+            if let entry, !key.hasPrefix("perp:") {
+                HStack(spacing: 10) {
+                    Toggle(isOn: Binding(get: { !entry.paused }, set: { ws.setPaused(key, !$0) })) {
+                        Text(entry.paused ? "Paused" : "On").font(.ui(12.5, .semibold))
+                    }
+                    .toggleStyle(.switch).controlSize(.small)
+                    Button { ws.runScheduledNow(key) } label: { Label("Run now", systemImage: "play.fill").font(.ui(12, .semibold)) }
+                        .buttonStyle(.bordered).controlSize(.small).disabled(ws.schedulePaused)
+                        .help("Runs within half a minute, on a canvas of its own")
+                    Text("Change it in the chat, in any words.").font(.ui(10.5)).foregroundStyle(.secondary)
+                }
+            }
+            Text(runs.isEmpty ? "HASN’T RUN YET" : "RUNS · \(runs.count)").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary).padding(.top, 4)
+            ForEach(runs) { a in
+                VStack(alignment: .trailing, spacing: 4) {
+                    ActivityCard(activity: a)
+                    if let id = a.canvas, let c = ws.canvases.first(where: { $0.id == id }) {
+                        Button { ws.openCanvas(c) } label: { Label("Open its canvas", systemImage: "rectangle.on.rectangle") }
+                            .buttonStyle(.borderless).font(.ui(10, .semibold))
+                    }
+                }
+            }
+        }
+        .frame(width: 470, alignment: .leading)
     }
 }

@@ -188,8 +188,6 @@ struct StudioView: View {
             // The canvas fills the window: the boards show around and through the glass rail, not cut at its edge.
             if mode == "history" {
                 HistoryView { withAnimation(.snappy) { mode = "plan" } }.padding(.leading, railEdge)
-            } else if ws.scheduleOpen {
-                ScheduleCanvas().padding(.leading, railEdge).transition(.opacity)
             } else {
                 // The canvas's scale follows the window alone: moving or resizing the chat, which floats
                 // above everything, never shifts or rescales the boards.
@@ -266,7 +264,7 @@ struct StudioView: View {
                         .padding(16)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                         // Over the chat while open: a pick closes it and the chat shows the block's words.
-                        if mode == "plan", !ws.scheduleOpen {
+                        if mode == "plan" {
                             // «Add block» / «Close blocks» stays at the right; the library itself sits under it or,
                             // moved by its corner button, beside the sidebar, and glides between the two.
                             AddBlockButton(open: $showBlocks)
@@ -1057,6 +1055,8 @@ struct StudioCanvas: View {
                     .padding(.bottom, 10)
                     .transition(.opacity)
             }
+            // A scheduled item's own canvas: its card first; the chat on it changes it.
+            if let key = ws.currentScheduleKey { ScheduleItemBoard(key: key).padding(.bottom, 10) }
             // The model's ways to go on, under the block its answer opened; with a plan they go under the plan, in its list.
             if nodes.isEmpty, let steps = ws.nextSteps ?? ws.heldAnswer?.steps, steps.canvas == ws.canvasID {
                 NextStepsBoard(steps: steps).padding(.bottom, 10).allowsHitTesting(ws.nextSteps != nil)
@@ -1070,7 +1070,7 @@ struct StudioCanvas: View {
             // Moves already done on this canvas stay above the current one.
             EarlierBoards()
             // A move waiting for its signature or running has its own title and status: no «Plan · waiting» over it.
-            if hasRoute || ws.allocationPreview != nil || (ws.pendingAction == nil && ws.runningAction == nil) {
+            if hasRoute || ws.allocationPreview != nil || (ws.pendingAction == nil && ws.runningAction == nil && ws.currentScheduleKey == nil) {
                 HStack(spacing: 8) {
                     Text(ws.allocationPreview.map { "Plan · spread \($0.asset) across the best rates" }
                          ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : board.map { ws.readable($0.title) } ?? "Plan"))
@@ -1127,7 +1127,7 @@ struct StudioCanvas: View {
                         if ws.thinking || ws.busy || ws.executing || ws.preparing || ws.managesPosition,
                            let last = ws.canvases.first(where: { $0.id == ws.canvasID }), !last.bubbles.isEmpty {
                             SavedBoard(canvas: last)
-                        } else {
+                        } else if ws.currentScheduleKey == nil {
                             placeholder
                         }
                     }
@@ -3347,8 +3347,7 @@ struct RailActions: View {
     @ViewBuilder
     private func tile(_ title: String, _ icon: String, on: Bool, accent: Bool = false, help: String, action: @escaping () -> Void) -> some View {
         let tap = {
-            // Every button goes back to the plan canvas from a Schedule item's page; the Schedule frame stays.
-            withAnimation(StudioView.spring) { ws.scheduleOpen = false; action() }
+            withAnimation(StudioView.spring) { action() }
             mode = "plan"
         }
         if compact {

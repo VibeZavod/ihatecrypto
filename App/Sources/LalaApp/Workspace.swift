@@ -191,10 +191,9 @@ final class Workspace {
     /// The latest of the history and the favorites on the canvas, opened by the rail's buttons.
     var showHistory = false
     var showFavorites = false
-    /// The Schedule frame on the canvas beside the portfolio (ScheduleFrame.swift); `scheduleOpen`, an item's page in place
-    /// of the plan (Tasks.swift); the item it shows in detail: «task:<id>», «buy:SOL», «perp:BTC».
+    /// The Schedule frame on the canvas beside the portfolio (ScheduleFrame.swift), and the item last opened on its own
+    /// canvas: «task:<id>», «buy:SOL», «perp:BTC».
     var showSchedule = false
-    var scheduleOpen = false
     var scheduleItem: String?
     /// «Pause schedule»: no task or recurring buy runs until it's resumed; stops and takes stay on the exchange.
     var schedulePaused = UserDefaults.standard.bool(forKey: "schedulePaused") {
@@ -632,8 +631,6 @@ final class Workspace {
         heldAnswer = (nextSteps, yieldOptions, takeChoices)
         defer { heldAnswer = nil }
         finishedAction = nil
-        // The answer goes on the plan canvas: an item's page closes, the Schedule frame stays beside the portfolio.
-        scheduleOpen = false
         // The cards of the last answer go with any new message; the model still knows them («да», «второй»).
         let offered = nextSteps?.options ?? []
         nextSteps = nil

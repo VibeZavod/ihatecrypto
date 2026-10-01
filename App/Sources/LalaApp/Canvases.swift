@@ -104,6 +104,8 @@ struct CanvasSession: Codable, Identifiable, Equatable {
 
     /// Picked from the icon library (the row's «Change icon…»); nil = the sign of what the canvas holds.
     var icon: AddressIcon?
+    /// A scheduled item's own canvas («task:<id>», «buy:SOL», «perp:BTC»): its card shows on it, like a chat's board.
+    var schedule: String?
     var displayTitle: String { name ?? (title.isEmpty ? "Canvas" : title) }
 }
 
@@ -346,7 +348,6 @@ extension Workspace {
         showHistory = false
         showFavorites = false
         showSchedule = false
-        scheduleOpen = false
         UserDefaults.standard.set("plan", forKey: "canvasMode")
         NotificationCenter.default.post(name: .lalaCanvasFit, object: nil)
     }
