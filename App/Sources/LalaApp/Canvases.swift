@@ -1360,7 +1360,7 @@ extension Workspace {
                    + (solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? ""), .solana)
         return MoveRoute(title: "Buy \(symbol) · \(Fmt.num(usdc)) USDC on Robinhood Chain",
                          footer: (bring == 0 ? "Two signatures on Robinhood Chain with the USDG already there: " : "One Solana signature for the bridge, then two on Robinhood Chain: ")
-                            + "an exact USDG approve and the Uniswap swap, which may only pay this wallet. "
+                            + "an exact USDG approve and the swap the best way takes (Uniswap v4, v3 or Relay’s swap, compared in the step), which may only pay this wallet. "
                             + (contract ? "The token is taken by its contract: it must trade on Robinhood Chain with $50k+ of liquidity, and the price must sit within 5% of DexScreener's."
                                         : "The token is Robinhood's registered contract, checked on-chain, and the price must sit within Robinhood's own quote.")
                             + " Say “do it” or press Confirm.", steps: [
