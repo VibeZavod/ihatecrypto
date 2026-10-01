@@ -1298,9 +1298,22 @@ extension Workspace {
             case .rebalance(let share):
                 return [ActivityBubble(kind: "step", label: "REBALANCE · BEST RATES", title: "deposits",
                                        lines: ["moves\twhen the money lands", "max per place\t\(Fmt.pct(share ?? 50))"], status: "then", logo: "usdc", fill: .jupiter)]
+            // A transfer to a saved address has no route of its own (its board is TransferBoard): one card, so a chain
+            // ending in it («move 20 from Base to Solana, then send 20 to Automation») doesn't look like a bare bridge.
+            case .sendTo(let name, let amount, let net):
+                // The same entry and network prepareTransfer will use when the step runs.
+                let key = name.lowercased()
+                let entry = addressBook.first { $0.name.lowercased() == key } ?? ownWallet(key) ?? addressBook.first { $0.name.lowercased().contains(key) }
+                let network = net.flatMap(AddressCheck.Network.init(rawValue:)) ?? entry?.network ?? .solana
+                let ends = entry.map { AddressCheck.ends($0.address) }
+                return [ActivityBubble(kind: "step", label: "SEND · \(network.title.uppercased())",
+                                       title: "\(Fmt.num(amount)) USDC", lines: ["to \(entry?.name ?? name)"] + (ends.map { ["\($0.start) … \($0.end)"] } ?? []),
+                                       status: "then", logo: network.logo, fill: RouteFill(rawValue: network.rawValue) ?? .check)]
             default:
+                // Any other step without a route still shows, as its words: a chain never loses a step on the canvas.
                 return route(c)?.steps.filter { !$0.label.hasPrefix("FROM") && !$0.label.hasPrefix("APPROVE")
-                    && !(brought && ($0.label.hasPrefix("BRIDGE") || $0.label.hasPrefix("GAS"))) }.map { var s = $0; s.status = "then"; return s } ?? []
+                    && !(brought && ($0.label.hasPrefix("BRIDGE") || $0.label.hasPrefix("GAS"))) }.map { var s = $0; s.status = "then"; return s }
+                    ?? [ActivityBubble(kind: "step", label: "THEN", title: readable(c.summary), status: "then", logo: "usdc", fill: .check)]
             }
         }
     }
