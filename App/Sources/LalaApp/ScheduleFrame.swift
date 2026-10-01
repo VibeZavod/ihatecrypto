@@ -364,7 +364,7 @@ struct ScheduleTop3: View {
 
     var body: some View {
         let next = Array(ws.scheduleEntries.prefix(3))
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 4) {
             HStack {
                 Text("SCHEDULE").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
                 if ws.schedulePaused { Text("paused").font(.ui(10)).foregroundStyle(Brand.loss) }
@@ -386,11 +386,14 @@ struct ScheduleTop3: View {
                     }
                 }
                 .opacity(e.paused || ws.schedulePaused ? 0.55 : 1)
-                .contentShape(Rectangle())
-                .modifier(HoverLift(radius: 8)).onTapGesture { ws.openScheduleCanvas(e.id) }
+                // Room inside the row, so its hover edge sits off the text; all of it clicks.
+                .padding(.horizontal, 10).padding(.vertical, 7)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(RoundedRectangle(cornerRadius: 10))
+                .modifier(HoverLift(radius: 10)).onTapGesture { ws.openScheduleCanvas(e.id) }
             }
         }
-        .padding(10)
+        .padding(12)
         .background(RoundedRectangle(cornerRadius: 16).fill(Color.primary.opacity(0.03)))
         .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.cardBorder))
     }
