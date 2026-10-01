@@ -452,6 +452,42 @@ private struct TaskDetail: View {
     @Environment(Workspace.self) private var ws
     let task: ScheduledTask
 
+    /// A step that moves money: without an automation wallet it would wait for Confirm and Touch ID.
+    private var movesMoney: Bool {
+        task.steps.contains { step in
+            switch WalletCommand.parse(step) {
+            case nil, .yields?, .receive?, .schedule?, .stopSchedules?: false
+            default: true
+            }
+        }
+    }
+
+    /// Automation asked for, and nothing yet that runs it without a finger: the way offered right here, as a card.
+    private var automationOffer: some View {
+        HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "clock.arrow.circlepath").font(.system(size: 16, weight: .semibold)).foregroundStyle(Brand.accentInk)
+                .frame(width: 34, height: 34)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Brand.accent.opacity(0.14)))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Run it by itself, without Touch ID?").font(.ui(13.5, .bold))
+                Text("Right now its moves wait for your Confirm and finger. An automation wallet holds the budget for scheduled tasks and signs them on its own; your main wallet keeps Touch ID.")
+                    .font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Button {
+                    // Back to the plan: the wallet's «Top up» card shows there.
+                    ws.showSchedule = false
+                    Task { await ws.createAutomationWallet() }
+                } label: {
+                    Label("Create an automation wallet", systemImage: "plus.circle.fill").font(.ui(12, .semibold))
+                }
+                .buttonStyle(.borderedProminent).tint(Brand.accent).controlSize(.small).padding(.top, 4)
+                .help("Touch ID once; then put the tasks' budget on it")
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Brand.accent.opacity(0.5)))
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
@@ -479,8 +515,11 @@ private struct TaskDetail: View {
                     if i < task.steps.count - 1 { Divider() }
                 }
             }
+            let automation = task.untrusted == true ? nil : ws.wallets.first(where: \.isAutomation)
+            if automation == nil, task.untrusted != true, movesMoney { automationOffer }
             HStack(alignment: .top) {
-                Text("Runs on a canvas of its own. A money move waits there for your Confirm; the steps after it wait for the move.")
+                Text(automation.map { "Runs on a canvas of its own, from the automation wallet «\($0.label)» — no Touch ID; a trade plan still waits for Execute." }
+                     ?? "Runs on a canvas of its own. A money move waits there for your Confirm; the steps after it wait for the move.")
                     .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
                 Button("Cancel") { ws.tasks.removeAll { $0.id == task.id } }.buttonStyle(.borderless).foregroundStyle(Brand.loss)
