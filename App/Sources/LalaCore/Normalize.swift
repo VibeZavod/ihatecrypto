@@ -258,7 +258,8 @@ public enum ChatRouter {
       rates), and the card keeps waiting; don't send its command again. A change to it is its command again with the change \
       applied to the WHOLE of it: «добавь ещё 300» to a waiting «spread 500 USDC» = spread 800 USDC across the best rates; \
       «не больше 40% в один» = the same spread with max 40% per protocol; «а без kamino?» = the same spread without kamino (keep its \
-      limit); «лучше 150» to «move 100 USDC …» = move 150 USDC ….
+      limit); «лучше 150», «давай на 150», «сделай 150» to «move 100 USDC …» = move 150 USDC … — a new number replaces the \
+      card's amount, one card, never a second step; it adds only with «ещё», «добавь», «плюс».
       Keep numbers, tickers, prices and percentages as meant; never invent an amount: leave it out and ihatecrypto asks for it.
       A token they name by symbol that is among their favorites is written with that favorite's contract. Any other address \
       must be one they wrote (repaired by the token lookup is fine) — never one you remember or made up. «$2», «2 бакса», \
