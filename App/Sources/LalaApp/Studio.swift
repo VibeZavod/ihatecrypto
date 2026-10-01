@@ -1699,6 +1699,8 @@ struct StudioPortfolio: View {
             }
             // Aave and Morpho on Arbitrum, Polygon and Ethereum.
             ForEach(ws.lendingElsewhere) { LendingRow(position: $0) }
+            // Deposits made on a site: Kamino's vaults, Jupiter's other platforms.
+            ForEach(ws.protocolPositions) { ProtocolRow(position: $0) }
             if ws.near > 0 {
                 place("near", "NEAR", ws.markets["NEAR"] != nil ? "≈ \(Fmt.usd(ws.nearUSD))" : "native NEAR",
                       "\(Fmt.num(ws.near, maxFraction: 4)) NEAR", tint: Color(light: 0xE6FBF3, dark: 0x0E2A20), ink: Color(light: 0x05785A, dark: 0x00EC97))

@@ -84,6 +84,66 @@ public enum Kamino {
         return out
     }
 
+    /// A deposit in a Kamino Vault (Earn): the vault's shares, held or staked in its farm, as the vault's token and dollars.
+    public struct VaultPosition: Sendable, Equatable {
+        public let vault: String
+        /// The vault's own name, «Allez USDC».
+        public let name: String
+        public let symbol: String
+        public let tokens: Decimal
+        public let valueUSD: Decimal
+        /// % a year.
+        public let apy: Decimal
+    }
+
+    /// The wallet's Kamino Vault deposits. A deposit made on kamino.com lands here, not in the Lend market's obligations
+    /// that `positions` reads (5 USDC into «Allez USDC» showed nowhere).
+    public static func vaultPositions(wallet: String) async throws -> [VaultPosition] {
+        let data = try await get("/kvaults/users/\(wallet)/positions")
+        guard let rows = try JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { throw KaminoError(data) }
+        let held = rows.compactMap { r -> (vault: String, shares: Decimal)? in
+            guard let vault = r["vaultAddress"] as? String, dec(r["totalShares"]) > 0 else { return nil }
+            return (vault, dec(r["totalShares"]))
+        }
+        guard !held.isEmpty else { return [] }
+        let vaults = try await VaultNames.shared.all()
+        return try await withThrowingTaskGroup(of: VaultPosition.self) { group in
+            for h in held {
+                group.addTask {
+                    let m = try JSONSerialization.jsonObject(with: try await get("/kvaults/\(h.vault)/metrics")) as? [String: Any] ?? [:]
+                    let tokens = h.shares * dec(m["tokensPerShare"]), v = vaults[h.vault]
+                    return VaultPosition(vault: h.vault, name: v?.name ?? "Kamino Vault", symbol: v.map { symbols[$0.mint] ?? "\($0.mint.prefix(4))…" } ?? "?",
+                                         tokens: tokens, valueUSD: tokens * dec(m["tokenPrice"]), apy: dec(m["apy"]) * 100)
+                }
+            }
+            var out: [VaultPosition] = []
+            for try await p in group { out.append(p) }
+            return out.sorted { $0.valueUSD > $1.valueUSD }
+        }
+    }
+
+    static let symbols = ["EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v": "USDC", "Es9vMFrzaCERmJfrF4H2FYD4KCoNkY11McCe8BenwNYB": "USDT",
+                          "So11111111111111111111111111111111111111112": "SOL"]
+
+    static func dec(_ v: Any?) -> Decimal { (v as? String).flatMap { Decimal(string: $0) } ?? (v as? NSNumber)?.decimalValue ?? 0 }
+
+    /// Every vault's name and token, read once per launch (≈ 400 KB) and only when the wallet has a vault deposit.
+    actor VaultNames {
+        static let shared = VaultNames()
+        private var names: [String: (name: String, mint: String)]?
+        func all() async throws -> [String: (name: String, mint: String)] {
+            if let names { return names }
+            let rows = try JSONSerialization.jsonObject(with: try await Kamino.get("/kvaults/vaults")) as? [[String: Any]] ?? []
+            var out: [String: (name: String, mint: String)] = [:]
+            for r in rows {
+                guard let address = r["address"] as? String, let state = r["state"] as? [String: Any] else { continue }
+                out[address] = ((state["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Kamino Vault", state["tokenMint"] as? String ?? "")
+            }
+            names = out
+            return out
+        }
+    }
+
     static func transaction(_ path: String, wallet: String, reserve: String, amount: Decimal) async throws -> Data {
         var request = URLRequest(url: URL(string: base + path)!, timeoutInterval: 30)
         request.httpMethod = "POST"

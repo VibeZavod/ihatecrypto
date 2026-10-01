@@ -52,6 +52,9 @@ final class Workspace {
     var otherTokens: [Holding] = []
     /// Aave and Morpho off Base, with money in them (Lending.swift).
     var lendingElsewhere: [LendingPosition] = []
+    /// Deposits in protocols ihatecrypto doesn't move itself: Kamino's vaults, Jupiter's other platforms (Protocols.swift).
+    var protocolPositions: [ProtocolPosition] = []
+    @ObservationIgnored var protocolsReadAt: Date?
     /// A read of the other networks' tokens is under way (refresh starts one and doesn't wait for it).
     @ObservationIgnored var holdingsLoading = false
     /// Every token beyond the balances read one by one, Solana's first. Stock tokens the Robinhood card already shows
@@ -558,7 +561,7 @@ final class Workspace {
     var equity: Decimal? {
         guard solana != nil || hl != nil else { return nil }
         return (solana?.usdc ?? 0) + shownTokensUSD + (hl?.accountValue ?? 0) + lend.reduce(0) { $0 + $1.usdc } + dexBalances.values.reduce(0) { $0 + $1.accountValue }
-            + (base.map { $0.usdc + $0.aave + $0.morpho } ?? 0) + lendingElsewhereUSD + (arbitrumUSDC ?? 0) + robinhoodTotal + kamino + hlp.equity + nearUSD
+            + (base.map { $0.usdc + $0.aave + $0.morpho } ?? 0) + lendingElsewhereUSD + (arbitrumUSDC ?? 0) + robinhoodTotal + kamino + hlp.equity + nearUSD + protocolUSD
     }
     /// The plan with what the user left to the rules filled in.
     var resolved: (intent: TradeIntent, notes: [String]) { Plan.resolve(intent, market: market, equity: equity, policy: policy) }
@@ -1112,6 +1115,8 @@ final class Workspace {
             if let u = usdc(on: net), u > 0 { c.balances.append("\(WalletCommand.placeName(net)) \(Fmt.num(u)) USDC idle") }
         }
         for p in lendingElsewhere where p.usdc > 0 { c.balances.append("\(p.place) \(Fmt.num(p.usdc)) USDC") }
+        // Made on a site, not by ihatecrypto: it can tell what's there, and its forms don't withdraw it (the site does).
+        for p in protocolPositions { c.balances.append("\(p.platform) \(p.name) \(p.amount ?? Fmt.usd(p.usd)) (\(Fmt.usd(p.usd)); managed on \(p.site))") }
         if near > 0 { c.balances.append("NEAR \(Fmt.num(near, maxFraction: 4)) NEAR") }
         if let r = robinhood {
             c.balances.append("Robinhood Chain \(Fmt.num(r.usdg)) USDG" + r.stocks.map { ", \(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol) stock" }.joined())
@@ -1317,6 +1322,7 @@ final class Workspace {
         let me = hlAddress, nearAccount = nearAddress, evm = isEVMAddress(hlAddress)
         // Aave's aUSDC and Morpho's vault shares off Base are read as lending positions, not as tokens.
         async let lending: Void = loadLending()
+        async let protocols: Void = loadProtocols()
         async let base = evm ? await Holdings.evm("base", address: me, native: false, skip: [EVMRPC.baseUSDC, AaveV3.baseAUSDC, MorphoVault.gauntletUSDCPrime]) : []
         async let arbitrum = evm ? await Holdings.evm("arbitrum", address: me, native: true,
                                                       skip: [EVMRPC.arbitrumUSDC, AaveV3.arbitrum.aUSDC, MorphoVault.arbitrum.address]) : []
@@ -1330,7 +1336,7 @@ final class Workspace {
         let read: [(chain: String, tokens: [Holding]?)] = [("base", await base), ("arbitrum", await arbitrum), ("ethereum", await ethereum),
                                                            ("polygon", await polygon), ("robinhood", await robinhood), ("tempo", await tempo), ("hyperliquid", await spot),
                                                            ("near", await near)]
-        _ = await lending
+        _ = await (lending, protocols)
         let found = read.flatMap { r in r.tokens ?? otherTokens.filter { $0.chain == r.chain } }
         if found != otherTokens { otherTokens = found }
     }

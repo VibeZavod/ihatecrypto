@@ -520,7 +520,7 @@ struct PortfolioRing: View {
 
     static let colors: [String: Color] = ["Solana": Color(hex: 0x9945FF), "Hyperliquid": Color(hex: 0x2FB39A), "Jupiter Lend": Color(hex: 0xC7F284), "Aave · Base": Color(hex: 0xB6509E), "Free USDC · EVM": Color(hex: 0x0052FF), "Morpho · Base": Color(hex: 0x2F6FEB),
                                           "Kamino": Color(hex: 0x3B82F6), "NEAR": Color(hex: 0x00EC97), "Other tokens": Color(hex: 0x8A8F98),
-                                          "Aave · Morpho elsewhere": Color(hex: 0x2F6FEB)]
+                                          "Aave · Morpho elsewhere": Color(hex: 0x2F6FEB), "Other protocols": Color(hex: 0x14B8A6)]
 
     var body: some View {
         let slices = PortfolioSplit.slices([
@@ -533,6 +533,7 @@ struct PortfolioRing: View {
             ("Free USDC · EVM", (ws.base?.usdc ?? 0) + (ws.arbitrumUSDC ?? 0)),
             ("Morpho · Base", ws.base?.morpho ?? 0),
             ("Aave · Morpho elsewhere", ws.lendingElsewhereUSD),
+            ("Other protocols", ws.protocolUSD),
             ("Other tokens", ws.shownTokens.filter { $0.chain != "solana" && !$0.native }.reduce(0) { $0 + ($1.usd ?? 0) }),
         ])
         if slices.count > 1 {

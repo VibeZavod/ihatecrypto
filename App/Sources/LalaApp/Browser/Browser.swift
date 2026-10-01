@@ -182,6 +182,11 @@ final class Browser {
             }
             let signature = signed.subdata(in: 1..<65)
             workspace?.reply("Site \(origin): transaction signed\(send ? " and sent" : "") — \(Base58.encode(signature).prefix(12))…", note: "browser")
+            // A deposit on the site shows on the portfolio once it has landed.
+            Task { [weak workspace] in
+                try? await Task.sleep(for: .seconds(10))
+                await workspace?.loadProtocols(force: true)
+            }
             if send {
                 _ = try await rpc.send(signed)
                 return ["signature": signature.base64EncodedString()]

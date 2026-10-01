@@ -207,6 +207,9 @@ extension Workspace {
             if b.morpho > 0 { facts.append("Morpho vault \(MorphoVault.name) on Base: \(Fmt.num(b.morpho)) USDC\(morphoAPY.map { " at ≈ \(Fmt.num($0))% a year" } ?? "").") }
             facts.append("Aave v3 on Base: \(Fmt.num(b.aave)) USDC supplied\(aaveAPY.map { " at ≈ \(Fmt.num($0.rounded(2, .plain)))% a year" } ?? ""); \(Fmt.num(b.usdc)) USDC idle on Base; \(Fmt.num(b.eth, maxFraction: 7)) ETH for gas there.")
         }
+        for p in protocolPositions {
+            facts.append("\(p.platform) \(p.name): \(p.amount ?? Fmt.usd(p.usd)) (\(Fmt.usd(p.usd)))\(p.apy.map { " at ≈ \(Fmt.num($0.rounded(2, .plain)))% a year" } ?? ""), deposited on \(p.site) — withdrawn there, not by ihatecrypto's forms.")
+        }
         for p in lendingElsewhere {
             facts.append("\(p.place): \(Fmt.num(p.usdc)) USDC\(p.apy.map { " at ≈ \(Fmt.num($0.rounded(2, .plain)))% a year" } ?? "").")
         }
