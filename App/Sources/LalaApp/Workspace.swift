@@ -30,7 +30,11 @@ final class Workspace {
     var messages = [Message(fromUser: false, text: "Tell me what to do, e.g. “long ETH risk $10 stop 3% take 6% leverage 2x”. Blocks with live numbers appear on the right. Nothing is executed without your signature.")]
     var busy = false
     /// From a sent message until its first reply: the chat shows LALA reading it.
-    var thinking = false
+    var thinking = false {
+        // A step's line belongs to the message it was said for: «Asking openweather… for its price», set after the
+        // router had read the message, stayed under the next one («через 2 минуты купи SOL») until the router answered.
+        didSet { if !thinking, agentStep != nil { agentStep = nil } }
+    }
     /// The model's answer while it's still being written (ChatRouter's `draft`): shown in place of the dots, gone once the
     /// finished reply lands.
     var draftReply: String?
