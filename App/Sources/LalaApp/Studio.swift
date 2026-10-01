@@ -2765,6 +2765,8 @@ struct ModelCompany: Identifiable {
         .init(name: "OpenRouter", logo: "llm-openrouter", tile: 0x6566F1, ink: 0xFFFFFF, ids: ["openrouter"]),
         .init(name: "Ollama", logo: "llm-ollama", tile: 0xFFFFFF, ink: 0x000000, ids: ["ollama"]),
         .init(name: "LM Studio", logo: "llm-lmstudio", tile: 0x4338CA, ink: 0xFFFFFF, ids: ["lmstudio"]),
+        // Apple's logo is a system symbol, not a file: «sf:» names it.
+        .init(name: "Apple", logo: "sf:apple.logo", tile: 0x000000, ink: 0xFFFFFF, ids: ["apple"]),
     ]
     /// A provider added to the catalog but not to a company above still shows, as its own company with a lettered tile.
     static let all = known + LLMCatalog.all.map(\.info).filter { info in !known.contains { $0.ids.contains(info.id) } }
@@ -2787,7 +2789,10 @@ struct ModelCompanyLogo: View {
     }
 
     @ViewBuilder private var glyph: some View {
-        if let image = TokenLogo.image(company.logo) {
+        if company.logo.hasPrefix("sf:") {
+            Image(systemName: String(company.logo.dropFirst(3))).resizable().aspectRatio(contentMode: .fit)
+                .foregroundStyle(Color(hex: company.ink ?? 0xFFFFFF))
+        } else if !company.logo.isEmpty, let image = TokenLogo.image(company.logo) {   // "" found a token's logo (a Shiba Inu)
             if let ink = company.ink {
                 Image(nsImage: image).renderingMode(.template).resizable().interpolation(.high).aspectRatio(contentMode: .fit)
                     .foregroundStyle(Color(hex: ink))
