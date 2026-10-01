@@ -199,10 +199,15 @@ public enum ABI {
 public struct EVMRPC: Sendable {
     public let url: URL
     public let chainId: UInt64
+    /// Asked in turn when `url` throttles or drops a call: each retry goes to the next node instead of waiting on the
+    /// same one. base.drpc.org answered «You reached Public endpoint rate limit» to every call for minutes, and each read
+    /// sat through 15 s of retries before failing (a spread took 50 s and lost the Base vaults).
+    public let fallbacks: [URL]
 
-    public init(url: URL, chainId: UInt64) {
+    public init(url: URL, chainId: UInt64, fallbacks: [URL] = []) {
         self.url = url
         self.chainId = chainId
+        self.fallbacks = fallbacks
     }
 
     public static let arbitrum = EVMRPC(url: URL(string: "https://arb1.arbitrum.io/rpc")!, chainId: 42161)
@@ -212,7 +217,8 @@ public struct EVMRPC: Sendable {
     public static let robinhoodUSDG = "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
     /// mainnet.base.org rate-limits after a few calls and publicnode refuses receipts without a token;
     /// drpc served calls, estimates and receipts in a burst test (2026-09-26).
-    public static let base = EVMRPC(url: URL(string: "https://base.drpc.org")!, chainId: 8453)
+    /// Coinbase's own node takes over while drpc throttles (it limits too, so it isn't the first).
+    public static let base = EVMRPC(url: URL(string: "https://base.drpc.org")!, chainId: 8453, fallbacks: [URL(string: "https://mainnet.base.org")!])
     /// Circle's native USDC on Base (6 decimals).
     public static let baseUSDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
     /// Polygon PoS, gas in POL; drpc serves calls, estimates and receipts (checked 2026-09-29).
@@ -244,6 +250,8 @@ public struct EVMRPC: Sendable {
     }
 
     public func call(_ method: String, _ params: [Any]) async throws -> Any {
+        let nodes = [url] + fallbacks
+        var attempt = 0
         var request = URLRequest(url: url, timeoutInterval: 30)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -251,7 +259,11 @@ public struct EVMRPC: Sendable {
         // Public nodes throttle bursts, drop connections and have bad seconds: wait and ask again, up to about half a
         // minute (reads and sends alike are safe to repeat — a resent raw transaction is the same transaction). What
         // the node answered on purpose (a revert, a short balance) is final at once.
-        return try await RPCRetry.run { try await URLSession.shared.data(for: request) } answer: { data, status in
+        return try await RPCRetry.run {
+            request.url = nodes[attempt % nodes.count]
+            attempt += 1
+            return try await URLSession.shared.data(for: request)
+        } answer: { data, status in
             guard let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
                 throw RPCRetry.Again(status >= 500 || status == 429, WalletError("EVM RPC \(method): HTTP \(status), response isn't JSON: \(String(decoding: data.prefix(120), as: UTF8.self))"))
             }

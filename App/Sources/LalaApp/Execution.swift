@@ -472,7 +472,7 @@ extension Workspace {
 
     /// A move that can't go through with what the wallet holds is said so at once, instead of a card whose Confirm
     /// could only fail («Sell 0 NEAR»).
-    func refusalBeforeCard(_ command: WalletCommand) -> String? {
+    func refusalBeforeCard(_ command: WalletCommand, inChain: Bool = false) -> String? {
         /// A move from a place that hasn't the money: said before the card, not after a failed signature. A balance not
         /// loaded yet leaves it to the move's own checks.
         func lacks(_ have: Decimal?, _ asked: Decimal?, _ place: String, _ unit: String = "USDC") -> String? {
@@ -492,6 +492,10 @@ extension Workspace {
         case .kamino(deposit: false, symbol: "USDC", amount: let asked): return lacks(kamino, asked, "Kamino")
         case .lendWithdraw("USDC", let asked): return lacks(lend.reduce(0) { $0 + $1.usdc }, asked, "Jupiter Lend")
         case .baseToSolana(let asked): return lacks(base?.usdc, asked, "Base")
+        // «с базы на арбитрум» 50 with 1 there drew «Move 1 USDC» under «Понял: move 50»: the amount is said before the card.
+        // Not inside a chain: a step before it may have just brought the money, and those balances load after the refresh.
+        case .evmToSolana(let net, let asked) where !inChain, .bridge(from: let net, to: _, let asked) where !inChain:
+            return lacks(usdc(on: net), asked, WalletCommand.placeName(net), net == "robinhood" ? "USDG" : "USDC")
         case .hlp(deposit: false, amount: let asked):
             if let until = hlp.lockedUntil, until > Date(), hlp.equity > 0 {
                 return say("HLP is locked until \(Fmt.date(until)): Hyperliquid lets deposits out 4 days after they go in.",

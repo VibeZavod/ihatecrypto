@@ -1389,14 +1389,16 @@ extension Workspace {
     /// USDC free at a place: Solana, Hyperliquid's withdrawable, each EVM network (Ethereum and Polygon from the tokens read).
     /// A vault deposit whose own network and Solana are short, as steps: a straight move from the EVM network holding
     /// the USDC, then the deposit. nil when they have enough (the deposit brings Solana's itself) or no network has it.
-    /// Jupiter Lend and Kamino are on Solana: the move goes there.
+    /// Jupiter Lend, Kamino and a buy on Solana: the move goes to Solana.
     func fundedFromElsewhere(_ c: WalletCommand) -> [String]? {
         let amount: Decimal, net: String
         switch c {
         case .aave(true, let a?, let n), .morpho(true, let a?, let n): (amount, net) = (a, n)
-        case .lendDeposit("USDC", let a?), .kamino(true, "USDC", let a?): (amount, net) = (a, "solana")
+        case .lendDeposit("USDC", let a?), .kamino(true, "USDC", let a?), .buy(_, let a?): (amount, net) = (a, "solana")
         default: return nil
         }
+        // The deposit step is run again from its words: only a command that reads back the same (not a token by its mint).
+        guard WalletCommand.parse(c.summary) == c else { return nil }
         let short = amount - (usdc(on: net) ?? 0)
         guard short > 0, net == "solana" || (solana?.usdc ?? 0) < short else { return nil }
         // Relay's fee comes out on the way (cents from an L2, under a dollar from Ethereum): a dollar more; what's left stays there.
@@ -1739,7 +1741,7 @@ extension Workspace {
             return
         }
         // It reads the active wallet's balances: a task on the automation wallet leaves the check to the move itself.
-        if TaskRun.automation == nil, let why = refusalBeforeCard(command) { reply(why, note: note); return }
+        if TaskRun.automation == nil, let why = refusalBeforeCard(command, inChain: quiet) { reply(why, note: note); return }
         switch command {
         case .yields, .allocate, .rebalance, .schedule, .stopSchedules:
             // Read-only, or with a board and a step of their own.

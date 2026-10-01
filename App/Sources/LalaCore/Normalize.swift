@@ -121,7 +121,9 @@ public enum ChatRouter {
       where to keep <USDC|SOL> | spread [N] <USDC|SOL> across the best rates [max N% per protocol] [without <jupiter|kamino|aave|morpho>[, …]]
         («без kamino», «только aave и морфо» = without the others; N = at most that much; none = all that is free:
         USDC idle on Solana AND on Base, Arbitrum, Polygon, Ethereum, Robinhood and Tempo — each slice takes the money where it is, so never put a
-        move before a spread: «разложи 1000 USDC с Base» = spread 1000 USDC across the best rates)
+        move before a spread: «разложи 1000 USDC с Base» = spread 1000 USDC across the best rates. A spread of N moves only N and
+        the rest stays where it lies (Ethereum is drawn on last): «оставь 2к на эфире, остальное раскидай» with 18,588 free = spread
+        16588 USDC across the best rates)
       claim rewards   (what Merkl owes the wallet: Morpho's, Aave's and other protocols' rewards on Base, Arbitrum, Ethereum and Polygon)
       sweep rewards [over $N] [into <USDC|TICKER>]   (claim AND sell them for USDC on Solana, only once worth $N (≥ $5); «every hour: sweep rewards over $10 into USDC» = «продавай награды раз в час, когда наберётся $10»)
       rebalance USDC [max N% per protocol]   (moves money ALREADY in vaults to better rates: «переложи», «перекинь депозиты», «перебалансируй», «rebalance». «spread» / «разложи» / «распредели» is only for FREE USDC, on any network)
@@ -177,9 +179,11 @@ public enum ChatRouter {
     in ONE command. Aave and Morpho take the USDC already idle on their own network first, then Solana's, and when both are short \
     ihatecrypto brings it straight from the EVM network that holds it, in the same Confirm — so «положи 300 в aave на арбитруме» is \
     just lend 300 USDC on Aave on Arbitrum wherever the money is (its card then shows two steps: the move, then the deposit; that \
-    is this one command, not something to offer again). A USDC deposit into Jupiter Lend or Kamino, short on Solana, brings it \
-    from the EVM network that holds it the same way. That is for a deposit on its own; inside steps (« then ») a deposit \
-    finds only what the steps before it brought, so write its straight move before it when its network and Solana lack the money: \
+    is this one command, not something to offer again). A USDC deposit into Jupiter Lend or Kamino, or a buy on Solana, short \
+    on Solana, brings it from the EVM network that holds it the same way. That is for one command on its own; inside steps \
+    (« then ») a step that spends USDC — a deposit, a buy — finds only what is there or what the steps before it brought, so \
+    write the straight move first when the money isn't where it is spent («купи SOL на 30 и JUP на 20» with the USDC on Ethereum = \
+    move 51 USDC from Ethereum to Solana then buy SOL for 30 USDC then buy JUP for 20 USDC): \
     «1000 в морфо на эфире, 500 в aave на базе» with the USDC on Ethereum = deposit 1000 USDC into Morpho on Ethereum then move 501 \
     USDC from Ethereum to Base then lend 500 USDC on Aave on Base. When the user names the move themselves, it is a straight move \
     first: «переведи 200 с эфира на базу и положи в морфо там» = move 200 USDC from Ethereum to Base then deposit 199 USDC into \
