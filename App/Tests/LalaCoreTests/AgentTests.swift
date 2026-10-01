@@ -207,6 +207,17 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(WalletCommand.parse("buy token \(aero) on base for 3 USDC") == .buyOn("base", token: aero, usdc: 3))
     #expect(WalletCommand.parse("sell tokens \(aero) on base") == .sellOn("base", token: aero, amount: nil))
     #expect(WalletCommand.parse("buy AERO on base")?.amountQuestion == "For how many USDC should I buy AERO on Base?")
+    // Where the money comes from, and a sale that keeps the USDC there; the summaries read back the same.
+    let fromSolana = WalletCommand.buyOn("base", token: "AERO", usdc: 5, from: "solana")
+    #expect(WalletCommand.parse("buy AERO on base for 5 USDC from solana") == fromSolana)
+    #expect(WalletCommand.parse(fromSolana.summary) == fromSolana)
+    #expect(WalletCommand.parse("купи AERO на base на 5$ с арбитрума") == .buyOn("base", token: "AERO", usdc: 5, from: "arbitrum"))
+    #expect(WalletCommand.parse("buy AERO on base for 5 USDC from base") == .buyOn("base", token: "AERO", usdc: 5, from: "base"))
+    let keep = WalletCommand.sellOn("base", token: "AERO", amount: 3, keep: true)
+    #expect(WalletCommand.parse("sell 3 AERO on base and keep the USDC there") == keep)
+    #expect(WalletCommand.parse(keep.summary) == keep)
+    #expect(WalletCommand.parse("продай 3 AERO на base, USDC оставь там") == keep)
+    #expect(WalletCommand.parse(WalletCommand.sellOn("base", token: "AERO", amount: 3).summary) == .sellOn("base", token: "AERO", amount: 3))
     // Not these: a contract without a network stays Robinhood's; moving USDC is a bridge.
     #expect(WalletCommand.parse("buy token \(aero) for 3 USDC") == .buyStock(symbol: aero, usdc: 3))
     #expect(WalletCommand.parse("move 2 USDC from Solana to Base") == .solanaTo("base", 2))

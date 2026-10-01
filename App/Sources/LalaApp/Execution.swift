@@ -144,8 +144,9 @@ extension Workspace {
                        + "confirm and enters at the market price then (≈ \(Fmt.price(a.price))); the entry above is today's price, for sizing.")
         }
         if !resolved.notes.isEmpty { out.append("The user asked to fill in the rest by the rules: " + resolved.notes.joined(separator: " ")) }
-        if let a = intent.amountUSDC { out.append("Move \(Fmt.num(a)) USDC from Solana to Hyperliquid.") }
-        else if let q = quote { out.append("Bridge \(q.provider): \(Fmt.num(q.amountIn)) USDC from Solana to Hyperliquid.") }
+        // From where the card says: Solana, or the EVM network that holds it when Solana is short.
+        if let a = intent.amountUSDC { out.append("Move \(Fmt.num(a)) USDC from \(fundingNet?.name ?? "Solana") to Hyperliquid.") }
+        else if let q = quote { out.append("Bridge \(q.provider): \(Fmt.num(q.amountIn)) USDC from \(fundingNet?.name ?? "Solana") to Hyperliquid.") }
         return out
     }
 
@@ -383,15 +384,15 @@ extension Workspace {
                 else if favoriteTokens.contains(where: { $0.address.lowercased() == symbol.lowercased() }) { await loadRobinhood() }
                 else { await tokenCommand(.favorite(address: symbol, chain: "robinhood")); await loadRobinhood() }
             case .sellStock(let symbol, let amount): reply(try await e.sellStock(symbol, amount: amount), note: "Robinhood Chain · Uniswap")
-            case .buyOn(let place, let token, let usdc):
+            case .buyOn(let place, let token, let usdc, let from):
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't swap on \(place).") }
                 // The way picked on the route's step, for this move only.
                 let prefer = routeWays.removeValue(forKey: Self.wayKey(place, token))
-                reply(try await e.buyOn(net, token, usdc: usdc ?? 0, prefer: prefer), note: "\(net.name) · \(prefer == "relay" ? "Relay" : prefer == "uniswap" ? "Relay + Uniswap" : "Relay / Uniswap")")
-            case .sellOn(let place, let token, let amount):
+                reply(try await e.buyOn(net, token, usdc: usdc ?? 0, prefer: prefer, from: from), note: "\(net.name) · \(prefer == "relay" ? "Relay" : prefer == "uniswap" ? "Relay + Uniswap" : "Relay / Uniswap")")
+            case .sellOn(let place, let token, let amount, let keep):
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't swap on \(place).") }
                 let prefer = routeWays.removeValue(forKey: Self.wayKey(place, token))
-                reply(try await e.sellOn(net, token, amount: amount, prefer: prefer), note: "\(net.name) · \(prefer == "relay" ? "Relay" : prefer == "uniswap" ? "Uniswap + Relay" : "Relay / Uniswap")")
+                reply(try await e.sellOn(net, token, amount: amount, prefer: prefer, keep: keep), note: "\(net.name) · \(prefer == "relay" ? "Relay" : prefer == "uniswap" ? "Uniswap + Relay" : "Relay / Uniswap")")
             case .robinhoodToSolana(let amount): reply(try await e.evmToSolana(.robinhood, usdc: amount), note: "Relay · Robinhood → Solana")
             case .solanaTo(let place, let amount):
                 // Never a guess: a network the app doesn't know gets nothing.

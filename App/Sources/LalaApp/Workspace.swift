@@ -354,7 +354,7 @@ final class Workspace {
     /// USDC on Arbitrum at our EVM address (money in transit or left from a transfer).
     var arbitrumUSDC: Decimal?
     /// USDC on Tempo, read with the other networks' tokens: what pays for services (MPP) and Tempo transfers.
-    var tempoUSDC: Decimal? { otherTokens.first { $0.chain == "tempo" && $0.contract == EVMRPC.tempoUSDC }?.amount ?? (otherTokens.isEmpty ? nil : 0) }
+    var tempoUSDC: Decimal? { heldUSDC("tempo", EVMRPC.tempoUSDC) }
     /// Robinhood Chain at our EVM address: USDG, ETH for gas, the Stock Tokens bought through LALA (StocksUI.swift).
     /// A tuple isn't Equatable, so @Observable would redraw on every refresh's assignment: the setter skips an unchanged one.
     var robinhood: (usdg: Decimal, eth: Decimal, stocks: [StockHolding])? {
@@ -1067,6 +1067,11 @@ final class Workspace {
             if b.morpho > 0 { c.balances.append("Morpho on Base \(Fmt.num(b.morpho)) USDC") }
             if b.usdc > 0 { c.balances.append("Base \(Fmt.num(b.usdc)) USDC idle") }
         }
+        // The other EVM networks too: without them «send from Ethereum» read as «there's nothing there».
+        for net in ["arbitrum", "ethereum", "polygon", "tempo"] {
+            if let u = usdc(on: net), u > 0 { c.balances.append("\(WalletCommand.placeName(net)) \(Fmt.num(u)) USDC idle") }
+        }
+        for p in lendingElsewhere where p.usdc > 0 { c.balances.append("\(p.place) \(Fmt.num(p.usdc)) USDC") }
         if near > 0 { c.balances.append("NEAR \(Fmt.num(near, maxFraction: 4)) NEAR") }
         if let r = robinhood {
             c.balances.append("Robinhood Chain \(Fmt.num(r.usdg)) USDG" + r.stocks.map { ", \(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol) stock" }.joined())

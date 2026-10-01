@@ -1623,7 +1623,13 @@ struct StudioPortfolio: View {
                 .modifier(Openable(place: "jupiter"))
             }
 
-            if let b = ws.base, b.aave > 0 || b.usdc > 0 {
+            // USDC lying free at the EVM address: a wallet of its own, not Aave's.
+            ForEach([("base", ws.base?.usdc ?? 0), ("arbitrum", ws.arbitrumUSDC ?? 0)].filter { $0.1 > 0 }, id: \.0) { net, usdc in
+                place(net, WalletCommand.placeName(net), "free USDC · not earning", "\(Fmt.num(usdc)) USDC",
+                      tint: Color(light: 0xEEF3FF, dark: 0x151C2E), ink: Color(hex: 0x0052FF), logo: ModuleNetwork(place: net)?.logo)
+            }
+
+            if let b = ws.base, b.aave > 0 {
                 HStack(spacing: 10) {
                     ZStack(alignment: .bottomTrailing) {
                         TokenLogo(name: "aave", size: 34)
@@ -1631,13 +1637,13 @@ struct StudioPortfolio: View {
                     }
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Aave · Base").font(.ui(14, .semibold))
-                        Text(b.aave > 0 ? "earning" + (ws.aaveAPY.map { " \(Fmt.num($0.rounded(2, .plain)))%" } ?? "") : "\(Fmt.num(b.usdc)) USDC idle on Base")
+                        Text("earning" + (ws.aaveAPY.map { " \(Fmt.num($0.rounded(2, .plain)))%" } ?? ""))
                             .font(.ui(10)).foregroundStyle(Color(hex: 0x0052FF))
                     }
                     Spacer()
                     HStack(spacing: 4) {
                         TokenLogo(name: "usdc", size: 15)
-                        Text(Fmt.num(b.aave > 0 ? b.aave : b.usdc)).font(.ui(13, .bold)).monospacedDigit()
+                        Text(Fmt.num(b.aave)).font(.ui(13, .bold)).monospacedDigit()
                     }
                 }
                 .padding(11)
@@ -1708,9 +1714,9 @@ struct StudioPortfolio: View {
 
 extension StudioPortfolio {
     /// One more place on the portfolio card: logo, name, a line under it, the amount; a click opens its details.
-    func place(_ id: String, _ name: String, _ line: String, _ amount: String, tint: Color, ink: Color) -> some View {
+    func place(_ id: String, _ name: String, _ line: String, _ amount: String, tint: Color, ink: Color, logo: String? = nil) -> some View {
         HStack(spacing: 10) {
-            TokenLogo(name: id, size: 34)
+            TokenLogo(name: logo ?? id, size: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name).font(.ui(14, .semibold))
                 Text(line).font(.ui(10)).foregroundStyle(ink).lineLimit(1)

@@ -110,8 +110,11 @@ public enum ChatRouter {
       buy NEAR for N USDC | sell [N] NEAR   (native NEAR on the NEAR account → USDC on Solana; no N = all of it)
     STOCK TOKENS ON ROBINHOOD CHAIN: buy <COMPANY or TICKER> stock for N USDC | sell <TICKER> stock | move USDG from Robinhood to Solana
     ANY TOKEN BY ITS CONTRACT (Robinhood Chain): buy token <0xCONTRACT> for N USDC | sell [N] tokens <0xCONTRACT>
-    TOKENS ON BASE AND ARBITRUM (Relay's swap or Relay's bridge + Uniswap, whichever leaves more; a sale comes back as USDC on Solana):
-      buy <TICKER> on <base|arbitrum|polygon|ethereum> for N USDC | sell [N] <TICKER> on <base|arbitrum|polygon|ethereum>   (tickers from Uniswap's list: AERO, DEGEN, VIRTUAL, cbBTC, WETH on Base; ARB, GMX, PENDLE, LINK, UNI on Arbitrum; AAVE, LINK, WPOL on Polygon; UNI, PEPE, LDO on Ethereum, where gas costs dollars)
+    TOKENS ON BASE, ARBITRUM, POLYGON AND ETHEREUM (paid where the money is: that network's own USDC when it holds enough — Uniswap there, no
+      bridge — else Solana's, by Relay's swap or Relay's bridge + Uniswap, whichever leaves more; a sale comes back as USDC on Solana unless kept there):
+      buy <TICKER> on <base|arbitrum|polygon|ethereum> for N USDC [from <solana|base|arbitrum|polygon|ethereum|robinhood>] | sell [N] <TICKER> on <base|arbitrum|polygon|ethereum> [and keep the USDC there]
+      (write «from» only when the user names where the money comes from: «с арбитрума» = from arbitrum, brought over first in the same move;
+      «оставь USDC на base» / «не выводи» on a sale = and keep the USDC there)   (tickers from Uniswap's list: AERO, DEGEN, VIRTUAL, cbBTC, WETH on Base; ARB, GMX, PENDLE, LINK, UNI on Arbitrum; AAVE, LINK, WPOL on Polygon; UNI, PEPE, LDO on Ethereum, where gas costs dollars)
       buy token <0xCONTRACT> on <base|arbitrum|polygon|ethereum> for N USDC | sell [N] tokens <0xCONTRACT> on <base|arbitrum|polygon|ethereum>
     ANY SOLANA TOKEN BY ITS MINT (Jupiter; only while Safe search is off): buy token <MINT> for N USDC | sell [N] tokens <MINT>
     EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault") | withdraw [N] <USDC|SOL> from the vault

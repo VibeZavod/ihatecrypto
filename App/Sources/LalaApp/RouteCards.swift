@@ -1272,7 +1272,7 @@ extension WalletCommand {
     /// The key of the way a Base or Arbitrum trade takes (Workspace.routeWays); nil for any other move.
     var wayKey: String? {
         switch self {
-        case .buyOn(let place, let token, _), .sellOn(let place, let token, _): Workspace.wayKey(place, token)
+        case .buyOn(let place, let token, _, _), .sellOn(let place, let token, _, _): Workspace.wayKey(place, token)
         default: nil
         }
     }

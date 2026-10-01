@@ -240,7 +240,7 @@ public struct Modules: Equatable, Sendable {
         case .sellStock(let symbol, _): return symbol.hasPrefix("0x") ? r(.uniswap, via: [.robinhood]) : r(.robinhoodStocks)
         // Base and Arbitrum: Relay is needed either way (its swap, or its bridge before Uniswap); with Uniswap off only
         // Relay's swap is compared.
-        case .buyOn(let place, _, _), .sellOn(let place, _, _):
+        case .buyOn(let place, _, _, _), .sellOn(let place, _, _, _):
             return isOn(.swaps) ? r(.relay, via: ModuleNetwork(place: place).map { [$0] } ?? [])
                 : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
         case .buyNear, .sellNear: return r(.oneClick)

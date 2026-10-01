@@ -148,11 +148,13 @@ public enum WalletCommand: Equatable, Sendable {
     /// A Robinhood Stock Token (SPCX, TSLA…) bought on Robinhood Chain for USDC from Solana; `symbol` as the user named
     /// it, resolved against Robinhood's registry by the app. nil amount = ask.
     case buyStock(symbol: String, usdc: Decimal?)
-    /// A token on «base» or «arbitrum», by ticker (Uniswap's list) or contract, for USDC from Solana: Relay's swap or
-    /// Relay's bridge + Uniswap, whichever leaves more. nil = ask how much.
-    case buyOn(String, token: String, usdc: Decimal?)
-    /// Such a token back to USDC on Solana, the better way again; nil = all of it.
-    case sellOn(String, token: String, amount: Decimal?)
+    /// A token on an EVM network, by ticker (Uniswap's list) or contract; nil usdc = ask how much. `from`: nil = where
+    /// the money is (that network's own USDC when it holds enough — Uniswap there, no bridge — else Solana: Relay's swap
+    /// or Relay's bridge + Uniswap, whichever leaves more); «solana»; that network itself; or another EVM network, whose
+    /// USDC comes over first.
+    case buyOn(String, token: String, usdc: Decimal?, from: String? = nil)
+    /// Such a token back to USDC on Solana, the better way again; nil = all of it. `keep`: the USDC stays on that network.
+    case sellOn(String, token: String, amount: Decimal?, keep: Bool = false)
     /// Sell a Stock Token for USDG on Robinhood Chain; nil = all of it.
     case sellStock(symbol: String, amount: Decimal?)
     /// USDG on Robinhood Chain back to Solana as USDC; nil = everything.
@@ -243,7 +245,14 @@ public enum WalletCommand: Equatable, Sendable {
             if chain == "solana", !token.hasPrefix("0x") {
                 return sell ? .sell(.bySymbol(token), amount: count) : .buy(.bySymbol(token), usdc: amount)
             }
-            if chain != "solana" { return sell ? .sellOn(chain, token: token, amount: count) : .buyOn(chain, token: token, usdc: amount) }
+            if chain != "solana" {
+                // «… from solana», «… с арбитрума»; «… and keep the USDC there», «… оставь USDC на base».
+                let rest = String(text[m.range.upperBound...])
+                let from = rest.firstMatch(of: /(?i)\b(?:from|с|со|из)\s+(solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфир\w*|mainnet|robinhood|робинхуд\w*)/)
+                    .map { String($0.1).lowercased() }.map { $0.hasPrefix("sol") || $0.hasPrefix("сол") ? "solana" : Self.network($0) ?? $0 }
+                let keep = rest.contains(/(?i)\bkeep\b|\bstays?\b|остав\w*|остан\w*|не\s+выводи/)
+                return sell ? .sellOn(chain, token: token, amount: count, keep: keep) : .buyOn(chain, token: token, usdc: amount, from: from)
+            }
         }
         // Any token by its contract («купи 0x… токен на $2»): bought on Robinhood Chain, where LALA trades by contract.
         if let contract = text.firstMatch(of: /0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/).map({ String($0.0) }) {
@@ -435,7 +444,7 @@ extension WalletCommand {
         case .buy(let a, nil): "For how many USDC should I buy \(a.symbol)?"
         case .buyNear(nil): "For how many USDC should I buy NEAR?"
         case .buyStock(let s, nil): "For how many USDC should I buy \(s)?"
-        case .buyOn(let place, let t, nil): "For how many USDC should I buy \(t) on \(Self.placeName(place))?"
+        case .buyOn(let place, let t, nil, _): "For how many USDC should I buy \(t) on \(Self.placeName(place))?"
         case .stake(nil): "How much SOL to stake?"
         case .solanaTo(let place, nil): "How many USDC should I move from Solana to \(Self.placeName(place))?"
         default: nil
@@ -446,7 +455,7 @@ extension WalletCommand {
     public var editableAmount: Decimal? {
         switch self {
         case .lendDeposit(_, let x), .kamino(_, _, let x), .hlp(_, let x), .aave(_, let x, _), .morpho(_, let x, _), .buy(_, let x),
-             .buyNear(let x), .buyStock(_, let x), .buyOn(_, _, let x), .stake(let x), .solanaTo(_, let x): x
+             .buyNear(let x), .buyStock(_, let x), .buyOn(_, _, let x, _), .stake(let x), .solanaTo(_, let x): x
         default: nil
         }
     }
@@ -461,7 +470,7 @@ extension WalletCommand {
         case .buy(let a, _): .buy(a, usdc: amount)
         case .buyNear: .buyNear(usdc: amount)
         case .buyStock(let s, _): .buyStock(symbol: s, usdc: amount)
-        case .buyOn(let place, let t, _): .buyOn(place, token: t, usdc: amount)
+        case .buyOn(let place, let t, _, let from): .buyOn(place, token: t, usdc: amount, from: from)
         case .stake: .stake(amount)
         case .solanaTo(let place, _): .solanaTo(place, amount)
         default: self
@@ -537,8 +546,10 @@ extension WalletCommand {
         case .buyStock(let s, let u): return "buy \(s.hasPrefix("0x") ? "the token \(s)" : "\(s) stock tokens") for \(n(u)) USDC on Robinhood Chain"
         case .sellStock(let s, let x): return "sell \(n(x)) \(s.hasPrefix("0x") ? "of the token \(s)" : "\(s) stock tokens") on Robinhood Chain"
         case .robinhoodToSolana(let x): return "move \(n(x)) USDG from Robinhood Chain to Solana"
-        case .buyOn(let place, let t, let u): return "buy \(t.hasPrefix("0x") ? "the token \(t)" : t.uppercased()) on \(Self.placeName(place)) for \(n(u)) USDC"
-        case .sellOn(let place, let t, let x): return "sell \(n(x)) \(t.hasPrefix("0x") ? "of the token \(t)" : t.uppercased()) on \(Self.placeName(place)) for USDC on Solana"
+        case .buyOn(let place, let t, let u, let from):
+            return "buy \(t.hasPrefix("0x") ? "the token \(t)" : t.uppercased()) on \(Self.placeName(place)) for \(n(u)) USDC" + (from.map { " from \(Self.placeName($0))" } ?? "")
+        case .sellOn(let place, let t, let x, let keep):
+            return "sell \(n(x)) \(t.hasPrefix("0x") ? "of the token \(t)" : t.uppercased()) on \(Self.placeName(place)) " + (keep ? "and keep the USDC there" : "for USDC on Solana")
         case .solanaTo(let place, let x): return "move \(n(x)) USDC from Solana to \(Self.placeName(place))"
         case .pay(let method, let url, _): return "pay for \(method) \(url) in USDC on Tempo"
         case .gas(let place, let usd): return "add ≈ \(Fmt.usd(usd ?? 1)) of gas on \(Self.placeName(place))"

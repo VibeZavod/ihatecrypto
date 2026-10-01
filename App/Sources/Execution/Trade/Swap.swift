@@ -119,31 +119,53 @@ extension Executor {
 
     /// Both ways of a buy (`usdc`) or a sale (`sell`, nil = all) quoted now for the route's card, the one that leaves
     /// more first; nothing is signed. `gets` is what arrives («2.41 AERO», «1.97 USDC»), `worth` its USD after gas.
-    public func swapQuotes(_ net: EVMNetwork, _ ref: String, usdc: Decimal?, sell: Decimal?) async throws
+    /// "here" is the one way when the trade runs on the network's own USDC (`buyHere`, or a sale that keeps the USDC).
+    public func swapQuotes(_ net: EVMNetwork, _ ref: String, usdc: Decimal?, sell: Decimal?, from: String? = nil, keep: Bool = false) async throws
         -> [(way: String, gets: String, worth: Decimal)] {
         guard let uni = UniswapV3.on(net.rpc.chainId) else { return [] }
         let token = try await evmToken(ref, on: net)
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
         if let usdc {
             let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
+            if let here = try await buyHere(net, token, units: units, from: from, uni) {
+                return [("here", "\(Fmt.num(here.out / scale, maxFraction: 6)) \(token.symbol)", usdc)]
+            }
             return try await buyWays(net, token, units: units, uni).ways.sorted { $0.worth > $1.worth }
                 .map { ($0.name, "\(Fmt.num($0.out / scale, maxFraction: 6)) \(token.symbol)", $0.worth) }
         }
         let held = try await balance(token.address, on: net.rpc)
         let units = (sell.map { min($0 * scale, held) } ?? held).whole
         guard units > 0 else { return [] }
+        if keep {
+            guard let best = await bestPath(on: net.rpc, uni, from: token.address, to: net.usdc, amountIn: units) else { return [] }
+            return [("here", "\(Fmt.num(best.out / 1_000_000)) USDC", best.out / 1_000_000)]
+        }
         return try await sellWays(net, token, units: units, uni).ways.sorted { $0.worth > $1.worth }
             .map { ($0.name, "\(Fmt.num($0.out / 1_000_000)) USDC", $0.worth) }
     }
 
-    /// Buys a token on Base or Arbitrum for `usdc` from Solana, the better of the two ways (or the one picked).
-    public func buyOn(_ net: EVMNetwork, _ ref: String, usdc: Decimal, prefer: String? = nil) async throws -> String {
+    /// Buys a token on an EVM network for `usdc`: with the USDC already there when it holds enough (or `from` names it),
+    /// with another EVM network's USDC brought over first (`from`), else from Solana, the better of the two ways (or the
+    /// one picked on the route's step).
+    public func buyOn(_ net: EVMNetwork, _ ref: String, usdc: Decimal, prefer: String? = nil, from: String? = nil) async throws -> String {
         guard let uni = UniswapV3.on(net.rpc.chainId) else { throw ExecutionError("ihatecrypto swaps on Solana, Base, Arbitrum, Polygon and Ethereum.") }
         let token = try await evmToken(ref, on: net), me = wallet.evm
         let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
         guard units >= 500_000 else { throw ExecutionError("At least 0.5 USDC: less isn't worth the bridge.") }
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
         func amount(_ raw: Decimal) -> String { "\(Fmt.num(raw / scale, maxFraction: 6)) \(token.symbol)" }
+        // A way picked on the route's step is one of Solana's: only then is the money on the network passed over.
+        if prefer == nil || from != nil, let here = try await buyHere(net, token, units: units, from: from, uni) {
+            var spend = units
+            if let src = here.src {
+                let before = try await net.rpc.tokenBalance(net.usdc, owner: me)
+                report(try await bridge(src, to: net, usdc: usdc))
+                // What arrived pays: Relay's fee comes out of it.
+                let now = try await net.rpc.tokenBalance(net.usdc, owner: me)
+                spend = min(units, now > before ? now - before : 0)
+            }
+            return try await buyThere(net, token, units: spend, uni)
+        }
         let (ways, uniswap) = try await buyWays(net, token, units: units, uni)
         guard let way = Self.pick(ways, prefer: prefer) else {
             throw ExecutionError(Self.unquoted(prefer, "\(token.symbol) on \(net.name)")
@@ -179,6 +201,48 @@ extension Executor {
         guard after > before else { throw ExecutionError("\(token.symbol) didn't arrive on \(net.name) within 4 minutes. The order is in the journal.") }
         return "Bought \(amount(after - before)) on \(net.name) for \(Fmt.num(usdc)) USDC via \(way.name == "relay" ? "Relay's swap" : "Relay + Uniswap"). "
             + "You hold \(amount(after)) there.\(hash.isEmpty ? "" : " \(net.explorer)/tx/\(hash)")"
+    }
+
+    /// Whether a buy is paid on the network itself, and Uniswap's path there: `from` nil = when the network holds the
+    /// USDC and Uniswap has a pool (else nil: Solana's ways); «solana» = never; the network's key = it must; another EVM
+    /// network's key = its USDC comes over first (`src`). A named place that can't pay is refused, never swapped for another.
+    func buyHere(_ net: EVMNetwork, _ token: EVMTokens.Token, units: UInt64, from: String?, _ uni: UniswapV3.Deployment) async throws
+        -> (path: Data, out: Decimal, src: EVMNetwork?)? {
+        guard from != "solana" else { return nil }
+        let me = wallet.evm, want = Fmt.num(Decimal(units) / 1_000_000)
+        let src = from.flatMap(EVMNetwork.named).flatMap { $0.key == net.key ? nil : $0 }
+        if from != nil, from != net.key, src == nil { throw ExecutionError("ihatecrypto doesn't pay for a buy on \(net.name) from \(from ?? "there"). Nothing was signed.") }
+        let there = try await (src ?? net).rpc.tokenBalance((src ?? net).usdc, owner: me)
+        let best = allowedWays(net).uniswap ? await bestPath(on: net.rpc, uni, from: net.usdc, to: token.address, amountIn: Decimal(units)) : nil
+        if let best, there >= units { return (best.path, best.out, src) }
+        guard from != nil else { return nil }
+        throw ExecutionError(there < units
+            ? "\(Fmt.num(Decimal(there) / 1_000_000)) USDC on \((src ?? net).name); the buy needs \(want). Nothing was signed."
+            : "Uniswap has no pool for \(token.symbol) on \(net.name)\(allowedWays(net).uniswap ? "" : " (Uniswap is off in Settings › Modules)"); "
+                + "“buy \(token.symbol) on \(net.key) for \(want) USDC from solana” takes Relay's swap. Nothing was signed.")
+    }
+
+    /// A buy with USDC already on the network: an exact approve and Uniswap's best path, which pays only this wallet.
+    private func buyThere(_ net: EVMNetwork, _ token: EVMTokens.Token, units: UInt64, _ uni: UniswapV3.Deployment) async throws -> String {
+        let me = wallet.evm, scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1), usdc = Fmt.num(Decimal(units) / 1_000_000, maxFraction: 6)
+        func amount(_ raw: Decimal) -> String { "\(Fmt.num(raw / scale, maxFraction: 6)) \(token.symbol)" }
+        // Gas only: the USDC is there.
+        try await ensureEVM(net, usdc: units)
+        guard units > 0, let best = await bestPath(on: net.rpc, uni, from: net.usdc, to: token.address, amountIn: Decimal(units)) else {
+            throw ExecutionError("Uniswap doesn't quote \(token.symbol) on \(net.name) now; the USDC stays there. Nothing was swapped.")
+        }
+        report("\(usdc) USDC on \(net.name) → \(token.symbol) on Uniswap: ≈ \(amount(best.out)), no bridge.")
+        let before = try await balance(token.address, on: net.rpc)
+        try await approve(net.rpc, token: net.usdc, spender: uni.router, amount: units, note: "Approve exactly \(usdc) USDC to Uniswap")
+        let hash = try await sendEVM(net.rpc, to: uni.router,
+                                     data: try UniswapV3.exactInput(path: best.path, recipient: me, amountIn: Decimal(units), amountOutMinimum: (best.out * Decimal(string: "0.99")!).whole),
+                                     note: "Buy \(token.symbol) for \(usdc) USDC on Uniswap")
+        var after = try await balance(token.address, on: net.rpc)
+        for _ in 0..<10 where after <= before {
+            try await Task.sleep(for: .seconds(1))
+            after = try await balance(token.address, on: net.rpc)
+        }
+        return "Bought \(amount(after > before ? after - before : 0)) on \(net.name) for \(usdc) USDC that was there, on Uniswap. You hold \(amount(after)) there. \(net.explorer)/tx/\(hash)"
     }
 
     /// Both ways to buy for `units` of USDC from Solana, quoted and valued (nothing is signed): Relay's swap, and Relay's
@@ -220,9 +284,9 @@ extension Executor {
         return (ways, uniswap)
     }
 
-    /// Sells a token on Base or Arbitrum back to USDC on Solana; nil = all of it. The better of Relay's swap-and-bridge
-    /// and Uniswap on the chain followed by the Relay bridge.
-    public func sellOn(_ net: EVMNetwork, _ ref: String, amount: Decimal?, prefer: String? = nil) async throws -> String {
+    /// Sells a token on an EVM network back to USDC on Solana; nil = all of it. The better of Relay's swap-and-bridge
+    /// and Uniswap on the chain followed by the Relay bridge. `keep`: Uniswap there, and the USDC stays on the network.
+    public func sellOn(_ net: EVMNetwork, _ ref: String, amount: Decimal?, prefer: String? = nil, keep: Bool = false) async throws -> String {
         guard let uni = UniswapV3.on(net.rpc.chainId) else { throw ExecutionError("ihatecrypto swaps on Solana, Base, Arbitrum, Polygon and Ethereum.") }
         let token = try await evmToken(ref, on: net), me = wallet.evm
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
@@ -230,6 +294,15 @@ extension Executor {
         let units = (amount.map { min($0 * scale, held) } ?? held).whole
         guard units > 0 else { throw ExecutionError("No \(token.symbol) on \(net.name).") }
         func tokens(_ raw: Decimal) -> String { "\(Fmt.num(raw / scale, maxFraction: 6)) \(token.symbol)" }
+        if keep {
+            guard allowedWays(net).uniswap, let best = await bestPath(on: net.rpc, uni, from: token.address, to: net.usdc, amountIn: units) else {
+                throw ExecutionError("Uniswap has no pool to sell \(token.symbol) for USDC on \(net.name)\(allowedWays(net).uniswap ? "" : " (Uniswap is off in Settings › Modules)"); "
+                                     + "without «keep», Relay's swap sells it for USDC on Solana. Nothing was signed.")
+            }
+            report("\(tokens(units)) on \(net.name) → ≈ \(Fmt.num(best.out / 1_000_000)) USDC there, on Uniswap.")
+            try await ensureEVM(net, usdc: 0)
+            return try await sellThere(net, token, units: units, path: best.path, out: best.out, uni).text
+        }
         let (ways, uniswap) = try await sellWays(net, token, units: units, uni)
         guard let way = Self.pick(ways, prefer: prefer) else {
             throw ExecutionError(Self.unquoted(prefer, tokens(units) + " on " + net.name)
@@ -242,22 +315,30 @@ extension Executor {
         guard way.name == "relay" else {
             guard let plan = uniswap else { throw ExecutionError("Uniswap's route went away. Nothing was signed.") }
             let fresh = await bestPath(on: net.rpc, uni, from: token.address, to: net.usdc, amountIn: units)
-            let out = fresh?.out ?? plan.out
-            try await approve(net.rpc, token: token.address, spender: uni.router, units: units, note: "Approve exactly \(tokens(units)) to Uniswap")
-            let before = try await net.rpc.tokenBalance(net.usdc, owner: me)
-            let hash = try await sendEVM(net.rpc, to: uni.router,
-                                         data: try UniswapV3.exactInput(path: fresh?.path ?? plan.path, recipient: me, amountIn: units, amountOutMinimum: (out * Decimal(string: "0.99")!).whole),
-                                         note: "Sell \(tokens(units)) on Uniswap")
-            var after = try await net.rpc.tokenBalance(net.usdc, owner: me)
-            for _ in 0..<10 where after <= before {
-                try await Task.sleep(for: .seconds(1))
-                after = try await net.rpc.tokenBalance(net.usdc, owner: me)
-            }
-            let got = Decimal(after > before ? after - before : 0) / 1_000_000
-            report("Sold \(tokens(units)) for \(Fmt.num(got)) USDC on \(net.name). \(net.explorer)/tx/\(hash)")
-            return try await evmToSolana(net, usdc: got)
+            let sold = try await sellThere(net, token, units: units, path: fresh?.path ?? plan.path, out: fresh?.out ?? plan.out, uni)
+            report(sold.text)
+            return try await evmToSolana(net, usdc: sold.got)
         }
         return try await relaySell(net, token: token, units: units)
+    }
+
+    /// The Uniswap sale on the network: an exact approve of the tokens, then the swap to USDC at this wallet.
+    private func sellThere(_ net: EVMNetwork, _ token: EVMTokens.Token, units: Decimal, path: Data, out: Decimal, _ uni: UniswapV3.Deployment) async throws
+        -> (got: Decimal, text: String) {
+        let me = wallet.evm, scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
+        let tokens = "\(Fmt.num(units / scale, maxFraction: 6)) \(token.symbol)"
+        try await approve(net.rpc, token: token.address, spender: uni.router, units: units, note: "Approve exactly \(tokens) to Uniswap")
+        let before = try await net.rpc.tokenBalance(net.usdc, owner: me)
+        let hash = try await sendEVM(net.rpc, to: uni.router,
+                                     data: try UniswapV3.exactInput(path: path, recipient: me, amountIn: units, amountOutMinimum: (out * Decimal(string: "0.99")!).whole),
+                                     note: "Sell \(tokens) on Uniswap")
+        var after = try await net.rpc.tokenBalance(net.usdc, owner: me)
+        for _ in 0..<10 where after <= before {
+            try await Task.sleep(for: .seconds(1))
+            after = try await net.rpc.tokenBalance(net.usdc, owner: me)
+        }
+        let got = Decimal(after > before ? after - before : 0) / 1_000_000
+        return (got, "Sold \(tokens) for \(Fmt.num(got)) USDC on \(net.name). \(net.explorer)/tx/\(hash)")
     }
 
     /// Both ways to sell `units` back to USDC on Solana, quoted and valued (nothing is signed): Relay's swap-and-bridge,

@@ -787,8 +787,7 @@ struct TransferBoard: View {
     var body: some View {
         if case .transfer(let entry, let amount)? = ws.pendingAction {
             let solana = entry.network == .solana, hyper = entry.network == .hyperliquid
-            let from = solana ? ws.solana?.usdc : hyper ? ws.hl?.withdrawable : entry.network == .arbitrum ? ws.arbitrumUSDC
-                : entry.network == .tempo ? ws.tempoUSDC : entry.network == .base ? ws.base?.usdc : nil
+            let from = ws.usdc(on: entry.network.rawValue)
             let ends = AddressCheck.ends(entry.address)
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
@@ -800,8 +799,9 @@ struct TransferBoard: View {
                         TokenLogo(name: entry.network.logo, size: 24)
                         Text("FROM · \(entry.network.title.uppercased())").font(.ui(9, .heavy)).tracking(0.4).opacity(0.75)
                         Text(from.map { "\(Fmt.num($0)) → \(Fmt.num(max(0, $0 - amount))) USDC" } ?? "—").font(.ui(13, .bold)).monospacedDigit()
+                        // Solana comes up only when the money there is short: a plain transfer is a plain transfer.
                         Text(hyper ? "perp balance · no bridge, no gas" : solana ? "your wallet"
-                             : from.map { $0 < amount ? "the rest comes from Solana first" : "your wallet" } ?? "your wallet · what's short comes from Solana")
+                             : from.map { $0 < amount ? "\(Fmt.num(amount - $0)) USDC short: it comes from Solana first" : "your wallet" } ?? "your wallet")
                             .font(.ui(10)).opacity(0.8)
                     }
                     .padding(11)
