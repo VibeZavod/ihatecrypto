@@ -149,7 +149,6 @@ struct StudioView: View {
     @AppStorage("chatWidth") private var chatWidth = 350.0
     /// The width while the edge is being dragged; nil when resting.
     @State private var resizing: CGFloat?
-    @State private var edgeHover = false
     /// Where the chat sits, as an offset from its docked corner (bottom right); both ≤ 0.
     @AppStorage("chatX") private var chatX = 0.0
     @AppStorage("chatY") private var chatY = 0.0
@@ -159,6 +158,9 @@ struct StudioView: View {
     @AppStorage("webX") private var webX = 0.0
     @AppStorage("webY") private var webY = 0.0
     @State private var webMoving: CGSize = .zero
+    /// The web panel's width set by its left edge; 0 is its own (a share of the canvas).
+    @AppStorage("webWidth") private var webWidth = 0.0
+    @State private var webResizing: CGFloat?
     @AppStorage("railCollapsed") private var railCollapsed = true
     @State private var railFoldedForRoom = false
     /// Counts the orange waves around the window's edge (EdgePulse); each new value runs one.
@@ -216,7 +218,9 @@ struct StudioView: View {
                         // A page opened from a board or the chat: beside the docked chat, under the chat when it's moved.
                         if ws.showWeb {
                             let beside = docked ? width + 32 : 16
-                            let panelWidth = min(760, max(380, (geo.size.width - beside) * 0.62))
+                            let widest = max(380, geo.size.width - beside - 16)
+                            let restWidth = min(widest, webWidth > 0 ? CGFloat(webWidth) : min(760, max(380, (geo.size.width - beside) * 0.62)))
+                            let panelWidth = webResizing ?? restWidth
                             // Moved by its header anywhere left of its place, never out of the canvas; home again within 40 pt.
                             let webRoom = CGSize(width: max(0, geo.size.width - beside - panelWidth - 16), height: 0)
                             WebPanel(drag: $webMoving, endDrag: { pull in
@@ -227,6 +231,12 @@ struct StudioView: View {
                             }, dock: { webX = 0; webY = 0 })
                                 .frame(width: panelWidth)
                                 .frame(maxHeight: max(300, geo.size.height - 32))
+                                .overlay(alignment: .leading) {
+                                    ResizeEdge(active: webResizing != nil, help: "Drag to resize the page · double-click: its own width",
+                                               changed: { webResizing = min(widest, max(380, restWidth + $0)) },
+                                               ended: { if let r = webResizing { webWidth = Double(r) }; webResizing = nil },
+                                               double: { withAnimation(Self.spring) { webWidth = 0 } })
+                                }
                                 .offset(Self.clamp(CGSize(width: webX + webMoving.width, height: 0), room: webRoom))
                                 .padding(.top, 16).padding(.trailing, beside)
                                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topTrailing)
@@ -316,24 +326,39 @@ struct StudioView: View {
 
     /// The chat's left edge: drag to widen up to half the window, double-click to switch between narrow and half.
     private func edge(width: CGFloat, maxWidth: CGFloat) -> some View {
-        Capsule().fill(edgeHover || resizing != nil ? Brand.accent.opacity(0.7) : .clear)
+        ResizeEdge(active: resizing != nil, help: "Drag to resize the chat · double-click: half the window",
+                   changed: { resizing = min(maxWidth, max(Self.minChat, CGFloat(chatWidth) + $0)) },
+                   ended: { if let r = resizing { chatWidth = Double(r) }; resizing = nil },
+                   double: { withAnimation(Self.spring) { chatWidth = width >= maxWidth - 1 ? 350 : Double(maxWidth) } })
+    }
+}
+
+/// A panel's left edge, the chat's or the web page's: drag to resize (the right edge stays put), double-click for the
+/// other width. `changed` gets the pull, positive to the left.
+struct ResizeEdge: View {
+    let active: Bool
+    let help: String
+    let changed: (CGFloat) -> Void
+    let ended: () -> Void
+    let double: () -> Void
+    @State private var hover = false
+
+    var body: some View {
+        Capsule().fill(hover || active ? Brand.accent.opacity(0.7) : .clear)
             .frame(width: 4, height: 56)
             .frame(width: 14)
             .frame(maxHeight: .infinity)
             .contentShape(Rectangle())
             .offset(x: -7)
             .onHover { inside in
-                edgeHover = inside
+                hover = inside
                 if inside { NSCursor.resizeLeftRight.push() } else { NSCursor.pop() }
             }
             .gesture(DragGesture(minimumDistance: 1, coordinateSpace: .global)
-                .onChanged { v in resizing = min(maxWidth, max(Self.minChat, CGFloat(chatWidth) - v.translation.width)) }
-                .onEnded { _ in
-                    if let r = resizing { chatWidth = Double(r) }
-                    resizing = nil
-                })
-            .onTapGesture(count: 2) { withAnimation(Self.spring) { chatWidth = width >= maxWidth - 1 ? 350 : Double(maxWidth) } }
-            .help("Drag to resize the chat · double-click: half the window")
+                .onChanged { changed(-$0.translation.width) }
+                .onEnded { _ in ended() })
+            .onTapGesture(count: 2, perform: double)
+            .help(help)
     }
 }
 

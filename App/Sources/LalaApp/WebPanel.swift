@@ -90,11 +90,11 @@ struct WebPanel: View {
     var body: some View {
         VStack(spacing: 0) {
             if ws.webWallet {
-                walletHeader.background(grip)
+                grip(walletHeader)
                 Divider()
                 BrowserView(window: false)
             } else {
-                plainHeader.background(grip)
+                grip(plainHeader)
                 Divider()
                 WebViewHost(webView: ws.sidePage.webView)
             }
@@ -105,9 +105,10 @@ struct WebPanel: View {
         .shadow(color: .black.opacity(0.18), radius: 24, y: 12)
     }
 
-    /// The header's empty space: drag to move, double-click to go back beside the chat. Its buttons still click.
-    private var grip: some View {
-        Color.clear.contentShape(Rectangle()).pointerStyle(.grabIdle)
+    /// The whole header, its text too: drag to move, double-click to go back beside the chat. Its buttons still click
+    /// (a child's gesture wins). Only its empty space moved it before, and the wallet header has almost none.
+    private func grip(_ header: some View) -> some View {
+        header.contentShape(Rectangle()).pointerStyle(.grabIdle)
             .gesture(DragGesture(minimumDistance: 4, coordinateSpace: .global).onChanged { drag = $0.translation }.onEnded { endDrag($0.translation) })
             .simultaneousGesture(TapGesture(count: 2).onEnded { dock() })
     }
