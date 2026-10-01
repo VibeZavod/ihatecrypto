@@ -1,4 +1,5 @@
 import LLMAPIKey
+import LLMApple
 import LLMChatGPT
 import LLMClaudeCode
 import LLMCore
@@ -18,7 +19,7 @@ public enum LLMCatalog {
             note: "", unavailable: "A Google AI subscription doesn't cover the API. Connect Gemini with a key from Google AI Studio."
         )),
         OpenRouter(),
-    ] + OpenAICompatible.presets
+    ] + OpenAICompatible.presets + [AppleIntelligence()]
 
     public static func provider(id: String) -> (any LLMProvider)? {
         all.first { $0.info.id == id }

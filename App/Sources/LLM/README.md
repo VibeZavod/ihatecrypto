@@ -8,6 +8,7 @@ APIKey/      OpenAI-compatible APIs: DeepSeek, OpenAI, Anthropic, xAI, Gemini, O
 OpenRouter/  browser sign-in (OAuth PKCE) or a key; every model through one account
 ChatGPT/     Plus/Pro subscription through the Codex backend; sign in via the browser or from ~/.codex/auth.json
 ClaudeCode/  Claude subscription through the installed Claude Code (`claude -p` with no tools)
+Apple/       Apple Intelligence (Foundation Models): on this Mac, or Private Cloud Compute with Apple's entitlement
 Catalog/     every provider, including unavailable ones with the reason (Grok, Gemini by subscription)
 Check/       `swift run LalaLLMCheck <id> "text"` — checks one provider from the terminal
 ```

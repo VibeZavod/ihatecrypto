@@ -1,5 +1,5 @@
 {
-  "originHash" : "97f5a7e852cf146d4ddfd0c56f0bdb344acd5f7d11f0bd6a6de2a2c17201e837",
+  "originHash" : "2f881b257e03ce14e4fa80a16575ff649bb2ef43dbbba3bdcc1adcbae24b7b10",
   "pins" : [
     {
       "identity" : "swift-secp256k1",
