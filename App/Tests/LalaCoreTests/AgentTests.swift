@@ -348,6 +348,13 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(ChatLanguage.en.name(recentUserMessages: ["compra sol"]) == "English")
     for yes in ["sí", "Sí, hazlo", "dale", "si", "ok", "Ок", "vale!", "do it", "делай", "да"] { #expect(ChatWords.confirms(yes), "\(yes)") }
     for notYes in ["si quieres compra sol", "ok but lower the risk", "long eth"] { #expect(!ChatWords.confirms(notYes), "\(notYes)") }
+    // A model that writes the cancel or confirm route as a command means the route.
+    #expect((try? ChatRouter.decode(Data(#"{"route": "command", "command": "cancel"}"#.utf8))) == .cancel)
+    #expect((try? ChatRouter.decode(Data(#"{"route": "command", "command": "Confirm"}"#.utf8))) == .confirm)
+    // A command with the card's description glued on reads as the command alone; a short one with a dash stays whole.
+    let glued = "spread 800 USDC from Base across the best rates — Jupiter Lend 501 USDC at 4.55%, Morpho · Base 299 USDC at 4.46%, taking 800.1 from Base (moves first, straight: 501.2 Base → Solana); at most 50% per protocol"
+    #expect(ChatRouter.commandOnly(glued) == "spread 800 USDC from Base across the best rates")
+    #expect(ChatRouter.commandOnly("pay POST https://x.y/search {\"q\":\"tesla — news\"}") == "pay POST https://x.y/search {\"q\":\"tesla — news\"}")
     // A confirmation is the whole message: with a change in it, the model reads it and the card waits again.
     for yes in ["да, давай", "давай делай", "ок, погнали", "yes, do it now", "go ahead", "let's do it", "sí, hazlo ya", "De acuerdo!"] { #expect(ChatWords.confirms(yes), "\(yes)") }
     for notYes in ["давай на 30", "да, но без камино", "yes but 50", "go long eth", "sign it with 30 USDC", "да сделай 200", "давай лучше в морфо", "ok тогда 200"] {

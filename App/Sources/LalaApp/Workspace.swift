@@ -11,6 +11,7 @@ import LalaCore
 import LLMCatalog
 import LLMCore
 import Observation
+import os
 import Security
 import SignerAPI
 import TradeExecution
@@ -918,6 +919,8 @@ final class Workspace {
         startPlanReview()
     }
 
+    nonisolated static let routerLog = Logger(subsystem: "app.lala.mac", category: "router")
+
     /// The model's reading of the message (ChatRouter) — the only reading while a model is connected: keywords guess,
     /// and a wrong guess about money is worse than a question. The model is asked twice; if it still can't be reached,
     /// nothing is done and the chat says so.
@@ -957,6 +960,9 @@ final class Workspace {
                 failure = error.localizedDescription
                 unreadable = error is ChatRouter.Unreadable
                 FileHandle.standardError.write(Data("LALA router: \(error)\n".utf8))
+                // In the system log too, where an app started from the Dock has no stderr: what a model answered that
+                // couldn't be read (`log show --predicate 'subsystem == "app.lala.mac" AND category == "router"'`).
+                Self.routerLog.error("\(String(describing: error), privacy: .public)")
             }
         }
         busy = false
@@ -984,7 +990,16 @@ final class Workspace {
             return
         }
         switch reading?.route {
-        case .confirm?: await confirmWaiting(note: note)
+        case .confirm?:
+            // A safety rule, not a reading: a number in the message is a change, whatever the model says. Apple's model
+            // read «add another 300» as a confirm once (its second reading too), which would have signed the 500 waiting.
+            let said = aboutStep ? String(text[(text.range(of: "»: ")?.upperBound ?? text.startIndex)...]) : text
+            if said.contains(where: \.isNumber) {
+                reply(say("That reads like a yes, but it has a number in it, so nothing was signed and the card keeps waiting. If the number is a change, say it as one («make it 800»); if not, press Confirm on the card.",
+                          "Похоже на «да», но в сообщении есть число — я ничего не подписывал, карточка ждёт. Если число — это изменение, скажи его так («сделай 800»); если нет — нажми Confirm на карточке."), note: note)
+            } else {
+                await confirmWaiting(note: note)
+            }
         case .cancel?:
             let waited = pendingAction != nil || pendingAllocation != nil
             dropWaiting()
@@ -1072,14 +1087,14 @@ final class Workspace {
         if let p = pendingText {
             var steps: [ActivityBubble] = []
             if case .wallet(let command)? = pendingAction { steps = route(command)?.steps ?? [] }
-            c.canvas.append("waiting for Confirm: \(p)" + (steps.isEmpty ? "" : " — its route: "
+            c.canvas.append("waiting for Confirm: «\(p)»" + (steps.isEmpty ? "" : "; its route (not part of the command): "
                 + steps.map { "\($0.label) \(readable($0.title))" + ($0.lines.isEmpty ? "" : " (\($0.lines.joined(separator: ", ")))") }.joined(separator: " → ")))
         }
         // A spread or rebalance on the canvas has no pendingText: without this the model answered «there's no plan on the canvas».
         if pendingText == nil, let p = pendingAllocation {
             // Its whole math, so «это точно лучший маршрут?» and «а почему не Morpho?» are answered from it, not guessed.
-            c.canvas.append("waiting for Confirm: \(p.summary)" + (allocationPreview.map { a in
-                " — " + a.slices.map { "\($0.place) \(Fmt.num($0.amount)) \(a.asset) at \(Fmt.num($0.apy.rounded(2, .plain)))%" }.joined(separator: ", ")
+            c.canvas.append("waiting for Confirm: «\(p.summary)»" + (allocationPreview.map { a in
+                "; its plan (not part of the command): " + a.slices.map { "\($0.place) \(Fmt.num($0.amount)) \(a.asset) at \(Fmt.num($0.apy.rounded(2, .plain)))%" }.joined(separator: ", ")
                     + ", taking " + (a.drawn.isEmpty ? "Solana's" : a.drawn.map { "\(Fmt.num($0.amount)) from \($0.place)" }.joined(separator: " + "))
                     + (a.moves.isEmpty ? "" : " (moves first, straight: " + a.moves.map { "\(Fmt.num($0.amount)) \($0.from) → \($0.to)" }.joined(separator: ", ") + ")")
                     + "; at most \(Fmt.pct(a.maxShare)) per protocol; ≈ \(Fmt.num(a.yearly)) \(a.asset) a year"

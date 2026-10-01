@@ -523,6 +523,12 @@ extension Workspace {
             }
             return lacks(hlp.equity, asked, "HLP")
         case .lendDeposit("USDC", let asked?), .kamino(deposit: true, symbol: "USDC", amount: let asked?): return lacks(solana?.usdc, asked, "Solana")
+        // «move 100 USDC to arbitrum» read as from Solana, where 1.69 lay: said before the card, with where the money is.
+        case .solanaTo(_, let asked?) where !inChain:
+            guard let why = lacks(solana?.usdc, asked, "Solana") else { return nil }
+            guard let net = EVMNetwork.funding(asked, held: { self.usdc(on: $0) }) else { return why }
+            return why + say(" \(net.name) has \(Fmt.num(usdc(on: net.key) ?? 0)) USDC: say «from \(net.name)» to move it from there.",
+                             " На \(net.name) — \(Fmt.num(usdc(on: net.key) ?? 0)) USDC: скажи «с \(net.name)», чтобы перевести оттуда.")
         case .lendDeposit("SOL", let asked?), .kamino(deposit: true, symbol: "SOL", amount: let asked?), .stake(let asked?):
             return lacks(solana?.sol, asked, "Solana", "SOL")
         case .sell(let a, let asked) where a.resolved:

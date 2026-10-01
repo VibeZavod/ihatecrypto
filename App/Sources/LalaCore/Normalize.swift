@@ -514,7 +514,7 @@ public enum ChatRouter {
         }
         let options = (a["options"] as? [[String: Any]] ?? []).compactMap { c -> Option? in
             guard let title = text(c["title"])?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty,
-                  let command = text(c["command"])?.trimmingCharacters(in: clean), !command.isEmpty, command.count <= maxCommand(command),
+                  let command = text(c["command"]).map({ commandOnly($0.trimmingCharacters(in: clean)) }), !command.isEmpty, command.count <= maxCommand(command),
                   // A card that opens a new canvas or clears the plan stands in for «do nothing».
                   !["new canvas", "clear the plan", "lock"].contains(command.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! "))) else { return nil }
             return Option(title: title, comment: text(c["comment"])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "", command: command,
@@ -612,6 +612,14 @@ public enum ChatRouter {
     /// A chain of steps has room for each («chart token 0x… on base» three times ran past 200 and the answer was dropped).
     static func maxCommand(_ c: String) -> Int { c.hasPrefix("pay ") ? 2000 : steps(c) != nil ? 1200 : 200 }
 
+    /// A command a model wrote with the waiting card's description glued on («spread 800 USDC from Base across the best
+    /// rates — Jupiter Lend 501 USDC at 4.55%, …», Apple's model, every time): the command is what comes before the dash.
+    /// Only when the whole is too long to be one; a paid request's body may hold a dash of its own.
+    static func commandOnly(_ c: String) -> String {
+        guard c.count > maxCommand(c), let dash = c.range(of: " — ") else { return c }
+        return String(c[..<dash.lowerBound]).trimmingCharacters(in: .whitespaces)
+    }
+
     /// The words of a chat or clarify answer while its JSON is still being written: `{"route": "chat", "reply": "Bitc…`
     /// → «Bitc…». nil before the reply starts, or for a lookup or a command.
     public static func partialReply(_ json: String) -> String? {
@@ -638,9 +646,11 @@ public enum ChatRouter {
     static func decode(_ json: Data) throws -> Route {
         struct Answer: Decodable { let route: String; let command: String?; let reply: String? }
         let a = try JSONDecoder().decode(Answer.self, from: json)
-        let command = a.command?.trimmingCharacters(in: CharacterSet(charactersIn: "`\"'«» \n")) ?? ""
+        let command = commandOnly(a.command?.trimmingCharacters(in: CharacterSet(charactersIn: "`\"'«» \n")) ?? "")
         let reply = a.reply?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         switch a.route {
+        // Apple's model wrote {"route": "command", "command": "cancel"} for the cancel route: the command it meant.
+        case "command" where ["cancel", "confirm"].contains(command.lowercased()): return command.lowercased() == "cancel" ? .cancel : .confirm
         case "command" where !command.isEmpty && command.count <= maxCommand(command): return .command(command)
         case "question": return .question
         case "plan": return .plan
