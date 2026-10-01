@@ -2203,15 +2203,28 @@ struct FloatingChat: View {
                         if ws.messages.count <= 1 {
                             Text("Your portfolio is on the canvas. Tell me what to do with your money — in any language — and I’ll build the plan next to it. Nothing moves without your signature.")
                                 .font(.ui(14)).foregroundStyle(.secondary)
-                            Text("You can say:").font(.ui(10)).foregroundStyle(.secondary).padding(.top, 4)
-                            ForEach(["long ETH risk $0.25 by the book", "where to keep USDC", "buy SOL for 2 USDC every week", "withdraw 1 USDC to Solana"], id: \.self) { phrase in
-                                Button { ws.draft = phrase } label: {
-                                    Text(phrase).font(.ui(13, .medium)).foregroundStyle(.primary)
-                                        .padding(.horizontal, 12).padding(.vertical, 7)
-                                        .background(Capsule().fill(Brand.glassFill))
-                                        .overlay(Capsule().strokeBorder(Brand.glassRim))
+                            // Full-width cards with an icon, not capsules: the model and network chips under them are capsules.
+                            Text("Try saying").font(.ui(11, .semibold)).foregroundStyle(.secondary).padding(.top, 4)
+                            VStack(spacing: 6) {
+                                ForEach([("chart.line.uptrend.xyaxis", "long ETH risk $0.25 by the book"), ("building.columns", "where to keep USDC"),
+                                         ("calendar.badge.clock", "buy SOL for 2 USDC every week"), ("arrow.down.to.line", "withdraw 1 USDC to Solana")], id: \.1) { icon, phrase in
+                                    Button { ws.draft = phrase } label: {
+                                        HStack(spacing: 10) {
+                                            Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.accentInk)
+                                                .frame(width: 28, height: 28)
+                                                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Brand.accent.opacity(0.12)))
+                                            Text(phrase).font(.ui(13, .medium)).foregroundStyle(.primary).lineLimit(1).truncationMode(.tail)
+                                            Spacer(minLength: 6)
+                                            Image(systemName: "arrow.up.left").font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary)
+                                        }
+                                        .padding(7).padding(.trailing, 5)
+                                        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Brand.card))
+                                        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Brand.cardBorder))
+                                        .contentShape(Rectangle())
+                                    }
+                                    .buttonStyle(.plain).modifier(HoverLift(radius: 12))
+                                    .help("Puts it in the field to edit and send")
                                 }
-                                .buttonStyle(.plain).pointerStyle(.link)
                             }
                         }
                     }
