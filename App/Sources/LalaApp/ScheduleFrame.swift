@@ -264,7 +264,8 @@ struct ScheduleFrame: View {
         }
         .padding(.horizontal, 10).padding(.vertical, 8)
         .background(RoundedRectangle(cornerRadius: 14).fill(Color.primary.opacity(0.03)))
-        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(ws.scheduleItem == e.id ? Brand.accent : Brand.cardBorder))
+        // Lit while its canvas is the open one: closed, or another canvas opened, the row goes back to plain.
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(ws.currentScheduleKey == e.id ? Brand.accent : Brand.cardBorder))
         .opacity(e.paused || ws.schedulePaused ? 0.55 : 1)
         .contentShape(Rectangle())
         // Its own canvas: steps, runs, Pause and Delete, and the chat to change it.
@@ -407,7 +408,7 @@ struct ScheduleItemBoard: View {
             HStack(spacing: 8) {
                 Text("SCHEDULED · ITS OWN CANVAS").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
                 Spacer()
-                Button { ws.closeScheduleCanvas() } label: { Label("Close", systemImage: "xmark").font(.ui(11.5, .semibold)) }
+                Button { ws.closeScheduleCanvas() } label: { Label("Close", systemImage: "xmark").font(.ui(11.5, .semibold)).padding(.horizontal, 9) }
                     .buttonStyle(.hoverIcon).help("Back to the canvas you came from")
             }
             if let t = ws.tasks.first(where: { "task:\($0.id)" == key }) {
