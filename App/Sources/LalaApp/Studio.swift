@@ -1638,8 +1638,9 @@ struct StudioPortfolio: View {
             }
 
             // USDC lying free at the EVM address: a wallet of its own, not Aave's.
-            ForEach([("base", ws.base?.usdc ?? 0), ("arbitrum", ws.arbitrumUSDC ?? 0)].filter { $0.1 > 0 }, id: \.0) { net, usdc in
-                place(net, WalletCommand.placeName(net), "free USDC · not earning", "\(Fmt.num(usdc)) USDC",
+            // From a cent: dust below it would read «0 USDC».
+            ForEach([("base", ws.base?.usdc ?? 0), ("arbitrum", ws.arbitrumUSDC ?? 0)].filter { $0.1 >= Decimal(string: "0.01")! }, id: \.0) { net, usdc in
+                place(net, WalletCommand.placeName(net), "idle USDC", "\(Fmt.num(usdc)) USDC",
                       tint: Color(light: 0xEEF3FF, dark: 0x151C2E), ink: Color(hex: 0x0052FF), logo: ModuleNetwork(place: net)?.logo)
             }
 
@@ -1733,7 +1734,8 @@ extension StudioPortfolio {
             TokenLogo(name: logo ?? id, size: 34)
             VStack(alignment: .leading, spacing: 2) {
                 Text(name).font(.ui(14, .semibold))
-                Text(line).font(.ui(10)).foregroundStyle(ink).lineLimit(1)
+                // Wraps rather than ends in «…» next to a wide amount.
+                Text(line).font(.ui(10)).foregroundStyle(ink).lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
             Spacer()
             Text(amount).font(.ui(13, .bold)).monospacedDigit().lineLimit(1).fixedSize()
