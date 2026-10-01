@@ -153,7 +153,8 @@ private struct WalletMenu: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Text("WALLETS").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary).padding(.horizontal, 10).padding(.bottom, 4)
-            ForEach(ws.wallets) { w in row(w) }
+            // The automation wallet lives in the Schedule (its budget, addresses, top-up), not among the wallets to switch to.
+            ForEach(ws.wallets.filter { !$0.isAutomation }) { w in row(w) }
             if let error { Text(error).font(.ui(10)).foregroundStyle(.red).padding(.horizontal, 10).fixedSize(horizontal: false, vertical: true) }
             Divider().padding(.vertical, 6)
             if LedgerAccount.saved == nil {
@@ -166,12 +167,6 @@ private struct WalletMenu: View {
                 MenuRow(title: "New test wallet…", detail: "signs without Touch ID · for a few dollars", icon: "flask") {
                     UserDefaults.standard.set(true, forKey: "newWalletTest")
                     close(); openWindow(id: "import")
-                }
-            }
-            if !ws.wallets.contains(where: \.isAutomation), !ws.wallets.isEmpty {
-                MenuRow(title: "New automation wallet…", detail: "scheduled tasks spend from it · no Touch ID", icon: "clock.arrow.circlepath") {
-                    close()
-                    Task { await ws.createAutomationWallet() }
                 }
             }
             MenuRow(title: "Manage wallets…", detail: "create, import, remove", icon: "key") { close(); openWindow(id: "import") }

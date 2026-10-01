@@ -57,7 +57,7 @@ extension Workspace {
     /// The first task whose time has come, on a canvas of its own, once nothing else is going on: the user's card
     /// waiting for Confirm, a reply being written, a move running or half-typed text come first.
     func runDueTask() async {
-        guard let i = tasks.firstIndex(where: { $0.next <= Date() }), !busy, !thinking, !executing, !preparing,
+        guard !schedulePaused, let i = tasks.firstIndex(where: { $0.next <= Date() && $0.paused != true }), !busy, !thinking, !executing, !preparing,
               pendingAction == nil, pendingAllocation == nil, prepared == nil, awaitingAmount == nil, draft.isEmpty else { return }
         var task = tasks[i]
         if task.advance() { tasks[i] = task } else { tasks.remove(at: i) }
@@ -344,7 +344,7 @@ struct ScheduleCanvas: View {
         let known = Set(items.map(\.id) + runs.compactMap(\.schedule))
         let picked = ws.scheduleItem.flatMap { known.contains($0) ? $0 : nil } ?? items.first?.id ?? runs.first?.schedule
         VStack(alignment: .leading, spacing: 0) {
-            PageHeader(title: "Schedule", close: { withAnimation(StudioView.spring) { ws.showSchedule = false } }) {
+            PageHeader(title: "Schedule", close: { withAnimation(StudioView.spring) { ws.scheduleOpen = false } }) {
                 StatusChip(text: KeepRunning.isOn ? "always running" : "while open", tint: KeepRunning.isOn ? Brand.profit : Brand.jevInk)
                 if !KeepRunning.isOn {
                     Button("Keep it running…") { ws.openSettings(.general) }.buttonStyle(.borderless).font(.ui(11, .semibold))
@@ -514,7 +514,7 @@ struct ScheduleCanvas: View {
                     VStack(alignment: .trailing, spacing: 4) {
                         ActivityCard(activity: a)
                         if let id = a.canvas, let c = ws.canvases.first(where: { $0.id == id }) {
-                            Button { ws.showSchedule = false; ws.openCanvas(c) } label: { Label("Open its canvas", systemImage: "rectangle.on.rectangle") }
+                            Button { ws.scheduleOpen = false; ws.openCanvas(c) } label: { Label("Open its canvas", systemImage: "rectangle.on.rectangle") }
                                 .buttonStyle(.borderless).font(.ui(10, .semibold))
                         }
                     }
@@ -561,7 +561,7 @@ private struct TaskDetail: View {
                     .font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button {
                     // Back to the plan: the wallet's «Top up» card shows there.
-                    ws.showSchedule = false
+                    ws.scheduleOpen = false
                     Task { await ws.createAutomationWallet() }
                 } label: {
                     Label("Create an automation wallet", systemImage: "plus.circle.fill").font(.ui(12, .semibold))

@@ -669,7 +669,8 @@ extension Workspace {
     /// Due regular purchases, one run each; the next date moves on even after a failure, so it does not retry in a loop.
     func runSchedules() async {
         guard let wallet = signerWallet, !executing else { return }
-        for index in schedules.indices where schedules[index].next <= Date() {
+        // ponytail: a buy due while paused runs at once when switched back on; advance it on resume if that bothers.
+        for index in schedules.indices where schedules[index].next <= Date() && schedules[index].paused != true && !schedulePaused {
             guard let asset = schedules[index].asset else { continue }
             // Jupiter or Solana switched off: this run is skipped, the schedule stays.
             if let off = Modules.current.refusal(.jupiter, ru: modulesRussian) {
@@ -794,7 +795,7 @@ extension Workspace {
     func notify(_ kind: Notice, _ title: String, _ body: String, record: Bool = true, schedule: String? = nil, failed: Bool = false) {
         if record {
             beginActivity(.automatic, title: title, schedule: schedule)
-            updateActivity { $0.lines.append(body) }
+            updateActivity { $0.lines.append(body); if failed { $0.failed = true } }
         }
         // Asked the first time something actually happens, never at launch. Needs an app bundle:
         // the `swift run` build has none and would crash, so there the chat line is all.

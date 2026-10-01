@@ -14,6 +14,8 @@ public struct ScheduledTask: Codable, Equatable, Sendable, Identifiable {
     /// Made through the local debug API, not by the user in the window: it never runs on the automation wallet by
     /// itself, its moves wait for Confirm.
     public var untrusted: Bool?
+    /// Switched off on the Schedule: it doesn't run until it's switched on again.
+    public var paused: Bool?
 
     public enum Every: Codable, Equatable, Sendable {
         case hours(Int), days(Int), months(Int)

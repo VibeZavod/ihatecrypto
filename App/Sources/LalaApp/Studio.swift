@@ -188,12 +188,12 @@ struct StudioView: View {
             // The canvas fills the window: the boards show around and through the glass rail, not cut at its edge.
             if mode == "history" {
                 HistoryView { withAnimation(.snappy) { mode = "plan" } }.padding(.leading, railEdge)
-            } else if ws.showSchedule {
+            } else if ws.scheduleOpen {
                 ScheduleCanvas().padding(.leading, railEdge).transition(.opacity)
             } else {
                 // The canvas's scale follows the window alone: moving or resizing the chat, which floats
                 // above everything, never shifts or rescales the boards.
-                CanvasViewport(inset: Self.chatColumn, leading: railEdge, contentWidth: StudioCanvas.contentWidth) { StudioCanvas() }
+                CanvasViewport(inset: Self.chatColumn, leading: railEdge, contentWidth: StudioCanvas.contentWidth + (ws.showSchedule ? ScheduleFrame.width + 36 : 0)) { StudioCanvas() }
             }
             HStack(spacing: 0) {
                 // The rail floats over the canvas as a glass panel; the window's traffic lights sit inside it.
@@ -266,7 +266,7 @@ struct StudioView: View {
                         .padding(16)
                         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                         // Over the chat while open: a pick closes it and the chat shows the block's words.
-                        if mode == "plan", !ws.showSchedule {
+                        if mode == "plan", !ws.scheduleOpen {
                             // «Add block» / «Close blocks» stays at the right; the library itself sits under it or,
                             // moved by its corner button, beside the sidebar, and glides between the two.
                             AddBlockButton(open: $showBlocks)
@@ -1026,6 +1026,8 @@ struct StudioCanvas: View {
         let nodes = nodes
         HStack(alignment: .top, spacing: 36) {
             StudioPortfolio()
+            // The rail's Schedule button puts it here, beside the portfolio; a row opens its page.
+            if ws.showSchedule { ScheduleFrame().transition(.opacity) }
             plan(nodes).frame(width: max(470, routeWidth), alignment: .topLeading)
                 .onPreferenceChange(RouteWidth.self) { width in MainActor.assumeIsolated { routeWidth = width } }
         }
@@ -1589,6 +1591,7 @@ struct StudioPortfolio: View {
                 EquitySparkline(points: series, height: 30)
             }
             PortfolioRing()
+            ScheduleTop3()
             VStack(alignment: .leading, spacing: 8) {
                 HStack(spacing: 10) {
                     TokenLogo(name: "sol", size: 34)
@@ -3336,14 +3339,14 @@ struct RailActions: View {
 
     private var schedule: some View {
         let on = ws.showSchedule
-        return tile("Schedule", "calendar", on: on, help: "Its own canvas: what runs on its own and when it ran") { ws.showSchedule = !on }
+        return tile("Schedule", "calendar", on: on, help: "Beside the portfolio: what runs on its own, its budget and when it ran") { ws.showSchedule = !on }
     }
 
     @ViewBuilder
     private func tile(_ title: String, _ icon: String, on: Bool, accent: Bool = false, help: String, action: @escaping () -> Void) -> some View {
         let tap = {
-            // Every button but Schedule's own goes back to the plan canvas.
-            withAnimation(StudioView.spring) { ws.showSchedule = false; action() }
+            // Every button goes back to the plan canvas from a Schedule item's page; the Schedule frame stays.
+            withAnimation(StudioView.spring) { ws.scheduleOpen = false; action() }
             mode = "plan"
         }
         if compact {

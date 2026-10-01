@@ -425,6 +425,8 @@ public struct Schedule: Codable, Equatable, Sendable {
     public let usdc: Decimal
     public let days: Int
     public var next: Date
+    /// Switched off on the Schedule.
+    public var paused: Bool?
 
     public init(symbol: String, usdc: Decimal, days: Int, next: Date) {
         self.symbol = symbol

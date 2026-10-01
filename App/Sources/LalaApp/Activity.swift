@@ -22,6 +22,8 @@ struct Activity: Codable, Identifiable, Sendable {
     var schedule: String?
     /// The canvas a scheduled task ran on.
     var canvas: UUID?
+    /// A run that failed (its notice went out as failed): a red mark on the Schedule's history.
+    var failed: Bool?
 }
 
 /// A canvas bubble frozen in time: enough to draw it again the same way in the history.
