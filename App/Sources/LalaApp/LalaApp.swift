@@ -296,7 +296,7 @@ struct ContentView: View {
             case "favorites": ws.showFavorites = true
             case "schedule": ws.showSchedule = true
             // `schedule:task:<id>`, `schedule:buy:SOL`, `schedule:perp:BTC`: that item in detail.
-            case let item? where item.hasPrefix("schedule:"): ws.showSchedule = true; ws.openScheduleCanvas(String(item.dropFirst(9)))
+            case let item? where item.hasPrefix("schedule:"): ws.openScheduleCanvas(String(item.dropFirst(9))); ws.showSchedule = true
             case "settings": ws.openSettings()
             case let place?: ws.detail = place
             case nil: break

@@ -54,6 +54,9 @@ extension Workspace {
     /// with the others. Its card is there, and the chat on it can change it.
     func openScheduleCanvas(_ key: String) {
         scheduleItem = key
+        // Switching canvases closes the boards; the Schedule frame stays open, so the next item is one click away.
+        let frame = showSchedule
+        defer { showSchedule = frame }
         if let c = canvases.first(where: { $0.schedule == key }) {
             if c.id != canvasID { openCanvas(c) }
             return
