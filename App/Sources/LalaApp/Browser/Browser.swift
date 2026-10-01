@@ -27,6 +27,10 @@ struct TxReview {
     let unknownPrograms: [String]
     let programNames: [String]
     let changes: [String]
+    /// The same changes for the card: the token, its mint, the signed amount.
+    var deltas: [(symbol: String, mint: String, amount: Decimal)] = []
+    /// Every program it calls, by name, and whether it is on the list ihatecrypto signs for without asking.
+    var programs: [(name: String, known: Bool)] = []
     let checks: [String]
     /// Any entry: the transaction is refused, whatever the user clicks.
     let problems: [String]
@@ -163,9 +167,9 @@ final class Browser {
             var review = try await review(wire, owner: owner)
             if let ws = workspace, ws.jevScreening, let key = ws.openRouterKey {
                 review.jev = try? await JevReviewer.site(host: host.isEmpty ? origin : host, title: title, programs: review.programNames, changes: review.changes, apiKey: key)
-                if review.jev == nil { review.jevNote = "Jev is unavailable — code checks decide." }
+                if review.jev == nil { review.jevNote = "The second check didn't answer — the code checks decide." }
             } else {
-                review.jevNote = "Jev isn't connected: sign in to OpenRouter in Settings. Code checks decide."
+                review.jevNote = "The second check isn't connected (Settings › Second check). The code checks decide."
             }
             guard await ask(.transaction(review, send: send), origin: origin, site: site), review.problems.isEmpty else { throw SiteError("Transaction declined.") }
             let reply = try await SignerClient().send(.signSolana(wire: wire, accounts: review.accounts, recipients: [], tokenOwners: review.tokenOwners,
@@ -413,23 +417,40 @@ final class Browser {
         let solBefore = try await rpc.balance(owner)
         let simulation = try await rpc.simulate(wire, watch: [owner] + touched.keys, sigVerify: false)
         var problems = verdict.problems
-        var changes: [String] = []
+        var deltas: [(symbol: String, mint: String, amount: Decimal)] = []
         if let error = simulation.error {
             problems.append("Simulation failed: \(error).")
         } else {
             let solAfter = simulation.after[owner]?.lamports ?? solBefore
-            changes.append("SOL: \(signed(Decimal(Int64(solAfter) - Int64(solBefore)) / 1_000_000_000))")
+            deltas.append(("SOL", SpotAsset.all[0].mint, Decimal(Int64(solAfter) - Int64(solBefore)) / 1_000_000_000))
             for (address, t) in touched.sorted(by: { $0.key < $1.key }) {
                 let after = simulation.after[address]?.token ?? t.amount
                 let scale = Decimal(sign: .plus, exponent: t.decimals, significand: 1)
                 let delta = Decimal(Int64(after) - Int64(t.amount)) / scale
-                if delta != 0 { changes.append("\(symbol(t.mint)): \(signed(delta))") }
+                if delta != 0 { deltas.append((symbol(t.mint), t.mint, delta)) }
             }
         }
-        let names = programs.sorted().map { SolanaGuard.knownPrograms[$0] ?? "unknown \($0.prefix(8))…" }
-        return TxReview(wire: wire, accounts: accounts, tokenOwners: owners, unknownPrograms: unknown, programNames: names,
-                        changes: changes, checks: verdict.checks, problems: problems)
+        // Programs ihatecrypto knows by name but doesn't sign for without asking are named, still marked as not on its list.
+        let named = programs.sorted().map { p in
+            (name: SolanaGuard.knownPrograms[p] ?? Self.programNames[p] ?? "\(p.prefix(4))…\(p.suffix(4))", known: SolanaGuard.knownPrograms[p] != nil)
+        }
+        // One line per kind of check: an instruction repeated to the same program said the same thing twice.
+        var seen = Set<String>()
+        var review = TxReview(wire: wire, accounts: accounts, tokenOwners: owners, unknownPrograms: unknown,
+                              programNames: named.map { $0.known ? $0.name : "\($0.name) (not on ihatecrypto's list)" },
+                              changes: deltas.map { "\($0.symbol): \(signed($0.amount))" }, checks: verdict.checks.filter { seen.insert($0).inserted },
+                              problems: problems)
+        review.deltas = deltas
+        review.programs = named
+        return review
     }
+
+    /// Programs a site may call that ihatecrypto names but doesn't sign for without asking (checked on mainnet: both
+    /// are upgradeable programs; github.com/Kamino-Finance/kvault).
+    static let programNames = [
+        "KvauGMspG5k6rtzrqqn7WNn3oZdyKqLKwK2XWQ8FLjd": "Kamino Vault",
+        "FarmsPZpWu9i7Kky8tPN37rs2TpmMrAZrC7S7vJa91Hr": "Kamino Farms",
+    ]
 
     private func signed(_ d: Decimal) -> String { (d > 0 ? "+" : d < 0 ? "−" : "") + Fmt.num(abs(d), maxFraction: 9) }
 
@@ -577,34 +598,24 @@ struct WebViewHost: NSViewRepresentable {
 }
 
 /// What the site asks for, in words, with the simulated effect of a transaction. Refusals cannot be overridden.
+/// A transaction reads top to bottom: what leaves and arrives (with dollars), what it calls, what was checked, and only
+/// then what still needs the user's word — the programs not on ihatecrypto's list, a second check's warning.
 struct ApprovalSheet: View {
+    @Environment(Workspace.self) private var ws
     let request: SiteRequest
     let decide: (Bool) -> Void
     @State private var allowUnknown = false
     @State private var trustLookalike = false
     @State private var acknowledgeJev = false
+    @State private var showChecks = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 16) {
-            HStack(spacing: 14) {
-                Text(host.prefix(1).uppercased()).font(.ui(22, .heavy))
-                    .frame(width: 48, height: 48)
-                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.fill.tertiary))
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(heading.uppercased()).font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
-                    Text(host).font(.ui(20, .heavy)).lineLimit(1).truncationMode(.middle)
-                    // The whole origin too: a phishing copy differs in what the big line leaves out.
-                    Text(request.origin).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
-                }
-            }
-            switch request.site {
-            case .known: banner("Known site", "checkmark.seal.fill", ink: Brand.profit, tint: Brand.profit.opacity(0.1))
-            case .lookalike(let real):
+            header
+            if case .lookalike(let real) = request.site {
                 banner("The address looks like \(real), but it's a different site — a common phishing trick.", "exclamationmark.octagon.fill",
                        ink: Brand.blockedInk, tint: Brand.blockedTint)
                 Toggle("I understand this isn't \(real)", isOn: $trustLookalike)
-            case .unknown: banner("Unfamiliar site: make sure the address is right.", "questionmark.circle.fill", ink: Brand.jevInk, tint: Brand.jevTint)
-            case .local: EmptyView()
             }
             switch request.kind {
             case .connect:
@@ -613,20 +624,16 @@ struct ApprovalSheet: View {
                 grants([("eye", "Sees your EVM address, which is also your Hyperliquid address"),
                         ("hand.raised", "ihatecrypto never signs token spending permissions (Permit)")])
             case .evmTransaction(let r):
-                Text("Network \(["1": "Ethereum", "42161": "Arbitrum", "8453": "Base"]["\(r.chain)"] ?? "\(r.chain)")").font(.ui(12, .semibold))
-                section("What it does") { ForEach(r.lines, id: \.self) { Text("· " + $0) } }
-                section("What changes (simulation)") { ForEach(r.changes, id: \.self) { Text("· " + $0) } }
-                if let jev = r.jev {
-                    Label(jev.text, systemImage: jev.concern ? "exclamationmark.triangle.fill" : "checkmark.seal")
-                        .foregroundStyle(jev.concern ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
-                    if jev.concern { Toggle("I understand Jev's warning", isOn: $acknowledgeJev) }
-                }
+                card(title: "What it does") { ForEach(r.lines, id: \.self) { line($0) } }
+                card(title: "Your balances (simulated)") { ForEach(r.changes, id: \.self) { line($0) } }
+                secondCheck(r.jev, nil)
                 if !r.problems.isEmpty {
-                    section("Refused") { ForEach(r.problems, id: \.self) { Label($0, systemImage: "xmark.octagon").foregroundStyle(.red) } }
+                    refused(r.problems)
                 } else if let to = r.recipient {
-                    Toggle("Send to \(to.prefix(10))…\(to.suffix(6))", isOn: $allowUnknown)
+                    ask("Money goes to an address that isn't yours", "\(to.prefix(10))…\(to.suffix(6)) — check it on the site.",
+                        toggle: "Send to this address", isOn: $allowUnknown)
                 }
-                Text("Changes are simulated on the latest block, before the network fee. A token names itself — check its address. The signer decodes the calldata again.").font(.ui(10)).foregroundStyle(.secondary)
+                note("Simulated on the latest block, before the network fee. A token names itself — check its address. The signer decodes the call again.")
             case .typedData(let t):
                 Text("\(t.primaryType) for “\(t.domainName)”, chain \(t.chainId)").font(.ui(12, .semibold))
                 ScrollView {
@@ -636,28 +643,26 @@ struct ApprovalSheet: View {
                         }
                     }.frame(maxWidth: .infinity, alignment: .leading)
                 }.frame(maxHeight: 160)
-                Text("The signer computes the hash to sign from this same data. It rejects nested structures and token permissions.").font(.ui(10)).foregroundStyle(.secondary)
+                note("The signer computes the hash to sign from this same data. It rejects nested structures and token permissions.")
             case .message(let text):
                 Text("Text to sign").font(.ui(10, .semibold)).foregroundStyle(.secondary)
                 ScrollView { Text(text).font(.system(.callout, design: .monospaced)).frame(maxWidth: .infinity, alignment: .leading) }.frame(maxHeight: 140)
-                Text("Signing text doesn't move money. The signer rejects the “text” if it's a hidden transaction.").font(.ui(10)).foregroundStyle(.secondary)
+                note("Signing text doesn't move money. The signer rejects the “text” if it's a hidden transaction.")
             case .transaction(let r, let send):
-                section("What changes (simulation)") { ForEach(r.changes, id: \.self) { Text("· " + $0) } }
-                section("Programs") { ForEach(r.programNames, id: \.self) { Text("· " + $0) } }
-                if !r.checks.isEmpty { section("Checks") { ForEach(r.checks, id: \.self) { Label($0, systemImage: "checkmark") } } }
-                if let jev = r.jev {
-                    Label(jev.text, systemImage: jev.concern ? "exclamationmark.triangle.fill" : "checkmark.seal")
-                        .foregroundStyle(jev.concern ? AnyShapeStyle(.orange) : AnyShapeStyle(.secondary))
-                    if jev.concern { Toggle("I understand Jev's warning", isOn: $acknowledgeJev) }
-                } else if let note = r.jevNote {
-                    Label(note, systemImage: "info.circle").foregroundStyle(.secondary)
-                }
+                if let lead = summary(r) { Text(lead).font(.ui(16, .semibold)).fixedSize(horizontal: false, vertical: true) }
+                if !r.deltas.isEmpty { card(title: "Your balances (simulated)") { ForEach(r.deltas.indices, id: \.self) { delta(r.deltas[$0], in: r) } } }
+                calls(r.programs)
+                checks(r.checks.filter { !$0.hasPrefix("Calls unknown program") })
+                secondCheck(r.jev, r.jevNote)
                 if !r.problems.isEmpty {
-                    section("Refused") { ForEach(r.problems, id: \.self) { Label($0, systemImage: "xmark.octagon").foregroundStyle(.red) } }
+                    refused(r.problems)
                 } else if !r.unknownPrograms.isEmpty {
-                    Toggle("Allow \(r.unknownPrograms.count == 1 ? "an unknown program" : "unknown programs") for this transaction", isOn: $allowUnknown)
+                    let names = r.programs.filter { !$0.known }.map(\.name)
+                    ask("\(list(names)) \(names.count == 1 ? "isn't" : "aren't") on ihatecrypto's list",
+                        "Signing calls \(names.count == 1 ? "it" : "them") the way the site built the transaction; the balances above are the simulated result.",
+                        toggle: "Allow \(names.count == 1 ? "it" : "them") for this one transaction", isOn: $allowUnknown)
                 }
-                Text(send ? "After signing, ihatecrypto sends the transaction to the network." : "The site gets the signed transaction and sends it itself.").font(.ui(10)).foregroundStyle(.secondary)
+                note(send ? "After signing, ihatecrypto sends the transaction to the network." : "The site gets the signed transaction and sends it itself.")
             }
             HStack(spacing: 10) {
                 Spacer()
@@ -667,17 +672,198 @@ struct ApprovalSheet: View {
                     .keyboardShortcut(.defaultAction).disabled(!canApprove).opacity(canApprove ? 1 : 0.4)
             }
             .buttonStyle(.plain).pointerStyle(.link)
-            .padding(.top, 4)
         }
         .font(.ui(13))
         .padding(24)
         .frame(width: 520)
     }
 
+    /// The site, how ihatecrypto knows it, and the network the request is for.
+    private var header: some View {
+        HStack(alignment: .top, spacing: 14) {
+            Text(host.prefix(1).uppercased()).font(.ui(22, .heavy))
+                .frame(width: 48, height: 48)
+                .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.fill.tertiary))
+            VStack(alignment: .leading, spacing: 3) {
+                Text(heading.uppercased()).font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
+                HStack(spacing: 8) {
+                    Text(host).font(.ui(20, .heavy)).lineLimit(1).truncationMode(.middle)
+                    switch request.site {
+                    case .known: chip("Known site", "checkmark.seal.fill", ink: Brand.profit, tint: Brand.profit.opacity(0.12))
+                    case .unknown: chip("Unfamiliar site", "questionmark.circle.fill", ink: Brand.jevInk, tint: Brand.jevTint)
+                    case .lookalike: chip("Lookalike", "exclamationmark.octagon.fill", ink: Brand.blockedInk, tint: Brand.blockedTint)
+                    case .local: EmptyView()
+                    }
+                }
+                // The whole origin too: a phishing copy differs in what the big line leaves out.
+                Text(request.origin).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
+            }
+            Spacer(minLength: 8)
+            if let network {
+                HStack(spacing: 5) {
+                    TokenLogo(name: network.logo, size: 14)
+                    Text(network.name).font(.ui(11, .semibold))
+                }
+                .padding(.horizontal, 9).padding(.vertical, 5)
+                .background(Capsule().fill(.fill.tertiary))
+            }
+        }
+    }
+
+    private var network: (name: String, logo: String)? {
+        switch request.kind {
+        case .connect, .message, .transaction: ("Solana", "sol")
+        case .evmTransaction(let r): (["1": "Ethereum", "42161": "Arbitrum", "8453": "Base"]["\(r.chain)"] ?? "chain \(r.chain)", "eth")
+        case .typedData, .connectEVM: nil
+        }
+    }
+
+    /// «You send 5 USDC to Kamino Vault»: what leaves, what arrives, and the program it's for — fee-sized SOL left out.
+    private func summary(_ r: TxReview) -> String? {
+        let moved = r.deltas.filter { !feeLike($0, in: r) }
+        let out = moved.filter { $0.amount < 0 }.map { "\(Fmt.num(-$0.amount, maxFraction: 6)) \($0.symbol)" }
+        let into = moved.filter { $0.amount > 0 }.map { "\(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol)" }
+        let infra: Set<String> = ["System", "Compute Budget", "SPL Token", "Associated Token", "Address Lookup Table"]
+        // Programs of one protocol («Kamino Vault», «Kamino Farms») are that protocol: the money goes to Kamino.
+        let work = r.programs.map(\.name).filter { !infra.contains($0) && !$0.contains("…") }
+        let brands = Set(work.map { String($0.split(separator: " ").first ?? Substring($0)) })
+        let target = work.count > 1 && brands.count == 1 ? brands.first : work.first
+        let to = target.map { " to \($0)" } ?? ""
+        switch (out.isEmpty, into.isEmpty) {
+        case (false, true): return "You send \(list(out))\(to)"
+        case (false, false): return "You send \(list(out)) and get \(list(into))"
+        case (true, false): return "You get \(list(into))"
+        case (true, true): return r.deltas.isEmpty ? nil : "Only the network fee"
+        }
+    }
+
+    /// SOL that only pays the fee and rent beside a real move: shown with that note, not as a send.
+    private func feeLike(_ d: (symbol: String, mint: String, amount: Decimal), in r: TxReview) -> Bool {
+        d.symbol == "SOL" && d.amount < 0 && -d.amount < Decimal(string: "0.05")! && r.deltas.count > 1
+    }
+
+    private func delta(_ d: (symbol: String, mint: String, amount: Decimal), in r: TxReview) -> some View {
+        let price: Decimal? = ["USDC", "USDT", "USDG", "PYUSD"].contains(d.symbol) ? 1
+            : d.symbol == "SOL" ? ws.markets["SOL"]?.markPx : ws.holdings.first { $0.contract == d.mint }?.price
+        return HStack(spacing: 10) {
+            TokenLogo(name: d.symbol.lowercased(), size: 26)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(d.symbol).font(.ui(13, .semibold))
+                if feeLike(d, in: r) { Text("network fee and rent for new accounts").font(.ui(10)).foregroundStyle(.secondary) }
+            }
+            Spacer(minLength: 8)
+            VStack(alignment: .trailing, spacing: 1) {
+                Text((d.amount > 0 ? "+" : "−") + Fmt.num(abs(d.amount), maxFraction: 6)).font(.ui(14, .bold)).monospacedDigit()
+                    .foregroundStyle(d.amount > 0 ? Brand.profit : feeLike(d, in: r) ? Color.primary : Brand.loss)
+                if let price { Text("≈ \(Fmt.usd(abs(d.amount) * price))").font(.ui(10)).foregroundStyle(.secondary).monospacedDigit() }
+            }
+        }
+        .padding(.vertical, 2)
+    }
+
+    /// The programs it calls: the ones that do the work by name (amber when not on ihatecrypto's list), Solana's own
+    /// plumbing on one quiet line.
+    private func calls(_ programs: [(name: String, known: Bool)]) -> some View {
+        let infra: Set<String> = ["System", "Compute Budget", "SPL Token", "Associated Token", "Address Lookup Table"]
+        let work = programs.filter { !infra.contains($0.name) }
+        let plumbing = programs.filter { infra.contains($0.name) }.map(\.name)
+        return card(title: "It calls") {
+            ForEach(work.indices, id: \.self) { i in
+                HStack(spacing: 8) {
+                    Image(systemName: work[i].known ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                        .foregroundStyle(work[i].known ? Brand.profit : Brand.jevInk).font(.system(size: 12))
+                    Text(work[i].name).font(.ui(13, .semibold))
+                    Spacer(minLength: 8)
+                    Text(work[i].known ? "on ihatecrypto's list" : "not on ihatecrypto's list").font(.ui(10)).foregroundStyle(.secondary)
+                }
+            }
+            if !plumbing.isEmpty {
+                Text("and Solana's own: " + plumbing.joined(separator: ", ")).font(.ui(11)).foregroundStyle(.secondary)
+            }
+        }
+    }
+
+    /// What the code checked, folded to one line until asked.
+    @ViewBuilder private func checks(_ items: [String]) -> some View {
+        if !items.isEmpty {
+            VStack(alignment: .leading, spacing: 6) {
+                Button { withAnimation(.easeOut(duration: 0.15)) { showChecks.toggle() } } label: {
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.shield.fill").foregroundStyle(Brand.profit)
+                        Text("\(items.count) \(items.count == 1 ? "check" : "checks") passed").font(.ui(12, .semibold))
+                        Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
+                            .rotationEffect(.degrees(showChecks ? 90 : 0))
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).pointerStyle(.link)
+                if showChecks {
+                    ForEach(items, id: \.self) { Text("· " + $0).font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+                        .padding(.leading, 22)
+                }
+            }
+        }
+    }
+
+    /// The second check's word on the site and the transaction: a quiet line when it has no concern, a warning that
+    /// needs a tick when it has.
+    @ViewBuilder private func secondCheck(_ jev: JevReview?, _ note: String?) -> some View {
+        if let jev, jev.concern {
+            ask("The second check has a concern", jev.text, toggle: "I understand the second check's warning", isOn: $acknowledgeJev)
+        } else if let text = jev?.text ?? note {
+            Label { Text("Second check: " + text) } icon: { Image(systemName: jev == nil ? "info.circle" : "checkmark.seal") }
+                .font(.ui(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// What still needs the user's word: amber, with the one tick that lets Sign through.
+    private func ask(_ title: String, _ detail: String, toggle: String, isOn: Binding<Bool>) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(title, systemImage: "exclamationmark.triangle.fill").font(.ui(13, .semibold)).foregroundStyle(Brand.jevInk)
+            Text(detail).font(.ui(12)).foregroundStyle(Brand.jevInk.opacity(0.85)).fixedSize(horizontal: false, vertical: true)
+            Toggle(toggle, isOn: isOn).font(.ui(12, .semibold))
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Brand.jevTint))
+    }
+
+    private func refused(_ problems: [String]) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("Refused — it can't be signed", systemImage: "xmark.octagon.fill").font(.ui(13, .semibold))
+            ForEach(problems, id: \.self) { Text("· " + $0).font(.ui(12)).fixedSize(horizontal: false, vertical: true) }
+        }
+        .foregroundStyle(Brand.blockedInk)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Brand.blockedTint))
+    }
+
+    private func card(title: String, @ViewBuilder content: () -> some View) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title.uppercased()).font(.ui(10, .semibold)).tracking(1).foregroundStyle(.secondary)
+            content()
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(14)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Brand.cardBorder))
+    }
+
+    private func line(_ text: String) -> some View { Text(text).fixedSize(horizontal: false, vertical: true) }
+    private func note(_ text: String) -> some View { Text(text).font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+    private func list(_ items: [String]) -> String { items.count < 2 ? items.joined() : items.dropLast().joined(separator: ", ") + " and " + items.last! }
+
     /// The domain without «www.», the part a phishing copy changes.
     private var host: String {
         let host = URL(string: request.origin)?.host ?? request.origin
         return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
+    private func chip(_ text: String, _ symbol: String, ink: Color, tint: Color) -> some View {
+        Label(text, systemImage: symbol).font(.ui(11, .semibold)).foregroundStyle(ink)
+            .padding(.horizontal, 8).padding(.vertical, 4)
+            .background(Capsule().fill(tint))
+            .fixedSize()
     }
 
     private func banner(_ text: String, _ symbol: String, ink: Color, tint: Color) -> some View {
@@ -734,12 +920,5 @@ struct ApprovalSheet: View {
             return r.problems.isEmpty && (r.recipient == nil || allowUnknown) && (r.jev?.concern != true || acknowledgeJev)
         }
         return true
-    }
-
-    private func section(_ title: String, @ViewBuilder content: () -> some View) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title).font(.ui(10, .semibold)).foregroundStyle(.secondary)
-            content()
-        }
     }
 }

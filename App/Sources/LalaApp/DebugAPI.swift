@@ -1,4 +1,5 @@
 import AppKit
+import GuardJev
 import LalaCore
 import Network
 import SignerAPI
@@ -173,6 +174,17 @@ final class DebugAPI {
                 try? await Task.sleep(for: .milliseconds(8))
             }
             return (200, "text/plain", Data("ok\n".utf8))
+        case ("GET", let path) where path.hasPrefix("/render/approval"):
+            // The browser's signing sheet for a sample Kamino deposit, drawn off screen («?dark» for the dark look):
+            // to see a design change without a site asking for a real signature. Nothing can be approved from it.
+            var png: Data?
+            _ = await withCheckedContinuation { (done: CheckedContinuation<Bool, Never>) in
+                png = Self.renderApproval(SiteRequest(origin: "https://kamino.com", site: .known, kind: .transaction(Self.sampleReview, send: false), answer: done),
+                                          ws: ws, dark: path.contains("dark"))
+                done.resume(returning: false)
+            }
+            guard let png else { return (500, "text/plain", Data("couldn't draw\n".utf8)) }
+            return (200, "image/png", png)
         case ("GET", "/crashes"):
             // Kept crash reports, newest first: file (in Application Support/LALA/Crashes), date, summary.
             _ = Crashes.collect()
@@ -278,6 +290,30 @@ final class DebugAPI {
 
     private func json(_ object: [String: Any]) -> Data {
         (try? JSONSerialization.data(withJSONObject: object, options: [.prettyPrinted, .sortedKeys])) ?? Data("{}".utf8)
+    }
+
+    /// A Kamino Vault deposit as the browser saw one (2026-10-01): 5 USDC in, two of Kamino's programs not on the list.
+    static var sampleReview: TxReview {
+        var r = TxReview(wire: Data(), accounts: [], tokenOwners: [:], unknownPrograms: ["FarmsPZpWu9i7Kky8tPN37rs2TpmMrAZrC7S7vJa91Hr", "KvauGMspG5k6rtzrqqn7WNn3oZdyKqLKwK2XWQ8FLjd"],
+                         programNames: [], changes: [],
+                         checks: ["Only your wallet signs and pays the fee.", "Creates a token account owned by your wallet."], problems: [],
+                         jev: JevReview(label: "ok", confidence: 0.9, concern: false, text: "An ordinary action for this kind of site."))
+        r.deltas = [("SOL", SpotAsset.all[0].mint, Decimal(string: "-0.006865555")!), ("USDC", "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", -5)]
+        r.programs = [("Associated Token", true), ("Compute Budget", true), ("Kamino Farms", false), ("Kamino Vault", false)]
+        return r
+    }
+
+    /// A sheet drawn in an off-screen window, controls included (an ImageRenderer leaves AppKit's out).
+    static func renderApproval(_ request: SiteRequest, ws: Workspace, dark: Bool) -> Data? {
+        let view = NSHostingView(rootView: ApprovalSheet(request: request) { _ in }.environment(ws).background(Color(nsColor: .windowBackgroundColor)))
+        view.frame.size = view.fittingSize
+        let window = NSWindow(contentRect: view.frame, styleMask: [.borderless], backing: .buffered, defer: false)
+        window.appearance = NSAppearance(named: dark ? .darkAqua : .aqua)
+        window.contentView = view
+        view.layoutSubtreeIfNeeded()
+        guard let rep = view.bitmapImageRepForCachingDisplay(in: view.bounds) else { return nil }
+        view.cacheDisplay(in: view.bounds, to: rep)
+        return rep.representation(using: .png, properties: [:])
     }
 
     /// The main window as it is drawn, without the rest of the screen.
