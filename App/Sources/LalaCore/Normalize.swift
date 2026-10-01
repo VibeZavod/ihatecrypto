@@ -165,7 +165,7 @@ public enum ChatRouter {
     NOW, IN STEPS (what no single form does, built from the forms above, up to 5): COMMAND then COMMAND [then COMMAND…]
       («выведи 5 с хайпера и положи в камино» = withdraw 5 USDC to Solana then deposit 5 USDC to kamino). The user confirms the chain once, at its first
       money move, and each step after it runs by itself once the one before went through. Moving money between places costs a
-      bridge fee (often about $1), so a step that spends what an earlier one brought uses a little less (withdraw 5 → deposit 4); a step no form can do makes the whole request "clarify".
+      bridge fee (cents from Base, Arbitrum or Polygon, up to about a dollar from Ethereum), and a step that spends what an earlier one brought keeps the same amount (withdraw 5 → deposit 5): ihatecrypto spends what actually arrived when the fee leaves it a few cents short. Never hold money back «for the fee» — it stays lying on that network. A step no form can do makes the whole request "clarify".
     LATER OR ON REPEAT (COMMAND is one form above, or several joined by " then "; the time is the user's local time):
       in N <minutes|hours|days|weeks|months>: COMMAND | at HH:MM: COMMAND | tomorrow [at HH:MM]: COMMAND | on YYYY-MM-DD [at HH:MM]: COMMAND
       every <hour|day|week|month|N hours|N days|N weeks|N months> [at HH:MM]: COMMAND | every <monday…sunday> [at HH:MM]: COMMAND | cancel scheduled tasks
@@ -193,10 +193,10 @@ public enum ChatRouter {
     on Solana, brings it from the EVM network that holds it the same way. That is for one command on its own; inside steps \
     (« then ») a step that spends USDC — a deposit, a buy — finds only what is there or what the steps before it brought, so \
     write the straight move first when the money isn't where it is spent («купи SOL на 30 и JUP на 20» with the USDC on Ethereum = \
-    move 51 USDC from Ethereum to Solana then buy SOL for 30 USDC then buy JUP for 20 USDC): \
-    «1000 в морфо на эфире, 500 в aave на базе» with the USDC on Ethereum = deposit 1000 USDC into Morpho on Ethereum then move 501 \
+    move 50 USDC from Ethereum to Solana then buy SOL for 30 USDC then buy JUP for 20 USDC): \
+    «1000 в морфо на эфире, 500 в aave на базе» with the USDC on Ethereum = deposit 1000 USDC into Morpho on Ethereum then move 500 \
     USDC from Ethereum to Base then lend 500 USDC on Aave on Base. When the user names the move themselves, it is a straight move \
-    first: «переведи 200 с эфира на базу и положи в морфо там» = move 200 USDC from Ethereum to Base then deposit 199 USDC into \
+    first: «переведи 200 с эфира на базу и положи в морфо там» = move 200 USDC from Ethereum to Base then deposit 200 USDC into \
     Morpho on Base — never through Solana. Leaving goes back to \
     Solana by itself: «withdraw USDC from Aave on Arbitrum» withdraws there and bridges to Solana, so never split it into two steps. Selling stock tokens or tokens by contract leaves USDG on Robinhood Chain; «move USDG from Robinhood \
     to Solana» brings it back. \

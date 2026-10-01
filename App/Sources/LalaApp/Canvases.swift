@@ -1475,8 +1475,9 @@ extension Workspace {
         guard WalletCommand.parse(c.summary) == c else { return nil }
         let short = amount - (usdc(on: net) ?? 0)
         guard short > 0, net == "solana" || (solana?.usdc ?? 0) < short else { return nil }
-        // Relay's fee comes out on the way (cents from an L2, under a dollar from Ethereum): a dollar more; what's left stays there.
-        let bring = (short + 1).rounded(0, .up)
+        // Just what's short: the deposit runs after the move landed and spends what arrived (Workspace.fittedToArrival),
+        // so no dollar is held back for Relay's fee and left lying there («перевёл 100, задепозитил 99»).
+        let bring = short.rounded(2, .up)
         guard let from = EVMNetwork.funding(bring, held: { $0 == net ? nil : self.usdc(on: $0) }) else { return nil }
         return ["move \(Fmt.num(bring)) USDC from \(from.name) to \(WalletCommand.placeName(net))", c.summary]
     }

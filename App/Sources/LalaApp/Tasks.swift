@@ -2,6 +2,7 @@ import AppKit
 import LalaCore
 import SignerAPI
 import SwiftUI
+import TradeExecution
 import WalletCore
 
 /// The automation wallet a scheduled task is running on, for the moves inside that run only (`executor` picks it up):
@@ -112,6 +113,8 @@ extension Workspace {
                 reply(why)
                 break
             }
+            // After a move, a step spends what the move brought, Relay's cents taken off.
+            let step = confirmed ? await fittedToArrival(step) : step
             guard await runCanonical(step, userText: step, before: intent, inChain: true) else {
                 reply(say("ihatecrypto can’t do “\(step)” — the steps stop here.", "ihatecrypto не умеет «\(step)» — на этом шаги останавливаются."))
                 break
@@ -163,6 +166,28 @@ extension Workspace {
         snapshotCanvas()
         saveCanvas()
         taskQueue = rest.isEmpty ? nil : (canvasID, rest, Date(), arrived)
+    }
+
+    /// A step that spends money on a network, run after a move landed there: when the move's fee left it a little short
+    /// of the step's amount (cents from an L2, under a dollar from Ethereum), the step spends what is there. «Move 5 then
+    /// spread 5», «move 100 then lend 100» spend what arrived, and nothing has to be held back for the fee (a dollar was:
+    /// «переведи 100 и положи в aave» lent 99 and left a dollar on Arbitrum). A bigger gap is left for the step to refuse.
+    func fittedToArrival(_ step: String) async -> String {
+        guard let c = WalletCommand.parse(step), let net = Self.spends(c), let asked = c.editableAmount, asked > 0 else { return step }
+        let there: Decimal?
+        if net == "solana" {
+            await loadSolana()
+            there = solana?.usdc
+        } else if let n = EVMNetwork.named(net), let units = try? await n.rpc.tokenBalance(n.usdc, owner: hlAddress) {
+            // Tempo's fees come out of the USDC itself: a cent stays.
+            there = max(0, Decimal(units) / 1_000_000 - (n.key == "tempo" ? Decimal(string: "0.01")! : 0))
+        } else {
+            there = nil
+        }
+        guard let there, there < asked, asked - there <= max(1, asked * Decimal(string: "0.02")!) else { return step }
+        let fitted = c.with(amount: there.rounded(2, .down))
+        // Run again from its words: only a command that reads back the same.
+        return WalletCommand.parse(fitted.summary) == fitted ? fitted.summary : step
     }
 
     /// When a move finishes: the rest of a scheduled task, if the move was on its canvas, went through, and came
