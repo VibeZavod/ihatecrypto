@@ -772,10 +772,10 @@ final class Workspace {
                       "\(site) открыт рядом с чатом, с кошельком: сайт сначала попросит подключиться, и каждую подпись ты увидишь до того, как она сделана."))
             return
         }
-        // «what's new»: the version's stories over the window (WhatsNew.swift).
+        // «what's new»: the versions by date and their stories, over the window (WhatsNew.swift).
         if lower.wholeMatch(of: /\s*(?:what'?s\s+new(?:\s+in\s+(?:the\s+)?(?:app|ihatecrypto))?|что\s+нового\s+в\s+(?:приложении|ihatecrypto|апп?\w*))\s*[.!?]?\s*/) != nil {
-            WhatsNew.shared.open()
-            reply(say("What's new is on screen.", "Что нового — на экране."))
+            WhatsNew.shared.open = true
+            reply(say("What's new is on screen; it's also in the Profile menu.", "Что нового — на экране; оно же в меню профиля."))
             return
         }
         // «check for updates», «обнови приложение»: Sparkle's window (Updater.swift), in the copy from the site.

@@ -299,13 +299,9 @@ struct StudioView: View {
             return .handled
         })
         .overlay { EdgePulse(trigger: edgePulse) }
-        // «What's new» over everything, the chat too; «Try it» leaves its phrase in the chat's field.
-        .overlay {
-            if let release = WhatsNew.shared.showing {
-                StoriesView(release: release) { ws.draft = $0 }.transition(.opacity)
-            }
-        }
-        .animation(.easeOut(duration: 0.2), value: WhatsNew.shared.showing?.version)
+        // «What's new» over everything, the chat too; it fades in place.
+        .overlay { if WhatsNew.shared.open { WhatsNewPanel().transition(.opacity) } }
+        .animation(.easeOut(duration: 0.2), value: WhatsNew.shared.open)
         .onReceive(NotificationCenter.default.publisher(for: .lalaEdgePulse)) { _ in edgePulse += 1 }
         // One ground under the rail and the canvas, so the glass has the same dots behind it on both sides.
         .background { ZStack { Brand.canvas; DotGrid() }.ignoresSafeArea() }
@@ -974,6 +970,11 @@ struct ProfileMenu: View {
             MenuRow(title: "Key and signing", detail: ws.signerWallet == nil ? "import a wallet" : "Touch ID, key in a separate process", icon: "key") { go { openWindow(id: "import") } }
             MenuRow(title: "Risk rules", detail: "at most \(Fmt.pct(ws.policy.maxRiskPct)) per trade", icon: "shield.lefthalf.filled") { go { ws.openSettings(.general) } }
             MenuRow(title: "dApp browser", icon: "globe") { go { ws.openSite(ws.browser.address) } }
+            // The versions and their stories; «new» until this version's are seen.
+            if let latest = WhatsNew.shared.releases.first {
+                MenuRow(title: "What's new", detail: "Version \(latest.version)" + (latest.day.isEmpty ? "" : " · \(latest.day)")
+                        + (WhatsNew.shared.unseen != nil ? " · new" : ""), icon: "gift") { go { WhatsNew.shared.open = true } }
+            }
             Divider().padding(.vertical, 4)
             if ws.signerWallet != nil {
                 MenuRow(title: "Lock — Touch ID again", detail: "the next signature asks; the trading key pauses", icon: "lock") {
