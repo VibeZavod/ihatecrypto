@@ -17,6 +17,9 @@ let package = Package(
     dependencies: [
         // libsecp256k1 from Bitcoin Core: secp256k1 keys and recoverable ECDSA for EVM and Hyperliquid signatures.
         .package(url: "https://github.com/21-DOT-DEV/swift-secp256k1", exact: "0.23.2"),
+        // Updates for the copy from the site (Updater.swift). Declared here too, so `swift build` and the Xcode
+        // project resolve the same packages and stop rewriting Package.resolved over each other.
+        .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
     ],
     targets: [
         // Model access: one protocol in Core, one folder per way to connect, Catalog lists them all.
@@ -76,7 +79,8 @@ let package = Package(
         .executableTarget(
             name: "LalaApp",
             dependencies: ["LalaCore", "LLMCore", "LLMCatalog", "WalletCore", "TxGuard", "GuardJev", "SignerAPI", "HyperliquidSigning", "SolanaChain",
-                           "TradeExecution", "ExecutionCore", "DeFiJupiterLend", "EVMChain", "DeFiKamino", "DeFiYields", "Ledger"],
+                           "TradeExecution", "ExecutionCore", "DeFiJupiterLend", "EVMChain", "DeFiKamino", "DeFiYields", "Ledger",
+                           .product(name: "Sparkle", package: "Sparkle")],
             // Logos, sounds and the stories are bundled by the Xcode project; `swift run` shows lettered circles instead.
             exclude: ["Logos", "Sounds", "WhatsNew"],
             swiftSettings: [.defaultIsolation(MainActor.self)]
