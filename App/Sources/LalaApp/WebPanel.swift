@@ -82,7 +82,6 @@ extension Workspace {
 struct WebPanel: View {
     @Environment(Workspace.self) private var ws
     @Environment(\.openWindow) private var openWindow
-    @State private var copied = false
     @Binding var drag: CGSize
     var endDrag: (CGSize) -> Void = { _ in }
     var dock: () -> Void = {}
@@ -146,14 +145,7 @@ struct WebPanel: View {
                 Text(page.url?.host() ?? "").font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 6)
-            Button {
-                guard let url = page.url else { return }
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(url.absoluteString, forType: .string)
-                copied = true
-                Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
-            } label: { Image(systemName: copied ? "checkmark" : "link") }
-                .buttonStyle(.hoverIcon).help("Copy the link")
+            if let url = page.url { CopyButton(text: url.absoluteString, icon: "link", help: "Copy the link") }
             Button { if let url = page.url { ws.openSite(url.absoluteString) } } label: { Image(systemName: "wallet.pass") }
                 .buttonStyle(.hoverIcon).help("Open with your wallet: the site can ask to connect and to sign")
             Button { if let url = page.url { NSWorkspace.shared.open(url) } } label: { Image(systemName: "safari") }

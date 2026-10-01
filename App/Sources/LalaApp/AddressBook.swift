@@ -283,7 +283,6 @@ struct AddressCard: View {
     let entry: SavedAddress
     var readOnly = false
     var edit: (SavedAddress) -> Void = { _ in }
-    @State private var copied = false
     @State private var confirmDelete = false
 
     private static let gold = Color(hex: 0xF5B301)
@@ -328,7 +327,7 @@ struct AddressCard: View {
             }
             if !entry.note.isEmpty { Text(entry.note).font(.ui(10)).foregroundStyle(.secondary) }
             HStack(spacing: 14) {
-                Button(action: copy) { Label(copied ? "Copied" : "Copy", systemImage: copied ? "checkmark" : "doc.on.doc") }
+                CopyButton(title: "Copy", text: entry.address, help: "Copy the address")
                 Spacer()
                 if readOnly {
                     Text("read from Settings").foregroundStyle(.tertiary)
@@ -363,8 +362,6 @@ struct AddressCard: View {
     private func copy() {
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(entry.address, forType: .string)
-        copied = true
-        Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
     }
 }
 

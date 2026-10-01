@@ -144,7 +144,6 @@ struct TokenIcon: View {
 struct FavoriteTokenCard: View {
     @Environment(Workspace.self) private var ws
     let token: FavoriteToken
-    @State private var copied = false
 
     var body: some View {
         let info = ws.tokenInfo[token.id]
@@ -172,12 +171,7 @@ struct FavoriteTokenCard: View {
                     .font(.ui(10, .semibold))
             }
             HStack(spacing: 14) {
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(token.address, forType: .string)
-                    copied = true
-                    Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
-                } label: { Label(copied ? "Copied" : "Contract", systemImage: copied ? "checkmark" : "doc.on.doc") }
+                CopyButton(title: "Contract", text: token.address, help: "Copy the contract address")
                 if let pair = info?.pairURL { Link(destination: pair) { Label("Chart", systemImage: "chart.xyaxis.line") } }
                 if let e = token.explorer { Link(destination: e) { Label("Explorer", systemImage: "arrow.up.right.square") } }
             }

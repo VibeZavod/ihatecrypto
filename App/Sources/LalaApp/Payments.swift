@@ -179,10 +179,7 @@ struct ServiceAnswerBoard: View {
                     Link(destination: proof) { Label("Tempo", systemImage: "arrow.up.right").font(.ui(11, .semibold)) }
                         .help("The payment on Tempo's explorer")
                 }
-                Button { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(answer.raw, forType: .string) } label: {
-                    Image(systemName: "doc.on.doc")
-                }
-                .buttonStyle(.hoverIcon).help("Copy the whole answer")
+                CopyButton(text: answer.raw, help: "Copy the whole answer")
                 if closable {
                     Button { withAnimation(StudioView.spring) { ws.serviceAnswer = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
                 }

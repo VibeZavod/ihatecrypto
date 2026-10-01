@@ -67,7 +67,6 @@ struct ReceiveCard: View {
     let address: String
     let what: String
     let tint: Color
-    @State private var copied = false
 
     var body: some View {
         HStack(alignment: .top, spacing: 14) {
@@ -96,16 +95,7 @@ struct ReceiveCard: View {
                 Text(address).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(what).font(.ui(10)).fixedSize(horizontal: false, vertical: true)
-                Button {
-                    NSPasteboard.general.clearContents()
-                    NSPasteboard.general.setString(address, forType: .string)
-                    withAnimation(.snappy) { copied = true }
-                    Task { try? await Task.sleep(for: .seconds(1.5)); withAnimation { copied = false } }
-                } label: {
-                    Label(copied ? "Copied" : "Copy address", systemImage: copied ? "checkmark" : "doc.on.doc")
-                        .font(.ui(12, .semibold))
-                }
-                .buttonStyle(.borderedProminent).controlSize(.small)
+                CopyButton(title: "Copy address", text: address, help: "Copy the address")
             }
         }
         .padding(12)

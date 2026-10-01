@@ -513,11 +513,7 @@ struct PlaceDetailBoard: View {
         return HStack(spacing: 6) {
             Text("\(ends.start) … \(ends.end)").font(.system(size: 12, weight: .semibold, design: .monospaced))
             Spacer()
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(address, forType: .string)
-            } label: { Label("Copy", systemImage: "doc.on.doc") }
-            .buttonStyle(.borderless).font(.ui(10))
+            CopyButton(title: "Copy", text: address, help: "Copy the address")
         }
         .help(address)
     }
@@ -635,6 +631,54 @@ struct HoverLift: ViewModifier {
             .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Brand.accent, lineWidth: 1.5).opacity(on ? 0.7 : 0).animation(.snappy(duration: 0.16), value: on))
             .onHover { hover = $0 }
             .pointerStyle(enabled ? .link : .default)
+    }
+}
+
+/// Copies to the clipboard, the same everywhere: the copy icon and its word in a small framed button, then a green
+/// check and «Copied» for a moment, so a click always shows it worked (the user: «у таких кнопок одинаковый флоу
+/// всегда и стейты»). Without a title it's an icon button for a board's corner. The width never changes between the two.
+struct CopyButton: View {
+    var title: String?
+    let text: String
+    var icon = "doc.on.doc"
+    var help = "Copy"
+    @State private var copiedAt: Date?
+
+    var body: some View {
+        let copied = copiedAt != nil
+        if let title {
+            Button(action: copy) {
+                ZStack {
+                    face(title, icon).opacity(copied ? 0 : 1)
+                    face("Copied", "checkmark").foregroundStyle(Brand.profit).opacity(copied ? 1 : 0)
+                }
+                .padding(.horizontal, 9).frame(height: 26)
+                .background(RoundedRectangle(cornerRadius: 8).strokeBorder(copied ? Brand.profit.opacity(0.6) : Brand.cardBorder))
+                .contentShape(RoundedRectangle(cornerRadius: 8))
+            }
+            .buttonStyle(LitBlock(radius: 8)).help(help)
+        } else {
+            Button(action: copy) {
+                if copied { Image(systemName: "checkmark").foregroundStyle(Brand.profit) } else { Image(systemName: icon) }
+            }
+            .buttonStyle(.hoverIcon).help(help)
+        }
+    }
+
+    private func face(_ word: String, _ symbol: String) -> some View {
+        HStack(spacing: 5) {
+            Image(systemName: symbol).font(.system(size: 10.5, weight: .semibold))
+            Text(word).font(.ui(11.5, .semibold)).lineLimit(1)
+        }
+    }
+
+    private func copy() {
+        NSPasteboard.general.clearContents()
+        NSPasteboard.general.setString(text, forType: .string)
+        let now = Date()
+        copiedAt = now
+        // A second click restarts the moment rather than being cut short by the first one's end.
+        Task { try? await Task.sleep(for: .seconds(1.5)); if copiedAt == now { copiedAt = nil } }
     }
 }
 

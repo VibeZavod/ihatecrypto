@@ -5,11 +5,15 @@ import SignerAPI
 import SwiftUI
 import TradeExecution
 
-/// The automation wallet's USDC: the Schedule's budget.
+/// The automation wallet's USDC: the Schedule's budget, wherever it lies — Solana, every EVM network ihatecrypto knows
+/// (one address for all of them; USDG on Robinhood Chain) and NEAR.
 struct AutomationBudget: Equatable {
     var solana: Decimal?
-    var base: Decimal?
-    var total: Decimal { (solana ?? 0) + (base ?? 0) }
+    /// By EVMNetwork.key; a network that didn't answer is missing.
+    var evm: [String: Decimal] = [:]
+    var near: Decimal?
+    var evmTotal: Decimal { evm.values.reduce(0, +) }
+    var total: Decimal { (solana ?? 0) + evmTotal + (near ?? 0) }
 }
 
 /// What the Schedule lists: a scheduled task, a recurring buy or an open perp, by its key (Activity.schedule).
@@ -98,8 +102,9 @@ extension Workspace {
     func loadAutomationBudget() async {
         guard let w = automationWallet else { automationBudget = nil; return }
         async let sol = Self.solanaUSDC(w.solana)
-        async let base = Self.baseUSDC(w.evm)
-        let budget = AutomationBudget(solana: await sol, base: await base)
+        async let evm = Self.evmUSDC(w.evm)
+        async let near = Self.nearUSDC(w.near)
+        let budget = AutomationBudget(solana: await sol, evm: await evm, near: await near)
         if budget != automationBudget { automationBudget = budget }
     }
 
@@ -108,9 +113,24 @@ extension Workspace {
         return try? await Solana.balance(owner: address).usdc
     }
 
-    private static func baseUSDC(_ address: String?) async -> Decimal? {
-        guard let address, isEVMAddress(address), let units = try? await EVMRPC.base.tokenBalance(EVMRPC.baseUSDC, owner: address) else { return nil }
-        return Decimal(units) / 1_000_000
+    /// USDC (USDG on Robinhood Chain) at the one EVM address, on every network at once.
+    private static func evmUSDC(_ address: String?) async -> [String: Decimal] {
+        guard let address, isEVMAddress(address) else { return [:] }
+        return await withTaskGroup(of: (String, Decimal?).self) { group in
+            for n in EVMNetwork.all {
+                group.addTask { (n.key, (try? await n.rpc.tokenBalance(n.usdc, owner: address)).map { Decimal($0) / 1_000_000 }) }
+            }
+            var out: [String: Decimal] = [:]
+            for await (key, usdc) in group { if let usdc { out[key] = usdc } }
+            return out
+        }
+    }
+
+    /// Circle's USDC on NEAR, at the wallet's implicit account.
+    static let nearUSDCContract = "17208628f84f5d6ad33f0da3bbbeb27ffcb398eac501a31bd6ad2011e36133a1"
+    private static func nearUSDC(_ account: String?) async -> Decimal? {
+        guard let account, let tokens = await Holdings.near(account: account) else { return nil }
+        return tokens.first { $0.contract == nearUSDCContract }?.amount ?? 0
     }
 
     /// Top up through the chat, the way typing it would: from Solana when it holds the amount, else moved over first
@@ -313,35 +333,39 @@ struct ScheduleFrame: View {
 
     @ViewBuilder private var wallet: some View {
         if let w = ws.automationWallet {
+            let b = ws.automationBudget
             VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 12) {
+                HStack(alignment: .top, spacing: 12) {
                     if let sol = w.solana, let qr = QR.image(sol) {
-                        Image(nsImage: qr).interpolation(.none).resizable().frame(width: 104, height: 104)
-                            .padding(6).background(RoundedRectangle(cornerRadius: 12).fill(.white))
-                            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Brand.cardBorder))
-                            .accessibilityLabel("QR code of the automation wallet’s Solana address")
+                        VStack(spacing: 3) {
+                            Image(nsImage: qr).interpolation(.none).resizable().frame(width: 104, height: 104)
+                                .padding(6).background(RoundedRectangle(cornerRadius: 12).fill(.white))
+                                .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Brand.cardBorder))
+                                .accessibilityLabel("QR code of the automation wallet’s Solana address")
+                            Text("Solana").font(.ui(10)).foregroundStyle(.secondary)
+                        }
                     }
                     VStack(alignment: .leading, spacing: 6) {
-                        Text("Send USDC here on Solana or Base").font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                        if let sol = w.solana { copy("Copy Solana", sol) }
-                        if let evm = w.evm { copy("Copy Base", evm) }
+                        Text("Send USDC here on Solana, any EVM network below or NEAR").font(.ui(11)).foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
+                        if let sol = w.solana { CopyButton(title: "Copy Solana", text: sol, help: "Copy the Solana address") }
+                        if let evm = w.evm { CopyButton(title: "Copy EVM", text: evm, help: "Copy the EVM address: the same on \(Self.evmNames)") }
+                        if let near = w.near { CopyButton(title: "Copy NEAR", text: near, help: "Copy the NEAR account") }
                     }
                 }
-                ForEach([(w.solana, "solana", ws.automationBudget?.solana), (w.evm, "base", ws.automationBudget?.base)], id: \.1) { address, logo, usdc in
-                    if let address {
-                        HStack(spacing: 8) {
-                            TokenLogo(name: logo, size: 18)
-                            Text(Self.short(address)).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(.secondary)
-                            Spacer()
-                            Text(usdc.map { "\(Fmt.num($0)) USDC" } ?? "…").font(.ui(12, .semibold)).monospacedDigit()
-                        }
-                        .padding(.horizontal, 10).padding(.vertical, 7)
-                        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.03)))
-                    }
+                if let sol = w.solana { addressRow(["sol"], sol, b?.solana) }
+                if let evm = w.evm {
+                    // The same address on every one of them; where money is, how much.
+                    let held = EVMNetwork.all.compactMap { n in b?.evm[n.key].flatMap { $0 >= Decimal(string: "0.01")! ? "\(n.name) \(Fmt.num($0)) \(n.key == "robinhood" ? "USDG" : "USDC")" : nil } }
+                    addressRow(EVMNetwork.all.compactMap { ModuleNetwork(rawValue: $0.key)?.logo }, evm, b?.evmTotal,
+                               ["Same address on \(Self.evmNames)"] + (held.isEmpty ? [] : [held.joined(separator: " · ")]))
                 }
+                if let near = w.near { addressRow(["near"], near, b?.near) }
                 Button { Task { await ws.topUpAutomation() } } label: { Label("Top up 20 USDC", systemImage: "plus").font(.ui(12.5, .bold)).frame(maxWidth: .infinity).frame(height: 32) }
                     .buttonStyle(LitBlock(radius: 12)).background(RoundedRectangle(cornerRadius: 12).strokeBorder(Brand.cardBorder))
                     .help("From your main wallet: the card waits for Confirm and Touch ID")
+                Text("Sent it on another network? The assistant can move it to any other network for you: just ask in the chat.")
+                    .font(.ui(10.5, .semibold)).fixedSize(horizontal: false, vertical: true)
                 Text("Signs scheduled tasks only, under the same checks. Its key lives in this Mac’s keychain.")
                     .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
@@ -350,12 +374,26 @@ struct ScheduleFrame: View {
         }
     }
 
-    private func copy(_ title: String, _ text: String) -> some View {
-        Button {
-            NSPasteboard.general.clearContents()
-            NSPasteboard.general.setString(text, forType: .string)
-        } label: { Label(title, systemImage: "doc.on.doc").font(.ui(11.5, .semibold)) }
-            .buttonStyle(.bordered).controlSize(.small).pointerStyle(.link)
+    /// «Base, Arbitrum, Robinhood Chain, Polygon, Ethereum and Tempo».
+    static var evmNames: String {
+        let names = EVMNetwork.all.map(\.name)
+        return names.dropLast().joined(separator: ", ") + " and " + (names.last ?? "")
+    }
+
+    /// One address: its network's logo (every EVM network's for the EVM one), its ends, the USDC on it, a line or two.
+    private func addressRow(_ logos: [String], _ address: String, _ usdc: Decimal?, _ lines: [String] = []) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 8) {
+                HStack(spacing: logos.count > 1 ? -4 : 0) { ForEach(logos, id: \.self) { TokenLogo(name: $0, size: logos.count > 1 ? 15 : 18) } }
+                Text(Self.short(address)).font(.system(size: 11.5, design: .monospaced)).foregroundStyle(.secondary).lineLimit(1)
+                Spacer(minLength: 4)
+                Text(usdc.map { "\(Fmt.num($0)) USDC" } ?? "…").font(.ui(12, .semibold)).monospacedDigit().fixedSize()
+            }
+            ForEach(lines, id: \.self) { Text($0).font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
+        }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.03)))
+        .help(address)
     }
 
     static func short(_ address: String) -> String { address.count > 14 ? "\(address.prefix(6))…\(address.suffix(6))" : address }

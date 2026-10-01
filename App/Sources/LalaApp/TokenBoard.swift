@@ -24,7 +24,6 @@ struct TokenBoard: View {
     /// The chart point under the pointer. The board holds it but never reads it: only the price line and the marker
     /// do, so a mouse move over the chart redraws those two, not the chart, the stats and the rest of the board.
     @State private var pointer = ChartPointer()
-    @State private var copied = false
     /// Checked by a list a copy can't get onto: Jupiter's on Solana, Robinhood's registry for its stock tokens.
     @State private var verified: (by: String, ok: Bool)?
 
@@ -214,16 +213,7 @@ struct TokenBoard: View {
     /// Wraps: a token with many socials must not spill past the card.
     private var links: some View {
         Flow(spacing: 14) {
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(address, forType: .string)
-                copied = true
-                Task { try? await Task.sleep(for: .seconds(1.5)); copied = false }
-            } label: {
-                Label(copied ? "Copied" : "\(address.prefix(6))…\(address.suffix(4))", systemImage: copied ? "checkmark" : "doc.on.doc")
-                    .font(.system(size: 11, design: .monospaced))
-            }
-            .help(address)
+            CopyButton(title: "\(address.prefix(6))…\(address.suffix(4))", text: address, help: "Copy \(address)")
             ForEach(market?.links ?? [], id: \.url) { Link($0.label, destination: $0.url) }
             if let pair = market?.pairURL { Link("DexScreener", destination: pair) }
             if chain == "robinhood", let url = URL(string: "https://robinhoodchain.blockscout.com/token/\(address)") { Link("Explorer", destination: url) }
