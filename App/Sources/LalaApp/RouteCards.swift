@@ -475,7 +475,7 @@ struct RouteCard: View {
                 // Right on the card's edge.
                 card.strokeBorder(Brand.accent, lineWidth: 3)
             } else if state == .now || state == .touch {
-                RingPulse(color: state == .touch ? .primary : look.fill.accent)
+                RingPulse(color: state == .touch ? .primary : look.fill.accent, radius: radius)
             }
             card.strokeBorder(Brand.accent, lineWidth: 2).opacity(hover && !isOpen ? 0.7 : 0)
                 .animation(.snappy(duration: 0.18), value: hover)
@@ -485,23 +485,24 @@ struct RouteCard: View {
 }
 
 /// The ring of the step a move is on: its opacity breathes, nothing else changes. Each frame of it redraws the window,
-/// so it holds still while the window is in the background.
+/// so it holds still while the window is in the background. On the card's own edge and radius: 5 pt outside it, at a
+/// fixed 25, it pulsed past the border.
 private struct RingPulse: View {
     let color: Color
+    let radius: CGFloat
     @Environment(\.appearsActive) private var active
 
     var body: some View {
-        if active { Breathing(color: color) } else { ring }
+        if active { Breathing(color: color, radius: radius) } else { RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(color, lineWidth: 2.5) }
     }
-
-    private var ring: some View { RoundedRectangle(cornerRadius: 25, style: .continuous).strokeBorder(color, lineWidth: 2.5).padding(-5) }
 
     private struct Breathing: View {
         let color: Color
+        let radius: CGFloat
         @State private var bright = false
 
         var body: some View {
-            RoundedRectangle(cornerRadius: 25, style: .continuous).strokeBorder(color, lineWidth: 2.5).padding(-5)
+            RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(color, lineWidth: 2.5)
                 .opacity(bright ? 1 : 0.35)
                 .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: bright)
                 .onAppear { bright = true }
