@@ -57,7 +57,8 @@ struct WhatsNewLogo: View {
                 .overlay(Circle().strokeBorder(Brand.accent, lineWidth: 2).padding(-3).opacity(news == nil ? 0 : 1))
         }
         .buttonStyle(.plain)
-        .disabled(news == nil)
+        // Not .disabled: a disabled button draws the logo faded.
+        .allowsHitTesting(news != nil)
         .pointerStyle(news == nil ? nil : .link)
         .help(news.map { "What's new in \($0.version)" } ?? "")
     }
