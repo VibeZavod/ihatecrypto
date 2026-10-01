@@ -357,7 +357,7 @@ struct TaskDetail: View {
                 } label: {
                     Label("Create an automation wallet", systemImage: "plus.circle.fill").font(.ui(12, .semibold))
                 }
-                .buttonStyle(.borderedProminent).tint(Brand.accent).controlSize(.small).padding(.top, 4)
+                .buttonStyle(.borderedProminent).tint(Brand.accent).controlSize(.small).pointerStyle(.link).padding(.top, 4)
                 .help("Touch ID once; then put the tasks' budget on it")
             }
         }
@@ -400,7 +400,7 @@ struct TaskDetail: View {
                      ?? "Runs on a canvas of its own. A money move waits there for your Confirm; the steps after it wait for the move.")
                     .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Spacer(minLength: 8)
-                Button("Cancel") { ws.tasks.removeAll { $0.id == task.id } }.buttonStyle(.borderless).foregroundStyle(Brand.loss)
+                Button("Cancel") { ws.tasks.removeAll { $0.id == task.id } }.buttonStyle(.borderless).foregroundStyle(Brand.loss).pointerStyle(.link)
             }
         }
         .padding(16)

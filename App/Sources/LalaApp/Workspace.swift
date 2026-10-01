@@ -195,6 +195,8 @@ final class Workspace {
     /// canvas: «task:<id>», «buy:SOL», «perp:BTC».
     var showSchedule = false
     var scheduleItem: String?
+    /// The canvas a scheduled item's canvas was opened from: its Close goes back there.
+    @ObservationIgnored var scheduleReturn: UUID?
     /// «Pause schedule»: no task or recurring buy runs until it's resumed; stops and takes stay on the exchange.
     var schedulePaused = UserDefaults.standard.bool(forKey: "schedulePaused") {
         didSet { UserDefaults.standard.set(schedulePaused, forKey: "schedulePaused") }

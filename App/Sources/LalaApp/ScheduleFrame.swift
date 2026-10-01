@@ -54,6 +54,7 @@ extension Workspace {
     /// with the others. Its card is there, and the chat on it can change it.
     func openScheduleCanvas(_ key: String) {
         scheduleItem = key
+        if currentScheduleKey == nil { scheduleReturn = canvasID }
         // Switching canvases closes the boards; the Schedule frame stays open, so the next item is one click away.
         let frame = showSchedule
         defer { showSchedule = frame }
@@ -68,6 +69,16 @@ extension Workspace {
         c.schedule = key
         canvases.insert(c, at: 0)
         openCanvas(c)
+    }
+
+    /// Closes an item's canvas: back to the canvas it was opened from (or a new one). Nothing written on it, it was only a
+    /// view of the item and leaves the list; the Schedule frame opens it again.
+    func closeScheduleCanvas() {
+        guard let id = canvasID, let c = canvases.first(where: { $0.id == id }), c.schedule != nil, !busy else { return }
+        let frame = showSchedule
+        defer { showSchedule = frame }
+        if let back = scheduleReturn.flatMap({ r in canvases.first { $0.id == r && $0.schedule == nil } }) { openCanvas(back) } else { newCanvas() }
+        if !c.messages.contains(where: \.fromUser) { canvases.removeAll { $0.id == id } }
     }
 
     /// «Run now»: due at once; the watch loop runs it within half a minute, on a canvas of its own like any run.
@@ -139,7 +150,7 @@ struct ScheduleFrame: View {
                             .background(RoundedRectangle(cornerRadius: 9).fill(tab == t ? Brand.card : .clear).shadow(color: .black.opacity(tab == t ? 0.08 : 0), radius: 2, y: 1))
                             .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
+                    .buttonStyle(LitBlock(radius: 9))
                 }
             }
             .padding(3).background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.06)))
@@ -170,7 +181,7 @@ struct ScheduleFrame: View {
                 Text("An automation wallet holds the Schedule’s budget and signs its tasks. Your main wallet keeps Touch ID.")
                     .font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button { Task { await ws.createAutomationWallet() } } label: { Label("Create an automation wallet", systemImage: "plus") }
-                    .buttonStyle(.borderedProminent).tint(Brand.accent).controlSize(.small)
+                    .buttonStyle(.borderedProminent).tint(Brand.accent).controlSize(.small).pointerStyle(.link)
             }
             .padding(12).background(RoundedRectangle(cornerRadius: 16).fill(Brand.accent.opacity(0.1)))
         } else {
@@ -194,7 +205,7 @@ struct ScheduleFrame: View {
                     Button { Task { await ws.topUpAutomation() } } label: {
                         Label("Top up 20 USDC", systemImage: "plus").font(.ui(13, .bold)).frame(maxWidth: .infinity).frame(height: 34)
                     }
-                    .buttonStyle(.plain).foregroundStyle(Brand.onAccent)
+                    .buttonStyle(LitBlock(radius: 12)).foregroundStyle(Brand.onAccent)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Brand.accent))
                     Text("or say in the chat: «пополни автоматизацию на 20»").font(.ui(10.5)).foregroundStyle(.secondary)
                 }
@@ -212,7 +223,7 @@ struct ScheduleFrame: View {
                     Label(ws.schedulePaused ? "Resume schedule" : "Pause schedule", systemImage: ws.schedulePaused ? "play.fill" : "pause.fill")
                         .font(.ui(12.5, .bold)).frame(maxWidth: .infinity).frame(height: 34)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(LitBlock(radius: 12))
                 .background(RoundedRectangle(cornerRadius: 12).fill(Brand.card))
                 .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(ws.schedulePaused ? Brand.accent : Brand.cardBorder))
                 .help(ws.schedulePaused ? "Everything scheduled runs again" : "Nothing scheduled runs until you resume; stops and takes stay on the exchange")
@@ -227,7 +238,7 @@ struct ScheduleFrame: View {
                         Label(e, systemImage: "text.bubble").font(.ui(11, .medium)).padding(.horizontal, 9).padding(.vertical, 5)
                             .overlay(Capsule().strokeBorder(Brand.cardBorder))
                     }
-                    .buttonStyle(.plain).help("Put it in the chat")
+                    .buttonStyle(LitBlock(radius: 14)).help("Put it in the chat")
                 }
             }
         }
@@ -257,7 +268,7 @@ struct ScheduleFrame: View {
         .opacity(e.paused || ws.schedulePaused ? 0.55 : 1)
         .contentShape(Rectangle())
         // Its own canvas: steps, runs, Pause and Delete, and the chat to change it.
-        .onTapGesture { ws.openScheduleCanvas(e.id) }
+        .modifier(HoverLift(radius: 14)).onTapGesture { ws.openScheduleCanvas(e.id) }
     }
 
     // MARK: History
@@ -325,7 +336,7 @@ struct ScheduleFrame: View {
                     }
                 }
                 Button { Task { await ws.topUpAutomation() } } label: { Label("Top up 20 USDC", systemImage: "plus").font(.ui(12.5, .bold)).frame(maxWidth: .infinity).frame(height: 32) }
-                    .buttonStyle(.plain).background(RoundedRectangle(cornerRadius: 12).strokeBorder(Brand.cardBorder))
+                    .buttonStyle(LitBlock(radius: 12)).background(RoundedRectangle(cornerRadius: 12).strokeBorder(Brand.cardBorder))
                     .help("From your main wallet: the card waits for Confirm and Touch ID")
                 Text("Signs scheduled tasks only, under the same checks. Its key lives in this Mac’s keychain.")
                     .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
@@ -340,7 +351,7 @@ struct ScheduleFrame: View {
             NSPasteboard.general.clearContents()
             NSPasteboard.general.setString(text, forType: .string)
         } label: { Label(title, systemImage: "doc.on.doc").font(.ui(11.5, .semibold)) }
-            .buttonStyle(.bordered).controlSize(.small)
+            .buttonStyle(.bordered).controlSize(.small).pointerStyle(.link)
     }
 
     static func short(_ address: String) -> String { address.count > 14 ? "\(address.prefix(6))…\(address.suffix(6))" : address }
@@ -360,7 +371,7 @@ struct ScheduleTop3: View {
                 Button { withAnimation(StudioView.spring) { ws.showSchedule = true } } label: {
                     HStack(spacing: 2) { Text("All"); Image(systemName: "chevron.right") }.font(.ui(10.5, .semibold))
                 }
-                .buttonStyle(.plain).foregroundStyle(Brand.accentInk)
+                .buttonStyle(.hoverIcon)
             }
             if next.isEmpty {
                 Text("Nothing scheduled yet").font(.ui(11)).foregroundStyle(.secondary)
@@ -375,7 +386,7 @@ struct ScheduleTop3: View {
                 }
                 .opacity(e.paused || ws.schedulePaused ? 0.55 : 1)
                 .contentShape(Rectangle())
-                .onTapGesture { ws.openScheduleCanvas(e.id) }
+                .modifier(HoverLift(radius: 8)).onTapGesture { ws.openScheduleCanvas(e.id) }
             }
         }
         .padding(10)
@@ -393,6 +404,12 @@ struct ScheduleItemBoard: View {
         let entry = ws.scheduleEntries.first { $0.id == key }
         let runs = Array(ws.activities.reversed().lazy.filter { $0.schedule == key }.prefix(50))
         VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 8) {
+                Text("SCHEDULED · ITS OWN CANVAS").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
+                Spacer()
+                Button { ws.closeScheduleCanvas() } label: { Label("Close", systemImage: "xmark").font(.ui(11.5, .semibold)) }
+                    .buttonStyle(.hoverIcon).help("Back to the canvas you came from")
+            }
             if let t = ws.tasks.first(where: { "task:\($0.id)" == key }) {
                 TaskDetail(task: t)
             } else if let b = ws.schedules.first(where: { "buy:\($0.symbol)" == key }) {
@@ -410,18 +427,18 @@ struct ScheduleItemBoard: View {
                     }
                     .toggleStyle(.switch).controlSize(.small)
                     Button { ws.runScheduledNow(key) } label: { Label("Run now", systemImage: "play.fill").font(.ui(12, .semibold)) }
-                        .buttonStyle(.bordered).controlSize(.small).disabled(ws.schedulePaused)
+                        .buttonStyle(.bordered).controlSize(.small).pointerStyle(.link).disabled(ws.schedulePaused)
                         .help("Runs within half a minute, on a canvas of its own")
                     Text("Change it in the chat, in any words.").font(.ui(10.5)).foregroundStyle(.secondary)
                 }
             }
-            Text(runs.isEmpty ? "HASN’T RUN YET" : "RUNS · \(runs.count)").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary).padding(.top, 4)
+            Text(runs.isEmpty ? "HASN’T RUN YET" : "PREVIOUS RUNS · \(runs.count)").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary).padding(.top, 4)
             ForEach(runs) { a in
                 VStack(alignment: .trailing, spacing: 4) {
                     ActivityCard(activity: a)
                     if let id = a.canvas, let c = ws.canvases.first(where: { $0.id == id }) {
                         Button { ws.openCanvas(c) } label: { Label("Open its canvas", systemImage: "rectangle.on.rectangle") }
-                            .buttonStyle(.borderless).font(.ui(10, .semibold))
+                            .buttonStyle(.borderless).font(.ui(10, .semibold)).pointerStyle(.link)
                     }
                 }
             }
