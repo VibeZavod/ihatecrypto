@@ -405,6 +405,10 @@ public enum EVMCall: Equatable, Sendable {
     case lending(beneficiary: String)
     /// Merkl's Distributor.claim: whom each reward is paid to.
     case claim(recipients: [String])
+    /// Permit2.approve: lets `spender` pull up to `amount` of `token` until `expiration` (unix seconds).
+    case permit2Approve(token: String, spender: String, amount: Data, expiration: UInt64)
+    /// The Universal Router's v4 swap in exactly this app's shape (UniswapV4.decodeExecute): it pays the caller.
+    case v4Swap(UniswapV4.Swap)
     case contract(selector: String)
 
     public static func decode(_ data: Data) -> EVMCall {
@@ -429,6 +433,9 @@ public enum EVMCall: Equatable, Sendable {
         // Aave: supply/deposit(asset, amount, onBehalfOf, referral) and withdraw(asset, amount, to): the third word.
         case "617ba037", "e8eda9df", "69328dec": if let b = address(2) { return .lending(beneficiary: b) }
         case "71ee95c0": if let r = Merkl.recipients(data) { return .claim(recipients: r) }
+        case "87517c45": if let t = address(0), let s = address(1), let a = word(2), let e = ABI.uint(in: Data(args), word: 3) { return .permit2Approve(token: t, spender: s, amount: a, expiration: e) }
+        // Any other Universal Router call stays a plain contract call (a site's own swap), read as before.
+        case "3593564c": if let swap = UniswapV4.decodeExecute(data) { return .v4Swap(swap) }
         default: break
         }
         return .contract(selector: "0x" + selector)
@@ -453,6 +460,10 @@ public enum EVMCall: Equatable, Sendable {
         case .plain:
             return "send \(units(ABI.uint(value), 18)) \(chainId == 137 ? "POL" : "ETH") to \(short(to)) \(net)"
         case .swap: return "swap on Uniswap \(net), paying this wallet"
+        case .v4Swap: return "swap on Uniswap v4 \(net), paying this wallet"
+        case .permit2Approve(let token, let spender, let amount, _):
+            return EVMRPC.dollars[token.lowercased()].map { "let \(short(spender)) spend exactly \(units(amount, 6)) \($0) through Permit2 \(net)" }
+                ?? "let \(short(spender)) spend tokens of \(short(token)) through Permit2 \(net)"
         case .vault(_, let owner): return "\(owner == nil ? "deposit into" : "withdraw from") the vault \(short(to)) \(net)"
         case .lending: return "use the lending pool \(short(to)) \(net), for this wallet"
         case .contract where to.lowercased() == Tempo.feeManager: return "pay Tempo's fees in USDC from now on"
@@ -470,6 +481,11 @@ public enum EVMCall: Equatable, Sendable {
         }
         if case .lending(let beneficiary) = self, beneficiary.lowercased() != sender.lowercased() {
             return "The lending pool would credit \(beneficiary), not this wallet."
+        }
+        if case .v4Swap(let swap) = self, let why = UniswapV4.refusal(swap) { return why }
+        if case .permit2Approve(_, _, let amount, let expiration) = self {
+            if Self.unlimited(amount) { return "Unlimited spending through Permit2 — the drainers' main trick. ihatecrypto only approves exact amounts." }
+            if expiration > UInt64(Date().timeIntervalSince1970) + 86_400 { return "A Permit2 approval for longer than a day. ihatecrypto approves for the one swap only." }
         }
         if case .claim(let recipients) = self, let other = recipients.first(where: { $0.lowercased() != sender.lowercased() }) ?? (recipients.isEmpty ? "nobody" : nil) {
             return "The rewards claim would pay \(other), not this wallet."

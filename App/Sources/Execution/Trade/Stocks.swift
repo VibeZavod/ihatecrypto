@@ -102,37 +102,47 @@ extension Executor {
         let symbol = token.symbol
         let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
         guard units >= 500_000 else { throw ExecutionError("At least 0.5 USDC: less isn't worth the bridge.") }
-        guard let pool = try await bestPool(usdg, token.address, amountIn: Decimal(units)) else {
-            // No Uniswap v3 pool (MOO trades only on v4, against another token): Relay's swap on the chain itself.
+        // Uniswap v3's best pool and v4's pool without hooks, whichever gives more (AI for 300 USDG: v3's thin pool $0.22 a
+        // token, v4's AI/USDG pool $0.158); neither, or the better one off the market: Relay's swap through the deep pools.
+        let v3 = try await bestPool(usdg, token.address, amountIn: Decimal(units))
+        let v4 = await v4Route(usdg, token.address, amountIn: Decimal(units))
+        let useV4 = (v4?.out ?? 0) > (v3?.out ?? 0)
+        guard let out = useV4 ? v4?.out : v3?.out else {
             guard let listing else { throw ExecutionError(noPool(symbol, listing)) }
             return try await relaySwap(token, buy: true, units: Decimal(units), listing: listing)
         }
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
-        let price = (Decimal(units) / 1_000_000) / (pool.out / scale)
+        let price = (Decimal(units) / 1_000_000) / (out / scale)
         var band = listing?.priceUSD.map { (bid: $0, ask: $0) }
         if listing == nil { band = try await RobinhoodStocks.quote(symbol) }
         if let q = band, price > q.ask * Decimal(string: "1.05")! || price < q.bid * Decimal(string: "0.95")! {
-            // A thin v3 pool for this much moves the price (AI: $0.22 a token for 300 USDG against DexScreener's $0.16; its
-            // depth is a v4 pool against NVDA, where Relay gave $0.1595): Relay's swap routes through the deep pools, with
-            // its own checks (within 5% of DexScreener's price, at most 3% lost).
-            // ponytail: Relay only when v3 is off the market; quote both and take the better if a few % ever matters.
+            // Relay's swap has its own checks (within 5% of DexScreener's price, at most 3% lost).
             if let listing {
-                report("Uniswap v3 would pay \(Fmt.usd(price)) a token for this much, DexScreener says \(Fmt.usd(q.bid)): its pool is thin. Relay's swap goes through the deeper pools.")
+                report("Uniswap would pay \(Fmt.usd(price)) a token for this much, DexScreener says \(Fmt.usd(q.bid)): its pools are thin. Relay's swap goes through the deeper ones.")
                 return try await relaySwap(token, buy: true, units: Decimal(units), listing: listing)
             }
             throw ExecutionError("Uniswap's price \(Fmt.usd(price)) is outside Robinhood's own \(Fmt.usd(q.bid))–\(Fmt.usd(q.ask)). Nothing was signed.")
         }
-        report("\(token.name) (\(symbol)): ≈ \(Fmt.usd(price)) a token on Uniswap (pool fee \(Fmt.num(Decimal(pool.fee) / 10_000))%).")
+        report("\(token.name) (\(symbol)): ≈ \(Fmt.usd(price)) a token on Uniswap \(useV4 ? "v4" : "v3 (pool fee \(Fmt.num(Decimal(v3?.fee ?? 0) / 10_000))%)").")
         try await ensureEVM(.robinhood, usdc: units)
-        // Quote again with the money there: the price may have moved while the bridge ran.
-        guard let fresh = try await bestPool(usdg, token.address, amountIn: Decimal(units)) else { throw ExecutionError(noPool(symbol, listing)) }
-        let minimum = (fresh.out * 99 / 100).rounded(0, .down)
-        try await approve(rpc, token: usdg, spender: UniswapV3.robinhoodRouter, amount: units, note: "Approve exactly \(Fmt.num(Decimal(units) / 1_000_000)) USDG to Uniswap")
         let before = try await balance(token.address, on: rpc)
-        let hash = try await sendEVM(rpc, to: UniswapV3.robinhoodRouter,
+        let hash: String
+        // Quoted again with the money there: the price may have moved while the bridge ran.
+        if useV4, let route = v4 {
+            guard let fresh = await v4Quote(route.key, zeroForOne: route.zeroForOne, amount: Decimal(units)) else {
+                throw ExecutionError("Uniswap v4 no longer quotes \(symbol); the USDG waits on Robinhood Chain. Nothing was swapped.")
+            }
+            hash = try await v4Swap(route, tokenIn: usdg, units: Decimal(units), minOut: (fresh * 99 / 100).rounded(0, .down),
+                                    what: "\(Fmt.num(Decimal(units) / 1_000_000)) USDG", note: "Buy \(symbol) for \(Fmt.num(Decimal(units) / 1_000_000)) USDG on Uniswap v4")
+        } else {
+            guard let fresh = try await bestPool(usdg, token.address, amountIn: Decimal(units)) else { throw ExecutionError(noPool(symbol, listing)) }
+            let minimum = (fresh.out * 99 / 100).rounded(0, .down)
+            try await approve(rpc, token: usdg, spender: UniswapV3.robinhoodRouter, amount: units, note: "Approve exactly \(Fmt.num(Decimal(units) / 1_000_000)) USDG to Uniswap")
+            hash = try await sendEVM(rpc, to: UniswapV3.robinhoodRouter,
                                      data: try UniswapV3.exactInputSingle(tokenIn: usdg, tokenOut: token.address, fee: fresh.fee, recipient: me,
                                                                           amountIn: Decimal(units), amountOutMinimum: minimum),
                                      note: "Buy \(symbol) for \(Fmt.num(Decimal(units) / 1_000_000)) USDG")
+        }
         var after = try await balance(token.address, on: rpc)
         for _ in 0..<10 where after <= before {
             try await Task.sleep(for: .seconds(1))
@@ -255,30 +265,43 @@ extension Executor {
         let held = try await balance(token.address, on: rpc)
         let wanted = (amount.map { min($0 * scale, held) } ?? held).rounded(0, .down)
         guard wanted > 0 else { throw ExecutionError("No \(symbol) on Robinhood Chain.") }
-        guard let pool = try await bestPool(token.address, usdg, amountIn: wanted) else {
-            // Bought through Relay (no Uniswap v3 pool: MOO, SHROOM on v4) is sold back through Relay too.
+        // v3's best pool or v4's pool without hooks, whichever pays more; neither, or the better one far under the market
+        // (a thin pool: selling 1,880 AI into v3's would have lost about a third): Relay's swap through the deep pools.
+        let v3 = try await bestPool(token.address, usdg, amountIn: wanted)
+        let v4 = await v4Route(token.address, usdg, amountIn: wanted)
+        let useV4 = (v4?.out ?? 0) > (v3?.out ?? 0)
+        guard let out = useV4 ? v4?.out : v3?.out else {
             guard let listing else { throw ExecutionError(noPool(symbol, listing)) }
             return try await relaySwap(token, buy: false, units: wanted, listing: listing)
         }
-        // The same check as a buy: a thin v3 pool would pay far under the market for this much (it had none: selling
-        // 1,880 AI there would have lost about a third); then Relay's swap, through the deep pools, or nothing.
-        let got = (pool.out / 1_000_000) / (wanted / scale)
+        let got = (out / 1_000_000) / (wanted / scale)
         var band = listing?.priceUSD.map { (bid: $0, ask: $0) }
         if listing == nil { band = try await RobinhoodStocks.quote(symbol) }
         if let q = band, got < q.bid * Decimal(string: "0.95")! {
             if let listing {
-                report("Uniswap v3 would pay \(Fmt.usd(got)) a token for this much, DexScreener says \(Fmt.usd(q.bid)): its pool is thin. Relay's swap goes through the deeper pools.")
+                report("Uniswap would pay \(Fmt.usd(got)) a token for this much, DexScreener says \(Fmt.usd(q.bid)): its pools are thin. Relay's swap goes through the deeper ones.")
                 return try await relaySwap(token, buy: false, units: wanted, listing: listing)
             }
             throw ExecutionError("Uniswap would pay \(Fmt.usd(got)) a token, more than 5% under Robinhood's own bid \(Fmt.usd(q.bid)). Nothing was signed.")
         }
         try await ensureEVM(.robinhood, usdc: 0)
-        try await approve(rpc, token: token.address, spender: UniswapV3.robinhoodRouter, units: wanted, note: "Approve exactly \(Fmt.num(wanted / scale, maxFraction: 6)) \(symbol) to Uniswap")
         let before = try await rpc.tokenBalance(usdg, owner: me)
-        let hash = try await sendEVM(rpc, to: UniswapV3.robinhoodRouter,
+        let hash: String
+        let tokens = "\(Fmt.num(wanted / scale, maxFraction: 6)) \(symbol)"
+        if useV4, let route = v4 {
+            guard let fresh = await v4Quote(route.key, zeroForOne: route.zeroForOne, amount: wanted) else {
+                throw ExecutionError("Uniswap v4 no longer quotes \(symbol). Nothing was swapped.")
+            }
+            hash = try await v4Swap(route, tokenIn: token.address, units: wanted, minOut: (fresh * 99 / 100).rounded(0, .down), what: tokens,
+                                    note: "Sell \(tokens) on Uniswap v4")
+        } else {
+            guard let pool = v3 else { throw ExecutionError(noPool(symbol, listing)) }
+            try await approve(rpc, token: token.address, spender: UniswapV3.robinhoodRouter, units: wanted, note: "Approve exactly \(tokens) to Uniswap")
+            hash = try await sendEVM(rpc, to: UniswapV3.robinhoodRouter,
                                      data: try UniswapV3.exactInputSingle(tokenIn: token.address, tokenOut: usdg, fee: pool.fee, recipient: me,
                                                                           amountIn: wanted, amountOutMinimum: (pool.out * 99 / 100).rounded(0, .down)),
-                                     note: "Sell \(Fmt.num(wanted / scale, maxFraction: 6)) \(symbol)")
+                                     note: "Sell \(tokens)")
+        }
         var after = try await rpc.tokenBalance(usdg, owner: me)
         for _ in 0..<10 where after <= before {
             try await Task.sleep(for: .seconds(1))

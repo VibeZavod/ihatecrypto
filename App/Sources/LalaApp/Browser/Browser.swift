@@ -337,6 +337,13 @@ final class Browser {
             lines.append("Call to permit (permission to spend).")
         case .swap(let r):
             lines.append("Uniswap swap paying \(r.lowercased() == from.lowercased() ? "this wallet" : r).")
+        case .v4Swap(let s):
+            let (a, b) = (await token(s.currencyIn), await token(s.currencyOut))
+            func n(_ x: Decimal, _ d: Int) -> String { Fmt.num(x / Decimal(sign: .plus, exponent: d, significand: 1), maxFraction: 6) }
+            lines.append("Uniswap v4 swap: \(n(s.amountIn, a.decimals)) \(a.symbol) for at least \(n(s.amountOutMinimum, b.decimals)) \(b.symbol), paid to this wallet.")
+        case .permit2Approve(let contract, let spender, let a, let expiration):
+            let t = await token(contract)
+            lines.append("Allow \(spender) to spend up to \(amount(a, t.decimals)) \(t.symbol) through Permit2, until \(Fmt.date(Date(timeIntervalSince1970: TimeInterval(expiration)))).")
         case .vault(let r, let owner):
             lines.append("Vault \(owner == nil ? "deposit" : "withdrawal") crediting \(r.lowercased() == from.lowercased() ? "this wallet" : r).")
         case .lending(let b):
