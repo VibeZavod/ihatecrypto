@@ -196,13 +196,18 @@ struct ChartHover: View {
                         index = points.indices.min { abs(points[$0].time.timeIntervalSince(at)) < abs(points[$1].time.timeIntervalSince(at)) }
                     }
                 if let i = index, let x = proxy.position(forX: points[i].time), let y = proxy.position(forY: points[i].price) {
-                    Rectangle().fill(Color.secondary.opacity(0.6)).frame(width: 1, height: plot.height).position(x: plot.minX + x, y: plot.midY)
-                    Circle().fill(Color.primary).frame(width: 7, height: 7).position(x: plot.minX + x, y: plot.minY + y)
-                    Text("\(Fmt.price(Decimal(points[i].price))) · \(Fmt.date(points[i].time))")
-                        .font(.ui(11, .semibold)).monospacedDigit().fixedSize()
-                        .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(Capsule().fill(Brand.card).shadow(color: .black.opacity(0.15), radius: 3, y: 1))
-                        .position(x: min(max(plot.minX + x, plot.minX + 80), plot.maxX - 80), y: max(plot.minY + 10, plot.minY + y - 18))
+                    Group {
+                        Rectangle().fill(Color.secondary.opacity(0.6)).frame(width: 1, height: plot.height).position(x: plot.minX + x, y: plot.midY)
+                        Circle().fill(Color.primary).frame(width: 7, height: 7).position(x: plot.minX + x, y: plot.minY + y)
+                        Text("\(Fmt.price(Decimal(points[i].price))) · \(Fmt.date(points[i].time))")
+                            .font(.ui(11, .semibold)).monospacedDigit().fixedSize()
+                            .padding(.horizontal, 7).padding(.vertical, 3)
+                            .background(Capsule().fill(Brand.card).shadow(color: .black.opacity(0.15), radius: 3, y: 1))
+                            .position(x: min(max(plot.minX + x, plot.minX + 80), plot.maxX - 80), y: max(plot.minY + 10, plot.minY + y - 18))
+                    }
+                    // The marker must not take the pointer: under it the hover area below ends, the marker goes, the hover
+                    // starts again — it blinked once per candle.
+                    .allowsHitTesting(false)
                 }
             }
         }

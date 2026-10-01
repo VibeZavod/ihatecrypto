@@ -455,6 +455,8 @@ struct StudioRail: View {
     @State private var edgeHover = false
     @State private var canvasesOpen = false
     @State private var balanceHover = false
+    /// The wallet button sits in the balance block but isn't the balance: over it «Updated … ago» stays hidden.
+    @State private var walletHover = false
     /// The folded rail's coin was clicked: the balances are being read again.
     @State private var refreshing = false
     /// In full screen the traffic lights are up in the menu bar's strip: the rail's first row is free for the logo.
@@ -553,9 +555,10 @@ struct StudioRail: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text("Balance").font(.ui(12)).foregroundStyle(.secondary)
-                    BalanceFreshness(hovering: balanceHover)
+                    BalanceFreshness(hovering: balanceHover && !walletHover)
                     Spacer(minLength: 4)
-                    WalletChip()
+                    // Keeps its whole name: the freshness line gives way, not «Led…».
+                    WalletChip().layoutPriority(1).onHover { walletHover = $0 }
                 }
                 if ws.updatedAt == nil {
                     Skeleton(width: 150, height: 34, radius: 9).padding(.vertical, 3)

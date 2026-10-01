@@ -331,9 +331,12 @@ private struct TokenChartHover: View {
                         if near != pointer.point { pointer.point = near }
                     }
                 if let p = pointer.point, let x = proxy.position(forX: p.time), let y = proxy.position(forY: NSDecimalNumber(decimal: p.close).doubleValue) {
-                    Path { $0.move(to: CGPoint(x: plot.minX + x, y: plot.minY)); $0.addLine(to: CGPoint(x: plot.minX + x, y: plot.maxY)) }
-                        .stroke(.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
-                    Circle().fill(tint).frame(width: 7, height: 7).position(x: plot.minX + x, y: plot.minY + y)
+                    Group {
+                        Path { $0.move(to: CGPoint(x: plot.minX + x, y: plot.minY)); $0.addLine(to: CGPoint(x: plot.minX + x, y: plot.maxY)) }
+                            .stroke(.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+                        Circle().fill(tint).frame(width: 7, height: 7).position(x: plot.minX + x, y: plot.minY + y)
+                    }
+                    .allowsHitTesting(false)  // Like ChartHover's marker: under the pointer it would end the hover.
                 }
             }
         }
