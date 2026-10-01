@@ -191,7 +191,7 @@ struct StudioView: View {
             } else {
                 // The canvas's scale follows the window alone: moving or resizing the chat, which floats
                 // above everything, never shifts or rescales the boards.
-                CanvasViewport(inset: Self.chatColumn, leading: railEdge, contentWidth: StudioCanvas.contentWidth + (ws.showSchedule ? ScheduleFrame.width + 36 : 0)) { StudioCanvas() }
+                CanvasViewport(inset: Self.chatColumn, leading: railEdge, contentWidth: StudioCanvas.contentWidth) { StudioCanvas() }
             }
             HStack(spacing: 0) {
                 // The rail floats over the canvas as a glass panel; the window's traffic lights sit inside it.
@@ -1287,6 +1287,8 @@ struct CanvasViewport<Content: View>: View {
             pan.height += note.userInfo?["dy"] as? CGFloat ?? 0
         }
         .onReceive(NotificationCenter.default.publisher(for: .lalaCanvasFit)) { note in
+            // Another canvas: its start in view, the zoom left as the user set it («нажимаю закрыть и оно приближает»).
+            if note.object as? String == "home" { pan = .zero; return }
             // The Portfolio button with the portfolio already in place: nothing to move, so the window's edge answers.
             if note.object as? String == "portfolio", zoom == 1, pan == .zero {
                 NotificationCenter.default.post(name: .lalaEdgePulse, object: nil)

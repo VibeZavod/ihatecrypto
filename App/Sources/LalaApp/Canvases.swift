@@ -339,7 +339,8 @@ extension Workspace {
         chart = nil
         currentActivity = nil
         draft = ""
-        // What the rail opened belongs to the canvas it was opened on; the next one starts clean, at 100 %.
+        // What the rail opened belongs to the canvas it was opened on; the next one starts clean, scrolled to its start at
+        // the zoom the user set (zooming is theirs: the buttons and the pinch, never a canvas switch).
         detail = nil
         showReceive = false
         showMovers = false
@@ -349,7 +350,7 @@ extension Workspace {
         showFavorites = false
         showSchedule = false
         UserDefaults.standard.set("plan", forKey: "canvasMode")
-        NotificationCenter.default.post(name: .lalaCanvasFit, object: nil)
+        NotificationCenter.default.post(name: .lalaCanvasFit, object: "home")
     }
 }
 
