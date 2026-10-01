@@ -685,7 +685,7 @@ final class Workspace {
             if declines {
                 allocationPreview = nil
                 rebalancePlan = nil
-                reply(say("Cancelled — nothing moved.", "Отменено — ничего не ушло."))
+                reply(say("Cancelled — nothing moved.", "Отменено — ничего не ушло.", "Cancelado: no se movió nada."))
                 return
             }
         }
@@ -693,7 +693,7 @@ final class Workspace {
             pendingAction = nil
             pendingText = nil
             if declines {
-                reply(say("Cancelled — nothing moved.", "Отменено — ничего не ушло."))
+                reply(say("Cancelled — nothing moved.", "Отменено — ничего не ушло.", "Cancelado: no se movió nada."))
                 return
             }
             if confirms {
@@ -1038,7 +1038,8 @@ final class Workspace {
             // Its whole math, so «это точно лучший маршрут?» and «а почему не Morpho?» are answered from it, not guessed.
             c.canvas.append("waiting for Confirm: \(p.summary)" + (allocationPreview.map { a in
                 " — " + a.slices.map { "\($0.place) \(Fmt.num($0.amount)) \(a.asset) at \(Fmt.num($0.apy.rounded(2, .plain)))%" }.joined(separator: ", ")
-                    + ", from " + (a.sources.isEmpty ? "Solana" : a.sources.map { "\(Fmt.num($0.amount)) on \($0.place)" }.joined(separator: " + "))
+                    + ", taking " + (a.drawn.isEmpty ? "Solana's" : a.drawn.map { "\(Fmt.num($0.amount)) from \($0.place)" }.joined(separator: " + "))
+                    + (a.moves.isEmpty ? "" : " (moves first, straight: " + a.moves.map { "\(Fmt.num($0.amount)) \($0.from) → \($0.to)" }.joined(separator: ", ") + ")")
                     + "; at most \(Fmt.pct(a.maxShare)) per protocol; ≈ \(Fmt.num(a.yearly)) \(a.asset) a year"
                     + (a.leftover > 0 ? "; left free \(Fmt.num(a.leftover))" : "")
                     + (a.skipped.isEmpty ? "" : "; skipped: " + a.skipped.map { "\($0.place) \(Fmt.num($0.apy.rounded(2, .plain)))% (\($0.reason))" }.joined(separator: "; "))
@@ -1119,7 +1120,7 @@ final class Workspace {
         // «withdraw 5 USDC to Solana then deposit 5 USDC to kamino»: the steps now, one Confirm for the whole chain.
         if let steps = ChatRouter.steps(canonical) {
             guard steps.allSatisfy(knows) else { return false }
-            reply(say("In steps: ", "По шагам: ") + steps.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " → "), note: note)
+            reply(say("In steps: ", "По шагам: ", "Por pasos: ") + steps.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " → "), note: note)
             await runSteps(steps)
             return true
         }

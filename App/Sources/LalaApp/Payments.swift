@@ -56,10 +56,11 @@ extension Workspace {
                 pendingAction = .wallet(command)
                 pendingText = "pay \(Fmt.num(c.usdc, maxFraction: 6)) USDC to \(service)"
                 let short = (tempoUSDC ?? 0) < c.usdc + Decimal(string: "0.01")!
+                let from = tempoSource(max(c.usdc, Decimal(Executor.tempoFloat) / 1_000_000))?.name ?? "Solana"
                 reply(say("\(service) asks \(Fmt.num(c.usdc, maxFraction: 6)) USDC. The card is on the canvas — Confirm pays it in USDC on Tempo"
-                            + (short ? ", first bringing $1 there from Solana so the next requests don't each need a bridge." : "."),
+                            + (short ? ", first bringing $1 there from \(from) so the next requests don't each need a bridge." : "."),
                           "\(service) просит \(Fmt.num(c.usdc, maxFraction: 6)) USDC. Карточка на холсте — Confirm оплатит в USDC на Tempo"
-                            + (short ? ", а сначала перекинет туда $1 с Solana, чтобы следующие запросы не гоняли мост каждый раз." : ".")), note: note)
+                            + (short ? ", а сначала перекинет туда $1 с \(from), чтобы следующие запросы не гоняли мост каждый раз." : ".")), note: note)
             }
         } catch {
             reply(say("Couldn't reach \(host): ", "Не достучался до \(host): ") + error.localizedDescription, note: note)
@@ -124,22 +125,31 @@ extension Workspace {
         runningAction?.steps[last].lines = [line]
     }
 
-    /// The card: USDC on Tempo (with what comes from Solana first) → the payment → the service.
+    /// Where a top-up of Tempo comes from, as Executor.ensureEVM decides: nil = Solana, when it holds enough; else the EVM
+    /// network that does (a dollar over for Relay).
+    func tempoSource(_ need: Decimal) -> EVMNetwork? {
+        (solana?.usdc ?? 0) >= need + Decimal(string: "0.1")! ? nil
+            : EVMNetwork.funding((need + 1).rounded(2, .up), held: { $0 == "tempo" ? nil : self.usdc(on: $0) })
+    }
+
+    /// The card: USDC on Tempo (with what comes from Solana, or the network holding it, first) → the payment → the service.
     func payRoute(_ command: WalletCommand) -> MoveRoute? {
         guard case .pay(_, let url, _) = command, let quote = payment, quote.command == command else { return nil }
         let c = quote.challenge, host = URL(string: url)?.host() ?? c.realm, price = Fmt.num(c.usdc, maxFraction: 6)
         let there = tempoUSDC ?? 0, short = there < c.usdc + Decimal(string: "0.01")!
         let floatUSD = Decimal(Executor.tempoFloat) / 1_000_000, requests = NSDecimalNumber(decimal: (max(c.usdc, floatUSD) / c.usdc).rounded(0, .down)).intValue
+        let need = max(c.usdc, floatUSD) - there + Decimal(string: "0.01")!, src = tempoSource(need)
         return MoveRoute(title: "Pay \(price) USDC · \(quote.service)",
                          footer: "One Tempo transfer of \(price) USDC to the address \(host) named (\(AddressCheck.ends(c.payee).start) … \(AddressCheck.ends(c.payee).end)); "
-                            + (short ? "what's short comes from Solana over Relay first; " : "")
+                            + (short ? "what's short comes from \(src?.name ?? "Solana") over Relay first; " : "")
                             + "the fee, ≈ $0.001, comes out of the USDC. Then the request goes again with the payment's hash. Say “do it” or press Confirm.",
                          steps: [
             // Short on Tempo: a dollar's float comes from Solana (Executor.tempoFloat), plus a cent for fees; Relay's ≈ $0.02 on top.
-            short ? ActivityBubble(kind: "step", label: "FROM · SOLANA → TEMPO", title: "\(Fmt.num(max(c.usdc, floatUSD) - there + Decimal(string: "0.01")!, maxFraction: 6)) USDC",
+            short ? ActivityBubble(kind: "step", label: "FROM · \((src?.name ?? "Solana").uppercased()) → TEMPO",
+                                   title: "\(Fmt.num(src == nil ? need : (need + 1).rounded(2, .up), maxFraction: 6)) USDC",
                                    lines: [say("a float for ≈ \(requests) requests like this · Relay ≈ $0.02", "запас на ≈ \(requests) таких запросов · Relay ≈ $0.02"),
-                                           solana.map { "\(Fmt.num($0.usdc)) USDC on Solana" } ?? "from your Solana USDC"],
-                                   logo: "sol", fill: .solana)
+                                           src.map { "\(Fmt.num(usdc(on: $0.key) ?? 0)) USDC on \($0.name)" } ?? solana.map { "\(Fmt.num($0.usdc)) USDC on Solana" } ?? "from your Solana USDC"],
+                                   logo: src.flatMap { ModuleNetwork(place: $0.key)?.logo } ?? "sol", fill: src.flatMap { RouteFill(rawValue: $0.key) } ?? .solana)
                   : ActivityBubble(kind: "step", label: "FROM · TEMPO", title: "\(Fmt.num(there)) → \(Fmt.num(there - c.usdc)) USDC", lines: ["your USDC on Tempo"],
                                    logo: "tempo", fill: .tempo),
             ActivityBubble(kind: "step", label: "PAY · MPP", title: "\(price) USDC", lines: [c.purpose ?? "one request"], logo: "tempo", fill: .tempo),

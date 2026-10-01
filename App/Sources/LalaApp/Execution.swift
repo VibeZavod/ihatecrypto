@@ -298,7 +298,8 @@ extension Workspace {
         if case .yields(let asset) = command {
             // Read-only: the rates are drawn on the canvas, Aave on Base among them (Agent.swift), in one assignment.
             yieldOptions = await loadYields(asset)
-            reply(yieldOptions?.isEmpty == false ? say("Rates are on the canvas — the bigger the bubble, the higher the rate.", "Ставки на холсте — чем больше пузырь, тем выше ставка.")
+            reply(yieldOptions?.isEmpty == false ? say("Rates are on the canvas — the bigger the bubble, the higher the rate.", "Ставки на холсте — чем больше пузырь, тем выше ставка.",
+                                                       "Las tasas están en el lienzo: cuanto más grande la burbuja, más alta la tasa.")
                                                  : say("Yield sources didn't respond right now.", "Источники ставок сейчас не ответили."), note: "DeFi")
             return
         }
@@ -424,8 +425,9 @@ extension Workspace {
                 if !confirmed {
                     let other = share.map { $0 == 70 ? 50 : 70 } ?? 70
                     reply(ready ? say("The plan is on the canvas. Sign it, ask about it, or ask for another limit, e.g. “max \(other)% per protocol”.",
-                                      "План на холсте. Подпиши, спроси о нём или попроси другой лимит, например «не больше \(other)% в один протокол».")
-                                : say("Nowhere to put it now — see the canvas.", "Сейчас некуда положить — смотри холст."), note: "DeFi")
+                                      "План на холсте. Подпиши, спроси о нём или попроси другой лимит, например «не больше \(other)% в один протокол».",
+                                      "El plan está en el lienzo. Fírmalo, pregunta por él o pide otro límite, por ejemplo «máximo \(other)% por protocolo».")
+                                : say("Nowhere to put it now — see the canvas.", "Сейчас некуда положить — смотри холст.", "Ahora no hay dónde ponerlo: mira el lienzo."), note: "DeFi")
                 }
             case .rebalance(let share):
                 // Like «spread»: the plan first, the moves only after «do it».
@@ -437,7 +439,12 @@ extension Workspace {
                     let other = share.map { $0 == 70 ? 50 : 70 } ?? 70
                     reply(ready ? say("The moves are on the canvas with their math. Sign them, ask about them, or ask for another limit, e.g. “rebalance, max \(other)% per protocol”.",
                                       "Переводы на холсте с расчётом. Подпиши, спроси о них или попроси другой лимит, например «перебалансируй, не больше \(other)% в протокол».")
-                                : plan.notes.first ?? say("Nothing worth moving now — see the canvas.", "Сейчас нечего перекладывать — смотри холст."), note: "DeFi")
+                                : plan.moves.isEmpty && plan.skipped.isEmpty && plan.notes.first?.hasPrefix("Nothing is deposited") == true
+                                    ? say("Nothing is deposited yet: «spread USDC across the best rates» puts free USDC to work.",
+                                          "Депозитов пока нет: «разложи USDC по лучшим ставкам» пустит свободные USDC в работу.",
+                                          "Aún no hay depósitos: «reparte USDC en las mejores tasas» pone a trabajar los USDC libres.")
+                                    : say("Nothing worth moving now — the reasons are on the canvas.", "Сейчас нечего перекладывать — причины на холсте.",
+                                          "Ahora no vale la pena mover nada: los motivos están en el lienzo."), note: "DeFi")
                 }
             case .schedule(let asset, let usdc, let days):
                 // The per-purchase rule applies to each run; a schedule adds up, so it is shown per month too.

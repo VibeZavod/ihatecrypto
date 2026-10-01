@@ -114,7 +114,7 @@ public enum ChatRouter {
       bridge — else Solana's, by Relay's swap or Relay's bridge + Uniswap, whichever leaves more; a sale comes back as USDC on Solana unless kept there):
       buy <TICKER> on <base|arbitrum|polygon|ethereum> for N USDC [from <solana|base|arbitrum|polygon|ethereum|robinhood>] | sell [N] <TICKER> on <base|arbitrum|polygon|ethereum> [and keep the USDC there]
       (write «from» only when the user names where the money comes from: «с арбитрума» = from arbitrum, brought over first in the same move;
-      «оставь USDC на base» / «не выводи» on a sale = and keep the USDC there)   (tickers from Uniswap's list: AERO, DEGEN, VIRTUAL, cbBTC, WETH on Base; ARB, GMX, PENDLE, LINK, UNI on Arbitrum; AAVE, LINK, WPOL on Polygon; UNI, PEPE, LDO on Ethereum, where gas costs dollars)
+      «оставь USDC на base» / «не выводи» on a sale = and keep the USDC there)   (tickers from Uniswap's list: AERO, DEGEN, VIRTUAL, cbBTC, WETH on Base; ARB, GMX, PENDLE, LINK, UNI on Arbitrum; AAVE, LINK, WPOL on Polygon; UNI, PEPE, LDO on Ethereum, where gas varies from cents to dollars)
       buy token <0xCONTRACT> on <base|arbitrum|polygon|ethereum> for N USDC | sell [N] tokens <0xCONTRACT> on <base|arbitrum|polygon|ethereum>
     ANY SOLANA TOKEN BY ITS MINT (Jupiter; only while Safe search is off): buy token <MINT> for N USDC | sell [N] tokens <MINT>
     EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault") | withdraw [N] <USDC|SOL> from the vault
@@ -174,7 +174,7 @@ public enum ChatRouter {
     and the HLP vault); Jupiter Lend and Kamino on Solana; Aave on Base, Arbitrum, Polygon and Ethereum; Morpho on Base, \
     Arbitrum and Ethereum; idle USDC on those networks; Robinhood Chain (USDG, stock tokens, tokens by contract); NEAR; \
     Tempo (USDC for transfers and for paying services per request, MPP; fees come out of the USDC, no gas coin). \
-    Ethereum's gas costs dollars: only large amounts are worth it there, and «spread»/«rebalance» weigh that by themselves.
+    Ethereum's gas runs from cents to dollars by the hour (the gas lookup says today's); «spread»/«rebalance» weigh it by themselves.
     How money moves: Solana ⇄ Base, Arbitrum, Polygon, Ethereum, Robinhood Chain and Tempo over Relay, and between any two of those EVM \
     networks straight over Relay too (Base → Robinhood Chain: one move, no stop on Solana), and from any of them straight to \
     Hyperliquid; Hyperliquid → Solana; a trade plan brings its USDC to Hyperliquid by itself — from Solana, or straight from an \

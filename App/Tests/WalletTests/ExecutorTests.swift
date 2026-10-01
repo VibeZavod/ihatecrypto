@@ -83,6 +83,19 @@ import WalletCore
     #expect(Executor.pullToSolana(slices: [(nil, Decimal(string: "20.2")!)], idle: [("base", 100)], onSolana: 20).isEmpty)
 }
 
+@Test func aSpreadMovesMoneyStraightFromWhereItLies() {
+    // The live case: 18,587 USDC on Ethereum, 1 on Base, none on Solana; Jupiter Lend 500 and Morpho on Base 500. Base's
+    // gap comes straight from Ethereum, not Ethereum → Solana → Base.
+    let money = Executor.spreadMoves(slices: [(nil, 500), ("base", 500)], idle: [("base", 1), ("ethereum", Decimal(string: "18587.73")!)], onSolana: 0)
+    #expect(money.moves.map(\.from) == ["ethereum", "ethereum"] && money.moves.map(\.to) == ["base", "solana"])
+    #expect(money.moves.map(\.usdc) == [Decimal(string: "499.1")!, Decimal(string: "500.1")!])
+    #expect(money.drawn.map(\.network) == ["base", "ethereum"] && money.drawn.last?.usdc == Decimal(string: "999.2")!)
+    // A slice on the network that holds the money moves nothing; Solana's leftover fills an EVM slice no network can.
+    #expect(Executor.spreadMoves(slices: [("ethereum", 500)], idle: [("ethereum", 1000)], onSolana: 0).moves.isEmpty)
+    let fromSolana = Executor.spreadMoves(slices: [("base", 50)], idle: [], onSolana: 80)
+    #expect(fromSolana.moves.count == 1 && fromSolana.moves[0].from == "solana" && fromSolana.moves[0].usdc == 50)
+}
+
 @Test func aNodeIsAskedAgainOnlyWhenItsAnswerMayChange() async throws {
     let ok = HTTPURLResponse(url: URL(string: "https://node")!, statusCode: 200, httpVersion: nil, headerFields: nil)!
     let busy = HTTPURLResponse(url: URL(string: "https://node")!, statusCode: 429, httpVersion: nil, headerFields: nil)!

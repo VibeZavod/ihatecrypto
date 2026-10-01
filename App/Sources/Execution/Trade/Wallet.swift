@@ -530,24 +530,26 @@ extension Executor {
         lines += plan.notes.map { "· " + $0 }
         if plan.leftover > 0 { lines.append("Left free: \(amount(plan.leftover)).") }
         if plan.yearly > 0 { lines.append("Income from the new deposits ≈ \(amount(plan.yearly)) a year\(isSOL && solPrice > 0 ? " (≈ \(Fmt.usd(plan.yearly * solPrice)))" : "").") }
-        let preview = AllocationPreview(asset: asset, free: free, maxShare: maxShare, slices: plan.slices,
+        // Where each slice's money comes from, straight from the network that holds it (Self.spreadMoves).
+        func network(_ place: String) -> String? { AaveV3.market(place: place)?.chain ?? MorphoVault.vault(place: place)?.chain }
+        func name(_ key: String) -> String { key == "solana" ? "Solana" : EVMNetwork.named(key)?.name ?? key }
+        let money = Self.spreadMoves(slices: plan.slices.map { (network($0.place), $0.amount) }, idle: idle.map { ($0.net.key, $0.usdc) }, onSolana: onSolana)
+        var preview = AllocationPreview(asset: asset, free: free, maxShare: maxShare, slices: plan.slices,
                                         skipped: all.compactMap { p in p.blocked.map { (p.name, p.apy, $0) } },
                                         leftover: plan.leftover, yearly: plan.yearly, yearlyUSD: isSOL && solPrice > 0 ? plan.yearly * solPrice : nil,
                                         sources: sources.map { (place: $0.0, amount: $0.1) })
+        preview.drawn = money.drawn.map { (place: name($0.network), amount: $0.usdc) }
+        preview.moves = money.moves.map { (from: name($0.from), to: name($0.to), amount: $0.usdc) }
         // The preview goes back to the caller, which adds how to confirm.
         guard execute, !plan.slices.isEmpty else { return (lines.joined(separator: "\n"), !plan.slices.isEmpty, preview) }
         report(lines.joined(separator: "\n"))
         var done: [String] = []
-        // A slice on an EVM network first takes the USDC idle there (ensureEVM brings only what's short, from Solana).
-        // Solana needs its own slices plus those shortfalls; what it lacks comes over from networks whose USDC no slice uses.
-        // ponytail: idle USDC for a slice on another EVM network goes through Solana; a straight EVM→EVM bridge saves a hop.
-        func network(_ place: String) -> String? { AaveV3.market(place: place)?.chain ?? MorphoVault.vault(place: place)?.chain }
-        let pulls = Self.pullToSolana(slices: plan.slices.map { (network($0.place), $0.amount) },
-                                      idle: idle.map { ($0.net.key, $0.usdc) }, onSolana: onSolana)
-        for (key, send) in pulls {
-            guard let net = EVMNetwork.named(key) else { continue }
-            try await ensureEVM(net, usdc: 0)
-            done.append(try await evmToSolana(net, usdc: send))
+        // The money goes first, each move straight from the network that holds it to the one a slice is on (Solana's
+        // slices included); what Solana itself gives an EVM slice, the deposit brings on its own (ensureEVM).
+        for m in money.moves where m.from != "solana" {
+            guard let src = EVMNetwork.named(m.from) else { continue }
+            try await ensureEVM(src, usdc: 0)
+            done.append(try await (m.to == "solana" ? evmToSolana(src, usdc: m.usdc) : bridge(src, to: EVMNetwork.named(m.to), usdc: m.usdc)))
         }
         // EVM slices first: their shortfall leaves Solana before Solana's own slices spend it.
         for slice in plan.slices.sorted(by: { network($0.place) != nil && network($1.place) == nil }) {
@@ -556,6 +558,10 @@ extension Executor {
                 // Relay's fees on the way leave Solana a few cents under the plan: a slice takes at most what is there.
                 let there = Decimal(try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
                 piece = min(piece, there.rounded(2, .down))
+            } else if let key = network(slice.place), money.moves.contains(where: { $0.to == key && $0.from != "solana" }), let net = EVMNetwork.named(key) {
+                // The same on an EVM network a move just reached.
+                let there = Decimal(try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)) / 1_000_000
+                piece = min(piece, (there - Decimal(net.feeReserve) / 1_000_000).rounded(2, .down))
             }
             switch slice.place {
             case "Jupiter Lend": done.append(try await lend(asset, amount: piece, deposit: true))
@@ -571,26 +577,51 @@ extension Executor {
         return (line, false, preview)
     }
 
-    /// What comes over to Solana from each EVM network before a spread: a slice on an EVM network (`network` set) takes the
-    /// USDC idle there first, Solana needs its own slices plus the rest, and what it lacks comes from the idle USDC no
-    /// slice uses, in the order given — a dime over each for Relay's fee, nothing under a bridge's half dollar.
+    /// Where a spread's money comes from. A slice on an EVM network (`network` set) takes the USDC idle there first;
+    /// Solana's slices take Solana's own. What a place still lacks comes straight from the idle USDC of the other
+    /// networks, in the order given (Ethereum last) — a dime over each for Relay's fee, nothing under a bridge's half
+    /// dollar — and an EVM slice's last gap from what Solana has left («solana» → network, brought by the deposit).
+    /// `drawn`: what each place gives in all, its own slices and its moves; network keys, «solana» for Solana.
+    static func spreadMoves(slices: [(network: String?, amount: Decimal)], idle: [(network: String, usdc: Decimal)], onSolana: Decimal)
+        -> (moves: [(from: String, to: String, usdc: Decimal)], drawn: [(network: String, usdc: Decimal)]) {
+        var spare = Dictionary(idle.map { ($0.network, $0.usdc) }, uniquingKeysWith: +), drawn: [String: Decimal] = [:]
+        var short: [(to: String, usdc: Decimal)] = [], onSolanaNeeds: Decimal = 0
+        for slice in slices {
+            guard let key = slice.network else { onSolanaNeeds += slice.amount; continue }
+            let use = min(spare[key] ?? 0, slice.amount)
+            spare[key, default: 0] -= use
+            drawn[key, default: 0] += use
+            if slice.amount > use { short.append((key, slice.amount - use)) }
+        }
+        let own = min(onSolana, onSolanaNeeds)
+        var solanaLeft = onSolana - own
+        drawn["solana", default: 0] += own
+        if onSolanaNeeds > own { short.append(("solana", onSolanaNeeds - own)) }
+        var moves: [(from: String, to: String, usdc: Decimal)] = []
+        for var need in short {
+            for (key, _) in idle where need.usdc > 0 && key != need.to {
+                let send = min(spare[key] ?? 0, need.usdc + Decimal(string: "0.1")!).rounded(2, .down)
+                guard send >= Decimal(string: "0.5")! else { continue }
+                moves.append((key, need.to, send))
+                spare[key, default: 0] -= send
+                drawn[key, default: 0] += send
+                need.usdc -= send
+            }
+            if need.usdc > 0, need.to != "solana", solanaLeft > 0 {
+                let send = min(solanaLeft, need.usdc)
+                moves.append(("solana", need.to, send))
+                solanaLeft -= send
+                drawn["solana", default: 0] += send
+            }
+        }
+        let order = ["solana"] + idle.map(\.network)
+        return (moves, order.compactMap { k in drawn[k].flatMap { $0 > 0 ? (k, $0) : nil } })
+    }
+
+    /// What comes over to Solana from each EVM network before a spread (spreadMoves' moves into Solana).
     static func pullToSolana(slices: [(network: String?, amount: Decimal)], idle: [(network: String, usdc: Decimal)],
                              onSolana: Decimal) -> [(network: String, usdc: Decimal)] {
-        var spare = Dictionary(idle.map { ($0.network, $0.usdc) }, uniquingKeysWith: +)
-        var needs: Decimal = 0
-        for slice in slices {
-            let use = slice.network.map { min(spare[$0] ?? 0, slice.amount) } ?? 0
-            if let key = slice.network { spare[key, default: 0] -= use }
-            needs += slice.amount - use
-        }
-        var short = needs - onSolana, out: [(network: String, usdc: Decimal)] = []
-        for (key, _) in idle where short > 0 {
-            let send = min(spare[key] ?? 0, short + Decimal(string: "0.1")!).rounded(2, .down)
-            guard send >= Decimal(string: "0.5")! else { continue }
-            out.append((key, send))
-            short -= send
-        }
-        return out
+        spreadMoves(slices: slices, idle: idle, onSolana: onSolana).moves.filter { $0.to == "solana" }.map { ($0.from, $0.usdc) }
     }
 
     /// SOL spent according to a simulation's change lines (the «SOL: −0.0298» line), as a positive number.
@@ -669,4 +700,7 @@ public struct AllocationPreview: Sendable {
     public let yearlyUSD: Decimal?
     /// Where the free money is: Solana and each EVM network with idle USDC.
     public var sources: [(place: String, amount: Decimal)] = []
+    /// What the plan takes from each place, and the moves between them before the deposits (Executor.spreadMoves).
+    public var drawn: [(place: String, amount: Decimal)] = []
+    public var moves: [(from: String, to: String, amount: Decimal)] = []
 }

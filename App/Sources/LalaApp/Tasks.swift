@@ -94,6 +94,12 @@ extension Workspace {
             // after, the next step's card was saved over it with its «Done» (a Base → Robinhood bridge vanished under
             // «Buy AI», and «Buy MOO» showed Done though it never ran).
             if confirmed { finishedAction = nil }
+            // The first step reads the balances as they are now: one that can't be paid is said before any card
+            // («Move 0 USDC · Ethereum → Arbitrum» was drawn). Later steps wait for the money the ones before bring.
+            if k == 0, !confirmed, TaskRun.automation == nil, let c = WalletCommand.parse(step), let why = refusalBeforeCard(c) {
+                reply(why)
+                break
+            }
             guard await runCanonical(step, userText: step, before: intent, inChain: true) else {
                 reply(say("ihatecrypto can’t do “\(step)” — the steps stop here.", "ihatecrypto не умеет «\(step)» — на этом шаги останавливаются."))
                 break
@@ -121,7 +127,8 @@ extension Workspace {
                 // The step's card said nothing of its own (runCanonical inChain): one line for the chain.
                 if pendingAction != nil {
                     reply(say("It’s on the canvas, every step in a row — one Confirm covers them all, or say anything else to cancel.",
-                              "Все шаги на холсте — один Confirm на всю цепочку, или напиши что-нибудь другое, чтобы отменить."))
+                              "Все шаги на холсте — один Confirm на всю цепочку, или напиши что-нибудь другое, чтобы отменить.",
+                              "Todos los pasos están en el lienzo: un Confirm para toda la cadena, o di otra cosa para cancelar."))
                 }
                 break
             }

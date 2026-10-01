@@ -1279,7 +1279,13 @@ extension Workspace {
     /// its money starts and its approves, marked to come after this move.
     func chainSteps() -> [ActivityBubble] {
         guard let q = taskQueue, q.canvas == canvasID else { return [] }
+        // Where the steps before bring money: a deposit there spends it, so its card draws no bridge from Solana
+        // («Ethereum → Arbitrum, then Aave» drew a second bridge, Solana → Arbitrum, that never runs).
+        var arrived = Set<String>()
+        if case .wallet(let first)? = pendingAction, let to = Self.arrives(first) { arrived.insert(to) }
         return q.steps.compactMap(WalletCommand.parse).flatMap { c -> [ActivityBubble] in
+            defer { if let to = Self.arrives(c) { arrived.insert(to) } }
+            let brought = Self.spends(c).map(arrived.contains) ?? false
             switch c {
             // Spread and rebalance have no route of their own: their split is planned when the money before them has landed.
             case .allocate(let asset, let share, let amount, _):
@@ -1289,8 +1295,29 @@ extension Workspace {
                 return [ActivityBubble(kind: "step", label: "REBALANCE · BEST RATES", title: "deposits",
                                        lines: ["moves\twhen the money lands", "max per place\t\(Fmt.pct(share ?? 50))"], status: "then", logo: "usdc", fill: .jupiter)]
             default:
-                return route(c)?.steps.filter { !$0.label.hasPrefix("FROM") && !$0.label.hasPrefix("APPROVE") }.map { var s = $0; s.status = "then"; return s } ?? []
+                return route(c)?.steps.filter { !$0.label.hasPrefix("FROM") && !$0.label.hasPrefix("APPROVE")
+                    && !(brought && ($0.label.hasPrefix("BRIDGE") || $0.label.hasPrefix("GAS"))) }.map { var s = $0; s.status = "then"; return s } ?? []
             }
+        }
+    }
+
+    /// The network a move delivers USDC to («solana» for Solana); nil for anything else.
+    static func arrives(_ c: WalletCommand) -> String? {
+        switch c {
+        case .bridge(_, let to, _): to == "hyperliquid" ? nil : to
+        case .evmToSolana, .baseToSolana, .arbitrumToSolana, .robinhoodToSolana, .withdrawToSolana: "solana"
+        case .solanaTo(let to, _): to
+        default: nil
+        }
+    }
+
+    /// The network a step spends USDC on; nil when it spends none.
+    static func spends(_ c: WalletCommand) -> String? {
+        switch c {
+        case .aave(true, _, let n), .morpho(true, _, let n), .buyOn(let n, _, _, _): n
+        case .lendDeposit, .kamino(true, _, _), .buy, .hlp(true, _): "solana"
+        case .buyStock: "robinhood"
+        default: nil
         }
     }
 
@@ -1534,7 +1561,7 @@ extension Workspace {
                          footer: (from.count > 1 ? "What's missing on \(name) comes from Solana over Relay, with \(coin) for gas when there's none; then two" : "Two")
                             + " \(name) transactions: approve exactly \(Fmt.num(amount)) USDC, then \(morpho ? "deposit; the shares come to this wallet only" : "supply"). "
                             + "\(morpho ? "The vault's asset is" : "Pool and aToken are") re-read from \(name) first"
-                            + (network == "ethereum" ? "; Ethereum's gas costs dollars" : "") + ". Say “do it” or press Confirm.",
+                            + (network == "ethereum" ? "; Ethereum's gas changes by the hour (cents to dollars): ask the chat «сколько газа?» for today's" : "") + ". Say “do it” or press Confirm.",
                          steps: from + [
             approve("\(Fmt.num(amount)) USDC", for: protocolName, logo: morpho ? "morpho" : "aave", morpho ? .morpho : .aave),
             morpho ? step("morpho", "MORPHO · \(name.uppercased())", "\(Fmt.num(amount)) USDC", "rate from the vault", .morpho)
@@ -1786,7 +1813,7 @@ extension Workspace {
         // but another EVM network does, that money comes straight from there, the way a trade's does: the move, then the
         // deposit, one Confirm. «положи 300 в aave на арбитруме» with the USDC on Ethereum made a card that could only fail.
         if !quiet, TaskRun.automation == nil, let steps = fundedFromElsewhere(command) {
-            reply(say("In steps: ", "По шагам: ") + steps.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " → "), note: note)
+            reply(say("In steps: ", "По шагам: ", "Por pasos: ") + steps.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " → "), note: note)
             await runSteps(steps)
             return
         }
@@ -1802,7 +1829,8 @@ extension Workspace {
             pendingText = readable(command.summary)
             if quiet { return }
             reply(say("Understood: \(readable(command.summary)). It’s on the canvas — Sign it, or say anything else to cancel.",
-                      "Понял: \(readable(command.summary)). Карточка на холсте — нажми Confirm или напиши что-нибудь другое, чтобы отменить."), note: note)
+                      "Понял: \(readable(command.summary)). Карточка на холсте — нажми Confirm или напиши что-нибудь другое, чтобы отменить.",
+                      "Entendido: \(readable(command.summary)). Está en el lienzo: confírmalo, o di otra cosa para cancelar."), note: note)
         }
     }
 

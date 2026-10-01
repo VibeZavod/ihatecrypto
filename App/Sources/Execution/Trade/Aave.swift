@@ -143,6 +143,19 @@ extension Executor {
         let needGas = gas < floor
         // Relay has minimums: a gas top-up rides on at least half a dollar of USDC.
         let arrive = max(short, needGas ? Decimal(string: "0.5")! : 0)
+        // Solana pays when it holds enough. Else the EVM network that holds the USDC sends it straight (Ethereum asked
+        // last); its bridge brings gas along and waits until the money has landed. Before, an empty Solana failed the move
+        // while thousands sat on Ethereum.
+        let onSolana = Decimal(try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
+        if onSolana < arrive + Decimal(string: "0.1")! {
+            let idle = Dictionary(await idleUSDC().map { ($0.net.key, $0.usdc) }, uniquingKeysWith: +)
+            let send = (arrive + 1).rounded(2, .up)   // a dollar over for Relay's fee; what's left stays there
+            if let from = EVMNetwork.funding(send, held: { $0 == net.key ? nil : idle[$0] }) {
+                report("\(net.name) needs \(Fmt.num(arrive)) USDC and Solana has \(Fmt.num(onSolana)): bringing \(Fmt.num(send)) straight from \(from.name).")
+                _ = try await bridge(from, to: net, usdc: send)
+                return
+            }
+        }
         let (step, changes) = try await prepareBridge(.arrive(arrive), to: net.relayChain, currency: net.usdc, decimals: 6,
                                                       topupGasUSD: needGas ? topupUSD : nil)
         let stable = net.key == "robinhood" ? "USDG" : "USDC"

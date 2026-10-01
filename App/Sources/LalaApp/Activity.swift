@@ -86,7 +86,10 @@ extension Workspace {
         }
         if let a = allocationPreview {
             func amount(_ d: Decimal) -> String { Fmt.num(d, maxFraction: a.asset == "SOL" ? 6 : 2) + " " + a.asset }
-            var out = [ActivityBubble(kind: "free", label: "Take from · Solana", title: "\(amount(a.free)) free", logo: a.asset == "SOL" ? "sol" : "usdc")]
+            var out = (a.drawn.isEmpty ? [(place: "Solana", amount: a.free)] : a.drawn).map {
+                ActivityBubble(kind: "free", label: "Take from · \($0.place)", title: amount($0.amount), logo: a.asset == "SOL" ? "sol" : "usdc")
+            }
+            out += a.moves.map { ActivityBubble(kind: "step", label: "Bridge · Relay", title: amount($0.amount), lines: ["\($0.from) → \($0.to)"], logo: "relay") }
             out += a.slices.map { ActivityBubble(kind: "deposit", label: "Deposit", title: $0.place, lines: ["\(amount($0.amount)) at \(Fmt.num($0.apy.rounded(2, .plain)))%"], logo: Self.logo(for: $0.place)) }
             out += a.skipped.map { ActivityBubble(kind: "skipped", label: "Skipped", title: "\($0.place) · \(Fmt.num($0.apy.rounded(2, .plain)))%", lines: [$0.reason], logo: Self.logo(for: $0.place)) }
             out.append(ActivityBubble(kind: "result", label: "Result", title: "≈ \(amount(a.yearly)) a year"))

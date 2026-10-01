@@ -37,7 +37,7 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .arbitrum: "Aave · Morpho · USDC in and out"
         case .robinhood: "Stock tokens · USDG · Uniswap"
         case .polygon: "Aave · USDC"
-        case .ethereum: "Aave · Morpho · mainnet gas costs dollars"
+        case .ethereum: "Aave · Morpho · mainnet gas varies"
         case .tempo: "USDC transfers · pay for services (MPP) · fees in USDC"
         }
     }

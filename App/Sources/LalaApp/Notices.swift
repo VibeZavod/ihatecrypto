@@ -9,7 +9,12 @@ extension Workspace {
     var chatLanguage: ChatLanguage { ChatLanguage(rawValue: UserDefaults.standard.string(forKey: "chatLanguage") ?? "") ?? .auto }
     private var ownWords: [String] { messages.filter(\.fromUser).suffix(8).map(\.text) }
     /// One of LALA's own replies in the user's language; tickers, amounts and addresses stay as they are.
-    func say(_ english: String, _ russian: String) -> String { chatLanguage.isRussian(recentUserMessages: ownWords) ? russian : english }
+    /// `spanish` where it's given: the lines a conversation meets most, so a Spanish chat isn't answered in English.
+    func say(_ english: String, _ russian: String, _ spanish: String? = nil) -> String {
+        if chatLanguage.isRussian(recentUserMessages: ownWords) { return russian }
+        if let spanish, replyLanguage == "Spanish" { return spanish }
+        return english
+    }
     /// «Russian» or «English», for the model's instructions.
     var replyLanguage: String { chatLanguage.name(recentUserMessages: ownWords) }
 }

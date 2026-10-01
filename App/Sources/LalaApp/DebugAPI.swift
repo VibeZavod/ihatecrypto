@@ -229,7 +229,7 @@ final class DebugAPI {
             let route = ws.route(command)
             let drawn = route ?? ws.fallbackRoute(command)
             out["pending"] = ["kind": "wallet", "command": String(describing: command), "title": drawn.title, "footer": drawn.footer,
-                              "steps": steps(drawn.steps), "drawnRoute": route != nil, "confirm": true] as [String: Any]
+                              "steps": steps(drawn.steps), "chain": steps(ws.chainSteps()), "drawnRoute": route != nil, "confirm": true] as [String: Any]
         case .position(let command, let coin)?:
             out["pending"] = ["kind": "position", "command": String(describing: command), "coin": coin, "confirm": true] as [String: Any]
         case .transfer(let entry, let amount)?:
@@ -260,7 +260,9 @@ final class DebugAPI {
                                  "waits": ws.pendingAllocation != nil,
                                  "slices": a.slices.map { ["place": $0.place, "amount": n($0.amount), "apy": n($0.apy)] as [String: Any] },
                                  "skipped": a.skipped.map { ["place": $0.place, "reason": $0.reason] },
-                                 "sources": a.sources.map { ["place": $0.place, "amount": n($0.amount)] as [String: Any] }] as [String: Any]
+                                 "sources": a.sources.map { ["place": $0.place, "amount": n($0.amount)] as [String: Any] },
+                                 "drawn": a.drawn.map { ["place": $0.place, "amount": n($0.amount)] as [String: Any] },
+                                 "moves": a.moves.map { ["from": $0.from, "to": $0.to, "amount": n($0.amount)] as [String: Any] }] as [String: Any]
         }
         if let t = ws.takeChoices { out["takeChoices"] = t.map(\.title) }
         if let w = ws.awaitingAmount { out["awaitingAmount"] = String(describing: w) }

@@ -3233,8 +3233,8 @@ struct AllocationBoard: View {
     private var unit: String { preview.asset }
     private func amount(_ d: Decimal) -> String { Fmt.num(d, maxFraction: unit == "SOL" ? 6 : 2) + " " + unit }
 
-    /// The spread as route cards: out of Solana, split across the best rates, into each place with its rate; what's
-    /// skipped and why under them.
+    /// The spread as route cards: what it takes from each network, the straight moves between them, then into each place
+    /// with its rate; what's skipped and why under them.
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             RouteCards(steps: steps, build: true)
@@ -3248,14 +3248,21 @@ struct AllocationBoard: View {
     private var steps: [ActivityBubble] {
         let placed = preview.slices.reduce(Decimal(0)) { $0 + $1.amount }
         let year = "≈ \(amount(preview.yearly))" + (preview.yearlyUSD.map { " (≈ \(Fmt.usd($0)))" } ?? "")
-        // One card per place the free money is (Solana, idle USDC on Base…); the first carries the totals.
-        let sources = preview.sources.isEmpty ? [(place: "Solana", amount: preview.free)] : preview.sources
-        let from = sources.enumerated().map { k, s in
-            ActivityBubble(kind: "step", label: "FROM · \(s.place.uppercased())", title: amount(k == 0 && sources.count == 1 ? placed : s.amount),
-                           lines: k > 0 ? ["idle there"] : ["free\t\(amount(preview.free))"] + (preview.leftover > 0 ? ["stays free\t\(amount(preview.leftover))"] : []),
-                           logo: unit == "SOL" ? "sol" : "usdc", fill: RouteFill(rawValue: s.place.lowercased().components(separatedBy: " ")[0]) ?? .check)
+        // One card per network the plan takes money from, with what it takes; the first carries the totals. Then each
+        // move between them, straight from where the money lies (Ethereum → Base, not through Solana).
+        let drawn = preview.drawn.isEmpty ? [(place: "Solana", amount: placed)] : preview.drawn
+        func fill(_ place: String) -> RouteFill { RouteFill(rawValue: place.lowercased().components(separatedBy: " ")[0]) ?? .check }
+        let from = drawn.enumerated().map { k, s in
+            let there = preview.sources.first { $0.place == s.place }?.amount
+            return ActivityBubble(kind: "step", label: "FROM · \(s.place.uppercased())", title: amount(s.amount),
+                                  lines: (there.map { ["free there\t\(amount($0))"] } ?? [])
+                                    + (k == 0 && preview.leftover > 0 ? ["stays free\t\(amount(preview.leftover))"] : []),
+                                  logo: unit == "SOL" ? "sol" : "usdc", fill: fill(s.place))
         }
-        return from + [
+        let moves = preview.moves.map { m in
+            ActivityBubble(kind: "step", label: "BRIDGE · RELAY", title: amount(m.amount), lines: ["\(m.from) → \(m.to)"], logo: "relay", fill: .relay)
+        }
+        return from + moves + [
             ActivityBubble(kind: "step", label: "INTO · BEST RATES", title: "\(preview.slices.count) place\(preview.slices.count == 1 ? "" : "s")",
                            lines: ["a year\t\(year)", "max per place\t\(Fmt.pct(preview.maxShare))"], logo: "usdc", fill: .jupiter),
         ] + preview.slices.map { slice in

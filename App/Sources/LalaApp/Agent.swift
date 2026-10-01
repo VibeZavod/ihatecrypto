@@ -153,7 +153,7 @@ extension Workspace {
     /// What getting to a lending network takes, for the rates list.
     nonisolated static func lendingNote(_ chain: String) -> String {
         switch chain {
-        case "ethereum": "on Ethereum: gas there and back costs dollars, so only large amounts pay"
+        case "ethereum": "on Ethereum: gas there and back runs from cents to dollars (the gas lookup says today's), so small amounts may not pay"
         case "polygon": "on Polygon: bridged from Solana with a little POL for gas"
         default: "on \(WalletCommand.placeName(chain)): bridged from Solana with a little ETH for gas"
         }
