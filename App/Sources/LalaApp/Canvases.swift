@@ -1347,10 +1347,13 @@ extension Workspace {
         let favorite = favoriteTokens.first { $0.address.lowercased() == symbolOrContract.lowercased() }
         let symbol = contract ? tokenSymbol(symbolOrContract) ?? "\(symbolOrContract.prefix(6))…\(symbolOrContract.suffix(4))" : symbolOrContract
         let price = contract ? favorite.flatMap { tokenInfo[$0.id]?.priceUSD } : markets["xyz:\(symbolOrContract)"]?.markPx
-        // USDG already on Robinhood Chain pays first (a bridge from Base leaves it there): Solana only brings what's missing.
-        let usdg = robinhood?.usdg ?? 0, bring = max(0, usdc - usdg)
+        // USDG already on Robinhood Chain pays first (a bridge from Base leaves it there): Solana only brings what's missing,
+        // and a few cents short ($1 or 2% at most) isn't worth a bridge: the buy spends what's there (Executor.buyStock).
+        let usdg = robinhood?.usdg ?? 0
+        let fits = usdg > 0 && usdg < usdc && usdc - usdg <= max(1, usdc / 50)
+        let usdc = fits ? usdg : usdc, bring = max(0, usdc - usdg)
         let from = bring == 0
-            ? step("robinhood", "FROM · ROBINHOOD CHAIN", "\(Fmt.num(usdg)) → \(Fmt.num(usdg - usdc)) USDG", "already there · no bridge", .robinhood)
+            ? step("robinhood", "FROM · ROBINHOOD CHAIN", "\(Fmt.num(usdg)) → \(Fmt.num(usdg - usdc)) USDG", fits ? "what's there · the cents short aren't worth a bridge" : "already there · no bridge", .robinhood)
             : step("sol", "FROM · SOLANA", "\(Fmt.num(bring)) USDC", (usdg > 0 ? "the rest of \(Fmt.num(usdc)) is on Robinhood · " : "")
                    + (solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? ""), .solana)
         return MoveRoute(title: "Buy \(symbol) · \(Fmt.num(usdc)) USDC on Robinhood Chain",

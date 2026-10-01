@@ -100,8 +100,12 @@ extension Executor {
         let rpc = EVMRPC.robinhood, usdg = EVMRPC.robinhoodUSDG, me = wallet.evm
         let (token, listing) = try await RobinhoodStocks.resolve(symbolOrContract)
         let symbol = token.symbol
-        let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
+        var units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
         guard units >= 500_000 else { throw ExecutionError("At least 0.5 USDC: less isn't worth the bridge.") }
+        // A few cents short on Robinhood Chain (300 asked, 299.86 USDG there after a bridge's fee): the buy spends what's
+        // there, never a bridge from Solana for the cents. Up to $1 or 2% short.
+        let there = try await rpc.tokenBalance(usdg, owner: me)
+        if there < units, there > 0, units - there <= max(1_000_000, units / 50) { units = there }
         // Uniswap v3's best pool and v4's pool without hooks, whichever gives more (AI for 300 USDG: v3's thin pool $0.22 a
         // token, v4's AI/USDG pool $0.158); neither, or the better one off the market: Relay's swap through the deep pools.
         let v3 = try await bestPool(usdg, token.address, amountIn: Decimal(units))
