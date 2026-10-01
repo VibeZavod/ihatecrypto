@@ -9,6 +9,75 @@ extension Workspace {
         withAnimation(StudioView.spring) { detail = TokenBoard.place(chain: chain, address: address) }
         UserDefaults.standard.set("plan", forKey: "canvasMode")
     }
+
+    /// What a click on a held token opens: the board of a token with a contract; the market's chart for a network's own
+    /// coin (SOL, ETH, NEAR) or a Hyperliquid spot token that trades as a perp; nil when there's nothing to open.
+    func opener(chain: String, contract: String, symbol: String) -> (() -> Void)? {
+        if contract != "native", chain != "hyperliquid" { return { self.openToken(contract, chain: chain) } }
+        let coin = symbol.uppercased()
+        guard markets[coin] != nil else { return nil }
+        return { Task { await self.chartCommand(.chart(coin: coin, range: .day)) } }
+    }
+
+    /// The buy and the sale of a token as the chat takes them, by its network: Robinhood's stock tokens by ticker, a
+    /// Jupiter-verified Solana token by ticker (an unverified one by its mint only with Safe search off), on the EVM
+    /// networks by contract. Each goes into the chat's field for the user to send.
+    func tokenPhrases(chain: String, address: String, symbol: String, stock: Bool, verified: Bool) -> [(title: String, icon: String, phrase: String)] {
+        let pair: (buy: String, sell: String)? = switch chain {
+        case "robinhood": stock ? ("buy \(symbol) stock for 2 USDC", "sell \(symbol) stock") : ("buy token \(address) for 2 USDC", "sell token \(address)")
+        case "solana": verified ? ("buy \(symbol) on solana for 2 USDC", "sell \(symbol) on solana")
+            : safeSearch ? nil : ("buy token \(address) for 2 USDC", "sell tokens \(address)")
+        case "base", "arbitrum", "polygon", "ethereum": ("buy token \(address) on \(chain) for 2 USDC", "sell tokens \(address) on \(chain)")
+        default: nil
+        }
+        guard let pair else { return [] }
+        return [("Buy \(symbol)", "cart", pair.buy), ("Sell", "arrow.down.right.circle", pair.sell)]
+    }
+
+    /// Hands a token to the chat (the user: «чтобы контекст передавался»): a chip over the field, and the next message
+    /// reaches the model as being about it — its network, its contract, what the wallet holds of it, its price.
+    /// `address` nil: the network's own coin.
+    func askAbout(symbol: String, chain: String, address: String?) {
+        let network = ModuleNetwork(rawValue: chain)?.name ?? chain.capitalized
+        let held = address.flatMap { a in holdings.first { $0.chain == chain && $0.contract.lowercased() == a.lowercased() } }
+        let stock = address.flatMap { a in robinhood?.stocks.first { $0.address.lowercased() == a.lowercased() } }
+        var facts = ["\(symbol) on \(network)"] + (address.map { ["contract \($0)"] } ?? [])
+        if let amount = stock?.amount ?? held?.amount {
+            facts.append("the wallet holds \(Fmt.num(amount, maxFraction: 6))" + ((stock?.usd ?? held?.usd).map { " ≈ \(Fmt.usd($0))" } ?? ""))
+        }
+        if let price = stock?.price ?? held?.price ?? markets[symbol.uppercased()]?.markPx { facts.append("price \(Fmt.price(price))") }
+        stepContext = StepContext(title: "\(symbol) · \(network)", logo: TokenLogo.name(forAsset: symbol) ?? ModuleNetwork(rawValue: chain)?.logo,
+                                  about: "About the token «\(facts.joined(separator: "; "))»")
+    }
+}
+
+/// A held token's right-click menu, wherever it's listed: its details (or chart), the chat with the token attached, a
+/// buy and a sale put into the chat's field.
+struct TokenMenu: ViewModifier {
+    @Environment(Workspace.self) private var ws
+    let chain: String
+    /// nil: the network's own coin (SOL, ETH, NEAR) or a Hyperliquid spot token.
+    let address: String?
+    let symbol: String
+    var stock = false
+    var verified = false
+
+    func body(content: Content) -> some View {
+        content.contextMenu {
+            Group {
+                if let open = ws.opener(chain: chain, contract: address ?? "native", symbol: symbol) {
+                    Button(action: open) { Label(address == nil ? "Chart" : "Details", systemImage: address == nil ? "chart.xyaxis.line" : "info.circle") }
+                }
+                Button { ws.askAbout(symbol: symbol, chain: chain, address: address) } label: { Label("Ask in chat", systemImage: "bubble.left") }
+                if let address {
+                    ForEach(ws.tokenPhrases(chain: chain, address: address, symbol: symbol, stock: stock, verified: verified), id: \.phrase) { p in
+                        Button { ws.draft = p.phrase } label: { Label(p.title, systemImage: p.icon) }
+                    }
+                }
+            }
+            .labelStyle(.titleAndIcon)
+        }
+    }
 }
 
 /// One token on the canvas: its price and chart, the market around it (DexScreener's deepest pair, GeckoTerminal's
@@ -35,8 +104,10 @@ struct TokenBoard: View {
     }
 
     private var holding: StockHolding? { ws.robinhood?.stocks.first { $0.address.lowercased() == address.lowercased() } }
+    /// The token as the wallet holds it on any other network (Holdings).
+    private var heldToken: Holding? { ws.holdings.first { $0.chain == chain && $0.contract.lowercased() == address.lowercased() } }
     private var favorite: FavoriteToken? { ws.favoriteTokens.first { $0.chain == chain && $0.address.lowercased() == address.lowercased() } }
-    private var symbol: String { holding?.symbol ?? favorite?.symbol ?? market?.symbol ?? "Token" }
+    private var symbol: String { holding?.symbol ?? heldToken?.symbol ?? favorite?.symbol ?? market?.symbol ?? "Token" }
     private var fullName: String { holding?.name ?? favorite?.name ?? market?.name ?? symbol }
     /// «Space Exploration Technologies Corp. Class A Common Stock» → «Space Exploration Technologies».
     private var name: String {
@@ -44,8 +115,9 @@ struct TokenBoard: View {
         return cut.map { String(fullName[..<$0]) } ?? fullName
     }
     /// A Robinhood Stock Token (bought by its ticker); anything else here was bought by its contract.
-    private var isStock: Bool { (UserDefaults.standard.stringArray(forKey: "stockTokens") ?? []).contains(symbol.uppercased()) }
-    private var chainTitle: String { chain == "robinhood" ? "Robinhood Chain" : chain.capitalized }
+    private var isStock: Bool { Self.isStock(symbol) }
+    static func isStock(_ symbol: String) -> Bool { (UserDefaults.standard.stringArray(forKey: "stockTokens") ?? []).contains(symbol.uppercased()) }
+    private var chainTitle: String { ModuleNetwork(rawValue: chain)?.name ?? chain.capitalized }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
@@ -53,7 +125,11 @@ struct TokenBoard: View {
             price
             chart
             if let m = market { stats(m) }
-            if let h = holding { held(h) }
+            if let h = holding {
+                held(h.amount, h.usd, isStock ? "valued at Robinhood’s bid \(h.price.map(tokenPrice) ?? "—")" : "valued at the pool price")
+            } else if let t = heldToken {
+                held(t.amount, t.usd, t.price == nil ? "no price yet" : "valued at the pool price")
+            }
             links
             actions
         }
@@ -196,15 +272,15 @@ struct TokenBoard: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
     }
 
-    private func held(_ h: StockHolding) -> some View {
+    private func held(_ amount: Decimal, _ usd: Decimal?, _ how: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "wallet.pass.fill").foregroundStyle(Brand.accentInk)
             VStack(alignment: .leading, spacing: 1) {
-                Text("You hold \(Fmt.num(h.amount, maxFraction: 6)) \(h.symbol)").font(.ui(13, .semibold))
-                Text(isStock ? "valued at Robinhood’s bid \(h.price.map(tokenPrice) ?? "—")" : "valued at the pool price").font(.ui(10)).foregroundStyle(.secondary)
+                Text("You hold \(Fmt.num(amount, maxFraction: 6)) \(symbol)").font(.ui(13, .semibold))
+                Text(how).font(.ui(10)).foregroundStyle(.secondary)
             }
             Spacer()
-            Text(Fmt.usd(h.usd)).font(.ui(15, .bold)).monospacedDigit()
+            Text(usd.map(Fmt.usd) ?? "—").font(.ui(15, .bold)).monospacedDigit()
         }
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 12).fill(Brand.accent.opacity(0.08)))
@@ -221,24 +297,30 @@ struct TokenBoard: View {
         .buttonStyle(.borderless).font(.ui(10)).tint(Brand.accent).foregroundStyle(Brand.accentInk)
     }
 
+    /// Ask in the chat with the token attached, then its buy and sale (or watching it) put into the chat's field.
     private var actions: some View {
-        let buy = isStock ? "buy \(symbol) stock for 2 USDC" : "buy token \(address) for 2 USDC"
-        let sell = isStock ? "sell \(symbol) stock" : "sell token \(address)"
-        // Tokens by contract are bought on Robinhood Chain, and on Solana with Safe search off; elsewhere they can be watched.
-        let phrases = chain == "robinhood" ? [("Buy \(symbol)", buy), ("Sell", sell)]
-            : chain == "solana" && !ws.safeSearch ? [("Buy \(symbol)", "buy token \(address) for 2 USDC"), ("Sell", "sell tokens \(address)")]
-            : favorite == nil ? [("Watch \(symbol)", "watch token \(address) on \(chain)")] : []
-        return HStack(spacing: 6) {
-            ForEach(phrases, id: \.0) { title, phrase in
-                Button { ws.draft = phrase } label: {
-                    Text(title).font(.ui(12, .semibold)).foregroundStyle(title == "Sell" ? Brand.loss : Brand.accentInk)
+        let trades = ws.tokenPhrases(chain: chain, address: address, symbol: symbol, stock: isStock,
+                                     verified: verified?.ok == true || heldToken?.verified == true)
+        let watch = trades.isEmpty && favorite == nil ? [(title: "Watch \(symbol)", icon: "star", phrase: "watch token \(address) on \(chain)")] : []
+        return VStack(alignment: .leading, spacing: 8) {
+            Flow(spacing: 6) {
+                Button { ws.askAbout(symbol: symbol, chain: chain, address: address) } label: {
+                    Label("Ask in chat", systemImage: "bubble.left").font(.ui(12, .semibold)).foregroundStyle(Brand.accentInk)
                         .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(Capsule().fill((title == "Sell" ? Brand.loss : Brand.accent).opacity(0.1)))
+                        .background(Capsule().fill(Brand.accent.opacity(0.1)))
                 }
-                .buttonStyle(.plain).pointerStyle(.link).help("Puts “\(phrase)” into the chat")
+                .buttonStyle(.plain).pointerStyle(.link).help("Your next message in the chat is about \(symbol): its network, contract and what you hold go along")
+                ForEach(trades + watch, id: \.phrase) { p in
+                    let sell = p.title == "Sell"
+                    Button { ws.draft = p.phrase } label: {
+                        Label(p.title, systemImage: p.icon).font(.ui(12, .semibold)).foregroundStyle(sell ? Brand.loss : Brand.accentInk)
+                            .padding(.horizontal, 12).padding(.vertical, 6)
+                            .background(Capsule().fill((sell ? Brand.loss : Brand.accent).opacity(0.1)))
+                    }
+                    .buttonStyle(.plain).pointerStyle(.link).help("Puts “\(p.phrase)” into the chat")
+                }
             }
-            Spacer(minLength: 8)
-            Text("DexScreener · GeckoTerminal").font(.ui(10)).foregroundStyle(.tertiary).lineLimit(1).minimumScaleFactor(0.8)
+            Text("DexScreener · GeckoTerminal").font(.ui(10)).foregroundStyle(.tertiary).lineLimit(1)
         }
     }
 

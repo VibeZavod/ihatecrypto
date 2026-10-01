@@ -165,7 +165,7 @@ struct NetworkCard: View {
             }
             if network == .hyperliquid { positions }
             if network == .robinhood { stocks }
-            ForEach(lines) { NetworkLineRow(line: $0) }
+            ForEach(lines) { NetworkLineRow(line: $0, chain: network.rawValue) }
             TokenList(chain: network.rawValue)
         }
         .padding(11)
@@ -224,29 +224,51 @@ struct NetworkCard: View {
         }
     }
 
-    /// Robinhood Chain's stock tokens and tokens bought by contract, the most money first; a click opens the token.
+    /// Robinhood Chain's stock tokens and tokens bought by contract, the most money first; a click opens the token,
+    /// right-click asks the chat about it or trades it.
     private var stocks: some View {
         ForEach((ws.robinhood?.stocks ?? []).sorted { $0.usd > $1.usd }) { s in
-            Button { ws.openToken(s.address) } label: {
-                HStack(spacing: 8) {
-                    StockLogo(symbol: s.symbol, url: s.logo, size: 20)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(s.symbol).font(.ui(12, .semibold)).lineLimit(1)
-                        Text("\(Fmt.num(s.amount, maxFraction: 6)) · \(s.price.map { Fmt.usd($0) } ?? "—")").font(.ui(9.5)).foregroundStyle(.secondary).lineLimit(1)
-                    }
-                    Spacer(minLength: 4)
-                    Text(Fmt.usd(s.usd)).font(.ui(12, .bold)).monospacedDigit()
+            HStack(spacing: 8) {
+                StockLogo(symbol: s.symbol, url: s.logo, size: 20)
+                VStack(alignment: .leading, spacing: 0) {
+                    Text(s.symbol).font(.ui(12, .semibold)).lineLimit(1)
+                    Text("\(Fmt.num(s.amount, maxFraction: 6)) · \(s.price.map { Fmt.usd($0) } ?? "—")").font(.ui(9.5)).foregroundStyle(.secondary).lineLimit(1)
                 }
-                .contentShape(Rectangle())
+                Spacer(minLength: 4)
+                Text(Fmt.usd(s.usd)).font(.ui(12, .bold)).monospacedDigit()
             }
-            .buttonStyle(.plain).pointerStyle(.link).help("\(s.symbol): chart and details")
+            .modifier(RowLink(action: { ws.openToken(s.address) }, help: "\(s.symbol): details and chart · right-click to ask the chat, buy or sell"))
+            .modifier(TokenMenu(chain: "robinhood", address: s.address, symbol: s.symbol, stock: TokenBoard.isStock(s.symbol), verified: true))
         }
     }
 }
 
-/// A place on a network's card: logo, name, what it does, the money; a deposit with a details board opens it.
+/// A row that opens something: the hand cursor and the accent edge a little off the row (the user's rule for anything
+/// clickable), then the click. Without an action it's just the row.
+struct RowLink: ViewModifier {
+    let action: (() -> Void)?
+    var help = ""
+
+    func body(content: Content) -> some View {
+        if let action {
+            content.padding(.horizontal, 5).padding(.vertical, 3)
+                .contentShape(Rectangle())
+                .modifier(HoverLift(radius: 8))
+                .onTapGesture(perform: action)
+                .help(help)
+                .padding(.horizontal, -5).padding(.vertical, -3)
+        } else {
+            content
+        }
+    }
+}
+
+/// A place on a network's card: logo, name, what it does, the money. A deposit with a details board opens it; a
+/// network's own coin (SOL, ETH, NEAR) opens its chart, and right-click asks the chat about it.
 struct NetworkLineRow: View {
+    @Environment(Workspace.self) private var ws
     let line: NetworkLine
+    let chain: String
 
     var body: some View {
         let row = HStack(spacing: 8) {
@@ -273,6 +295,9 @@ struct NetworkLineRow: View {
         // The accent edge a little off the row, so it doesn't touch the logo and the amount.
         if let place = line.place {
             row.padding(.horizontal, 5).padding(.vertical, 3).modifier(Openable(place: place)).padding(.horizontal, -5).padding(.vertical, -3)
+        } else if line.kind == .gas || line.kind == .held {
+            row.modifier(RowLink(action: ws.opener(chain: chain, contract: "native", symbol: line.title), help: "\(line.title): chart · right-click to ask the chat"))
+                .modifier(TokenMenu(chain: chain, address: nil, symbol: line.title))
         } else {
             row
         }

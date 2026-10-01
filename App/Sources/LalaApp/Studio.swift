@@ -1534,6 +1534,11 @@ struct HoldingRow: View {
         .opacity(shown ? 1 : 0.6)
         .contentShape(Rectangle())
         .onHover { hover = $0 }
+        // A click opens the token (its board, or the chart of a network's own coin); right-click asks the chat about it or trades it.
+        .modifier(RowLink(action: ws.opener(chain: token.chain, contract: token.contract, symbol: token.symbol),
+                          help: "\(token.symbol): details and chart · right-click to ask the chat, buy or sell"))
+        .modifier(TokenMenu(chain: token.chain, address: token.native || token.chain == "hyperliquid" ? nil : token.contract,
+                            symbol: token.symbol, verified: token.verified))
     }
 }
 
@@ -2325,7 +2330,7 @@ private struct ChatComposer: View {
             .popover(isPresented: $templatesOpen, arrowEdge: .top) {
                 TemplatesPanel { phrase in ws.draft = phrase; templatesOpen = false }
             }
-            TextField(ws.stepContext == nil ? "What should we do? / for blocks, @ for names" : "Ask about this step…", text: Bindable(ws).draft, axis: .vertical)
+            TextField(ws.stepContext == nil ? "What should we do? / for blocks, @ for names" : ws.stepContext?.about == nil ? "Ask about this step…" : "Ask about \(ws.stepContext?.title ?? "it")…", text: Bindable(ws).draft, axis: .vertical)
                 .textFieldStyle(.plain).font(.ui(14)).lineLimit(1...8)
                 // The caret in the brand's orange.
                 .tint(Brand.accent)

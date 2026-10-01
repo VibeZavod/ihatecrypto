@@ -1235,6 +1235,8 @@ struct StepDetails: View {
 struct StepContext: Equatable {
     let title: String
     let logo: String?
+    /// What the model is told the message is about: a token's facts (Workspace.askAbout); nil for a route step.
+    var about: String? = nil
 }
 
 /// The widest route on the canvas: the plan column widens for three cards in a row and stays 470 otherwise.
@@ -1255,13 +1257,13 @@ struct StepContextChip: View {
             Button { withAnimation(.snappy(duration: 0.2)) { ws.stepContext = nil } } label: {
                 Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).frame(width: 20, height: 20)
             }
-            .buttonStyle(.hoverIcon).help("Don't attach this step")
+            .buttonStyle(.hoverIcon).help(step.about == nil ? "Don't attach this step" : "Don't attach it")
         }
         .padding(.leading, 6).padding(.trailing, 3).padding(.vertical, 3)
         .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Brand.glassFill))
         .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Brand.glassRim))
         .transition(.opacity)
-        .help("Your next message is about this step; a move waiting for Confirm keeps waiting")
+        .help(step.about == nil ? "Your next message is about this step; a move waiting for Confirm keeps waiting" : "Your next message is about \(step.title)")
     }
 }
 

@@ -820,7 +820,7 @@ final class Workspace {
         // the same parsers, checks, Jev and confirmations as a typed command. The local parsers below read the message
         // as typed when no model is connected or it can't be reached.
         if let client {
-            await routeWithModel(step.map { "About the step «\($0.title)» of the route on the canvas: \(text)" } ?? text,
+            await routeWithModel(step.map { "\($0.about ?? "About the step «\($0.title)» of the route on the canvas"): \(text)" } ?? text,
                                  client: client, before: before, offered: offered, aboutStep: step != nil)
             return
         }
