@@ -2848,8 +2848,8 @@ struct TemplatesPanel: View {
 
     /// The start screen's block cards: a picture, its colour and one line on what the block does.
     static let looks: [String: (icon: String, light: UInt32, dark: UInt32, line: String)] = [
-        "Trade by the book": ("chart.line.uptrend.xyaxis", 0x0B7A55, 0x6FF0B4, "stop set, the risk rules on"),
-        "Short on a pullback": ("arrow.down.right", 0xB42318, 0xFF9C8F, "short oil on a 2% bounce"),
+        "Trade by the book": ("chart.line.uptrend.xyaxis", 0x0B7A55, 0x6FF0B4, "stop and risk rules on"),
+        "Short on a pullback": ("arrow.down.right", 0xB42318, 0xFF9C8F, "short oil on a bounce"),
         "Best rates": ("percent", 0x1D4ED8, 0x7FB2FF, "free USDC where it earns most"),
         "Where to keep it": ("building.columns", 0x4D7C0F, 0xC7F284, "the rates side by side"),
         "Every week": ("calendar", 0x6D28D9, 0xC9A4FF, "buy SOL for 2 USDC every week"),
