@@ -308,7 +308,7 @@ struct PlaceDetailBoard: View {
     private var title: String { ["solana": "Solana wallet", "hyperliquid": "Hyperliquid account", "jupiter": "Jupiter Lend", "kamino": "Kamino Lend", "near": "NEAR account", "aave": "Aave v3 · Base", "morpho": "Morpho · Base", "robinhood": "Robinhood Chain", "base": "Base", "arbitrum": "Arbitrum"][place] ?? place }
     private var subtitle: String {
         switch place {
-        case "solana": "USDC and SOL you hold; every move starts here"
+        case "solana": "everything you hold on Solana; every move starts here"
         case "hyperliquid": "margin for perps, stocks and commodities"
         case "jupiter": "lending vaults on Solana · withdraw any time"
         case "kamino": "lending on Solana · withdraw any time"
@@ -337,9 +337,7 @@ struct PlaceDetailBoard: View {
         switch place {
         case "solana":
             if isSolanaAddress(ws.solanaAddress) { addressRow(ws.solanaAddress) }
-            row("usdc", "USDC", ws.solana.map { Fmt.num($0.usdc) } ?? "—", "≈ \(ws.solana.map { Fmt.usd($0.usdc) } ?? "—")")
-            row("sol", "SOL", ws.solana.map { Fmt.num($0.sol, maxFraction: 4) } ?? "—",
-                ws.solana.flatMap { s in ws.markets["SOL"].map { "≈ \(Fmt.usd(s.sol * $0.markPx)) · fees need ≈ 0.02" } } ?? "")
+            networkRows(.solana)
         case "hyperliquid":
             if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }
             row("hype", "Account value", ws.hl.map { Fmt.usd($0.accountValue) } ?? "—", "free to withdraw \(ws.hl.map { Fmt.usd($0.withdrawable) } ?? "—")")
@@ -404,11 +402,52 @@ struct PlaceDetailBoard: View {
             }
         case "base", "arbitrum":
             if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }
-            row("usdc", "USDC", "\(ws.usdc(on: place).map { Fmt.num($0) } ?? "—")", "free · lend it or move it to Solana")
-            if place == "base" { row("eth", "ETH", "\(ws.base.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—")", "gas for moves on Base") }
+            if let n = ModuleNetwork(rawValue: place) { networkRows(n) }
         default:
             if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }
             row("aave", "Supplied", "\(ws.base.map { Fmt.num($0.aave) } ?? "—") USDC", ws.aaveAPY.map { "≈ \(Fmt.num($0.rounded(2, .plain)))% a year" } ?? "")
+        }
+    }
+
+    /// A network in detail, like Robinhood's stock tokens: the same places and tokens as its card on the portfolio
+    /// (idle money, gas, deposits, deposits made on a site, every token on show), a row each, a click opening its board.
+    @ViewBuilder private func networkRows(_ n: ModuleNetwork) -> some View {
+        ForEach(ws.networkLines(n)) { line in
+            detailRow(TokenLogo(name: line.logo, size: 24), title: line.title, detail: line.detail,
+                      value: line.usdc ? "\(Fmt.num(line.usd)) USDC" : line.amount ?? Fmt.usd(line.usd),
+                      sub: line.amount != nil && line.usd > 0 ? "≈ \(Fmt.usd(line.usd))" : nil,
+                      open: line.place.map { p in { withAnimation(StudioView.spring) { ws.detail = p } } })
+        }
+        ForEach(ws.shownTokens.filter { $0.chain == n.rawValue }) { t in
+            // An unverified token's icon URL is its creator's pick: not fetched (HoldingRow's rule).
+            detailRow(RemoteIcon(url: t.verified ? t.icon : nil, size: 24) {
+                          Circle().fill(Brand.solanaInk.opacity(0.15)).overlay(Text(t.symbol.prefix(1)).font(.ui(10, .bold)).foregroundStyle(Brand.solanaInk))
+                      }.frame(width: 24, height: 24).clipShape(Circle()),
+                      title: t.symbol + (t.verified ? "" : " · unverified"),
+                      detail: "\(Fmt.num(t.amount, maxFraction: 6)) · \(t.price.map { Fmt.usd($0) } ?? "no price")",
+                      value: t.usd.map(Fmt.usd) ?? "—", sub: nil,
+                      open: { ws.openToken(t.contract, chain: t.chain) })
+        }
+    }
+
+    private func detailRow(_ logo: some View, title: String, detail: String, value: String, sub: String?, open: (() -> Void)?) -> some View {
+        let row = HStack(spacing: 10) {
+            logo
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title).font(.ui(13, .semibold)).lineLimit(1)
+                Text(detail).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            VStack(alignment: .trailing, spacing: 1) {
+                Text(value).font(.ui(13, .bold)).monospacedDigit()
+                if let sub { Text(sub).font(.ui(10)).foregroundStyle(.secondary).monospacedDigit() }
+            }
+            if open != nil { Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary) }
+        }
+        .padding(9).background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
+        .contentShape(Rectangle())
+        return Group {
+            if let open { Button(action: open) { row }.buttonStyle(.plain).modifier(HoverLift(radius: 12)) } else { row }
         }
     }
 
