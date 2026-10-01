@@ -64,6 +64,24 @@ public enum Holdings {
         return out
     }
 
+    /// What the wallet paid for what it holds of one token on an EVM network (CostBasis.replay); nil off Blockscout's
+    /// networks or when it didn't answer. Any token standard: Robinhood's stock tokens are ERC-8056, not ERC-20.
+    // ponytail: the 50 newest transfers, one transaction at a time; an older history counts from there.
+    public static func costBasis(_ chain: String, address: String, contract: String) async -> CostBasis? {
+        guard let host = blockscout[chain],
+              let list = await retrying({ json(try await HTTP.get("https://\(host)/api/v2/addresses/\(address)/token-transfers?token=\(contract)", headers: browser)) as? [String: Any] }),
+              let items = list["items"] as? [[String: Any]] else { return nil }
+        var hashes: [String] = []
+        for item in items.reversed() { if let h = item["transaction_hash"] as? String, !hashes.contains(h) { hashes.append(h) } }
+        var transactions: [[[String: Any]]] = []
+        for h in hashes {
+            guard let tx = await retrying({ json(try await HTTP.get("https://\(host)/api/v2/transactions/\(h)/token-transfers", headers: browser)) as? [String: Any] }),
+                  let transfers = tx["items"] as? [[String: Any]] else { return nil }
+            transactions.append(transfers)
+        }
+        return CostBasis.replay(wallet: address, contract: contract, transactions: transactions)
+    }
+
     /// Tempo's dollars, read from its node (it has no Blockscout): USDC — what Relay brings and services charge — and
     /// pathUSD and USDT0, Tempo's other stablecoins. Tempo has no coin of its own. nil when the node didn't answer.
     /// With the icons Relay publishes for them (its /chains, 2026-09-30).

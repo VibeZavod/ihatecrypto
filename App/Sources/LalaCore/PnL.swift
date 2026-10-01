@@ -170,4 +170,30 @@ public struct CostBasis: Codable, Equatable, Sendable {
         let cost = usd * counted / amount
         return (counted * price - cost, (counted * price - cost) / cost * 100)
     }
+
+    /// Dollars, as far as a cost goes.
+    static let stablecoins: Set<String> = ["USDC", "USDG", "USDT", "USDT0", "USDC.E", "USDBC", "DAI", "PYUSD", "PATHUSD"]
+
+    /// What an EVM wallet paid for a token, from Blockscout's token transfers of each transaction that moved it, oldest
+    /// first: tokens in with stablecoins leaving the wallet in the same transaction were bought for them; tokens out
+    /// (sold or sent) take their share of the cost. Tokens in with no dollars out (a transfer, an airdrop, a cross-chain
+    /// order's fill) have no cost here.
+    public static func replay(wallet: String, contract: String, transactions: [[[String: Any]]]) -> CostBasis {
+        let me = wallet.lowercased(), token = contract.lowercased()
+        var basis = CostBasis()
+        for transfers in transactions {
+            var tokens: Decimal = 0, dollars: Decimal = 0
+            for t in transfers {
+                guard let info = t["token"] as? [String: Any], let raw = Holdings.number((t["total"] as? [String: Any])?["value"]),
+                      let decimals = Int(info["decimals"] as? String ?? "") else { continue }
+                let side = { (key: String) in ((t[key] as? [String: Any])?["hash"] as? String)?.lowercased() }
+                let sign: Decimal = side("to") == me ? 1 : side("from") == me ? -1 : 0
+                let amount = sign * raw / pow(10, decimals)
+                if (info["address_hash"] as? String)?.lowercased() == token { tokens += amount }
+                else if stablecoins.contains((info["symbol"] as? String ?? "").uppercased()) { dollars -= amount }
+            }
+            if tokens > 0 { basis.bought(tokens, for: dollars) } else if tokens < 0 { basis.sold(-tokens) }
+        }
+        return basis
+    }
 }

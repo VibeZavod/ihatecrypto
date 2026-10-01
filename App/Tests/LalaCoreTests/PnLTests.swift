@@ -83,3 +83,18 @@ private let funding = [PnL.Funding(time: ago(10.2), coin: "xyz:CL", usdc: Decima
     basis.sold(1000)
     #expect(basis.amount == 0 && basis.usd == 0 && basis.pnl(held: 5, price: 1) == nil)
 }
+
+// Blockscout's shape: SPCX bought for 20 USDG in one transaction, a third sold for 8, then 1 SPCX sent in by a friend.
+@Test func costBasisReplaysTheWalletsTransfers() {
+    let me = "0xC0CE", spcx = "0x4A0E", pool = "0xpool"
+    func t(_ token: String, _ symbol: String, _ value: String, from: String, to: String) -> [String: Any] {
+        ["token": ["address_hash": token, "symbol": symbol, "decimals": "6"], "total": ["value": value], "from": ["hash": from], "to": ["hash": to]]
+    }
+    let txs = [[t(spcx, "SPCX", "3000000", from: pool, to: me), t("0xusdg", "USDG", "20000000", from: me, to: pool)],
+               [t(spcx, "SPCX", "1000000", from: me, to: pool), t("0xusdg", "USDG", "8000000", from: pool, to: me)],
+               [t(spcx, "SPCX", "1000000", from: "0xfriend", to: me)]]
+    let basis = CostBasis.replay(wallet: me.lowercased(), contract: spcx.lowercased(), transactions: txs)
+    #expect(basis.amount == 2)                                         // the gift has no cost
+    #expect(basis.usd == Decimal(20) * 2 / 3)                          // the sale took a third of the cost
+    #expect(basis.pnl(held: 3, price: 10)?.usd == 20 - Decimal(20) * 2 / 3)   // P/L only on the 2 with a cost
+}
