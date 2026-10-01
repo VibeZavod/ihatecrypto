@@ -102,6 +102,8 @@ if prompt == "--route" {
                     intent = try? await ChatModel.edit(base, message: m, client: client, model: model, history: context.recent, replyLanguage: context.replyLanguage).0?.started
                 case .chat(let r): out["route"] = "chat"; out["reply"] = r
                 case .clarify(let r): out["route"] = "clarify"; out["reply"] = r
+                case .confirm: out["route"] = "confirm"
+                case .cancel: out["route"] = "cancel"
                 case .question: out["route"] = "question"
                 }
                 if let intent, let data = try? JSONEncoder().encode(intent) { out["intent"] = try? JSONSerialization.jsonObject(with: data) }

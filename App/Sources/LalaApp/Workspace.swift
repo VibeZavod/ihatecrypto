@@ -974,7 +974,20 @@ final class Workspace {
                       "Я понял это как «\(c)», но вторая проверка не согласна: \(doubt) Я ничего не запускал. Если ты это и имел в виду — выбери карточку, иначе скажи по-другому."), note: note)
             return
         }
+        // The model read an approval, but the second reading isn't sure: nothing is signed, the card keeps waiting.
+        if reading?.route == .confirm, let doubt = reading?.doubt {
+            reply(say("That reads like a yes, but the second check isn't sure: \(doubt) Nothing was signed. Press Confirm on the card if you meant it.",
+                      "Похоже на «да», но вторая проверка не уверена: \(doubt) Я ничего не подписывал. Если ты это и имел в виду — нажми Confirm на карточке."), note: note)
+            return
+        }
         switch reading?.route {
+        case .confirm?: await confirmWaiting(note: note)
+        case .cancel?:
+            let waited = pendingAction != nil || pendingAllocation != nil
+            dropWaiting()
+            withAnimation(StudioView.spring) { allocationPreview = nil; rebalancePlan = nil }
+            reply(waited ? say("Cancelled — nothing moved.", "Отменено — ничего не ушло.", "Cancelado: no se movió nada.")
+                         : say("OK — nothing was waiting, nothing moved.", "Хорошо — ничего не ждало подтверждения, ничего не ушло."), note: note)
         case nil where unreadable:
             reply(say("\(model) answered, but not in a form ihatecrypto can read, so nothing ran. Say it another way, or pick another model above.",
                       "\(model) ответил, но не в том виде, который ihatecrypto может прочитать, поэтому ничего не запускал. Скажи иначе или выбери другую модель сверху."), note: model)
@@ -1005,6 +1018,28 @@ final class Workspace {
                 reply(say("I read that as “\(canonical)”, but ihatecrypto can’t do that yet — nothing moved. Tell me another way, or ask what ihatecrypto can do.",
                           "Я понял это как «\(canonical)», но ihatecrypto пока так не умеет — ничего не ушло. Скажи иначе или спроси, что ihatecrypto умеет."), note: model)
             }
+        }
+    }
+
+    /// The card waiting for Confirm, carried out because the model read the message as approving it — the same path as
+    /// a typed «да». Never from the debug API (it can't confirm money moves), and nothing when no card waits.
+    private func confirmWaiting(note: String) async {
+        guard pendingAction != nil || pendingAllocation != nil else {
+            reply(say("Nothing is waiting for a confirmation right now.", "Сейчас нечего подтверждать."), note: note)
+            return
+        }
+        if SignerClient.untrusted, activeWallet?.isTest != true {
+            reply(say("That «yes» came from the debug API, which can’t confirm money moves. In the window, press Confirm on the card or say it yourself.",
+                      "Это «да» пришло из отладочного API, а он не подтверждает переводы. В окне нажми Confirm на карточке или скажи сам."), note: "debug API · \(note)")
+            return
+        }
+        if let pending = pendingAllocation {
+            pendingAllocation = nil
+            await move(pending, confirmed: true)
+        } else if let pending = pendingAction {
+            pendingAction = nil
+            pendingText = nil
+            await carryOut(pending)
         }
     }
 

@@ -14,6 +14,11 @@ public enum ChatRouter {
         case plan
         case chat(String)
         case clarify(String)
+        /// The message approves the card waiting for Confirm as it is, however it's worded: the model's reading, checked
+        /// by the second reader before anything is signed (the signer still asks Touch ID).
+        case confirm
+        /// The message drops the waiting card and asks for nothing else.
+        case cancel
     }
 
     /// One read-only lookup the model asked for: «token B5AN…», «portfolio».
@@ -244,8 +249,12 @@ public enum ChatRouter {
     (web and news, $0.006 / $0.035), Grok x-search (posts on X). Look them up with services, then offer them as cards with their \
     prices; nothing is paid without their Confirm. Never say you have no data about something before looking it up.
 
-    When you know enough, the final answer: {"route": "command" | "plan" | "chat" | "clarify", "command": "...", \
+    When you know enough, the final answer: {"route": "command" | "plan" | "chat" | "clarify" | "confirm" | "cancel", "command": "...", \
     "reply": "...", "show": "...", "options": [...]}
+    - "confirm": a card waits for Confirm and this message approves it exactly as it is, however it's worded («звучит норм, \
+      запускай», «ну всё, погнали тогда», «lgtm, ship it») — nothing changed, nothing asked, no doubt left in it. ihatecrypto then \
+      signs that card; the signer still asks for Touch ID. Never when no card waits, or when they also change or ask something.
+    - "cancel": a card waits and they drop it without asking for anything else («не, забей, ничего не надо»).
     - "command": they want ihatecrypto to do something it can do. "command" is ONE line in exactly one of these English forms:
     \(forms)
       Pick the form that means exactly what they asked: the same action, the same direction, the same place. Never swap in a \
@@ -253,13 +262,16 @@ public enum ChatRouter {
       Resolve references from the chat: «да», «давай», «do it», «ok» after your own suggestion or question is that suggestion \
       (after cards you offered, the recommended one; «второй», «the first one» by their order); «то же для ETH», \
       «а теперь половину», «покажи его чарт» build on the last request.
-      A card «waiting for Confirm» on the canvas is what «это», «маршрут», «план» mean. A question about it — is it the best \
-      route, what it costs, why this vault and not another — is "chat" answered from its numbers (look up what it lacks, e.g. \
-      rates), and the card keeps waiting; don't send its command again. A change to it is its command again with the change \
-      applied to the WHOLE of it: «добавь ещё 300» to a waiting «spread 500 USDC» = spread 800 USDC across the best rates; \
-      «не больше 40% в один» = the same spread with max 40% per protocol; «а без kamino?» = the same spread without kamino (keep its \
-      limit); «лучше 150», «давай на 150», «сделай 150» to «move 100 USDC …» = move 150 USDC … — a new number replaces the \
-      card's amount, one card, never a second step; it adds only with «ещё», «добавь», «плюс».
+      A card «waiting for Confirm» on the canvas is what the conversation is about until they move on («это», «маршрут», «план» \
+      mean it). Don't match words; think about what this person wants the canvas to hold after their message, the way someone \
+      sitting next to them would understand it, from the whole conversation: (1) that card signed as it is → "confirm"; (2) no \
+      card → "cancel"; (3) that card changed → its command again, the whole new version as ONE card (never the old one plus a \
+      second step); (4) something about it answered — is it the best route, what it costs, why this vault — → "chat" from its \
+      numbers (look up what they lack), and the card keeps waiting; (5) something else → that, and it replaces the card. \
+      For a change, work out the end state they mean: is a number the card's new size or more on top of it, what stays and what \
+      goes. E.g. spread 500 waiting, «добавь ещё 300» → spread 800; move 100 waiting, «давай на 150» → move 150; «а без kamino?» → \
+      the same spread without kamino, its limit kept. When a sensible person could honestly read it two ways and the money \
+      differs, "clarify" with each reading as a card.
       Keep numbers, tickers, prices and percentages as meant; never invent an amount: leave it out and ihatecrypto asks for it.
       A token they name by symbol that is among their favorites is written with that favorite's contract. Any other address \
       must be one they wrote (repaired by the token lookup is fine) — never one you remember or made up. «$2», «2 бакса», \
@@ -286,6 +298,9 @@ public enum ChatRouter {
       and the app's own commands (new canvas, clear the plan, lock) never are. Don't offer what "show" already opens: go one step further \
       (another range, an alert at a level that matters, watching it, a safer alternative, a way to earn instead).
     """
+
+    /// What the second reader is given for a «confirm»: the waiting card itself is in the context.
+    static let confirmCheck = "confirm: sign the card waiting for Confirm exactly as it is"
 
     /// Reads the message, looking things up with `lookup` as the model asks (at most `rounds` times), until its answer.
     /// With `markets`, a command no parser reads goes back to the model with what's wrong, so it answers with forms that
@@ -337,7 +352,13 @@ public enum ChatRouter {
                                                + "can't do, with the closest ways it can as options."))
                     continue
                 }
-                if let check, case .command(let c) = reading.route, let why = await check(c) {
+                // A «confirm» signs money: the second reader checks it like a command.
+                let checked: String? = switch reading.route {
+                case .command(let c): c
+                case .confirm: Self.confirmCheck
+                default: nil
+                }
+                if let check, let c = checked, let why = await check(c) {
                     if corrected == nil, round < rounds {
                         corrected = why
                         messages.append(LLMMessage(.assistant, reply))
@@ -409,6 +430,8 @@ public enum ChatRouter {
         \(places)
         The forms and what they mean:
         \(forms)
+        «\(confirmCheck)» means signing the card on the canvas that waits for Confirm, unchanged: right only when the message \
+        approves that card as it is, with no change asked, no question open and no hesitation.
         Check it like a careful second reader: the same action, direction, place and asset as asked; each number the user \
         gave kept, in the same role (money put into a trade «N USDC» vs the loss at the stop «risk $N»; percent vs dollars; \
         a price vs a percent); nothing they didn't ask for. Read a typo as the word it most likely is in a wallet \
@@ -618,6 +641,8 @@ public enum ChatRouter {
         case "plan": return .plan
         case "chat" where !reply.isEmpty: return .chat(reply)
         case "clarify" where !reply.isEmpty: return .clarify(reply)
+        case "confirm": return .confirm
+        case "cancel": return .cancel
         default: throw LLMError("The model's route makes no sense: \(a.route)")
         }
     }
