@@ -112,7 +112,15 @@ extension Executor {
         var band = listing?.priceUSD.map { (bid: $0, ask: $0) }
         if listing == nil { band = try await RobinhoodStocks.quote(symbol) }
         if let q = band, price > q.ask * Decimal(string: "1.05")! || price < q.bid * Decimal(string: "0.95")! {
-            throw ExecutionError("Uniswap's price \(Fmt.usd(price)) is outside \(listing == nil ? "Robinhood's own" : "DexScreener's") \(Fmt.usd(q.bid))–\(Fmt.usd(q.ask)). Nothing was signed.")
+            // A thin v3 pool for this much moves the price (AI: $0.22 a token for 300 USDG against DexScreener's $0.16; its
+            // depth is a v4 pool against NVDA, where Relay gave $0.1595): Relay's swap routes through the deep pools, with
+            // its own checks (within 5% of DexScreener's price, at most 3% lost).
+            // ponytail: Relay only when v3 is off the market; quote both and take the better if a few % ever matters.
+            if let listing {
+                report("Uniswap v3 would pay \(Fmt.usd(price)) a token for this much, DexScreener says \(Fmt.usd(q.bid)): its pool is thin. Relay's swap goes through the deeper pools.")
+                return try await relaySwap(token, buy: true, units: Decimal(units), listing: listing)
+            }
+            throw ExecutionError("Uniswap's price \(Fmt.usd(price)) is outside Robinhood's own \(Fmt.usd(q.bid))–\(Fmt.usd(q.ask)). Nothing was signed.")
         }
         report("\(token.name) (\(symbol)): ≈ \(Fmt.usd(price)) a token on Uniswap (pool fee \(Fmt.num(Decimal(pool.fee) / 10_000))%).")
         try await ensureEVM(.robinhood, usdc: units)
@@ -251,6 +259,18 @@ extension Executor {
             // Bought through Relay (no Uniswap v3 pool: MOO, SHROOM on v4) is sold back through Relay too.
             guard let listing else { throw ExecutionError(noPool(symbol, listing)) }
             return try await relaySwap(token, buy: false, units: wanted, listing: listing)
+        }
+        // The same check as a buy: a thin v3 pool would pay far under the market for this much (it had none: selling
+        // 1,880 AI there would have lost about a third); then Relay's swap, through the deep pools, or nothing.
+        let got = (pool.out / 1_000_000) / (wanted / scale)
+        var band = listing?.priceUSD.map { (bid: $0, ask: $0) }
+        if listing == nil { band = try await RobinhoodStocks.quote(symbol) }
+        if let q = band, got < q.bid * Decimal(string: "0.95")! {
+            if let listing {
+                report("Uniswap v3 would pay \(Fmt.usd(got)) a token for this much, DexScreener says \(Fmt.usd(q.bid)): its pool is thin. Relay's swap goes through the deeper pools.")
+                return try await relaySwap(token, buy: false, units: wanted, listing: listing)
+            }
+            throw ExecutionError("Uniswap would pay \(Fmt.usd(got)) a token, more than 5% under Robinhood's own bid \(Fmt.usd(q.bid)). Nothing was signed.")
         }
         try await ensureEVM(.robinhood, usdc: 0)
         try await approve(rpc, token: token.address, spender: UniswapV3.robinhoodRouter, units: wanted, note: "Approve exactly \(Fmt.num(wanted / scale, maxFraction: 6)) \(symbol) to Uniswap")
