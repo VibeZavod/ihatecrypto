@@ -560,13 +560,16 @@ struct FolderRow: View {
     }
 
     @ViewBuilder private var actions: some View {
-        Button { withAnimation(StudioView.spring) { ws.newCanvas(in: name) } } label: {
-            Label("New canvas here", systemImage: "square.and.pencil")
+        Group {
+            Button { withAnimation(StudioView.spring) { ws.newCanvas(in: name) } } label: {
+                Label("New canvas here", systemImage: "square.and.pencil")
+            }
+            .disabled(ws.busy)
+            Button { draft = name; renaming = true } label: { Label("Rename", systemImage: "pencil") }
+            Divider()
+            Button(role: .destructive) { withAnimation(.snappy) { ws.deleteFolder(name) } } label: { Label("Delete folder (canvases stay)", systemImage: "trash") }
         }
-        .disabled(ws.busy)
-        Button("Rename") { draft = name; renaming = true }
-        Divider()
-        Button("Delete folder (canvases stay)", role: .destructive) { withAnimation(.snappy) { ws.deleteFolder(name) } }
+        .labelStyle(.titleAndIcon)
     }
 }
 
@@ -675,7 +678,12 @@ struct CanvasRow: View {
         .contentShape(Rectangle())
     }
 
-    @ViewBuilder private var actions: some View {
+    // Each action with its icon, as in Finder's menus.
+    private var actions: some View {
+        Group { actionItems }.labelStyle(.titleAndIcon)
+    }
+
+    @ViewBuilder private var actionItems: some View {
         if canvas.pinnedAt != nil {
             Button { withAnimation(.snappy) { ws.pinCanvas(canvas.id, false) } } label: { Label("Unpin", systemImage: "pin.slash") }
         } else {
@@ -686,25 +694,25 @@ struct CanvasRow: View {
             .disabled(full)
         }
         Divider()
-        Button("Rename") {
+        Button {
             draft = canvas.displayTitle
             renaming = true
             DispatchQueue.main.async { nameFocused = true }
-        }
-        Button("Change icon…") { picking = true }
-        Menu("Move to folder") {
+        } label: { Label("Rename", systemImage: "pencil") }
+        Button { picking = true } label: { Label("Change icon…", systemImage: "face.smiling") }
+        Menu {
             let others = ws.canvasFolders.filter { $0 != canvas.folder }
             ForEach(others, id: \.self) { f in
-                Button(f) { withAnimation(.snappy) { ws.moveCanvas(canvas.id, to: f) } }
+                Button { withAnimation(.snappy) { ws.moveCanvas(canvas.id, to: f) } } label: { Label(f, systemImage: "folder") }
             }
             if !others.isEmpty { Divider() }
-            Button("New folder…") { folderName = ""; newFolder = true }
+            Button { folderName = ""; newFolder = true } label: { Label("New folder…", systemImage: "folder.badge.plus") }
             if let current = canvas.folder {
-                Button("Remove from “\(current)”") { withAnimation(.snappy) { ws.moveCanvas(canvas.id, to: nil) } }
+                Button { withAnimation(.snappy) { ws.moveCanvas(canvas.id, to: nil) } } label: { Label("Remove from “\(current)”", systemImage: "folder.badge.minus") }
             }
-        }
+        } label: { Label("Move to folder", systemImage: "folder") }
         Divider()
-        Button("Delete canvas", role: .destructive) { withAnimation { ws.deleteCanvas(canvas.id) } }
+        Button(role: .destructive) { withAnimation { ws.deleteCanvas(canvas.id) } } label: { Label("Delete canvas", systemImage: "trash") }
     }
 
     private func commitRename() {
