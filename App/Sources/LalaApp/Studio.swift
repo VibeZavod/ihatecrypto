@@ -694,7 +694,9 @@ struct Skeleton: View {
             }
             .clipShape(RoundedRectangle(cornerRadius: radius))
             .frame(width: width, height: height)
-            .onAppear { withAnimation(.linear(duration: 1.3).repeatForever(autoreverses: false)) { sweep = true } }
+            // Scoped, never withAnimation: a repeating transaction takes other views' transitions along and never ends them.
+            .animation(.linear(duration: 1.3).repeatForever(autoreverses: false), value: sweep)
+            .onAppear { sweep = true }
             .accessibilityLabel("Loading")
     }
 }

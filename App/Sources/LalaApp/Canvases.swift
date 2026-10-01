@@ -501,15 +501,13 @@ struct PulsingEdge: ViewModifier {
 
     func body(content: Content) -> some View {
         content
+            // The repeating animation is scoped to this border: started with withAnimation as the row lit up, it took
+            // along whatever else changed in that update — the canvas's old board, leaving on Confirm, stayed on
+            // screen under the running one for as long as the row breathed («опять видно два канваса»).
             .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Brand.accent.opacity(active ? (lit ? 0.8 : 0.2) : 0), lineWidth: 1.5))
-            .onChange(of: active, initial: true) {
-                lit = false
-                guard active else { return }
-                if reduceMotion { lit = true } else {
-                    withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) { lit = true }
-                }
-            }
+                .strokeBorder(Brand.accent.opacity(active ? (lit ? 0.8 : 0.2) : 0), lineWidth: 1.5)
+                .animation(active && !reduceMotion ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true) : nil, value: lit))
+            .onChange(of: active, initial: true) { lit = active }
     }
 }
 
@@ -800,7 +798,9 @@ struct SavedBoard: View {
                 }
             }
         }
-        .transition(.opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)))
+        // It leaves at once: the board taking its place (the running one) is already drawn, and a removal caught in
+        // someone's repeating animation would keep both on screen.
+        .transition(.asymmetric(insertion: .opacity.combined(with: .scale(scale: 0.96, anchor: .topLeading)), removal: .identity))
     }
 }
 
