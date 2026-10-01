@@ -585,22 +585,33 @@ struct ApprovalSheet: View {
     @State private var acknowledgeJev = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Text(heading).font(.ui(20, .semibold))
-            Text(request.origin).font(.system(.body, design: .monospaced))
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 14) {
+                Text(host.prefix(1).uppercased()).font(.ui(22, .heavy))
+                    .frame(width: 48, height: 48)
+                    .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.fill.tertiary))
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(heading.uppercased()).font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
+                    Text(host).font(.ui(20, .heavy)).lineLimit(1).truncationMode(.middle)
+                    // The whole origin too: a phishing copy differs in what the big line leaves out.
+                    Text(request.origin).font(.system(size: 11, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
+                }
+            }
             switch request.site {
-            case .known: Label("Known site", systemImage: "checkmark.seal").foregroundStyle(.green)
+            case .known: banner("Known site", "checkmark.seal.fill", ink: Brand.profit, tint: Brand.profit.opacity(0.1))
             case .lookalike(let real):
-                Label("The address looks like \(real), but it's a different site — a common phishing trick.", systemImage: "exclamationmark.octagon.fill").foregroundStyle(.red)
+                banner("The address looks like \(real), but it's a different site — a common phishing trick.", "exclamationmark.octagon.fill",
+                       ink: Brand.blockedInk, tint: Brand.blockedTint)
                 Toggle("I understand this isn't \(real)", isOn: $trustLookalike)
-            case .unknown: Label("Unfamiliar site: make sure the address is right.", systemImage: "questionmark.circle").foregroundStyle(.orange)
+            case .unknown: banner("Unfamiliar site: make sure the address is right.", "questionmark.circle.fill", ink: Brand.jevInk, tint: Brand.jevTint)
             case .local: EmptyView()
             }
             switch request.kind {
             case .connect:
-                Text("The site will see your Solana address. It can't get anything signed without a separate confirmation.")
+                grants([("eye", "Sees your Solana address"), ("lock.shield", "Can't get anything signed without a separate confirmation")])
             case .connectEVM:
-                Text("The site will see your EVM address (also your Hyperliquid address). ihatecrypto never signs token spending permissions (Permit).")
+                grants([("eye", "Sees your EVM address, which is also your Hyperliquid address"),
+                        ("hand.raised", "ihatecrypto never signs token spending permissions (Permit)")])
             case .evmTransaction(let r):
                 Text("Network \(["1": "Ethereum", "42161": "Arbitrum", "8453": "Base"]["\(r.chain)"] ?? "\(r.chain)")").font(.ui(12, .semibold))
                 section("What it does") { ForEach(r.lines, id: \.self) { Text("· " + $0) } }
@@ -648,17 +659,54 @@ struct ApprovalSheet: View {
                 }
                 Text(send ? "After signing, ihatecrypto sends the transaction to the network." : "The site gets the signed transaction and sends it itself.").font(.ui(10)).foregroundStyle(.secondary)
             }
-            Spacer(minLength: 0)
-            HStack {
+            HStack(spacing: 10) {
                 Spacer()
-                Button("Decline") { decide(false) }.keyboardShortcut(.cancelAction)
-                Button(approveTitle) { decide(true) }.keyboardShortcut(.defaultAction).disabled(!canApprove)
+                Button { decide(false) } label: { pill("Decline", ink: .primary, fill: Color.primary.opacity(0.07)) }
+                    .keyboardShortcut(.cancelAction)
+                Button { decide(true) } label: { pill(approveTitle, ink: Brand.onAccent, fill: Brand.accent) }
+                    .keyboardShortcut(.defaultAction).disabled(!canApprove).opacity(canApprove ? 1 : 0.4)
             }
+            .buttonStyle(.plain).pointerStyle(.link)
+            .padding(.top, 4)
         }
         .font(.ui(13))
         .padding(24)
-        .frame(width: 560)
-        .frame(minHeight: 320)
+        .frame(width: 520)
+    }
+
+    /// The domain without «www.», the part a phishing copy changes.
+    private var host: String {
+        let host = URL(string: request.origin)?.host ?? request.origin
+        return host.hasPrefix("www.") ? String(host.dropFirst(4)) : host
+    }
+
+    private func banner(_ text: String, _ symbol: String, ink: Color, tint: Color) -> some View {
+        Label(text, systemImage: symbol).font(.ui(12, .semibold)).foregroundStyle(ink)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 12).padding(.vertical, 10)
+            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(tint))
+    }
+
+    /// What connecting gives the site, one row each.
+    private func grants(_ rows: [(symbol: String, text: String)]) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            ForEach(rows.indices, id: \.self) { i in
+                if i > 0 { Divider().padding(.leading, 44) }
+                HStack(spacing: 12) {
+                    Image(systemName: rows[i].symbol).font(.system(size: 14, weight: .semibold)).foregroundStyle(.secondary).frame(width: 20)
+                    Text(rows[i].text).fixedSize(horizontal: false, vertical: true)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 11)
+            }
+        }
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Brand.cardBorder))
+    }
+
+    private func pill(_ title: String, ink: Color, fill: Color) -> some View {
+        Text(title).font(.ui(13, .semibold)).foregroundStyle(ink)
+            .padding(.horizontal, 20).padding(.vertical, 9)
+            .background(Capsule().fill(fill))
+            .contentShape(Capsule())
     }
 
     private var heading: String {
