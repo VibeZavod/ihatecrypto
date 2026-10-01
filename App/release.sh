@@ -6,9 +6,10 @@
 # Needs, once on this Mac:
 #   - the «Developer ID Application» certificate of team N78L833HCS in the login Keychain (Xcode › Settings › Accounts);
 #   - a notarytool profile: xcrun notarytool store-credentials notary --apple-id … --team-id N78L833HCS
-#   - Sparkle's private key in the login Keychain (Sparkle's generate_keys made it; its public half is in
-#     Xcode/LALA-Info.plist). Losing it means copies out there can't take updates anymore: back it up with
-#     `generate_keys -x sparkle-key.txt` and keep that file off the repo.
+#   - Sparkle's private key, in the login Keychain only (generate_keys made it; its public half is in
+#     Xcode/LALA-Info.plist). Never export it to a file. If it's lost, it can be replaced: releases carry the team's
+#     Developer ID signature, and Sparkle takes an update that changes the EdDSA key as long as that signature stays the
+#     team's — a new key (generate_keys) and its SUPublicEDKey in the next release. Never change both at once.
 # Team and bundle id stay N78L833HCS / app.lala.mac, or the signer loses its Keychain items.
 # The build number is the commit count, so every release is newer than the last. Built from the working tree:
 # commit first, the script refuses uncommitted changes to Sources.
