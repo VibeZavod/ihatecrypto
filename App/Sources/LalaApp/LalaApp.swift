@@ -169,7 +169,12 @@ struct LalaApp: App {
             popover.performClose(sender)
         } else {
             popover.show(relativeTo: sender.bounds, of: sender, preferredEdge: .minY)
-            popover.contentViewController?.view.window?.makeKey()
+            // An app in full screen (a browser) is a Space of its own: the popover opened on ihatecrypto's Space,
+            // unseen, until it may join full-screen Spaces and is ordered in again.
+            guard let window = popover.contentViewController?.view.window else { return }
+            window.collectionBehavior.insert(.fullScreenAuxiliary)
+            window.orderFrontRegardless()
+            window.makeKey()
         }
     }
 
