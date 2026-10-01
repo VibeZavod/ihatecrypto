@@ -1292,7 +1292,7 @@ extension Workspace {
             let brought = Self.spends(c).map(arrived.contains) ?? false
             switch c {
             // Spread and rebalance have no route of their own: their split is planned when the money before them has landed.
-            case .allocate(let asset, let share, let amount, _):
+            case .allocate(let asset, let share, let amount, _, _):
                 return [ActivityBubble(kind: "step", label: "INTO · BEST RATES", title: amount.map { "\(Fmt.num($0)) \(asset)" } ?? "all free \(asset)",
                                        lines: ["split\twhen the money lands", "max per place\t\(Fmt.pct(share ?? 50))"], status: "then", logo: "usdc", fill: .jupiter)]
             case .rebalance(let share):
@@ -1319,7 +1319,7 @@ extension Workspace {
     static func spends(_ c: WalletCommand) -> String? {
         switch c {
         case .aave(true, _, let n), .morpho(true, _, let n), .buyOn(let n, _, _, _): n
-        case .lendDeposit, .kamino(true, _, _), .buy, .hlp(true, _): "solana"
+        case .lendDeposit, .kamino(true, _, _), .buy, .hlp(true, _), .allocate(_, _, _, _, from: "solana"): "solana"
         case .buyStock: "robinhood"
         default: nil
         }

@@ -1077,6 +1077,9 @@ struct StudioCanvas: View {
                     // Top right: a live plan's Cancel and Confirm; a board shown as it was (its move gone stale) only Refresh.
                     if hasRoute, !ws.managesPosition {
                         PlanButtons()
+                    } else if ws.allocationPreview != nil, ws.pendingAllocation != nil {
+                        // A spread waiting to be signed: its Confirm on the canvas too, not only under the chat.
+                        PendingButtons()
                     } else if !hasRoute, let b = board, b.outcome == nil, let request = b.messages.last(where: \.fromUser)?.text {
                         Button { Task { await ws.send(request) } } label: {
                             Label("Refresh", systemImage: "arrow.clockwise").font(.ui(13, .semibold)).padding(.horizontal, 6)

@@ -206,7 +206,8 @@ extension Workspace {
     /// The USDC a step spends on Solana: what it waits for when a move before it brings the money.
     static func solanaUSDC(_ c: WalletCommand) -> Decimal? {
         switch c {
-        case .lendDeposit("USDC", let a), .kamino(deposit: true, symbol: "USDC", amount: let a), .hlp(deposit: true, amount: let a), .buy(_, usdc: let a): a
+        case .lendDeposit("USDC", let a), .kamino(deposit: true, symbol: "USDC", amount: let a), .hlp(deposit: true, amount: let a), .buy(_, usdc: let a),
+             .allocate("USDC", maxShare: _, amount: let a, without: _, from: "solana"): a
         default: nil
         }
     }

@@ -454,15 +454,18 @@ extension Executor {
     /// deposited, and with `execute` carries the slices out one by one through the same checked paths.
     /// USDC is counted in dollars, SOL in SOL; SOL keeps 0.02 for fees and account rent.
     /// Returns the text and whether there is anything to confirm.
-    public func allocate(_ symbol: String, maxShare: Decimal = 50, limit: Decimal? = nil, without: [String] = [], execute: Bool) async throws -> (text: String, ready: Bool, preview: AllocationPreview) {
+    /// `from`: only that network's free money ("solana", "base"…), what a slice elsewhere needs bridged from it.
+    public func allocate(_ symbol: String, maxShare: Decimal = 50, limit: Decimal? = nil, without: [String] = [], from: String? = nil,
+                         execute: Bool) async throws -> (text: String, ready: Bool, preview: AllocationPreview) {
         let isSOL = symbol.uppercased() == "SOL"
         let asset = isSOL ? "SOL" : "USDC"
-        let onSolana: Decimal = isSOL
+        // «закинь 5 долларов из бейз в лучшие волты» took 1.69 from Solana and 3.41 from Base: with `from` the rest stays put.
+        let onSolana: Decimal = from != nil && from != "solana" && !isSOL ? 0 : isSOL
             ? max(0, Decimal(try await rpc.balance(wallet.solana)) / 1_000_000_000 - Decimal(string: "0.02")!)
             : Decimal(try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
         // USDC idle on the EVM networks is free too: a slice there takes it where it is, and what Solana's slices lack
         // comes over from them (below). Before, «spread USDC» saw only Solana's and left 2,960 idle on Base out.
-        let idle = isSOL ? [] : await idleUSDC()
+        let idle = isSOL || from == "solana" ? [] : await idleUSDC().filter { from == nil || $0.net.key == from }
         let held = onSolana + idle.reduce(0) { $0 + $1.usdc }
         // «spread 2 USDC»: at most that much of what is free.
         let free = limit.map { min(held, $0) } ?? held

@@ -118,7 +118,8 @@ public enum WalletCommand: Equatable, Sendable {
     /// «Разложи USDC по лучшим ставкам»: the asset and the most one protocol may hold, % (nil = 50).
     /// `amount`: spread at most this much of it (nil = all that is free).
     /// `without`: protocols left out, as asked («без kamino»): keys of `spreadProtocols`.
-    case allocate(String, maxShare: Decimal?, amount: Decimal? = nil, without: [String] = [])
+    /// `from`: only this network's free money («с Base»: "base", or "solana"); nil = free money anywhere.
+    case allocate(String, maxShare: Decimal?, amount: Decimal? = nil, without: [String] = [], from: String? = nil)
     /// «Переложи в лучшие ставки»: USDC already deposited moves to better rates, at most this % per protocol (nil = 50),
     /// only where the extra interest pays the move back within 30 days.
     case rebalance(maxShare: Decimal?)
@@ -224,11 +225,19 @@ public enum WalletCommand: Equatable, Sendable {
         }
         if q.contains(/разлож|распредел|раскид|размест|spread|allocate|distribute|split/), q.contains(/ставк|доходн|протокол|лучш|хранилищ|rates?|yields?|protocols?|best|vaults?/) {
             let share = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*%/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
-            let isSOL = q.contains(/\bsol\b|солан|\bсол\b/)
+            // «spread 5 USDC from base», «разложи 1000 с базы»: only that network's money.
+            let source = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(solana|солан\w*|base|бейс\w*|бейз\w*|баз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфир\w*|mainnet|robinhood|робинхуд\w*|tempo|темпо\w*)/)
+            let from = source.map { m -> String in
+                let w = String(m.1)
+                return w.hasPrefix("sol") || w.hasPrefix("сол") ? "solana" : w.hasPrefix("баз") ? "base" : Self.network(w) ?? w
+            }
+            // «from solana» names the network, not the coin; «USDC» named wins.
+            let rest = source.map { q.replacingCharacters(in: $0.range, with: " ") } ?? q
+            let isSOL = !rest.contains(/usdc|юсдс|юсдц/) && rest.contains(/\bsol\b|солан|\bсол\b/)
             // «… without kamino, aave», «без камино»: the protocols named after the word are left out.
             let tail = q.firstMatch(of: /(?:\bwithout\b|\bexcept\b|\bбез\b|\bкроме\b)(.*)/).map { String($0.1) } ?? ""
             let without = Self.spreadProtocols.filter { p in (try? Regex(p.words)).map { tail.contains($0) } ?? false }.map(\.key)
-            return .allocate(isSOL ? "SOL" : "USDC", maxShare: share, amount: isSOL ? coins : amount ?? coins, without: without)
+            return .allocate(isSOL ? "SOL" : "USDC", maxShare: share, amount: isSOL ? coins : amount ?? coins, without: without, from: isSOL ? nil : from)
         }
         if q.contains(/доходност|где\s+(?:лучше\s+)?держать|куда\s+(?:лучше\s+)?(?:положить|вложить|деть)|\bapy\b|ставк[иа]\s+(?:по\s+)?депозит|where\s+(?:to|should\s+i|can\s+i)\s+(?:keep|put|park|hold)|best\s+(?:rates?|yields?)|\byields?\b/) {
             let sol = q.contains(/\bsol\b|солан|\bсол\b|solana/), usd = q.contains(/usdc|стейбл|доллар|stable/)
@@ -527,8 +536,9 @@ extension WalletCommand {
         case .unstake(let x): return "unstake \(n(x)) JitoSOL"
         case .yields(let a): return "rates for \(a ?? "USDC and SOL")"
         case .hlp(let d, let x): return d ? "deposit \(n(x)) USDC into HLP" : "withdraw \(n(x)) USDC from HLP"
-        case .allocate(let s, let share, let x, let without):
-            return "spread \(x.map { "\(Fmt.num($0)) " } ?? "")\(s) across the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
+        case .allocate(let s, let share, let x, let without, let from):
+            return "spread \(x.map { "\(Fmt.num($0)) " } ?? "")\(s)\(from.map { " from \($0 == "solana" ? "Solana" : Self.placeName($0))" } ?? "") across the best rates"
+                + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
                 + (without.isEmpty ? "" : " without " + without.compactMap { k in Self.spreadProtocols.first { $0.key == k }?.name }.joined(separator: ", "))
         case .rebalance(let share): return "move deposited USDC to the best rates" + (share.map { " (max \(Fmt.num($0))% per protocol)" } ?? "")
         case .aave(let d, let x, let net):

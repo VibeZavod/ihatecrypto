@@ -424,9 +424,9 @@ extension Workspace {
                 reply(try await e.sweepRewards(minUSD: min, into: into), note: "Merkl · Uniswap")
                 rewards = nil
             case .receive: showReceive = true
-            case .allocate(let symbol, let share, let limit, let without):
+            case .allocate(let symbol, let share, let limit, let without, let from):
                 // Two steps: the plan first, the deposits only after «do it».
-                let (_, ready, preview) = try await e.allocate(symbol, maxShare: share ?? 50, limit: limit, without: without, execute: confirmed)
+                let (_, ready, preview) = try await e.allocate(symbol, maxShare: share ?? 50, limit: limit, without: without, from: from, execute: confirmed)
                 pendingAllocation = ready ? command : nil
                 allocationPreview = confirmed ? nil : preview
                 if !confirmed {

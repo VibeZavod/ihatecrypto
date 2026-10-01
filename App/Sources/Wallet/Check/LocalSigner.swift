@@ -179,8 +179,8 @@ func moveMoney(_ text: String) async throws {
     case .rebalance(let share):
         let (text, ready, _) = try await executor.rebalance(maxShare: share ?? 50, execute: send)
         print(text + (ready && !send ? "\nWith --yes I'll make these moves." : ""))
-    case .allocate(let symbol, let share, let limit, let without):
-        let (text, ready, _) = try await executor.allocate(symbol, maxShare: share ?? 50, limit: limit, without: without, execute: send)
+    case .allocate(let symbol, let share, let limit, let without, let from):
+        let (text, ready, _) = try await executor.allocate(symbol, maxShare: share ?? 50, limit: limit, without: without, from: from, execute: send)
         if !send { print(text + (ready ? "\nWith --yes I'll allocate by this plan." : "")) }
     case .yields(let asset):
         for o in await Yields.options(for: asset) { print("\(o.asset) · \(o.place): \(Fmt.num(o.apy.rounded(2, .plain)))%  \(o.note)") }

@@ -255,6 +255,11 @@ private struct StubModel: LLMClient {
     #expect(WalletCommand.parse("какая доходность") == .yields(nil))
     #expect(WalletCommand.parse("разложи USDC по лучшим ставкам") == .allocate("USDC", maxShare: nil))
     #expect(WalletCommand.parse("распредели SOL по протоколам, не больше 70% в один") == .allocate("SOL", maxShare: 70))
+    // Where the money comes from: only that network's («закинь 5 долларов из бейз» took Solana's 1.69 too).
+    #expect(WalletCommand.parse("spread 5 USDC from Base across the best rates") == .allocate("USDC", maxShare: nil, amount: 5, from: "base"))
+    #expect(WalletCommand.parse("spread 5 USDC from Solana across the best rates") == .allocate("USDC", maxShare: nil, amount: 5, from: "solana"))
+    #expect(WalletCommand.parse("разложи 1000 USDC с базы по лучшим ставкам") == .allocate("USDC", maxShare: nil, amount: 1000, from: "base"))
+    #expect(WalletCommand.parse("spread 5 USDC from Base across the best rates")?.summary == "spread 5 USDC from Base across the best rates")
     #expect(WalletCommand.parse("переложи в лучшие ставки") == .rebalance(maxShare: nil))
     #expect(WalletCommand.parse("rebalance my USDC, max 40% per protocol") == .rebalance(maxShare: 40))
     #expect(WalletCommand.parse("перебалансируй депозиты") == .rebalance(maxShare: nil))

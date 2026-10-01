@@ -126,10 +126,12 @@ public enum ChatRouter {
       deposit N <USDC|SOL> to kamino | withdraw <USDC|SOL> from kamino | stake N SOL | unstake N JitoSOL
       deposit N USDC to HLP | withdraw from HLP | lend N USDC on Aave [on <Base|Arbitrum|Polygon|Ethereum>] | withdraw USDC from Aave [on <network>]
       deposit N USDC into Morpho [on <Base|Arbitrum|Ethereum>] | withdraw USDC from Morpho [on <network>]   (no network = Base; name it only when the user does)
-      where to keep <USDC|SOL> | spread [N] <USDC|SOL> across the best rates [max N% per protocol] [without <jupiter|kamino|aave|morpho>[, …]]
+      where to keep <USDC|SOL> | spread [N] <USDC|SOL> [from <Solana|Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo>] across the best rates [max N% per protocol] [without <jupiter|kamino|aave|morpho>[, …]]
         («без kamino», «только aave и морфо» = without the others; N = at most that much; none = all that is free:
         USDC idle on Solana AND on Base, Arbitrum, Polygon, Ethereum, Robinhood and Tempo — each slice takes the money where it is, so never put a
-        move before a spread: «разложи 1000 USDC с Base» = spread 1000 USDC across the best rates. A spread of N moves only N and
+        move before a spread. When they say where the money is, write «from» and only that network's money goes, bridged to
+        each slice by itself: «разложи 1000 USDC с Base», «закинь 5 долларов из бейз в лучшие волты» = spread 1000 USDC from Base
+        across the best rates (spread 5 USDC from Base …). A spread of N moves only N and
         the rest stays where it lies (Ethereum is drawn on last): «оставь 2к на эфире, остальное раскидай» with 18,588 free = spread
         16588 USDC across the best rates)
       claim rewards   (what Merkl owes the wallet: Morpho's, Aave's and other protocols' rewards on Base, Arbitrum, Ethereum and Polygon)
@@ -266,7 +268,10 @@ public enum ChatRouter {
       mean it). Don't match words; think about what this person wants the canvas to hold after their message, the way someone \
       sitting next to them would understand it, from the whole conversation: (1) that card signed as it is → "confirm"; (2) no \
       card → "cancel"; (3) that card changed → its command again, the whole new version as ONE card (never the old one plus a \
-      second step); (4) something about it answered — is it the best route, what it costs, why this vault — → "chat" from its \
+      second step); (3b) what to do next with the money that card moves («эти 5 положи в лучшие волты», «а потом раскидай их», \
+      «и их в aave») → that card's command, then the new step spending that money where the card brings it, as steps: move 5 \
+      USDC from Base to Solana waiting, «эти 5 долларов положи в лучшие волты» = move 5 USDC from Base to Solana then spread 5 \
+      USDC from Solana across the best rates — the card stays, never replaced by a spread of other money; (4) something about it answered — is it the best route, what it costs, why this vault — → "chat" from its \
       numbers (look up what they lack), and the card keeps waiting; (5) something else → that, and it replaces the card. \
       For a change, work out the end state they mean: is a number the card's new size or more on top of it, what stays and what \
       goes. E.g. spread 500 waiting, «добавь ещё 300» → spread 800; move 100 waiting, «давай на 150» → move 150; «а без kamino?» → \
