@@ -145,7 +145,8 @@ struct CardLook {
     var body: Color { pale || fill == .check ? Brand.card : fill.color }
 
     @ViewBuilder var background: some View {
-        let shape = RoundedRectangle(cornerRadius: 20, style: .continuous)
+        // Square: the card clips it to its own radius (14 small, 20 big), which the border follows.
+        let shape = Rectangle()
         if pale {
             ZStack { shape.fill(Brand.card); shape.fill(fill.accent.opacity(0.16)) }
         } else {
