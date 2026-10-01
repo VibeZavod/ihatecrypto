@@ -1,12 +1,63 @@
 import EVMChain
 import Foundation
 import LalaCore
+import RelayBridge
 
 /// Uniswap v4 on Robinhood Chain, for the stock and token buys and sales (Stocks.swift): the pool without hooks for a
 /// pair, its quote, and the swap — the input to Permit2 (exact), Permit2 to the Universal Router (exact, for half an hour),
 /// then one V4_SWAP that pays this wallet (the signer reads it back field by field: UniswapV4.refusal).
+/// Every way a trade on Robinhood Chain can go, quoted for one amount: Uniswap v4's pool without hooks, v3's best pool,
+/// Relay's swap (only for a token DexScreener lists: its checks need that price).
+struct StockWays {
+    var v4: Executor.V4Route?
+    var v3: (fee: UInt64, out: Decimal)?
+    var relay: Decimal?
+    /// What each gives, the most first: «v4», «v3», «relay».
+    var ranked: [(name: String, out: Decimal)] {
+        [("v4", v4?.out), ("v3", v3?.out), ("relay", relay)].compactMap { name, out in out.map { (name, $0) } }.filter { $0.1 > 0 }.sorted { $0.1 > $1.1 }
+    }
+    static func title(_ way: String) -> String { way == "v4" ? "Uniswap v4" : way == "v3" ? "Uniswap v3" : "Relay's swap" }
+}
+
 extension Executor {
     typealias V4Route = (key: UniswapV4.PoolKey, zeroForOne: Bool, out: Decimal)
+
+    /// All three ways for `units` of what goes in (USDG for a buy, the token for a sale), quoted at once.
+    func stockWays(_ token: RobinhoodStocks.Token, buy: Bool, units: Decimal, listing: TokenLookup.Info?) async -> StockWays {
+        let usdg = EVMRPC.robinhoodUSDG, me = wallet.evm
+        let (tokenIn, tokenOut) = buy ? (usdg, token.address) : (token.address, usdg)
+        async let v4 = v4Route(tokenIn, tokenOut, amountIn: units)
+        async let v3 = try? bestPool(tokenIn, tokenOut, amountIn: units)
+        async let relay: Decimal? = listing == nil ? nil : (try? await Relay.quote(user: me, recipient: me, originChain: Relay.Chain.robinhood,
+                                                                                     destinationChain: Relay.Chain.robinhood, originCurrency: tokenIn,
+                                                                                     destinationCurrency: tokenOut, amount: 0, units: "\(units)"))
+            .flatMap { Decimal(string: $0.amountOut) }
+        return StockWays(v4: await v4, v3: await v3 ?? nil, relay: await relay)
+    }
+
+    /// The ways for the card while it waits for Confirm, the best first, nothing signed: what each gives and its worth
+    /// in dollars (a buy: the dollars in, scaled by what each gives against the best).
+    public func stockQuotes(_ symbolOrContract: String, usdc: Decimal?, sell: Decimal?) async throws -> [(way: String, gets: String, worth: Decimal)] {
+        let (token, listing) = try await RobinhoodStocks.resolve(symbolOrContract)
+        let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
+        if let usdc {
+            var units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
+            let there = try await EVMRPC.robinhood.tokenBalance(EVMRPC.robinhoodUSDG, owner: wallet.evm)
+            if there < units, there > 0, units - there <= max(1_000_000, units / 50) { units = there }
+            let ranked = await stockWays(token, buy: true, units: Decimal(units), listing: listing).ranked
+            guard let top = ranked.first?.out else { return [] }
+            return ranked.map { ($0.name, "\(Fmt.num($0.out / scale, maxFraction: 2)) \(token.symbol)", Decimal(units) / 1_000_000 * $0.out / top) }
+        }
+        let held = try await balance(token.address, on: EVMRPC.robinhood)
+        let wanted = (sell.map { min($0 * scale, held) } ?? held).rounded(0, .down)
+        guard wanted > 0 else { return [] }
+        return await stockWays(token, buy: false, units: wanted, listing: listing).ranked.map { ($0.name, "\(Fmt.num($0.out / 1_000_000)) USDG", $0.out / 1_000_000) }
+    }
+
+    /// «Uniswap v4 ≈ 1,906 AI · Relay's swap ≈ 1,880 · Uniswap v3 ≈ 1,372»: what the report says before the best is taken.
+    func waysLine(_ ways: StockWays, _ unit: (Decimal) -> String) -> String {
+        ways.ranked.map { "\(StockWays.title($0.name)) ≈ \(unit($0.out))" }.joined(separator: " · ")
+    }
 
     /// The v4 pool for tokenIn → tokenOut and what it gives for `amountIn`; nil when there's none without hooks.
     func v4Route(_ tokenIn: String, _ tokenOut: String, amountIn: Decimal) async -> V4Route? {

@@ -106,16 +106,19 @@ extension Executor {
         // there, never a bridge from Solana for the cents. Up to $1 or 2% short.
         let there = try await rpc.tokenBalance(usdg, owner: me)
         if there < units, there > 0, units - there <= max(1_000_000, units / 50) { units = there }
-        // Uniswap v3's best pool and v4's pool without hooks, whichever gives more (AI for 300 USDG: v3's thin pool $0.22 a
-        // token, v4's AI/USDG pool $0.158); neither, or the better one off the market: Relay's swap through the deep pools.
-        let v3 = try await bestPool(usdg, token.address, amountIn: Decimal(units))
-        let v4 = await v4Route(usdg, token.address, amountIn: Decimal(units))
-        let useV4 = (v4?.out ?? 0) > (v3?.out ?? 0)
-        guard let out = useV4 ? v4?.out : v3?.out else {
+        // Every way quoted for this amount — Uniswap v4's pool without hooks, v3's best pool, Relay's swap — and the one that
+        // gives the most taken (AI for 300 USDG: v4 1,906, Relay 1,880, v3's thin pool at $0.22 a token). The card showed the
+        // same comparison (stockQuotes); it's asked again here, right before signing.
+        let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
+        let ways = await stockWays(token, buy: true, units: Decimal(units), listing: listing)
+        let v3 = ways.v3, v4 = ways.v4
+        guard let best = ways.ranked.first else {
             guard let listing else { throw ExecutionError(noPool(symbol, listing)) }
             return try await relaySwap(token, buy: true, units: Decimal(units), listing: listing)
         }
-        let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
+        report(waysLine(ways) { "\(Fmt.num($0 / scale, maxFraction: 2)) \(symbol)" } + ": taking \(StockWays.title(best.name)).")
+        if best.name == "relay", let listing { return try await relaySwap(token, buy: true, units: Decimal(units), listing: listing) }
+        let useV4 = best.name == "v4", out = best.out
         let price = (Decimal(units) / 1_000_000) / (out / scale)
         var band = listing?.priceUSD.map { (bid: $0, ask: $0) }
         if listing == nil { band = try await RobinhoodStocks.quote(symbol) }
@@ -269,15 +272,17 @@ extension Executor {
         let held = try await balance(token.address, on: rpc)
         let wanted = (amount.map { min($0 * scale, held) } ?? held).rounded(0, .down)
         guard wanted > 0 else { throw ExecutionError("No \(symbol) on Robinhood Chain.") }
-        // v3's best pool or v4's pool without hooks, whichever pays more; neither, or the better one far under the market
-        // (a thin pool: selling 1,880 AI into v3's would have lost about a third): Relay's swap through the deep pools.
-        let v3 = try await bestPool(token.address, usdg, amountIn: wanted)
-        let v4 = await v4Route(token.address, usdg, amountIn: wanted)
-        let useV4 = (v4?.out ?? 0) > (v3?.out ?? 0)
-        guard let out = useV4 ? v4?.out : v3?.out else {
+        // The way that pays the most of v4's pool, v3's best pool and Relay's swap; one far under the market (a thin pool:
+        // selling 1,880 AI into v3's would have lost about a third) goes through Relay's deep pools instead.
+        let ways = await stockWays(token, buy: false, units: wanted, listing: listing)
+        let v3 = ways.v3, v4 = ways.v4
+        guard let best = ways.ranked.first else {
             guard let listing else { throw ExecutionError(noPool(symbol, listing)) }
             return try await relaySwap(token, buy: false, units: wanted, listing: listing)
         }
+        report(waysLine(ways) { "\(Fmt.num($0 / 1_000_000)) USDG" } + ": taking \(StockWays.title(best.name)).")
+        if best.name == "relay", let listing { return try await relaySwap(token, buy: false, units: wanted, listing: listing) }
+        let useV4 = best.name == "v4", out = best.out
         let got = (out / 1_000_000) / (wanted / scale)
         var band = listing?.priceUSD.map { (bid: $0, ask: $0) }
         if listing == nil { band = try await RobinhoodStocks.quote(symbol) }

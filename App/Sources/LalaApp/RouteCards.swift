@@ -1067,6 +1067,7 @@ struct StepDetails: View {
             header
             if let pending, pending.editableAmount != nil { amountField(pending) }
             if pending != nil, wayKey != nil { ways }
+            if let pending, pending.isStockTrade { stockWays }
             if pending == nil {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(step.lines.filter { !$0.isEmpty }, id: \.self) { Text($0.rowText).font(.ui(12)) }
@@ -1152,6 +1153,34 @@ struct StepDetails: View {
                    ?? "both quoted, gas counted · checked again before signing", logos: ["relay", "uni"], recommended: true)
             wayRow("relay", "Relay swap", quoted("relay") ?? "one Solana signature, Relay swaps on the way", logos: ["relay"])
             wayRow("uniswap", "Relay bridge + Uniswap", quoted("uniswap") ?? "USDC over the bridge, then Uniswap with an exact approve", logos: ["relay", "uni"])
+        }
+    }
+
+    /// A Robinhood Chain trade's ways as quoted now (Workspace.quoteStock): the best one is what Confirm takes.
+    private var stockWays: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("ROUTES · BEST IS TAKEN").font(.ui(10, .heavy)).tracking(0.8).foregroundStyle(.secondary)
+            if let quotes, !quotes.isEmpty {
+                ForEach(Array(quotes.enumerated()), id: \.offset) { i, q in
+                    HStack(spacing: 12) {
+                        TokenLogo(name: q.way == "relay" ? "relay" : "uni", size: 24, round: true)
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(Workspace.stockWayName(q.way)).font(.ui(13, .bold))
+                            Text("≈ \(q.gets)" + (i == 0 ? "" : " · \(Fmt.usd(quotes[0].worth - q.worth)) less")).font(.ui(11)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 6)
+                        if i == 0 {
+                            Text("Best").font(.ui(10, .bold)).foregroundStyle(Brand.accentInk)
+                                .padding(.horizontal, 8).padding(.vertical, 3).background(Capsule().fill(Brand.accent.opacity(0.16)))
+                        }
+                    }
+                    .padding(.horizontal, 12).padding(.vertical, 9)
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(i == 0 ? Brand.accent : Brand.cardBorder, lineWidth: i == 0 ? 2 : 1.5))
+                }
+                Text("Quoted again right before signing; the price must sit within 5% of the market.").font(.ui(10)).foregroundStyle(.secondary)
+            } else {
+                Text(quotes == nil ? "Comparing Uniswap v4, v3 and Relay’s swap…" : "No way quotes it right now.").font(.ui(11)).foregroundStyle(.secondary)
+            }
         }
     }
 
@@ -1273,6 +1302,14 @@ extension Workspace {
 }
 
 extension WalletCommand {
+    /// A Robinhood Chain buy or sale, whose ways the step's details compare.
+    var isStockTrade: Bool {
+        switch self {
+        case .buyStock, .sellStock: true
+        default: false
+        }
+    }
+
     /// The key of the way a Base or Arbitrum trade takes (Workspace.routeWays); nil for any other move.
     var wayKey: String? {
         switch self {

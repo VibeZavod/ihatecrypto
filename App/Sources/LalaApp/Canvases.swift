@@ -1341,7 +1341,9 @@ extension Workspace {
         }
     }
 
-    private func stockRoute(_ symbolOrContract: String, _ usdc: Decimal) -> MoveRoute {
+    private func stockRoute(_ symbolOrContract: String, _ asked: Decimal) -> MoveRoute {
+        // The three ways as quoted while the card waits (quoteStock): the best names the BUY step, the others are its line.
+        let ways = swapQuote.flatMap { q in q.command == .buyStock(symbol: symbolOrContract, usdc: asked) ? q.ways : nil }
         // A contract («купи 0x…»): its name and price from the favorites when it's there.
         let contract = symbolOrContract.hasPrefix("0x")
         let favorite = favoriteTokens.first { $0.address.lowercased() == symbolOrContract.lowercased() }
@@ -1350,8 +1352,8 @@ extension Workspace {
         // USDG already on Robinhood Chain pays first (a bridge from Base leaves it there): Solana only brings what's missing,
         // and a few cents short ($1 or 2% at most) isn't worth a bridge: the buy spends what's there (Executor.buyStock).
         let usdg = robinhood?.usdg ?? 0
-        let fits = usdg > 0 && usdg < usdc && usdc - usdg <= max(1, usdc / 50)
-        let usdc = fits ? usdg : usdc, bring = max(0, usdc - usdg)
+        let fits = usdg > 0 && usdg < asked && asked - usdg <= max(1, asked / 50)
+        let usdc = fits ? usdg : asked, bring = max(0, usdc - usdg)
         let from = bring == 0
             ? step("robinhood", "FROM · ROBINHOOD CHAIN", "\(Fmt.num(usdg)) → \(Fmt.num(usdg - usdc)) USDG", fits ? "what's there · the cents short aren't worth a bridge" : "already there · no bridge", .robinhood)
             : step("sol", "FROM · SOLANA", "\(Fmt.num(bring)) USDC", (usdg > 0 ? "the rest of \(Fmt.num(usdc)) is on Robinhood · " : "")
@@ -1364,9 +1366,9 @@ extension Workspace {
                             + " Say “do it” or press Confirm.", steps: [
             from,
         ] + (bring == 0 ? [] : [step("relay", "BRIDGE · RELAY", "USDG → Robinhood", "+ ETH for gas when there's none", .relay)]) + [
-            approve("≈ \(Fmt.num(usdc)) USDG", for: "Uniswap", logo: "uni", .robinhood, line: "exactly what arrives · only Uniswap may take it"),
-            step("robinhood", "BUY · UNISWAP", symbol,
-                 price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 2)) \(symbol) worth ≈ \(Fmt.usd(usdc)) · 1 \(symbol) = \(tokenPrice($0))" } ?? "at the pool price", .robinhood),
+            approve("≈ \(Fmt.num(usdc)) USDG", for: ways?.first?.way == "relay" ? "Relay" : ways?.first?.way == "v4" ? "Permit2, then Uniswap v4" : "Uniswap", logo: ways?.first?.way == "relay" ? "relay" : "uni",
+                    .robinhood, line: ways?.first?.way == "v4" ? "exactly this · Permit2 lets Uniswap v4 take it for 30 min" : nil),
+            stockBuyStep(symbol, ways, fallback: price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 2)) \(symbol) worth ≈ \(Fmt.usd(usdc)) · 1 \(symbol) = \(tokenPrice($0))" } ?? "at the pool price"),
         ], warning: contract ? "A token by its contract is anyone's coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose."
                              : "Robinhood Stock Tokens give economic exposure, not the shares, and aren’t offered to US persons or in Canada, the UK and Switzerland.")
     }
@@ -1440,6 +1442,16 @@ extension Workspace {
     }
 
     static func wayName(_ way: String) -> String { way == "relay" ? "Relay swap" : "Relay + Uniswap" }
+    static func stockWayName(_ way: String) -> String { way == "v4" ? "Uniswap v4" : way == "v3" ? "Uniswap v3" : "Relay swap" }
+
+    /// The BUY step of a Robinhood Chain buy: the way that gives the most now, marked best, and what the others give.
+    private func stockBuyStep(_ symbol: String, _ ways: [(way: String, gets: String, worth: Decimal)]?, fallback: String) -> ActivityBubble {
+        guard let ways else { return step("robinhood", "BUY · COMPARING", symbol, "Uniswap v4, v3 and Relay’s swap…", .robinhood) }
+        guard let best = ways.first else { return step("robinhood", "BUY · UNISWAP", symbol, fallback, .robinhood) }
+        let others = ways.dropFirst().map { "\(Self.stockWayName($0.way)) ≈ \($0.gets)" }
+        return step(best.way == "relay" ? "relay" : "uni", "BUY · \(Self.stockWayName(best.way).uppercased()) · BEST", symbol,
+                    "≈ \(best.gets)" + (others.isEmpty ? " · the only way that quotes it" : " · " + others.joined(separator: " · ")), .robinhood)
+    }
 
     /// The way that leaves more right now, what it gives and by how much it beats the other; `ways` is nil while both
     /// are being quoted.
@@ -1463,6 +1475,8 @@ extension Workspace {
         switch command {
         case .buyOn(let p, let t, let u?, _): (place, token, usdc, sell) = (p, t, u, nil)
         case .sellOn(let p, let t, let a, _): (place, token, usdc, sell) = (p, t, nil, a)
+        case .buyStock(let s, let u?): await quoteStock(command, s, usdc: u, sell: nil); return
+        case .sellStock(let s, let a): await quoteStock(command, s, usdc: nil, sell: a); return
         default: return
         }
         var from: String?, keep = false
@@ -1473,6 +1487,18 @@ extension Workspace {
             let ways = try? await executor(wallet).swapQuotes(net, token, usdc: usdc, sell: sell, from: from, keep: keep)
             guard !Task.isCancelled else { return }
             // A failed quote keeps the last good one.
+            if let ways, !ways.isEmpty { swapQuote = (command, ways) }
+            else if swapQuote?.command != command { swapQuote = (command, []) }
+            try? await Task.sleep(for: .seconds(30))
+        }
+    }
+
+    /// A Robinhood Chain buy or sale: Uniswap v4, v3 and Relay's swap quoted, again every 30 s, the best first.
+    private func quoteStock(_ command: WalletCommand, _ symbol: String, usdc: Decimal?, sell: Decimal?) async {
+        guard let wallet = previewWallet else { return }
+        while !Task.isCancelled {
+            let ways = try? await executor(wallet).stockQuotes(symbol, usdc: usdc, sell: sell)
+            guard !Task.isCancelled else { return }
             if let ways, !ways.isEmpty { swapQuote = (command, ways) }
             else if swapQuote?.command != command { swapQuote = (command, []) }
             try? await Task.sleep(for: .seconds(30))
