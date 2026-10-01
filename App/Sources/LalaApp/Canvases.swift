@@ -1389,14 +1389,16 @@ extension Workspace {
     /// USDC free at a place: Solana, Hyperliquid's withdrawable, each EVM network (Ethereum and Polygon from the tokens read).
     /// A vault deposit whose own network and Solana are short, as steps: a straight move from the EVM network holding
     /// the USDC, then the deposit. nil when they have enough (the deposit brings Solana's itself) or no network has it.
+    /// Jupiter Lend and Kamino are on Solana: the move goes there.
     func fundedFromElsewhere(_ c: WalletCommand) -> [String]? {
         let amount: Decimal, net: String
         switch c {
         case .aave(true, let a?, let n), .morpho(true, let a?, let n): (amount, net) = (a, n)
+        case .lendDeposit("USDC", let a?), .kamino(true, "USDC", let a?): (amount, net) = (a, "solana")
         default: return nil
         }
         let short = amount - (usdc(on: net) ?? 0)
-        guard short > 0, (solana?.usdc ?? 0) < short else { return nil }
+        guard short > 0, net == "solana" || (solana?.usdc ?? 0) < short else { return nil }
         // Relay's fee comes out on the way (cents from an L2, under a dollar from Ethereum): a dollar more; what's left stays there.
         let bring = (short + 1).rounded(0, .up)
         guard let from = EVMNetwork.funding(bring, held: { $0 == net ? nil : self.usdc(on: $0) }) else { return nil }

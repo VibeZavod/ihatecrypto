@@ -4,6 +4,10 @@
     python3 App/Tools/uitest.py                 # every scenario in uitest-scenarios.json
     python3 App/Tools/uitest.py deposit chart   # only those whose name contains a word
 
+A scenario is one or more phrases and what the canvas and the reply must show after the last ("send" + "expect"), or a
+conversation checked after every message ("turns": [{"send": "…", "expect": {…}}, …]): a card that waits while it's
+asked about, then changed («добавь ещё 300»), then asked about again.
+
 Each scenario runs on a fresh test canvas (/reset), sends its phrases as chat messages, checks the reply and the
 canvas boards, and drops what waits for Confirm (/cancel). At the end the test canvases are deleted and the canvas
 that was open is reopened (/restore). Nothing can sign through the debug API, so no money moves. It refuses to start
@@ -87,6 +91,14 @@ def check(expect, state, replies):
             why.append(f"{len(b.get('nextSteps') or [])} cards to go on, expected at least {want}: {text(b.get('nextSteps'))[:200]}")
         elif key == "not_executing" and state.get("executing"):
             why.append("a move is executing")
+        elif key == "allocation_free" and abs(float((b.get("allocation") or {}).get("free") or 0) - want) > 0.01:
+            why.append(f"spread of {(b.get('allocation') or {}).get('free')}, expected {want}")
+        elif key == "allocation_waits" and bool((b.get("allocation") or {}).get("waits")) != want:
+            why.append(f"the spread {'no longer waits' if want else 'still waits'} for Confirm")
+        elif key == "allocation_skips" and not any(want.lower() in (x["place"] + " " + x["reason"]).lower() for x in (b.get("allocation") or {}).get("skipped", [])):
+            why.append(f"skipped {text((b.get('allocation') or {}).get('skipped'))}, expected «{want}»")
+        elif key == "reply_lacks" and any(want.lower() in r.lower() for r in replies[-1:]):
+            why.append(f"the reply says «{want}»: {replies[-1:]}")
     return why
 
 
@@ -112,11 +124,13 @@ def main():
                     continue
             t0 = time.time()
             call("POST", "/reset")
-            replies, state = [], None
-            for phrase in s["send"]:
-                state = call("POST", "/send", {"text": phrase})
-                replies += [m["text"] for m in state["messages"] if not m["user"]]
-            why = check(s["expect"], state, replies)
+            why = []
+            for k, turn in enumerate(s.get("turns") or [{"send": s["send"], "expect": s["expect"]}]):
+                replies, state = [], None
+                for phrase in [turn["send"]] if isinstance(turn["send"], str) else turn["send"]:
+                    state = call("POST", "/send", {"text": phrase})
+                    replies += [m["text"] for m in state["messages"] if not m["user"]]
+                why += [(f"after «{turn['send']}»: " if "turns" in s else "") + w for w in check(turn["expect"], state, replies)]
             if state["boards"].get("pending"):
                 call("POST", "/cancel")
             ok = not why

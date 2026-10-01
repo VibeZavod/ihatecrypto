@@ -294,9 +294,10 @@ import Testing
 /// A vault deposit funded from another EVM network runs as these two steps (Workspace.fundedFromElsewhere): both must read back.
 @Test func aVaultDepositFundedFromAnotherNetworkReadsBack() {
     for c in [WalletCommand.aave(deposit: true, amount: 300, network: "arbitrum"), .morpho(deposit: true, amount: 200, network: "base"),
-              .morpho(deposit: true, amount: 50, network: "ethereum")] {
+              .morpho(deposit: true, amount: 50, network: "ethereum"), .lendDeposit("USDC", 500), .kamino(deposit: true, symbol: "USDC", amount: 500)] {
         #expect(WalletCommand.parse(c.summary) == c, "\(c.summary)")
     }
     #expect(WalletCommand.parse("move 301 USDC from Ethereum to Arbitrum") == .bridge(from: "ethereum", to: "arbitrum", 301))
     #expect(ChatRouter.steps("move 301 USDC from Ethereum to Arbitrum then deposit 300 USDC into Aave on Arbitrum")?.count == 2)
+    #expect(WalletCommand.parse("move 501 USDC from Ethereum to Solana") == .evmToSolana("ethereum", 501))
 }

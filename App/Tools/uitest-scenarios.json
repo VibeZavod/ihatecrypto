@@ -12,6 +12,10 @@
         "JUPITER"
       ],
       "title_contains": "Jupiter"
+    },
+    "only_if": {
+      "balance": "solanaUSDC",
+      "at_least": 1
     }
   },
   {
@@ -146,6 +150,10 @@
     "expect": {
       "pending_kind": "wallet",
       "reply_contains": "Понял"
+    },
+    "only_if": {
+      "balance": "solanaUSDC",
+      "at_least": 1
     }
   },
   {
@@ -347,6 +355,129 @@
     "expect": {
       "no_pending": true,
       "reply_contains": "kamino.com"
+    }
+  },
+  {
+    "name": "conversation: a spread waits while asked about, grows, loses Kamino, is cancelled",
+    "only_if": {
+      "balance": "total",
+      "at_least": 1000
+    },
+    "turns": [
+      {
+        "send": "задепозить в лучшие волты 500 баксов",
+        "expect": {
+          "allocation_free": 500,
+          "allocation_waits": true,
+          "reply_cyrillic": true
+        }
+      },
+      {
+        "send": "добавь еще 300 баксов",
+        "expect": {
+          "allocation_free": 800,
+          "allocation_waits": true
+        }
+      },
+      {
+        "send": "это точно лучший маршрут?",
+        "expect": {
+          "allocation_free": 800,
+          "allocation_waits": true,
+          "reply_cyrillic": true,
+          "reply_lacks": "нет плана"
+        }
+      },
+      {
+        "send": "а без kamino можно?",
+        "expect": {
+          "allocation_free": 800,
+          "allocation_skips": "as asked"
+        }
+      },
+      {
+        "send": "стоп, передумал",
+        "expect": {
+          "allocation_waits": false,
+          "reply_contains": "Отменено"
+        }
+      }
+    ]
+  },
+  {
+    "name": "conversation: a move card is asked about, changed (not signed by «давай на 150»), then chained on the same network",
+    "only_if": {
+      "balance": "total",
+      "at_least": 300
+    },
+    "turns": [
+      {
+        "send": "перекинь 100 USDC с эфира на базу",
+        "expect": {
+          "pending_kind": "wallet",
+          "command_contains": "100"
+        }
+      },
+      {
+        "send": "а комиссия какая?",
+        "expect": {
+          "pending_kind": "wallet",
+          "command_contains": "100",
+          "reply_cyrillic": true
+        }
+      },
+      {
+        "send": "давай на 150",
+        "expect": {
+          "pending_kind": "wallet",
+          "command_contains": "150"
+        }
+      },
+      {
+        "send": "ок тогда 200 и сразу положи в морфо там",
+        "expect": {
+          "pending_kind": "wallet",
+          "command_contains": "200",
+          "title_contains": "Base"
+        }
+      }
+    ]
+  },
+  {
+    "name": "conversation: the rates, then «положи туда» takes the top one",
+    "only_if": {
+      "balance": "total",
+      "at_least": 600
+    },
+    "turns": [
+      {
+        "send": "где сейчас лучше всего держать доллары?",
+        "expect": {
+          "yields": true
+        }
+      },
+      {
+        "send": "ок, положи туда 500",
+        "expect": {
+          "pending_kind": "wallet",
+          "reply_contains": "500 USDC"
+        }
+      }
+    ]
+  },
+  {
+    "name": "deposit into Jupiter with Solana short → the USDC comes from the EVM network that has it, then the deposit",
+    "send": [
+      "положи 1 USDC в Jupiter"
+    ],
+    "only_if": {
+      "balance": "solanaUSDC",
+      "below": 1
+    },
+    "expect": {
+      "pending_kind": "wallet",
+      "reply_contains": "deposit 1 USDC into Jupiter Lend",
+      "title_contains": "to Solana"
     }
   }
 ]

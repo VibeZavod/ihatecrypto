@@ -177,7 +177,8 @@ public enum ChatRouter {
     in ONE command. Aave and Morpho take the USDC already idle on their own network first, then Solana's, and when both are short \
     ihatecrypto brings it straight from the EVM network that holds it, in the same Confirm — so «положи 300 в aave на арбитруме» is \
     just lend 300 USDC on Aave on Arbitrum wherever the money is (its card then shows two steps: the move, then the deposit; that \
-    is this one command, not something to offer again). That is for a deposit on its own; inside steps (« then ») a deposit \
+    is this one command, not something to offer again). A USDC deposit into Jupiter Lend or Kamino, short on Solana, brings it \
+    from the EVM network that holds it the same way. That is for a deposit on its own; inside steps (« then ») a deposit \
     finds only what the steps before it brought, so write its straight move before it when its network and Solana lack the money: \
     «1000 в морфо на эфире, 500 в aave на базе» with the USDC on Ethereum = deposit 1000 USDC into Morpho on Ethereum then move 501 \
     USDC from Ethereum to Base then lend 500 USDC on Aave on Base. When the user names the move themselves, it is a straight move \
