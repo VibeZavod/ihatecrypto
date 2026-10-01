@@ -84,17 +84,7 @@ extension Workspace {
             return ("Top up ihatecrypto", nil, [ActivityBubble(kind: "free", label: "Receive · Solana", title: "USDC and SOL", logo: "sol"),
                                          ActivityBubble(kind: "free", label: "Receive · Base", title: "USDC and ETH", logo: "base")])
         }
-        if let a = allocationPreview {
-            func amount(_ d: Decimal) -> String { Fmt.num(d, maxFraction: a.asset == "SOL" ? 6 : 2) + " " + a.asset }
-            var out = (a.drawn.isEmpty ? [(place: "Solana", amount: a.free)] : a.drawn).map {
-                ActivityBubble(kind: "free", label: "Take from · \($0.place)", title: amount($0.amount), logo: a.asset == "SOL" ? "sol" : "usdc")
-            }
-            out += a.moves.map { ActivityBubble(kind: "step", label: "Bridge · Relay", title: amount($0.amount), lines: ["\($0.from) → \($0.to)"], logo: "relay") }
-            out += a.slices.map { ActivityBubble(kind: "deposit", label: "Deposit", title: $0.place, lines: ["\(amount($0.amount)) at \(Fmt.num($0.apy.rounded(2, .plain)))%"], logo: Self.logo(for: $0.place)) }
-            out += a.skipped.map { ActivityBubble(kind: "skipped", label: "Skipped", title: "\($0.place) · \(Fmt.num($0.apy.rounded(2, .plain)))%", lines: [$0.reason], logo: Self.logo(for: $0.place)) }
-            out.append(ActivityBubble(kind: "result", label: "Result", title: "≈ \(amount(a.yearly)) a year"))
-            return ("Spread \(a.asset) across the best rates", nil, out)
-        }
+        if let a = allocationPreview { return ("Spread \(a.asset) across the best rates", nil, allocationBubbles(a)) }
         if let y = yieldOptions, !y.isEmpty {
             return ("Rates", nil, y.prefix(8).map { ActivityBubble(kind: "yield", label: $0.asset, title: $0.place, lines: ["\(Fmt.num($0.apy.rounded(2, .plain)))%"], logo: Self.logo(for: $0.place)) })
         }
@@ -108,6 +98,34 @@ extension Workspace {
                     planRoute(StudioNode.build(self)).steps)
         }
         return nil
+    }
+
+    /// A spread as route cards: what it takes from each network, the straight moves between them, then into each place
+    /// with its rate. The waiting board (AllocationBoard), the route a confirmed spread runs and stays on the canvas as
+    /// (Execution.swift) and the history are these same cards, so Done keeps the arrows: route cards are drawn with
+    /// arrows only when every card is a step, and the history kinds (free, deposit, result) fell back to a plain grid.
+    func allocationBubbles(_ a: AllocationPreview) -> [ActivityBubble] {
+        func amount(_ d: Decimal) -> String { Fmt.num(d, maxFraction: a.asset == "SOL" ? 6 : 2) + " " + a.asset }
+        let placed = a.slices.reduce(Decimal(0)) { $0 + $1.amount }
+        let year = "≈ \(amount(a.yearly))" + (a.yearlyUSD.map { " (≈ \(Fmt.usd($0)))" } ?? "")
+        let drawn = a.drawn.isEmpty ? [(place: "Solana", amount: placed)] : a.drawn
+        func fill(_ place: String) -> RouteFill { RouteFill(rawValue: place.lowercased().components(separatedBy: " ")[0]) ?? .check }
+        let from = drawn.enumerated().map { k, s in
+            let there = a.sources.first { $0.place == s.place }?.amount
+            return ActivityBubble(kind: "step", label: "FROM · \(s.place.uppercased())", title: amount(s.amount),
+                                  lines: (there.map { ["free there\t\(amount($0))"] } ?? []) + (k == 0 && a.leftover > 0 ? ["stays free\t\(amount(a.leftover))"] : []),
+                                  logo: a.asset == "SOL" ? "sol" : "usdc", fill: fill(s.place))
+        }
+        let moves = a.moves.map { m in
+            ActivityBubble(kind: "step", label: "BRIDGE · RELAY", title: amount(m.amount), lines: ["\(m.from) → \(m.to)"], logo: "relay", fill: .relay)
+        }
+        return from + moves + [
+            ActivityBubble(kind: "step", label: "INTO · BEST RATES", title: "\(a.slices.count) place\(a.slices.count == 1 ? "" : "s")",
+                           lines: ["a year\t\(year)", "max per place\t\(Fmt.pct(a.maxShare))"], logo: "usdc", fill: .jupiter),
+        ] + a.slices.map { slice in
+            ActivityBubble(kind: "step", label: "INTO · \(slice.place.uppercased())", title: amount(slice.amount),
+                           lines: ["rate\t\(Fmt.num(slice.apy.rounded(2, .plain)))% a year"], logo: Self.logo(for: slice.place), fill: .place(slice.place))
+        }
     }
 
     /// Freezes the canvas into the current activity (the plan is kept as it was when it was acted on).

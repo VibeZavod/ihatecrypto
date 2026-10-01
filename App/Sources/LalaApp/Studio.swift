@@ -3291,35 +3291,7 @@ struct AllocationBoard: View {
         }
     }
 
-    private var steps: [ActivityBubble] {
-        let placed = preview.slices.reduce(Decimal(0)) { $0 + $1.amount }
-        let year = "≈ \(amount(preview.yearly))" + (preview.yearlyUSD.map { " (≈ \(Fmt.usd($0)))" } ?? "")
-        // One card per network the plan takes money from, with what it takes; the first carries the totals. Then each
-        // move between them, straight from where the money lies (Ethereum → Base, not through Solana).
-        let drawn = preview.drawn.isEmpty ? [(place: "Solana", amount: placed)] : preview.drawn
-        func fill(_ place: String) -> RouteFill { RouteFill(rawValue: place.lowercased().components(separatedBy: " ")[0]) ?? .check }
-        let from = drawn.enumerated().map { k, s in
-            let there = preview.sources.first { $0.place == s.place }?.amount
-            return ActivityBubble(kind: "step", label: "FROM · \(s.place.uppercased())", title: amount(s.amount),
-                                  lines: (there.map { ["free there\t\(amount($0))"] } ?? [])
-                                    + (k == 0 && preview.leftover > 0 ? ["stays free\t\(amount(preview.leftover))"] : []),
-                                  logo: unit == "SOL" ? "sol" : "usdc", fill: fill(s.place))
-        }
-        let moves = preview.moves.map { m in
-            ActivityBubble(kind: "step", label: "BRIDGE · RELAY", title: amount(m.amount), lines: ["\(m.from) → \(m.to)"], logo: "relay", fill: .relay)
-        }
-        return from + moves + [
-            ActivityBubble(kind: "step", label: "INTO · BEST RATES", title: "\(preview.slices.count) place\(preview.slices.count == 1 ? "" : "s")",
-                           lines: ["a year\t\(year)", "max per place\t\(Fmt.pct(preview.maxShare))"], logo: "usdc", fill: .jupiter),
-        ] + preview.slices.map { slice in
-            ActivityBubble(kind: "step", label: "INTO · \(slice.place.uppercased())", title: amount(slice.amount),
-                           lines: ["rate\t\(Fmt.num(slice.apy.rounded(2, .plain)))% a year"], logo: logo(slice.place), fill: .place(slice.place))
-        }
-    }
-
-    private func logo(_ place: String) -> String {
-        place.contains("Jupiter") ? "jup" : place.contains("Kamino") ? "kamino" : place.contains("Jito") ? "jitosol" : place.contains("HLP") ? "hype" : "usdc"
-    }
+    private var steps: [ActivityBubble] { ws.allocationBubbles(preview) }
 }
 
 /// Under the balance: five ways onto the canvas, each with its own icon. Top up, in the accent colour, spans the first

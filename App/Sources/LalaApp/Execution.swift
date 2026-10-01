@@ -303,8 +303,13 @@ extension Workspace {
                                                  : say("Yield sources didn't respond right now.", "Источники ставок сейчас не ответили."), note: "DeFi")
             return
         }
-        // The route as confirmed, before any balance moves: the canvas keeps it with the outcome and the time.
-        let confirmedRoute = route(command)
+        // The route as confirmed, before any balance moves: the canvas keeps it with the outcome and the time. A spread
+        // has no route of its own: its drawn plan is the route, or after Confirm the canvas kept only «Done».
+        let confirmedRoute: MoveRoute? = if case .allocate = command, let a = allocationPreview {
+            MoveRoute(title: readable(Self.canvasTitle(command)), footer: "", steps: allocationBubbles(a))
+        } else {
+            route(command)
+        }
         func finish(_ ok: Bool) {
             // The steps as the run left them: a paid request's last card says «answered», not «the answer comes here».
             let steps = runningAction?.steps ?? confirmedRoute?.steps ?? []
