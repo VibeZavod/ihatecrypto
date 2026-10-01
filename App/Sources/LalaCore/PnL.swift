@@ -137,8 +137,17 @@ public struct PnLCommand: Equatable, Sendable {
         }
         let period: PnL.Period = q.contains(/today|24\s*h|\bday\b|сегодня|за\s+день|сутк|суток/) ? .day
             : q.contains(/week|7\s*d\b|недел/) ? .week : q.contains(/month|30\s*d\b|месяц/) ? .month : .all
-        return PnLCommand(period: period, coin: IntentParser.namedAsset(text, markets: markets))
+        // A ticker no market or holding knows («pnl по AERO» with no AERO left) is still the asset asked about: the answer
+        // says there's none, not the whole portfolio's P/L.
+        let named = IntentParser.namedAsset(text, markets: markets) ?? text.firstMatch(of: /(?i)\b(?:for|on|по|на)\s+([a-z][a-z0-9]{1,9})\b/)
+            .map { String($0.1).uppercased() }.flatMap { notTickers.contains($0) ? nil : $0 }
+        return PnLCommand(period: period, coin: named)
     }
+
+    static let notTickers: Set<String> = ["THE", "MY", "AN", "ALL", "THIS", "LAST", "PAST", "WEEK", "WEEKS", "TODAY", "DAY", "DAYS", "MONTH",
+                                          "MONTHS", "YEAR", "TIME", "EVERYTHING", "TOTAL", "IT", "ME", "EACH", "EVERY",
+                                          // Networks and places: «pnl on base» is the network, not a token.
+                                          "BASE", "SOLANA", "ARBITRUM", "ETHEREUM", "POLYGON", "ROBINHOOD", "TEMPO", "KAMINO", "JUPITER"]
 }
 
 /// What a token bought in the app cost, for the P/L on its holding row: the average cost. A buy with USDC adds its

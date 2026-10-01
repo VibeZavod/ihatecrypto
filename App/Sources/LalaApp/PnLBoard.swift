@@ -118,6 +118,14 @@ extension Workspace {
         async let reportsCall = pnlReports(coin: command.coin)
         async let heldCall = heldLines(command.coin)
         let (reports, held) = await (reportsCall, heldCall)
+        // Asked about an asset that's in no wallet and was never traded: say so, not a board of zeros.
+        if let coin = command.coin, held.isEmpty, !reports.values.contains(where: PnLBoard.traded) {
+            let name = IntentParser.pretty(coin)
+            reply(say("No \(name) in the wallet on any network, and no Hyperliquid trades in it: nothing to count.",
+                      "\(name) нет в кошельке ни в одной сети, и сделок по нему на Hyperliquid не было — считать нечего."),
+                  note: note ?? say("P/L · from Hyperliquid and your portfolio", "P/L · из Hyperliquid и твоего портфеля"))
+            return
+        }
         withAnimation(StudioView.spring) {
             let state = PnLBoardState.shared
             state.command = command

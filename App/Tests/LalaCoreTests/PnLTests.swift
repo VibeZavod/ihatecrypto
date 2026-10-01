@@ -59,6 +59,9 @@ private let funding = [PnL.Funding(time: ago(10.2), coin: "xyz:CL", usdc: Decima
     #expect(PnLCommand.parse("сколько я заработал на нефти", markets: markets) == PnLCommand(period: .all, coin: "xyz:CL"))
     #expect(PnLCommand.parse("profit and loss month for ETH", markets: markets) == PnLCommand(period: .month, coin: "ETH"))
     #expect(PnLCommand.parse("profit and loss today") == PnLCommand(period: .day, coin: nil))
+    // A ticker nothing knows is still the one asked about; a period word isn't one.
+    #expect(PnLCommand.parse("pnl по aero") == PnLCommand(period: .all, coin: "AERO"))
+    #expect(PnLCommand.parse("profit and loss for the week") == PnLCommand(period: .week, coin: nil))
     #expect(PnLCommand.parse("long ETH risk $5") == nil)
     #expect(PnLCommand.parse("plan the trade") == nil)
 }
