@@ -39,6 +39,20 @@ func notCharts(_ phrase: String) {
     #expect(PortfolioSplit.slices([]).isEmpty && PortfolioSplit.slices([("x", 0)]).isEmpty)
 }
 
+@Test func portfolioNetworkOrder() {
+    // The wallet of 2026-10-01: Solana, Hyperliquid at $0 and Robinhood under $100 still lead; Base and Arbitrum follow
+    // by money; NEAR and Tempo, under $100, fold; Ethereum with nothing on it is left out.
+    let held: [ModuleNetwork: Decimal] = [.base: Decimal(string: "2685.70")!, .solana: Decimal(string: "190.77")!, .arbitrum: Decimal(string: "102.94")!,
+                                          .robinhood: Decimal(string: "43.83")!, .near: Decimal(string: "0.38")!, .tempo: Decimal(string: "0.43")!,
+                                          .hyperliquid: 0, .ethereum: 0]
+    let order = PortfolioSplit.networkCards(held, present: [.solana, .hyperliquid])
+    #expect(order.cards == [.solana, .hyperliquid, .robinhood, .base, .arbitrum])
+    #expect(order.folded == [.tempo, .near])
+    // A pinned network without an account and without money gets no card; exactly $100 folds.
+    let empty = PortfolioSplit.networkCards([.robinhood: 0, .polygon: 100], present: [])
+    #expect(empty.cards.isEmpty && empty.folded == [.polygon])
+}
+
 @Test func marketNames() {
     #expect(IntentParser.pretty("xyz:TSLA") == "Tesla (xyz:TSLA)")
     #expect(IntentParser.pretty("xyz:CL") == "WTI oil (xyz:CL)")

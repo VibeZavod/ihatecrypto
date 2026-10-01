@@ -514,40 +514,25 @@ struct Openable: ViewModifier {
     }
 }
 
-/// Where the money sits, as a ring: Solana, Hyperliquid, Jupiter Lend, Aave on Base.
+/// Where the money sits, as a ring: each network's share, in the colors of its card (NetworkCard).
 struct PortfolioRing: View {
     @Environment(Workspace.self) private var ws
 
-    static let colors: [String: Color] = ["Solana": Color(hex: 0x9945FF), "Hyperliquid": Color(hex: 0x2FB39A), "Jupiter Lend": Color(hex: 0xC7F284), "Aave · Base": Color(hex: 0xB6509E), "Free USDC · EVM": Color(hex: 0x0052FF), "Morpho · Base": Color(hex: 0x2F6FEB),
-                                          "Kamino": Color(hex: 0x3B82F6), "NEAR": Color(hex: 0x00EC97), "Other tokens": Color(hex: 0x8A8F98),
-                                          "Aave · Morpho elsewhere": Color(hex: 0x2F6FEB), "Other protocols": Color(hex: 0x14B8A6)]
-
     var body: some View {
-        let slices = PortfolioSplit.slices([
-            ("Solana", (ws.solana?.usdc ?? 0) + ws.shownTokens.filter { $0.chain == "solana" }.reduce(0) { $0 + ($1.usd ?? 0) } + (ws.solana.flatMap { s in ws.markets["SOL"].map { s.sol * $0.markPx } } ?? 0)),
-            ("Hyperliquid", ws.hlTotal ?? 0),
-            ("Jupiter Lend", ws.lendTotal),
-            ("Kamino", ws.kamino),
-            ("NEAR", ws.nearUSD),
-            ("Aave · Base", ws.base?.aave ?? 0),
-            ("Free USDC · EVM", (ws.base?.usdc ?? 0) + (ws.arbitrumUSDC ?? 0)),
-            ("Morpho · Base", ws.base?.morpho ?? 0),
-            ("Aave · Morpho elsewhere", ws.lendingElsewhereUSD),
-            ("Other protocols", ws.protocolUSD),
-            ("Other tokens", ws.shownTokens.filter { $0.chain != "solana" && !$0.native }.reduce(0) { $0 + ($1.usd ?? 0) }),
-        ])
+        let slices = PortfolioSplit.slices(ws.networkUSD.map { ($0.key.name, $0.value) })
+        let colors = Dictionary(uniqueKeysWithValues: ModuleNetwork.allCases.map { ($0.name, NetworkCard.style($0).dot) })
         if slices.count > 1 {
             HStack(spacing: 12) {
                 Chart(slices, id: \.name) { s in
                     SectorMark(angle: .value("Share", NSDecimalNumber(decimal: s.share).doubleValue), innerRadius: .ratio(0.62), angularInset: 1.5)
-                        .foregroundStyle(Self.colors[s.name] ?? .gray)
+                        .foregroundStyle(colors[s.name] ?? .gray)
                         .cornerRadius(3)
                 }
                 .frame(width: 58, height: 58)
                 VStack(alignment: .leading, spacing: 3) {
                     ForEach(slices, id: \.name) { s in
                         HStack(spacing: 6) {
-                            Circle().fill(Self.colors[s.name] ?? .gray).frame(width: 7, height: 7)
+                            Circle().fill(colors[s.name] ?? .gray).frame(width: 7, height: 7)
                             Text(s.name).font(.ui(11))
                             Spacer(minLength: 4)
                             Text("\(Fmt.num(s.share.rounded(0, .plain)))%").font(.ui(11, .semibold)).monospacedDigit()

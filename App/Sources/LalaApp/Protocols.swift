@@ -57,27 +57,3 @@ extension Workspace {
         }
     }
 }
-
-/// A protocol position on the portfolio card, in the style of the lending rows.
-struct ProtocolRow: View {
-    let position: ProtocolPosition
-
-    var body: some View {
-        HStack(spacing: 10) {
-            TokenLogo(name: position.logo, size: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(position.platform).font(.ui(14, .semibold)).lineLimit(1)
-                Text(position.name + (position.apy.map { " · \(Fmt.num($0.rounded(2, .plain)))%" } ?? ""))
-                    .font(.ui(10)).foregroundStyle(Color(hex: 0x2F6FEB)).lineLimit(1)
-            }
-            Spacer()
-            VStack(alignment: .trailing, spacing: 1) {
-                Text(position.amount ?? Fmt.usd(position.usd)).font(.ui(13, .bold)).monospacedDigit()
-                if position.amount != nil { Text("≈ \(Fmt.usd(position.usd))").font(.ui(10)).foregroundStyle(.secondary).monospacedDigit() }
-            }
-        }
-        .padding(11)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color(light: 0xE6EEFF, dark: 0x0F1C3A)))
-        .help("Managed on \(position.site): say “открой сайт \(position.site)” to open it beside the chat")
-    }
-}

@@ -1465,16 +1465,16 @@ struct StatusChip: View {
 
 // MARK: Portfolio frame
 
-/// Tokens beyond the balances read one by one: Solana's inside the Solana card, the other networks' in a card of their
-/// own. The ones the user hid, and airdrops that look like scams, are tucked under «N hidden» instead of shown.
+/// Tokens beyond the balances read one by one, inside their network's card. The ones the user hid, and airdrops that
+/// look like scams, are tucked under «N hidden» instead of shown.
 struct TokenList: View {
     @Environment(Workspace.self) private var ws
-    /// Solana's tokens, or the other networks'.
-    let solana: Bool
+    /// The network's Holding.chain: «solana», «base», «robinhood»…
+    let chain: String
     @State private var showTucked = false
 
     var body: some View {
-        let mine = { (t: Holding) in (t.chain == "solana") == solana }
+        let mine = { (t: Holding) in t.chain == chain }
         let shown = ws.shownTokens.filter(mine), tucked = ws.tuckedTokens.filter(mine)
         if !shown.isEmpty || !tucked.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
@@ -1496,7 +1496,7 @@ struct HoldingRow: View {
     let token: Holding
     let shown: Bool
     @State private var hover = false
-    /// The network's badge on the icon, outside Solana's own card.
+    /// A network's logo by Holding.chain (the P/L board's rows).
     static let chainLogos = ["base": "base", "arbitrum": "arb", "ethereum": "eth", "polygon": "pol", "robinhood": "robinhood", "hyperliquid": "hype", "near": "near", "tempo": "tempo"]
 
     var body: some View {
@@ -1507,10 +1507,6 @@ struct HoldingRow: View {
                     .overlay(Text(token.symbol.prefix(1)).font(.ui(9, .bold)).foregroundStyle(Brand.solanaInk))
             }
             .frame(width: 20, height: 20).clipShape(Circle())
-            .overlay(alignment: .bottomTrailing) {
-                if let logo = Self.chainLogos[token.chain] { TokenLogo(name: logo, size: 10).offset(x: 3, y: 3) }
-            }
-            .help(token.chain.capitalized)
             Text(token.symbol).font(.ui(12, .semibold)).lineLimit(1)
             if token.verified { VerifiedBadge(size: 12) } else { Text("unverified").font(.ui(9)).foregroundStyle(.secondary) }
             Spacer(minLength: 4)
@@ -1594,159 +1590,7 @@ struct StudioPortfolio: View {
             }
             PortfolioRing()
             ScheduleTop3()
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    TokenLogo(name: "sol", size: 34)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Solana").font(.ui(14, .semibold))
-                        Text(ws.solana.map { "\(Fmt.num($0.sol, maxFraction: 4)) SOL" + (ws.markets["SOL"] != nil ? " ≈ \(Fmt.usd(ws.solUSD)) · gas" : "") } ?? "no address")
-                            .font(.ui(10)).foregroundStyle(Brand.solanaInk)
-                    }
-                    Spacer()
-                    HStack(spacing: 4) {
-                        TokenLogo(name: "usdc", size: 15)
-                        Text(ws.solana.map { Fmt.num($0.usdc) } ?? "—").font(.ui(13, .bold)).monospacedDigit()
-                    }
-                }
-                TokenList(solana: true)
-            }
-            .padding(11)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Brand.solanaTint))
-            .modifier(Openable(place: "solana"))
-
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 10) {
-                    TokenLogo(name: "hype", size: 34)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Hyperliquid").font(.ui(14, .semibold))
-                        Text(ws.hlMargin.map { "\(Fmt.usd($0)) · margin" + (ws.hlp.equity > 0 ? " · HLP \(Fmt.usd(ws.hlp.equity))" : "") } ?? "no address").font(.ui(10)).foregroundStyle(Brand.hlMint)
-                    }
-                }
-                ForEach(ws.positions, id: \.coin) { p in
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack {
-                            Text("\(p.size > 0 ? "Long" : "Short") \(IntentParser.pretty(p.coin))").font(.ui(13, .semibold)).lineLimit(1)
-                            Spacer()
-                            Text(signed(p.unrealizedPnl)).font(.ui(13, .bold)).monospacedDigit()
-                                .foregroundStyle(p.unrealizedPnl < 0 ? Color(hex: 0xFF9C8F) : Brand.hlMint)
-                        }
-                        Text(ws.positionSummary(p)).font(.ui(10)).foregroundStyle(Brand.hlSoft).lineLimit(2)
-                        if let rules = ws.exitRules[p.coin] {
-                            Label(rules.duties.joined(separator: " "), systemImage: "shield.lefthalf.filled")
-                                .font(.ui(10)).foregroundStyle(Brand.hlMint).lineLimit(2)
-                        }
-                    }
-                    .padding(9)
-                    .background(RoundedRectangle(cornerRadius: 12).fill(Brand.hlChip))
-                    .contentShape(Rectangle())
-                    .modifier(HoverLift(radius: 12))
-                    .onTapGesture { Task { await ws.chartCommand(.chart(coin: p.coin, range: .day)) } }
-                    .help("Open the \(IntentParser.pretty(p.coin)) chart")
-                }
-                if let o = ws.pendingEntry {
-                    Text("Limit waiting: \(o.side == "B" ? "long" : "short") \(IntentParser.pretty(o.coin)) at \(o.limitPx.map(Fmt.price) ?? "?")")
-                        .font(.ui(10)).foregroundStyle(Brand.hlSoft)
-                }
-            }
-            .foregroundStyle(.white)
-            .padding(11)
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(RoundedRectangle(cornerRadius: 16).fill(Brand.hl))
-            .modifier(Openable(place: "hyperliquid"))
-
-            if ws.lendTotal > 0 {
-                HStack(spacing: 10) {
-                    TokenLogo(name: "jup", size: 34)
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Jupiter Lend").font(.ui(14, .semibold))
-                        Text("earning").font(.ui(10)).foregroundStyle(Brand.jupiterInk)
-                    }
-                    Spacer()
-                    HStack(spacing: 4) {
-                        TokenLogo(name: "usdc", size: 15)
-                        Text(Fmt.num(ws.lendTotal)).font(.ui(13, .bold)).monospacedDigit()
-                    }
-                }
-                .padding(11)
-                .background(RoundedRectangle(cornerRadius: 16).fill(Brand.jupiterTint))
-                .modifier(Openable(place: "jupiter"))
-            }
-
-            // USDC lying free at the EVM address: a wallet of its own, not Aave's.
-            // From a cent: dust below it would read «0 USDC».
-            ForEach([("base", ws.base?.usdc ?? 0), ("arbitrum", ws.arbitrumUSDC ?? 0)].filter { $0.1 >= Decimal(string: "0.01")! }, id: \.0) { net, usdc in
-                place(net, WalletCommand.placeName(net), "idle USDC", "\(Fmt.num(usdc)) USDC",
-                      tint: Color(light: 0xEEF3FF, dark: 0x151C2E), ink: Color(hex: 0x0052FF), logo: ModuleNetwork(place: net)?.logo)
-            }
-
-            if let b = ws.base, b.aave > 0 {
-                HStack(spacing: 10) {
-                    ZStack(alignment: .bottomTrailing) {
-                        TokenLogo(name: "aave", size: 34)
-                        TokenLogo(name: "base", size: 15).offset(x: 3, y: 3)
-                    }
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text("Aave · Base").font(.ui(14, .semibold))
-                        Text("earning" + (ws.aaveAPY.map { " \(Fmt.num($0.rounded(2, .plain)))%" } ?? ""))
-                            .font(.ui(10)).foregroundStyle(Color(hex: 0x0052FF))
-                    }
-                    Spacer()
-                    HStack(spacing: 4) {
-                        TokenLogo(name: "usdc", size: 15)
-                        Text(Fmt.num(b.aave)).font(.ui(13, .bold)).monospacedDigit()
-                    }
-                }
-                .padding(11)
-                .background(RoundedRectangle(cornerRadius: 16).fill(Color(light: 0xEAF0FF, dark: 0x14213F)))
-                .modifier(Openable(place: "aave"))
-            }
-
-            if ws.kamino > 0 { place("kamino", "Kamino", "earning", Fmt.usd(ws.kamino), tint: Color(light: 0xE8F0FF, dark: 0x0B1B33), ink: Color(hex: 0x3B82F6)) }
-            if let b = ws.base, b.morpho > 0 {
-                place("morpho", "Morpho · Base", "earning" + (ws.morphoAPY.map { " \(Fmt.num($0))%" } ?? ""), "\(Fmt.num(b.morpho)) USDC",
-                      tint: Color(light: 0xE6EEFF, dark: 0x0F1C3A), ink: Color(hex: 0x2F6FEB))
-            }
-            // Aave and Morpho on Arbitrum, Polygon and Ethereum.
-            ForEach(ws.lendingElsewhere) { LendingRow(position: $0) }
-            // Deposits made on a site: Kamino's vaults, Jupiter's other platforms.
-            ForEach(ws.protocolPositions) { ProtocolRow(position: $0) }
-            if ws.near > 0 {
-                place("near", "NEAR", ws.markets["NEAR"] != nil ? "≈ \(Fmt.usd(ws.nearUSD))" : "native NEAR",
-                      "\(Fmt.num(ws.near, maxFraction: 4)) NEAR", tint: Color(light: 0xE6FBF3, dark: 0x0E2A20), ink: Color(light: 0x05785A, dark: 0x00EC97))
-            }
-
-            // Tokens on Base, Arbitrum, Ethereum, Robinhood Chain, Hyperliquid's spot side and NEAR.
-            if ws.holdings.contains(where: { $0.chain != "solana" }) {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Tokens · other networks").font(.ui(12, .semibold))
-                    TokenList(solana: false)
-                }
-                .padding(11)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.cardBorder))
-            }
-
-            // ETH that pays the fees on Base and Robinhood Chain: small, but the user's money.
-            if ws.gasETH > 0 {
-                HStack(spacing: 10) {
-                    TokenLogo(name: "eth", size: 22)
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text("ETH · gas").font(.ui(12, .semibold))
-                        Text([(ws.base?.eth ?? 0) > 0 ? "Base" : nil, (ws.robinhood?.eth ?? 0) > 0 ? "Robinhood" : nil]
-                            .compactMap { $0 }.joined(separator: ", ")).font(.ui(10)).foregroundStyle(.secondary)
-                    }
-                    Spacer()
-                    VStack(alignment: .trailing, spacing: 0) {
-                        Text(Fmt.usd(ws.gasETHUSD)).font(.ui(12, .bold)).monospacedDigit()
-                        Text("\(Fmt.num(ws.gasETH, maxFraction: 6)) ETH").font(.ui(9)).foregroundStyle(.secondary).monospacedDigit()
-                    }
-                }
-                .padding(.horizontal, 11).padding(.vertical, 8)
-                .background(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.cardBorder))
-                .help("ETH at your EVM address pays the network fees on Base and Robinhood Chain")
-            }
-
-            RobinhoodCard()
+            NetworkCards()
             AlertsCard()
 
             if !ws.schedules.isEmpty {
@@ -1761,25 +1605,6 @@ struct StudioPortfolio: View {
                 .background(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.cardBorder))
             }
         }
-    }
-}
-
-extension StudioPortfolio {
-    /// One more place on the portfolio card: logo, name, a line under it, the amount; a click opens its details.
-    func place(_ id: String, _ name: String, _ line: String, _ amount: String, tint: Color, ink: Color, logo: String? = nil) -> some View {
-        HStack(spacing: 10) {
-            TokenLogo(name: logo ?? id, size: 34)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(name).font(.ui(14, .semibold))
-                // Wraps rather than ends in «…» next to a wide amount.
-                Text(line).font(.ui(10)).foregroundStyle(ink).lineLimit(2).fixedSize(horizontal: false, vertical: true)
-            }
-            Spacer()
-            Text(amount).font(.ui(13, .bold)).monospacedDigit().lineLimit(1).fixedSize()
-        }
-        .padding(11)
-        .background(RoundedRectangle(cornerRadius: 16).fill(tint))
-        .modifier(Openable(place: id))
     }
 }
 

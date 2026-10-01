@@ -46,30 +46,3 @@ extension Workspace {
         if found != lendingElsewhere { lendingElsewhere = found }
     }
 }
-
-/// A lending position off Base on the portfolio card: the protocol's logo with the network's, the rate, the USDC.
-struct LendingRow: View {
-    let position: LendingPosition
-
-    var body: some View {
-        let morpho = position.place.hasPrefix("Morpho")
-        HStack(spacing: 10) {
-            ZStack(alignment: .bottomTrailing) {
-                TokenLogo(name: morpho ? "morpho" : "aave", size: 34)
-                TokenLogo(name: ["Arbitrum": "arb", "Polygon": "pol", "Ethereum": "eth"][position.network] ?? "base", size: 15).offset(x: 3, y: 3)
-            }
-            VStack(alignment: .leading, spacing: 2) {
-                Text(position.place).font(.ui(14, .semibold))
-                Text("earning" + (position.apy.map { " \(Fmt.num($0.rounded(2, .plain)))%" } ?? "")).font(.ui(10)).foregroundStyle(Color(hex: 0x2F6FEB))
-            }
-            Spacer()
-            HStack(spacing: 4) {
-                TokenLogo(name: "usdc", size: 15)
-                Text(Fmt.num(position.usdc)).font(.ui(13, .bold)).monospacedDigit()
-            }
-        }
-        .padding(11)
-        .background(RoundedRectangle(cornerRadius: 16).fill(Color(light: 0xE6EEFF, dark: 0x0F1C3A)))
-        .help("Say “withdraw USDC from \(morpho ? "Morpho" : "Aave") on \(position.network)” to bring it back to Solana")
-    }
-}

@@ -79,6 +79,17 @@ public enum PortfolioSplit {
         }
         return out
     }
+
+    /// The portfolio's network cards, in order: Solana, Hyperliquid and Robinhood Chain first (the user's priority),
+    /// each when its account is there or it holds money; then the others by money, the most first. One of the others
+    /// holding $100 or less is folded under «Other networks» instead of getting a card.
+    public static func networkCards(_ held: [ModuleNetwork: Decimal], present: Set<ModuleNetwork>) -> (cards: [ModuleNetwork], folded: [ModuleNetwork]) {
+        let pinned: [ModuleNetwork] = [.solana, .hyperliquid, .robinhood], cent = Decimal(string: "0.01")!
+        let rest = held.filter { !pinned.contains($0.key) && $0.value >= cent }
+            .sorted { $0.value != $1.value ? $0.value > $1.value : $0.key.rawValue < $1.key.rawValue }
+        return (pinned.filter { present.contains($0) || (held[$0] ?? 0) >= cent } + rest.filter { $0.value > 100 }.map(\.key),
+                rest.filter { $0.value <= 100 }.map(\.key))
+    }
 }
 
 /// Zooming a canvas drawn at `pan + point·scale` about a screen point, so that point stays under the fingers.
