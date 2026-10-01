@@ -1120,35 +1120,46 @@ struct StudioCanvas: View {
         }
     }
 
+    /// An empty canvas: the coin, «Pick a starting block» and six square block cards (V02 «Cards» on the design board):
+    /// a picture, the name and what it does. A click puts the block's phrase into the chat.
     private var placeholder: some View {
-        VStack(spacing: 12) {
-            LalaLogo(size: 40).opacity(0.5)
-            Text("The assistant builds the plan here").font(.ui(17, .bold))
-            Text("next to your portfolio: where the money comes from, where it goes, the checks and the result in dollars.")
-                .font(.ui(12)).foregroundStyle(.secondary).multilineTextAlignment(.center).frame(maxWidth: 320)
-            LazyVGrid(columns: [GridItem(.fixed(200)), GridItem(.fixed(200))], spacing: 8) {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                LalaLogo(size: 34)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Pick a starting block").font(.ui(18, .bold))
+                    Text("or type anything in the chat").font(.ui(12)).foregroundStyle(.secondary)
+                }
+            }
+            LazyVGrid(columns: Array(repeating: GridItem(.fixed(148), spacing: 12), count: 3), alignment: .leading, spacing: 12) {
                 ForEach(TemplatesPanel.templates.prefix(6), id: \.title) { t in
+                    let look = TemplatesPanel.looks[t.title]
                     Button { ws.draft = t.phrase } label: {
-                        HStack(spacing: 8) {
-                            HStack(spacing: 2) {
-                                ForEach(t.colors.indices, id: \.self) { RoundedRectangle(cornerRadius: 2).fill(Color(hex: t.colors[$0])).frame(width: 9, height: 9) }
+                        VStack(alignment: .leading, spacing: 0) {
+                            RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.06)).frame(width: 34, height: 34)
+                                .overlay(Image(systemName: look?.icon ?? "square.grid.2x2").font(.system(size: 15, weight: .semibold))
+                                    .foregroundStyle(look.map { Color(light: $0.light, dark: $0.dark) } ?? .secondary))
+                            // Top-aligned: every card's name on the same line, whether it wraps or not.
+                            Text(t.title).font(.ui(13.5, .bold)).lineLimit(2).fixedSize(horizontal: false, vertical: true).padding(.top, 14)
+                            if let line = look?.line {
+                                Text(line).font(.ui(11)).foregroundStyle(.secondary).lineLimit(2).padding(.top, 3)
                             }
-                            Text(t.title).font(.ui(12, .semibold)).lineLimit(1)
                             Spacer(minLength: 0)
                         }
-                        .padding(.horizontal, 10).padding(.vertical, 8)
-                        .background(RoundedRectangle(cornerRadius: 10).fill(Brand.card))
-                        .overlay(RoundedRectangle(cornerRadius: 10).strokeBorder(Brand.cardBorder))
+                        .padding(14)
+                        .frame(width: 148, height: 140, alignment: .topLeading)
+                        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Brand.card))
+                        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Brand.cardBorder))
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .modifier(HoverLift(radius: 10))
+                    .modifier(HoverLift(radius: 18))
+                    .pointerStyle(.link)
                     .help("Puts “\(t.phrase)” into the chat")
                 }
             }
-            .padding(.top, 6)
         }
-        .frame(width: 470, height: 400)
-        .background(RoundedRectangle(cornerRadius: 26).strokeBorder(Brand.dots, style: StrokeStyle(lineWidth: 2, dash: [6, 6])))
+        .frame(width: 470, alignment: .leading)
     }
 
     private func statusText(_ nodes: [StudioNode]) -> String {
@@ -2833,6 +2844,16 @@ struct TemplatesPanel: View {
         ("Aave on Base", "lend 2 USDC on Aave", [0x2775CA, 0x0052FF, 0xB6509E]),
         ("Price alert", "alert me when ETH is below 2,500", [0x627EEA, 0xF59E0B]),
         ("Buy a stock token", "buy SpaceX stock for 2 USDC", [0x2775CA, 0x4615C8, 0xCCFF00])
+    ]
+
+    /// The start screen's block cards: a picture, its colour and one line on what the block does.
+    static let looks: [String: (icon: String, light: UInt32, dark: UInt32, line: String)] = [
+        "Trade by the book": ("chart.line.uptrend.xyaxis", 0x0B7A55, 0x6FF0B4, "stop set, the risk rules on"),
+        "Short on a pullback": ("arrow.down.right", 0xB42318, 0xFF9C8F, "short oil on a 2% bounce"),
+        "Best rates": ("percent", 0x1D4ED8, 0x7FB2FF, "free USDC where it earns most"),
+        "Where to keep it": ("building.columns", 0x4D7C0F, 0xC7F284, "the rates side by side"),
+        "Every week": ("calendar", 0x6D28D9, 0xC9A4FF, "buy SOL for 2 USDC every week"),
+        "Back to Solana": ("arrow.uturn.left", 0xB45309, 0xF2C14E, "1 USDC from Hyperliquid"),
     ]
 
     /// What each template's scheme looks like, for the preview beside the list (S15).

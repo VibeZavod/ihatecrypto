@@ -58,7 +58,8 @@ struct ThinkingDots: View {
             }
         }
         .padding(.horizontal, 12).padding(.vertical, 11)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(.quaternary.opacity(0.6)))
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Brand.glassFill))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Brand.cardBorder))
         .accessibilityElement().accessibilityLabel("The assistant is thinking")
     }
 }
@@ -91,12 +92,13 @@ struct MessageRow: View {
 
     var body: some View {
         if message.fromUser {
+            // Yours: an orange outline, no fill (V02 «Cards»); the answers are the filled cards.
             HStack {
                 Spacer(minLength: 80)
                 Text(message.text)
                     .textSelection(.enabled)
-                    .padding(.horizontal, 14).padding(.vertical, 9)
-                    .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(.quaternary.opacity(0.8)))
+                    .padding(.horizontal, 13).padding(.vertical, 9)
+                    .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Brand.accent, lineWidth: 1))
             }
             .font(.ui(14))
         } else {
@@ -105,8 +107,9 @@ struct MessageRow: View {
     }
 }
 
-/// One answer: a small kicker from its note, a badge for its leading emoji, a red card for a failure,
-/// and text where amounts stand out, gains and losses are colored, links and long hex are short.
+/// One answer, as a card of its own (V02 «Cards»): the coin and its note («understood as …») in the header, a badge
+/// for its leading emoji, and text where amounts stand out, gains and losses are colored, links and long hex are short.
+/// A failure keeps its red card and a checklist its own card, not a card inside a card.
 struct Reply: View {
     let message: Message
     /// What an execution came to: a green check instead of the emoji.
@@ -116,8 +119,14 @@ struct Reply: View {
         let (emoji, full) = ChatText.leadingEmoji(message.text)
         // A service's raw JSON under the words (older paid answers had it): folded into a card, not a wall of braces.
         let (text, data) = MPP.splitData(full)
-        VStack(alignment: .leading, spacing: 5) {
-            if let note = message.note { kicker(note) }
+        let boxed = !text.hasPrefix("Failed: ") && Checklist(text) == nil
+        VStack(alignment: .leading, spacing: boxed ? 8 : 5) {
+            if let note = message.note {
+                HStack(spacing: 6) {
+                    if boxed { LalaLogo(size: 14) }
+                    kicker(note)
+                }
+            }
             if text.hasPrefix("Failed: ") {
                 Label { styled(String(text.dropFirst(8))).foregroundStyle(Brand.blockedInk) } icon: {
                     Image(systemName: "xmark.octagon.fill").foregroundStyle(Brand.loss)
@@ -147,6 +156,9 @@ struct Reply: View {
         }
         .font(.ui(14))
         .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(boxed ? 12 : 0)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(boxed ? AnyShapeStyle(Brand.glassFill) : AnyShapeStyle(.clear)))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(boxed ? Brand.cardBorder : .clear))
     }
 
     private func styled(_ text: String) -> some View {
