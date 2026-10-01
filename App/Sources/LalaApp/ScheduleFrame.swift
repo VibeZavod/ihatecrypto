@@ -57,7 +57,9 @@ extension Workspace {
         if currentScheduleKey == nil { scheduleReturn = canvasID }
         // Switching canvases closes the boards; the Schedule frame stays open, so the next item is one click away.
         let frame = showSchedule
-        defer { showSchedule = frame }
+        // Nothing moves on its own: the view stays where the user left it («при закрывании ничего не двигалось»).
+        keepViewport = true
+        defer { showSchedule = frame; keepViewport = false }
         if let c = canvases.first(where: { $0.schedule == key }) {
             if c.id != canvasID { openCanvas(c) }
             return
@@ -76,7 +78,8 @@ extension Workspace {
     func closeScheduleCanvas() {
         guard let id = canvasID, let c = canvases.first(where: { $0.id == id }), c.schedule != nil, !busy else { return }
         let frame = showSchedule
-        defer { showSchedule = frame }
+        keepViewport = true
+        defer { showSchedule = frame; keepViewport = false }
         if let back = scheduleReturn.flatMap({ r in canvases.first { $0.id == r && $0.schedule == nil } }) { openCanvas(back) } else { newCanvas() }
         if !c.messages.contains(where: \.fromUser) { canvases.removeAll { $0.id == id } }
     }
@@ -439,7 +442,7 @@ struct ScheduleItemBoard: View {
             Text(runs.isEmpty ? "HASN’T RUN YET" : "PREVIOUS RUNS · \(runs.count)").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary).padding(.top, 4)
             ForEach(runs) { a in
                 VStack(alignment: .trailing, spacing: 4) {
-                    ActivityCard(activity: a)
+                    ActivityCard(activity: Self.done(a))
                     if let id = a.canvas, let c = ws.canvases.first(where: { $0.id == id }) {
                         Button { ws.openCanvas(c) } label: { Label("Open its canvas", systemImage: "rectangle.on.rectangle") }
                             .buttonStyle(.borderless).font(.ui(10, .semibold)).pointerStyle(.link)
@@ -448,5 +451,14 @@ struct ScheduleItemBoard: View {
             }
         }
         .frame(width: 470, alignment: .leading)
+    }
+
+    /// A run as it went: what it did and its result. Not the options a spread passed over («SKIPPED»), nor the line that
+    /// asked to sign a plan back then.
+    static func done(_ a: Activity) -> Activity {
+        var a = a
+        a.bubbles.removeAll { $0.kind == "skipped" }
+        a.lines.removeAll { $0.contains("Sign it") || $0.contains("Подпиши") || $0.contains("Confirm") }
+        return a
     }
 }

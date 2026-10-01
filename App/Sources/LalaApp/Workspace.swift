@@ -197,6 +197,8 @@ final class Workspace {
     var scheduleItem: String?
     /// The canvas a scheduled item's canvas was opened from: its Close goes back there.
     @ObservationIgnored var scheduleReturn: UUID?
+    /// A canvas switch that leaves the view where it is (an item's canvas opened or closed): no scroll back to the start.
+    @ObservationIgnored var keepViewport = false
     /// «Pause schedule»: no task or recurring buy runs until it's resumed; stops and takes stay on the exchange.
     var schedulePaused = UserDefaults.standard.bool(forKey: "schedulePaused") {
         didSet { UserDefaults.standard.set(schedulePaused, forKey: "schedulePaused") }

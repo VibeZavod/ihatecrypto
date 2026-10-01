@@ -350,7 +350,7 @@ extension Workspace {
         showFavorites = false
         showSchedule = false
         UserDefaults.standard.set("plan", forKey: "canvasMode")
-        NotificationCenter.default.post(name: .lalaCanvasFit, object: "home")
+        if !keepViewport { NotificationCenter.default.post(name: .lalaCanvasFit, object: "home") }
     }
 }
 
