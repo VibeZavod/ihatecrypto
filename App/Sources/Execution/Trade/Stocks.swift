@@ -131,6 +131,7 @@ extension Executor {
             after = try await balance(token.address, on: rpc)
         }
         let got = (after - before) / scale
+        traded?("robinhood:\(token.address.lowercased())", got, Decimal(units) / 1_000_000)
         return "Bought \(Fmt.num(got, maxFraction: 6)) \(symbol) (\(token.name)) for \(Fmt.num(Decimal(units) / 1_000_000)) USDG — ≈ \(Fmt.usd(got > 0 ? (Decimal(units) / 1_000_000) / got : price)) a token. You hold \(Fmt.num(after / scale, maxFraction: 6)) \(symbol) on Robinhood Chain. \(EVMNetwork.robinhood.explorer)/tx/\(hash)"
     }
 
@@ -211,6 +212,7 @@ extension Executor {
         }
         guard after > before else { throw ExecutionError("Relay took the \(inSymbol) but no \(outSymbol) arrived yet. Order \(q.quote.requestId) is in the journal. \(EVMNetwork.robinhood.explorer)/tx/\(hash)") }
         let got = (after - before) / outScale
+        traded?("robinhood:\(token.address.lowercased())", buy ? got : -amountIn, buy ? amountIn : got)
         if buy {
             return "Bought \(Fmt.num(got, maxFraction: 6)) \(token.symbol) (\(token.name)) for \(Fmt.num(amountIn)) USDG via Relay — ≈ \(Fmt.usd(amountIn / got)) a token. "
                 + "You hold \(Fmt.num(after / scale, maxFraction: 6)) \(token.symbol) on Robinhood Chain. \(EVMNetwork.robinhood.explorer)/tx/\(hash)"
@@ -262,6 +264,7 @@ extension Executor {
             try await Task.sleep(for: .seconds(1))
             after = try await rpc.tokenBalance(usdg, owner: me)
         }
+        traded?("robinhood:\(token.address.lowercased())", -wanted / scale, Decimal(after > before ? after - before : 0) / 1_000_000)
         return "Sold \(Fmt.num(wanted / scale, maxFraction: 6)) \(symbol) for \(Fmt.num(Decimal(after - before) / 1_000_000)) USDG. Say “move USDG from Robinhood to Solana” to bring it back. \(EVMNetwork.robinhood.explorer)/tx/\(hash)"
     }
 }

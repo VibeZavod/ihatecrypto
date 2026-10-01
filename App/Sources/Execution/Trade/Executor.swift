@@ -66,6 +66,9 @@ public actor Executor {
     let report: @Sendable (String) -> Void
     /// A Jupiter swap that went through: from, to, how much went in and how much arrived (the app keeps spot costs).
     let swapped: (@Sendable (SpotAsset, SpotAsset, Decimal, Decimal) -> Void)?
+    /// A token bought (+tokens, for dollars) or sold (−tokens) on an EVM network, under «chain:contract» (Holding.id), so
+    /// the P/L knows what a Relay buy cost: its money and its tokens are two transactions the chain can't pair.
+    let traded: (@Sendable (String, Decimal, Decimal) -> Void)?
     private var lastNonce: UInt64 = 0
 
     /// Worst price accepted for a market entry or exit, from the mark.
@@ -76,13 +79,15 @@ public actor Executor {
     static let triggerSlippage = Decimal(string: "0.1")!
 
     public init(wallet: TradeWallet, signer: any TradeSigner, journal: Journal, rpc: SolanaRPC = SolanaRPC(),
-                report: @escaping @Sendable (String) -> Void, swapped: (@Sendable (SpotAsset, SpotAsset, Decimal, Decimal) -> Void)? = nil) {
+                report: @escaping @Sendable (String) -> Void, swapped: (@Sendable (SpotAsset, SpotAsset, Decimal, Decimal) -> Void)? = nil,
+                traded: (@Sendable (String, Decimal, Decimal) -> Void)? = nil) {
         self.wallet = wallet
         self.signer = signer
         self.journal = journal
         self.rpc = rpc
         self.report = report
         self.swapped = swapped
+        self.traded = traded
     }
 
     public struct Opened: Sendable {

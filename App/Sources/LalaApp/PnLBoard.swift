@@ -85,8 +85,11 @@ extension Workspace {
         for h in holdings where h.symbol.uppercased() == symbol && h.amount > 0 { found.append((h.chain, h.contract, h.amount, h.usd)) }
         var out: [HeldLine] = []
         for f in found {
+            // On an EVM network: what ihatecrypto's own buys recorded, or what the chain shows, whichever covers more of it
+            // (a Relay buy pays in one transaction and delivers in another: only the record knows its cost).
+            let chain = f.network == "solana" || !isEVMAddress(hlAddress) ? nil : await Holdings.costBasis(f.network, address: hlAddress, contract: f.contract)
             let cost = f.network == "solana" ? costBasis[f.contract]
-                : isEVMAddress(hlAddress) ? await Holdings.costBasis(f.network, address: hlAddress, contract: f.contract) : nil
+                : [costBasis["\(f.network):\(f.contract.lowercased())"], chain].compactMap { $0 }.filter { $0.amount > 0 }.max { $0.amount < $1.amount }
             out.append(HeldLine(symbol: symbol, network: f.network, amount: f.amount, usd: f.usd, cost: cost))
         }
         return out

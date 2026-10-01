@@ -124,6 +124,11 @@ extension Workspace {
                 if from == .usdc { self?.costBasis[to.mint, default: CostBasis()].bought(received, for: spent) }
                 if to == .usdc { self?.costBasis[from.mint]?.sold(spent) }
             }
+        } traded: { [weak self] key, tokens, dollars in
+            // A buy through ihatecrypto on an EVM network: its cost, kept like the Solana swaps'.
+            Task { @MainActor in
+                if tokens > 0 { self?.costBasis[key, default: CostBasis()].bought(tokens, for: dollars) } else { self?.costBasis[key]?.sold(-tokens) }
+            }
         }
     }
 

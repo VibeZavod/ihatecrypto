@@ -199,6 +199,7 @@ extension Executor {
             after = try await balance(token.address, on: net.rpc)
         }
         guard after > before else { throw ExecutionError("\(token.symbol) didn't arrive on \(net.name) within 4 minutes. The order is in the journal.") }
+        traded?("\(net.key):\(token.address.lowercased())", (after - before) / scale, usdc)
         return "Bought \(amount(after - before)) on \(net.name) for \(Fmt.num(usdc)) USDC via \(way.name == "relay" ? "Relay's swap" : "Relay + Uniswap"). "
             + "You hold \(amount(after)) there.\(hash.isEmpty ? "" : " \(net.explorer)/tx/\(hash)")"
     }
@@ -242,6 +243,8 @@ extension Executor {
             try await Task.sleep(for: .seconds(1))
             after = try await balance(token.address, on: net.rpc)
         }
+        // ponytail: the USDC swapped here is the cost; a bridge that brought it first adds its few cents of fee nowhere.
+        if after > before { traded?("\(net.key):\(token.address.lowercased())", (after - before) / scale, Decimal(units) / 1_000_000) }
         return "Bought \(amount(after > before ? after - before : 0)) on \(net.name) for \(usdc) USDC that was there, on Uniswap. You hold \(amount(after)) there. \(net.explorer)/tx/\(hash)"
     }
 
@@ -301,7 +304,9 @@ extension Executor {
             }
             report("\(tokens(units)) on \(net.name) → ≈ \(Fmt.num(best.out / 1_000_000)) USDC there, on Uniswap.")
             try await ensureEVM(net, usdc: 0)
-            return try await sellThere(net, token, units: units, path: best.path, out: best.out, uni).text
+            let sold = try await sellThere(net, token, units: units, path: best.path, out: best.out, uni)
+            traded?("\(net.key):\(token.address.lowercased())", -units / scale, sold.got)
+            return sold.text
         }
         let (ways, uniswap) = try await sellWays(net, token, units: units, uni)
         guard let way = Self.pick(ways, prefer: prefer) else {
@@ -317,9 +322,12 @@ extension Executor {
             let fresh = await bestPath(on: net.rpc, uni, from: token.address, to: net.usdc, amountIn: units)
             let sold = try await sellThere(net, token, units: units, path: fresh?.path ?? plan.path, out: fresh?.out ?? plan.out, uni)
             report(sold.text)
+            traded?("\(net.key):\(token.address.lowercased())", -units / scale, sold.got)
             return try await evmToSolana(net, usdc: sold.got)
         }
-        return try await relaySell(net, token: token, units: units)
+        let text = try await relaySell(net, token: token, units: units)
+        traded?("\(net.key):\(token.address.lowercased())", -units / scale, 0)
+        return text
     }
 
     /// The Uniswap sale on the network: an exact approve of the tokens, then the swap to USDC at this wallet.
