@@ -1085,7 +1085,9 @@ struct StudioCanvas: View {
                     } else if ws.allocationPreview != nil, ws.pendingAllocation != nil {
                         // A spread waiting to be signed: its Confirm on the canvas too, not only under the chat.
                         PendingButtons()
-                    } else if !hasRoute, let b = board, b.outcome == nil, let request = b.messages.last(where: \.fromUser)?.text {
+                    } else if !hasRoute, let b = board, b.outcome == nil,
+                              // The request that drew it, not a «cancel» or a «да» said after (Refresh asked «cancel» again).
+                              let request = b.messages.last(where: { $0.fromUser && !ChatWords.confirms($0.text) && !ChatWords.declines($0.text) })?.text {
                         Button { Task { await ws.send(request) } } label: {
                             Label("Refresh", systemImage: "arrow.clockwise").font(.ui(13, .semibold)).padding(.horizontal, 6)
                         }

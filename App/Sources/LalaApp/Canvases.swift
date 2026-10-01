@@ -163,7 +163,16 @@ extension Workspace {
     }
 
     func openCanvas(_ c: CanvasSession) {
-        guard c.id != canvasID, !busy else { return }
+        // The open canvas clicked again: its board back as it was kept, when nothing on it runs or waits for Confirm —
+        // its boards closed had left it bare and the click did nothing («при повторном нажатии на этот канвас ничего
+        // не происходит»).
+        if c.id == canvasID {
+            guard !busy, !executing, pendingAction == nil, pendingAllocation == nil, runningAction == nil else { return }
+            saveCanvas()
+            if let kept = canvases.first(where: { $0.id == c.id }) { load(kept) }
+            return
+        }
+        guard !busy else { return }
         saveCanvas()
         load(c)
         Task { await refreshQuote() }
