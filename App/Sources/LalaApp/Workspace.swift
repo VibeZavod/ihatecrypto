@@ -1237,7 +1237,7 @@ final class Workspace {
             return true
         }
         if case .sendTo(let name, let amount, let net)? = WalletCommand.parse(canonical) {
-            prepareTransfer(amount, to: name, network: net, note: note)
+            prepareTransfer(amount, to: name, network: net, note: note, quiet: inChain)
             return true
         }
         if let command = WalletCommand.parse(canonical) {

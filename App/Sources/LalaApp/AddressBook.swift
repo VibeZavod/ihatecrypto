@@ -704,7 +704,8 @@ extension Workspace {
         if let i = addressBook.firstIndex(where: { $0.id == entry.id }) { addressBook[i].lastSent = Date() }
     }
 
-    func prepareTransfer(_ amount: Decimal, to name: String, network: String? = nil, note: String? = nil) {
+    /// `quiet`: a step of a chain — its card shows, and a confirmed chain signs it at once: no «Sign it» line.
+    func prepareTransfer(_ amount: Decimal, to name: String, network: String? = nil, note: String? = nil, quiet: Bool = false) {
         let key = name.lowercased()
         guard var entry = addressBook.first(where: { $0.name.lowercased() == key }) ?? ownWallet(key) ?? addressBook.first(where: { $0.name.lowercased().contains(key) }) else {
             reply("There’s no “\(name)” in Addresses. Add it there first (the book button in the rail), then send by its name."
@@ -734,6 +735,7 @@ extension Workspace {
         pendingAction = .transfer(entry, amount)
         pendingText = "send \(Fmt.num(amount)) USDC to \(entry.name)"
         let ends = AddressCheck.ends(entry.address)
+        if quiet { return }
         reply(say("The transfer is on the canvas: \(Fmt.num(amount)) USDC to “\(entry.name)” on \(entry.network.title), \(ends.start) … \(ends.end). Sign it, or say anything else to cancel.",
                   "Перевод на холсте: \(Fmt.num(amount)) USDC на «\(entry.name)» в \(entry.network.title), \(ends.start) … \(ends.end). Подпиши или напиши что-нибудь другое, чтобы отменить."), note: note)
     }
