@@ -1277,13 +1277,17 @@ extension Workspace {
 
     /// What the chain waiting behind this card does next («… then buy AI then buy MOO»): each step's own cards but where
     /// its money starts and its approves, marked to come after this move.
-    func chainSteps() -> [ActivityBubble] {
-        guard let q = taskQueue, q.canvas == canvasID else { return [] }
+    /// `of`: these steps instead of the queue (the step a confirmed chain is about to run).
+    func chainSteps(of given: [String]? = nil) -> [ActivityBubble] {
+        let queued = [taskQueue.map { ($0.canvas, $0.steps) }, chainAhead.map { ($0.canvas, $0.steps) }].compactMap { $0 }
+            .first { $0.0 == canvasID }?.1 ?? []
+        let steps = given ?? queued
+        guard !steps.isEmpty else { return [] }
         // Where the steps before bring money: a deposit there spends it, so its card draws no bridge from Solana
         // («Ethereum → Arbitrum, then Aave» drew a second bridge, Solana → Arbitrum, that never runs).
         var arrived = Set<String>()
         if case .wallet(let first)? = pendingAction, let to = Self.arrives(first) { arrived.insert(to) }
-        return q.steps.compactMap(WalletCommand.parse).flatMap { c -> [ActivityBubble] in
+        return steps.compactMap(WalletCommand.parse).flatMap { c -> [ActivityBubble] in
             defer { if let to = Self.arrives(c) { arrived.insert(to) } }
             let brought = Self.spends(c).map(arrived.contains) ?? false
             switch c {
@@ -1619,6 +1623,9 @@ struct RunningBoard: View {
 
     var body: some View {
         if let run = ws.runningAction {
+            // The chain's steps still to come stay after this move's cards, as they were drawn under Confirm: the
+            // route doesn't lose its tail and re-lay its cards smaller or bigger while the move runs.
+            let ahead = ws.chainSteps()
             VStack(alignment: .leading, spacing: 12) {
                 HStack(spacing: 8) {
                     Text(run.title).font(.ui(14, .semibold))
@@ -1626,7 +1633,7 @@ struct RunningBoard: View {
                     ProgressView().controlSize(.small)
                 }
                 if !run.steps.isEmpty {
-                    RouteCards(steps: run.steps, current: Self.currentStep(run.steps, run.lines))
+                    RouteCards(steps: run.steps + ahead, current: Self.currentStep(run.steps, run.lines))
                 }
                 if let prompt = SignerActivity.shared.ledger {
                     // The Ledger's turn: what to do on the device, in the words of the step it is on.
@@ -1668,7 +1675,7 @@ struct RunningBoard: View {
                         .font(.ui(10)).foregroundStyle(.secondary).lineLimit(2)
                 }
             }
-            .frame(width: max(470, RouteCards.width(run.steps.count)), alignment: .leading)
+            .frame(width: max(470, RouteCards.width(run.steps.count + ahead.count)), alignment: .leading)
             .transition(.opacity)
             .animation(.snappy, value: SignerActivity.shared.atDevice)
         }

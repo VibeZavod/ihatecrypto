@@ -1110,7 +1110,8 @@ struct StudioCanvas: View {
             if nodes.isEmpty {
                 if (ws.yieldOptions ?? ws.heldAnswer?.yields) == nil, ws.allocationPreview == nil, ws.rebalancePlan == nil {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
-                    if let board { SavedBoard(canvas: board) } else if positions.isEmpty, ws.schedules.isEmpty, (ws.nextSteps ?? ws.heldAnswer?.steps) == nil, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
+                    // Under a running board (a chain's move done, its next step coming) the saved one would draw it twice.
+                    if let board, ws.runningAction == nil { SavedBoard(canvas: board) } else if board == nil, positions.isEmpty, ws.schedules.isEmpty, (ws.nextSteps ?? ws.heldAnswer?.steps) == nil, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
                               (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty {
                         // Never blank while something is under way: whatever path left nothing live, the canvas's last
                         // board stays until the answer or the outcome takes its place. The empty canvas is for when nothing runs.

@@ -86,14 +86,26 @@ extension Workspace {
     /// Steps one after another. The first that waits for Confirm holds the rest until its move has gone through
     /// (`continueTask`): they may need the money it moves. That one Confirm covers the chain: once `confirmed`, a step's
     /// move is carried out at once, and one that doesn't go through stops the rest.
-    func runSteps(_ steps: [String], confirmed: Bool = false) async {
+    /// `brought`: the networks a move before these steps delivered USDC to (the first step of the chain, gone through).
+    func runSteps(_ steps: [String], confirmed: Bool = false, brought: Set<String> = []) async {
         thinking = true
         var rest: [String] = []
+        var arrived = brought
         for (k, step) in steps.enumerated() {
+            let command = WalletCommand.parse(step)
+            defer { if let c = command, let to = Self.arrives(c) { arrived.insert(to) } }
             // The move before this step is done: let it go first, so the canvas keeps it as an earlier move. Cleared only
             // after, the next step's card was saved over it with its «Done» (a Base → Robinhood bridge vanished under
             // «Buy AI», and «Buy MOO» showed Done though it never ran).
-            if confirmed { finishedAction = nil }
+            if confirmed {
+                finishedAction = nil
+                chainAhead = (canvasID, Array(steps[(k + 1)...]))
+                showNext(step)
+                // Money a move before brought to Solana: this step waits until Solana's balance shows it.
+                if arrived.contains("solana"), let c = command, Self.spends(c) == "solana", let need = Self.solanaUSDC(c) {
+                    await waitForDeposit(need, then: step)
+                }
+            }
             // The first step reads the balances as they are now: one that can't be paid is said before any card
             // («Move 0 USDC · Ethereum → Arbitrum» was drawn). Later steps wait for the money the ones before bring.
             if k == 0, !confirmed, TaskRun.automation == nil, let c = WalletCommand.parse(step), let why = refusalBeforeCard(c) {
@@ -143,9 +155,14 @@ extension Workspace {
             break
         }
         thinking = false
+        if confirmed {
+            // A step that stopped before its move leaves its «Next» board; the outcome board shows from here.
+            chainAhead = nil
+            runningAction = nil
+        }
         snapshotCanvas()
         saveCanvas()
-        taskQueue = rest.isEmpty ? nil : (canvasID, rest, Date())
+        taskQueue = rest.isEmpty ? nil : (canvasID, rest, Date(), arrived)
     }
 
     /// When a move finishes: the rest of a scheduled task, if the move was on its canvas, went through, and came
@@ -153,8 +170,45 @@ extension Workspace {
     func continueTask() {
         guard let q = taskQueue else { return }
         taskQueue = nil
-        guard q.canvas == canvasID, finishedAction?.outcome.ok == true, Date().timeIntervalSince(q.since) < 1800 else { return }
-        Task { await runSteps(q.steps, confirmed: true) }
+        guard q.canvas == canvasID, finishedAction?.outcome.ok == true, Date().timeIntervalSince(q.since) < 1800, let first = q.steps.first else { return }
+        // The next step's board in the same breath as the move's goes: no frame where the chain's cards are gone.
+        chainAhead = (q.canvas, Array(q.steps.dropFirst()))
+        showNext(first)
+        Task { await runSteps(q.steps, confirmed: true, brought: q.brought) }
+    }
+
+    /// The step a confirmed chain goes to, lit, before its move's own board takes its place.
+    private func showNext(_ step: String) {
+        runningAction = (say("Next: ", "Дальше: ", "Siguiente: ") + readable(ScheduleCanvas.readable(step)), chainSteps(of: [step]), [], Date())
+    }
+
+    /// A step that spends on Solana what a move before it brought: a card of its own («ARRIVES · SOLANA») until
+    /// Solana's balance shows the money, two minutes at most; then the step goes on and its own check says what's short.
+    private func waitForDeposit(_ need: Decimal, then step: String) async {
+        guard let have = solana?.usdc, have < need else { return }
+        func card(_ have: Decimal) -> ActivityBubble {
+            ActivityBubble(kind: "step", label: "ARRIVES · SOLANA", title: "\(Fmt.num(need)) USDC",
+                           lines: [say("on Solana now", "на Solana сейчас", "en Solana ahora") + "\t\(Fmt.num(have)) USDC",
+                                   say("then", "потом", "luego") + "\t" + readable(ScheduleCanvas.readable(step))],
+                           logo: "sol", fill: .solana)
+        }
+        runningAction = (say("Waiting for the deposit on Solana", "Жду депозит на Solana", "Esperando el depósito en Solana"),
+                         [card(have)] + chainSteps(of: [step]), [], Date())
+        for _ in 0..<60 {
+            try? await Task.sleep(for: .seconds(2))
+            await loadSolana()
+            let now = solana?.usdc ?? 0
+            if now >= need { break }
+            runningAction?.steps[0] = card(now)
+        }
+    }
+
+    /// The USDC a step spends on Solana: what it waits for when a move before it brings the money.
+    static func solanaUSDC(_ c: WalletCommand) -> Decimal? {
+        switch c {
+        case .lendDeposit("USDC", let a), .kamino(deposit: true, symbol: "USDC", amount: let a), .hlp(deposit: true, amount: let a), .buy(_, usdc: let a): a
+        default: nil
+        }
     }
 }
 

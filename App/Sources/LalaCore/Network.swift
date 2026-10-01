@@ -140,10 +140,13 @@ public enum Solana {
             let result: R?
             let error: RPCError?
         }
-        async let lamportsData = HTTP.post(rpc, json: ["jsonrpc": "2.0", "id": 1, "method": "getBalance", "params": [owner]])
+        // «confirmed», not the default «finalized» that runs ~13 s behind: a bridge's 133.94 USDC had landed, and the
+        // chain's next step («lend 150») still read the 17.77 from before and stopped.
+        async let lamportsData = HTTP.post(rpc, json: ["jsonrpc": "2.0", "id": 1, "method": "getBalance", "params": [owner, ["commitment": "confirmed"]]])
         // Both token programs: meme coins (POKEMON…) are Token-2022 and don't show under the classic one.
         func accounts(_ program: String) -> [String: Any] {
-            ["jsonrpc": "2.0", "id": 2, "method": "getTokenAccountsByOwner", "params": [owner, ["programId": program], ["encoding": "jsonParsed"]]]
+            ["jsonrpc": "2.0", "id": 2, "method": "getTokenAccountsByOwner",
+             "params": [owner, ["programId": program], ["encoding": "jsonParsed", "commitment": "confirmed"]]]
         }
         async let classicData = HTTP.post(rpc, json: accounts("TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"))
         async let token2022Data = HTTP.post(rpc, json: accounts("TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"))

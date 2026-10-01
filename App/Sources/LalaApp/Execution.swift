@@ -308,7 +308,13 @@ extension Workspace {
         func finish(_ ok: Bool) {
             // The steps as the run left them: a paid request's last card says «answered», not «the answer comes here».
             let steps = runningAction?.steps ?? confirmedRoute?.steps ?? []
-            runningAction = nil
+            // A chain going on keeps this board until its next step's takes its place (runSteps): dropped here, the
+            // canvas showed this move alone, its steps after it gone, while the balances reloaded.
+            if ok, !chainSteps().isEmpty {
+                runningAction?.lines.append(say("Done — the next step follows", "Готово — дальше следующий шаг", "Hecho: sigue el siguiente paso"))
+            } else {
+                runningAction = nil
+            }
             guard movesMoney(command, confirmed: confirmed) else { return }
             finishedAction = (confirmedRoute?.title ?? readable(Self.canvasTitle(command)), CanvasOutcome(at: Date(), ok: ok), steps)
             retryCommand = ok ? nil : (canvasID, command)
@@ -329,7 +335,8 @@ extension Workspace {
         default:
             executing = true
         }
-        defer { executing = false; runningAction = nil }
+        // The board first: `executing` going false starts a chain's next step (continueTask), which lays its own board.
+        defer { runningAction = nil; executing = false }
         do {
             let e = executor(wallet)
             switch command {
@@ -556,7 +563,7 @@ extension Workspace {
             return
         }
         executing = true
-        defer { executing = false; runningAction = nil }
+        defer { runningAction = nil; executing = false }   // the board first: `executing` going false starts a chain's next step
         // A close keeps its card on the canvas while it goes through, then leaves it as Done or Failed: nothing vanishes.
         let shown = if case .close(let share) = command { closeRoute(share, coin: coin) } else { nil as (title: String, steps: [ActivityBubble])? }
         if let shown { runningAction = (shown.title, shown.steps, [], Date()) }

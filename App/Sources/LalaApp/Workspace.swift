@@ -307,7 +307,11 @@ final class Workspace {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(tasks), forKey: Workspace.scoped("tasks", activeWalletID)) }
     }
     /// A running task's steps after one that waits for Confirm, and the canvas it runs on: they go when that move is done.
-    var taskQueue: (canvas: UUID?, steps: [String], since: Date)?
+    /// `brought`: networks the steps before delivered USDC to, so a step there waits for the money (runSteps).
+    var taskQueue: (canvas: UUID?, steps: [String], since: Date, brought: Set<String>)?
+    /// While a confirmed chain runs, its steps after the one under way: drawn after its cards (Workspace.chainSteps).
+    /// Only for the canvas; `taskQueue` is what runs.
+    var chainAhead: (canvas: UUID?, steps: [String])?
     /// Exit rules the app keeps for open positions (breakeven after the partial take, trailing), by coin.
     var exitRules: [String: ExitRules] = (UserDefaults.standard.data(forKey: Workspace.scoped("exitRules")).flatMap { try? JSONDecoder().decode([String: ExitRules].self, from: $0) }) ?? [:] {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(exitRules), forKey: Workspace.scoped("exitRules", activeWalletID)) }
