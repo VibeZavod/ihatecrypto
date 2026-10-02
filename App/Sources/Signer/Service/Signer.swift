@@ -95,6 +95,42 @@ enum Signer {
             try confirmInPerson("add a wallet from a recovery phrase to ihatecrypto and sign with it")
             return try store(phrase: phrase, passphrase: passphrase, requirePresence: requirePresence)
 
+        case .addressBook:
+            var r = SignerReply(ok: true)
+            r.addresses = AddressBookStore.all()
+            return r
+
+        case .saveAddresses(let entries):
+            guard !entries.isEmpty else { throw WalletError("Nothing to save.") }
+            for e in entries {
+                guard !e.name.trimmingCharacters(in: .whitespaces).isEmpty, let net = AddressCheck.Network(rawValue: e.network) else {
+                    throw WalletError("An address needs a name and a network.")
+                }
+                if let problem = AddressCheck.problem(e.address, network: net) { throw WalletError(problem) }
+            }
+            // The whole address on the prompt, not its ends: a look-alike differs in the middle.
+            let lines = entries.map { e in
+                "«\(e.name)» on \(AddressCheck.Network(rawValue: e.network)?.title ?? e.network): \(e.address)" + (e.memo.isEmpty ? "" : ", memo \(e.memo)")
+            }
+            try SeedStore.confirm("save to your address book (check every character):\n" + lines.joined(separator: "\n"))
+            var book = AddressBookStore.all()
+            for e in entries {
+                book.removeAll { $0.name.lowercased() == e.name.lowercased() && $0.network == e.network }
+                book.append(e)
+            }
+            try AddressBookStore.save(book)
+            var r = SignerReply(ok: true)
+            r.addresses = book
+            return r
+
+        case .removeAddress(let name, let network):
+            var book = AddressBookStore.all()
+            book.removeAll { $0.name.lowercased() == name.lowercased() && $0.network == network }
+            try AddressBookStore.save(book)
+            var r = SignerReply(ok: true)
+            r.addresses = book
+            return r
+
         case .importPrivateKey(let text):
             let imported = try ImportedKey.parse(text) // a malformed key fails before any prompt
             let address = try imported.address()
@@ -495,7 +531,8 @@ enum Signer {
     static func approve(_ recipients: [String]) throws {
         guard !holdsPublicTestWallet else { return }
         let own = Set([try? address("solana"), (try? address("evm"))?.lowercased()].compactMap { $0 })
-        let known = RecipientStore.all()
+        // An address saved in the book was confirmed in person, whole, when it was saved.
+        let known = RecipientStore.all().union(AddressBookStore.all().map { RecipientStore.key($0.address) })
         let new = Array(Set(recipients.map(RecipientStore.key).filter { !known.contains($0) && !own.contains($0) })).sorted()
         guard !new.isEmpty else { return }
         try SeedStore.confirm("allow ihatecrypto to send money to a new address:\n" + new.joined(separator: "\n"))

@@ -254,6 +254,34 @@ enum RecipientStore {
     static func delete(id: String) { SecItemDelete(query(id) as CFDictionary) }
 }
 
+/// The address book's names and addresses (SignerAddress), in the signer's own Keychain group: the app's file keeps
+/// only how entries look. It changes only by `.saveAddresses`, after Touch ID with every address on the prompt, so
+/// a changed file, a chat message or a program posing as the app can't put a scam address under a saved name.
+enum AddressBookStore {
+    static let service = "app.ihatecrypto.addressbook"
+    static var query: [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "book",
+         kSecUseDataProtectionKeychain as String: true]
+    }
+
+    static func all() -> [SignerAddress] {
+        var q = query
+        q[kSecReturnData as String] = true
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return [] }
+        return (try? JSONDecoder().decode([SignerAddress].self, from: data)) ?? []
+    }
+
+    static func save(_ book: [SignerAddress]) throws {
+        SecItemDelete(query as CFDictionary)
+        var q = query
+        q[kSecValueData as String] = try JSONEncoder().encode(book)
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        let status = SecItemAdd(q as CFDictionary, nil)
+        guard status == errSecSuccess else { throw WalletError("Keychain didn't save the address book: \(status)") }
+    }
+}
+
 /// The Hyperliquid agent key: data-protection Keychain, this device, no Touch ID — it cannot withdraw.
 enum AgentStore {
     static let service = "app.ihatecrypto.agent"

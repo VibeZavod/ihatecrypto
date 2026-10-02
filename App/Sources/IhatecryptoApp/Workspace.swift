@@ -267,6 +267,9 @@ final class Workspace {
     var addressBook: [SavedAddress] = LocalStore.load("addressbook.json") ?? [] {
         didSet { LocalStore.save(addressBook, "addressbook.json") }
     }
+    /// The names and addresses confirmed with Touch ID, as the signer keeps them: money goes to a saved name only
+    /// at the address here (isConfirmed), never at what the file says.
+    var confirmedAddresses: [SignerAddress] = []
     /// The canvas on screen; nil for a fresh one nobody has written in yet. Remembered, so it opens again at launch.
     var canvasID: UUID? {
         didSet { UserDefaults.standard.set(canvasID?.uuidString, forKey: "openCanvas") }
@@ -903,11 +906,18 @@ final class Workspace {
         case .position(let command, let coin): await manage(command, coin: coin)
         case .transfer(let entry, let amount): await transfer(amount, to: entry)
         case .address(let entry):
-            addressBook.append(entry)
-            // Its card stays on the canvas, as Done.
-            finishedAction = ("Save “\(entry.name)” to Addresses", CanvasOutcome(at: Date(), ok: true),
-                              [ActivityBubble(kind: "free", label: "Save · \(entry.network.title)", title: entry.name, logo: entry.network.logo)])
-            reply("Saved “\(entry.name)” in Addresses (\(entry.network.title)). Star it there or say “add \(entry.name) to favorites”.")
+            // Touch ID with the whole address on the prompt; only then is it in the book.
+            let bubble = ActivityBubble(kind: "free", label: "Save · \(entry.network.title)", title: entry.name, logo: entry.network.logo)
+            do {
+                try await confirmAddresses([entry])
+                addressBook.append(entry)
+                // Its card stays on the canvas, as Done.
+                finishedAction = ("Save “\(entry.name)” to Addresses", CanvasOutcome(at: Date(), ok: true), [bubble])
+                reply("Saved “\(entry.name)” in Addresses (\(entry.network.title)), confirmed with Touch ID. Star it there or say “add \(entry.name) to favorites”.")
+            } catch {
+                finishedAction = ("Save “\(entry.name)” to Addresses", CanvasOutcome(at: Date(), ok: false), [bubble])
+                reply("Not saved: \(error.localizedDescription)")
+            }
         }
     }
 
@@ -1567,6 +1577,7 @@ final class Workspace {
         agentAddress = onLedger ? agent?.agentAddress : status.agentAddress
         agentActive = onLedger ? agent?.agentActive ?? false : status.agentActive ?? false
         sessionLength = status.sessionLength ?? SignerSession.standard
+        confirmedAddresses = (try? await SignerClient().send(.addressBook))?.addresses ?? confirmedAddresses
         if let ledger, onLedger {
             let solana = ledger.solana ?? "", evm = ledger.evm ?? ""
             signerWallet = TradeWallet(solana: solana, evm: evm)

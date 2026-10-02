@@ -91,3 +91,16 @@ private let rfcPublic = Data(hex: "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62
         }
     }
 }
+
+/// A saved name sends only to the address confirmed for it: the name in any case, a 0x address in any case, a
+/// Solana one exactly — a look-alike or a swapped address is another entry.
+@Test func addressBookEntryMatchesOnlyItsConfirmedAddress() {
+    let evm = SignerAddress(name: "Mom", network: "base", address: "0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18")
+    #expect(evm.same(name: "mom", network: "base", address: "0x2e8c31162b855a2ffa90f6f8634643ad6f111e18"))
+    #expect(!evm.same(name: "Mom", network: "base", address: "0x2E8c31162b855A2ffa90F6F8634643Ad6F111e19"))
+    #expect(!evm.same(name: "Dad", network: "base", address: evm.address))
+    let sol = SignerAddress(name: "Bybit", network: "solana", address: "5P2eQoLncuFMjAmNNF4PspnAXYNaDSE2t1gb5os76Svw")
+    #expect(sol.same(name: "BYBIT", network: "solana", address: sol.address))
+    #expect(!sol.same(name: "Bybit", network: "solana", address: sol.address.lowercased()))
+    #expect(!sol.same(name: "Bybit", network: "near", address: sol.address))
+}

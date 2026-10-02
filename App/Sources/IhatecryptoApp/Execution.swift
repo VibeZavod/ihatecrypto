@@ -376,16 +376,19 @@ extension Workspace {
                 reply(try await e.sellNear(amount: amount, account: account), note: "NEAR Intents · 1Click")
             case .sendNear(let name, let amount):
                 guard let entry = savedAddress(name, on: .near) else { throw ExecutionError("There’s no NEAR address “\(name)” in Addresses.") }
+                try requireConfirmed(entry)
                 guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
                 reply(try await e.sendNear(amount, to: entry.address, account: account, label: entry.name), note: "NEAR")
                 markSent(entry)
             case .closeNear(let name):
                 guard let entry = savedAddress(name, on: .near) else { throw ExecutionError("There’s no NEAR address “\(name)” in Addresses.") }
+                try requireConfirmed(entry)
                 guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
                 reply(try await e.closeNear(into: entry.address, account: account, label: entry.name), note: "NEAR")
                 markSent(entry)
             case .sendSol(let name, let amount):
                 guard let entry = savedAddress(name, on: .solana) else { throw ExecutionError("There’s no Solana address “\(name)” in Addresses.") }
+                try requireConfirmed(entry)
                 reply(try await e.sendSOL(amount, to: entry.address, label: entry.name), note: "Solana")
                 markSent(entry)
             case .sendToken(let name, let token, let amount, let network):

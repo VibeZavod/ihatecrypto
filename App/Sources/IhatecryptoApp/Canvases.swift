@@ -1884,6 +1884,7 @@ extension Workspace {
                 reply("“\(entry.name)” needs a memo / tag, and ihatecrypto can’t add one to this transfer — send it from the exchange’s app instead.", note: note)
                 return
             }
+            do { try requireConfirmed(entry) } catch { reply(error.localizedDescription, note: note); return }
         }
         if let question = command.amountQuestion {
             awaitingAmount = command

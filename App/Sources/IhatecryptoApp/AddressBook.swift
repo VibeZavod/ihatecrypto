@@ -1,5 +1,6 @@
 import AppKit
 import IhatecryptoCore
+import SignerAPI
 import SwiftUI
 import TradeExecution
 import WalletCore
@@ -228,12 +229,22 @@ struct FavoritesBoard: View {
                 ForEach(own) { AddressCard(entry: $0, readOnly: true) }
             }
             section("ADDRESSES")
+            let unconfirmed = ws.addressBook.filter { !ws.isConfirmed($0) }
+            if !unconfirmed.isEmpty {
+                HStack(spacing: 8) {
+                    Label("\(unconfirmed.count) not confirmed with Touch ID: nothing is sent to them until you confirm. Delete the ones you don’t know.",
+                          systemImage: "exclamationmark.shield")
+                        .font(.ui(10, .semibold)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true)
+                    Spacer()
+                    Button("Confirm all…") { Task { try? await ws.confirmAddresses(unconfirmed) } }.buttonStyle(.bordered)
+                }
+            }
             if items.isEmpty { empty }
             ForEach(items) { entry in
                 AddressCard(entry: entry, edit: { editing = $0 })
                     .transition(.opacity)
             }
-            Label("ihatecrypto only ever sends to your own wallets. Saved addresses are for copying and, later, for transfers you sign with Touch ID — never to an address from a chat, a site or a model.",
+            Label("Every saved address is confirmed with Touch ID, the whole address on the prompt, and money goes to a name only at that address — never to an address from a chat, a site or a model.",
                   systemImage: "lock.shield")
                 .font(.ui(10)).foregroundStyle(.secondary)
         }
@@ -326,6 +337,15 @@ struct AddressCard: View {
                 Label("Memo / tag: \(entry.memo)", systemImage: "number").font(.ui(10, .semibold)).foregroundStyle(Brand.jevInk)
             }
             if !entry.note.isEmpty { Text(entry.note).font(.ui(10)).foregroundStyle(.secondary) }
+            if !readOnly, !ws.isConfirmed(entry) {
+                HStack(spacing: 8) {
+                    Label("Not confirmed with Touch ID: nothing is sent to it", systemImage: "exclamationmark.shield")
+                        .font(.ui(10, .semibold)).foregroundStyle(Brand.loss)
+                    Spacer()
+                    Button("Confirm…") { Task { try? await ws.confirmAddresses([entry]) } }
+                        .buttonStyle(.bordered).help("Touch ID, with the whole address on the prompt: check it against its source")
+                }
+            }
             HStack(spacing: 14) {
                 CopyButton(title: "Copy", text: entry.address, help: "Copy the address")
                 Spacer()
@@ -353,6 +373,7 @@ struct AddressCard: View {
             Button("Delete", role: .destructive) {
                 AddressIcons.remove(entry.icon)
                 withAnimation(.snappy) { ws.addressBook.removeAll { $0.id == entry.id } }
+                Task { await ws.forgetAddress(entry) }
             }
         } message: {
             Text("Only the saved entry is removed.")
@@ -381,6 +402,8 @@ struct AddressEditor: View {
     @State private var note = ""
     @State private var favorite = false
     @State private var picking = false
+    @State private var saving = false
+    @State private var saveError: String?
 
     static let categories = ["Exchange", "Wallet", "Friend", "DeFi", "Work"]
 
@@ -451,7 +474,7 @@ struct AddressEditor: View {
                 Spacer()
                 Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
                 Button(entry == nil ? "Save" : "Save changes", action: save).buttonStyle(.borderedProminent)
-                    .keyboardShortcut(.defaultAction).disabled(!canSave)
+                    .keyboardShortcut(.defaultAction).disabled(!canSave || saving)
             }
         }
         .padding(20)
@@ -475,6 +498,7 @@ struct AddressEditor: View {
                     .foregroundStyle(Brand.profit)
                 if let duplicate { Label("Already saved as “\(duplicate.name)”.", systemImage: "exclamationmark.triangle.fill").foregroundStyle(Brand.jevInk) }
                 if isOwn { Label("This is your own wallet.", systemImage: "person.crop.circle.badge.checkmark").foregroundStyle(.secondary) }
+                if let saveError { Label(saveError, systemImage: "xmark.octagon.fill").foregroundStyle(Brand.loss) }
                 if isExchange {
                     Label("An exchange credits a deposit only on the network it shows. Sent on another network, the money can be lost.", systemImage: "exclamationmark.triangle")
                         .foregroundStyle(.secondary)
@@ -485,22 +509,37 @@ struct AddressEditor: View {
         .fixedSize(horizontal: false, vertical: true)
     }
 
+    /// A new entry, or a changed name, address, network or memo, goes into the signer's book first (Touch ID, the whole
+    /// address on the prompt); a picture, a category, a note or the star change at once.
     private func save() {
         var e = entry ?? SavedAddress(name: "", address: "", network: network)
-        if e.icon != icon { AddressIcons.remove(e.icon) }
+        let previous = entry
         e.name = name.trimmingCharacters(in: .whitespaces)
         e.address = trimmed
         e.network = network
         e.kind = nil
         e.category = category.trimmingCharacters(in: .whitespaces).isEmpty ? nil : category.trimmingCharacters(in: .whitespaces)
-        e.icon = icon
         e.memo = memo.trimmingCharacters(in: .whitespaces)
         e.note = note.trimmingCharacters(in: .whitespaces)
         e.favorite = favorite
-        withAnimation(.snappy) {
-            if let i = ws.addressBook.firstIndex(where: { $0.id == e.id }) { ws.addressBook[i] = e } else { ws.addressBook.append(e) }
+        let changed = previous.map { $0.name != e.name || $0.address != e.address || $0.network != e.network || $0.memo != e.memo } ?? true
+        saving = true
+        saveError = nil
+        Task {
+            do {
+                if changed { try await ws.confirmAddresses([e]) }
+                if let previous, changed, previous.name.lowercased() != e.name.lowercased() || previous.network != e.network { await ws.forgetAddress(previous) }
+                if e.icon != icon { AddressIcons.remove(e.icon) }
+                e.icon = icon
+                withAnimation(.snappy) {
+                    if let i = ws.addressBook.firstIndex(where: { $0.id == e.id }) { ws.addressBook[i] = e } else { ws.addressBook.append(e) }
+                }
+                dismiss()
+            } catch {
+                saveError = "Not saved: " + error.localizedDescription
+                saving = false
+            }
         }
-        dismiss()
     }
 }
 
@@ -667,7 +706,7 @@ struct PendingAddressBoard: View {
                     StatusChip(text: "waiting for your confirmation", tint: Brand.profit)
                 }
                 AddressCard(entry: entry, readOnly: true).frame(width: 320)
-                Label("Taken from your own message and checked for \(entry.network.title). Compare the start and the end with the source before you confirm.",
+                Label("Taken from your own message and checked for \(entry.network.title). Compare it with the source: Save asks for Touch ID with the whole address on the prompt.",
                       systemImage: "checkmark.shield")
                     .font(.ui(10)).foregroundStyle(.secondary).frame(width: 470, alignment: .leading)
                 PendingButtons(confirm: "Save")
@@ -701,6 +740,37 @@ extension Workspace {
         if let i = addressBook.firstIndex(where: { $0.id == entry.id }) { addressBook[i].lastSent = Date() }
     }
 
+    /// Money may go to this entry: its name, address and memo are the ones confirmed with Touch ID when it was saved
+    /// (the signer's book; a 0x address counts on every EVM network), or it's one of the wallets on this Mac. An entry
+    /// changed in the file outside ihatecrypto doesn't pass.
+    func isConfirmed(_ e: SavedAddress) -> Bool {
+        if wallets.contains(where: { $0.solana == e.address || $0.evm?.lowercased() == e.address.lowercased() }) { return true }
+        let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo", "hyperliquid"]
+        return confirmedAddresses.contains { c in
+            c.memo == e.memo && (evm.contains(c.network) && evm.contains(e.network.rawValue)
+                ? c.same(name: e.name, network: c.network, address: e.address) : c.same(name: e.name, network: e.network.rawValue, address: e.address))
+        }
+    }
+
+    func requireConfirmed(_ e: SavedAddress) throws {
+        guard isConfirmed(e) else {
+            throw ExecutionError("“\(e.name)” isn’t confirmed with Touch ID, so nothing goes to it. Confirm it in Favorites › All, after checking the address against its source: if you didn’t change it, it was changed outside ihatecrypto.")
+        }
+    }
+
+    /// Into the signer's book: Touch ID, every whole address on the prompt.
+    func confirmAddresses(_ entries: [SavedAddress]) async throws {
+        let r = try await SignerClient().send(.saveAddresses(entries.map {
+            SignerAddress(name: $0.name, network: $0.network.rawValue, address: $0.address, memo: $0.memo)
+        }))
+        guard r.ok else { throw WalletError(r.error ?? "The signer refused.") }
+        confirmedAddresses = r.addresses ?? confirmedAddresses
+    }
+
+    func forgetAddress(_ e: SavedAddress) async {
+        if let r = try? await SignerClient().send(.removeAddress(name: e.name, network: e.network.rawValue)), r.ok { confirmedAddresses = r.addresses ?? [] }
+    }
+
     /// Where a token sent as it is goes: the saved address by its name, and the network — the one the message names,
     /// else where the entry is saved. A 0x address saved on one EVM network is the same address on another; Solana's
     /// and the EVM networks' don't mix, and NEAR or Hyperliquid have their own forms.
@@ -729,6 +799,7 @@ extension Workspace {
             throw ExecutionError("“\(entry.name)” needs a memo / tag, and ihatecrypto can’t add one to a Solana transfer — send it from the exchange’s app instead.")
         }
         if let off = ModuleNetwork(place: net).flatMap({ Modules.current.refusal(network: $0, ru: modulesRussian) }) { throw ExecutionError(off) }
+        try requireConfirmed(entry)
         return (entry, net)
     }
 
@@ -744,6 +815,7 @@ extension Workspace {
             reply("“\(entry.name)” is a NEAR account: ihatecrypto sends it NEAR, not USDC — e.g. “send 0.1 NEAR to \(entry.name)”.", note: note)
             return
         }
+        do { try requireConfirmed(entry) } catch { reply(error.localizedDescription, note: note); return }
         // The network the message names wins, Ethereum mainnet too (the user's call, 2026-10-01: «мне пофиг что дорого»).
         // A 0x address saved on one EVM network is the same address on another; the card says it was saved elsewhere.
         if let net = network.flatMap(AddressCheck.Network.init(rawValue:)), net != entry.network {
@@ -771,6 +843,7 @@ extension Workspace {
     func transfer(_ amount: Decimal, to entry: SavedAddress) async {
         guard let wallet = signerWallet else { reply("Transfers work in the app once the key is in secure storage."); return }
         if let off = transferRefusal(entry) { reply(off); return }
+        do { try requireConfirmed(entry) } catch { reply(error.localizedDescription); return }
         executing = true
         defer { executing = false; runningAction = nil }
         let title = "Send \(Fmt.num(amount)) USDC to \(entry.name)"

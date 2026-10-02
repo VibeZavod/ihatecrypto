@@ -18,6 +18,13 @@ public enum SignerRequest: Codable, Sendable {
     case createWallet(requirePresence: Bool)
     /// Removes the active wallet; asks for Touch ID first.
     case forget
+    /// The address book's names and addresses as they were confirmed in person: what money may go to by name.
+    case addressBook
+    /// Saves entries to that book (a new one, or a changed address, name or memo): Touch ID first, every entry's whole
+    /// address on the prompt. Money to them then needs no second approval.
+    case saveAddresses([SignerAddress])
+    /// Takes an entry out of the book (no prompt: removing one can't send money anywhere).
+    case removeAddress(name: String, network: String)
     /// A single private key from another wallet (`ImportedKey`: a Solana key from Phantom, an EVM key from MetaMask),
     /// stored like a phrase and added as a wallet that signs only on that key's chain.
     case importPrivateKey(key: String)
@@ -96,6 +103,26 @@ public enum SignerRequest: Codable, Sendable {
 }
 
 /// One wallet the signer holds, public parts only: its name, what it can sign for, its addresses.
+/// A saved address as the signer keeps it: the name money goes to and the address the user confirmed for it in person.
+/// The app's file keeps only how an entry looks (its picture, star, notes); a name sends only to the address here.
+public struct SignerAddress: Codable, Sendable, Equatable, Hashable {
+    public var name: String
+    /// AddressCheck.Network's raw value: «solana», «base», «near»…
+    public var network: String
+    public var address: String
+    /// An exchange's memo or tag: it decides whose account a deposit lands in, so it's confirmed with the address.
+    public var memo: String
+
+    public init(name: String, network: String, address: String, memo: String = "") {
+        (self.name, self.network, self.address, self.memo) = (name, network, address, memo)
+    }
+
+    /// The same entry: the name in any case, a 0x address in any case, a Solana or NEAR one exactly.
+    public func same(name other: String, network net: String, address a: String) -> Bool {
+        name.lowercased() == other.lowercased() && network == net && (address.hasPrefix("0x") ? address.lowercased() == a.lowercased() : address == a)
+    }
+}
+
 public struct SignerWallet: Codable, Sendable, Equatable, Identifiable {
     public var id: String
     public var label: String
@@ -173,6 +200,8 @@ public struct SignerReply: Codable, Sendable {
     public var sessionLength: Int?
     public var action: MsgPack?
     public var nonce: UInt64?
+    /// The address book as the signer keeps it (`.addressBook`, `.saveAddresses`, `.removeAddress`).
+    public var addresses: [SignerAddress]?
     public var checks: [String] = []
     public var problems: [String] = []
 
@@ -208,7 +237,7 @@ public final class SignerClient: @unchecked Sendable {
     public func send(_ request: SignerRequest) async throws -> SignerReply {
         if Self.untrusted {
             switch request {
-            case .status, .nearAddress, .endSession, .ledgerAgent(_, false): break
+            case .status, .nearAddress, .endSession, .ledgerAgent(_, false), .addressBook: break
             case .signSolana, .signEVMTransaction, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
                  .signNearIntentDeposit, .signNearTransfer, .signNearDeleteAccount:
                 let status = try await Self.$untrusted.withValue(false) { try await send(.status) }
