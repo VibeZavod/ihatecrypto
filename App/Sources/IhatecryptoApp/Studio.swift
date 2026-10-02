@@ -2250,7 +2250,10 @@ private struct ChatComposer: View {
     /// Where the caret is in the field: «/» and «@» lists work on the word it's in, anywhere in the text.
     @State private var selection: TextSelection?
     private var caret: Int? {
-        guard case .selection(let r)? = selection?.indices, r.upperBound <= ws.draft.endIndex else { return nil }
+        // The field hands back UTF-16 indices, choose() makes UTF-8 ones, and either can outlive the text it came from.
+        // Comparing with draft's own endIndex mixes encodings (Cyrillic is 1 UTF-16 unit but 2 UTF-8 bytes) and the
+        // conversion then traps; an offset within the UTF-16 count is in range in either encoding.
+        guard case .selection(let r)? = selection?.indices, r.upperBound.encodedOffset <= ws.draft.utf16.count else { return nil }
         return r.upperBound.utf16Offset(in: ws.draft)
     }
     private var suggestions: [ComposerSuggestion] { ws.draft == dismissed ? [] : ComposerSuggestion.for(ws.draft, caret: caret, ws: ws) }
@@ -2348,6 +2351,13 @@ private struct ChatComposer: View {
                 .tint(Brand.accent)
                 .padding(.vertical, 8)
                 .onSubmit(send)
+                // Shift-Return breaks the line at the caret; plain Return still sends.
+                .onKeyPress(.return, phases: .down) { press in
+                    guard press.modifiers.contains(.shift) else { return .ignored }
+                    // The field inserts it itself, as it does on ⌥Return, so its text and caret stay in step.
+                    NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)
+                    return .handled
+                }
                 // ↑↓ walk the «/» or «@» list; ↑ in an empty field brings back the last message, to send again or edit.
                 .onKeyPress(.upArrow) {
                     if !suggestions.isEmpty { pick = max(0, pick - 1); return .handled }
