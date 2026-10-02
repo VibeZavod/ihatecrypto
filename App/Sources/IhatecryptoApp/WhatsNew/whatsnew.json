@@ -1,5 +1,30 @@
 [
   {
+    "version": "0.3",
+    "date": "2026-10-03",
+    "stories": [
+      {
+        "title": "Ask it anything",
+        "text": "Questions about the app, your quota or life get a straight answer, and a line on what the canvas could keep for them. Asking about the system prompt is no longer stopped as an attack.",
+        "try": "what is the canvas for?",
+        "symbol": "bubble.left.and.text.bubble.right.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Shift-Return for a new line",
+        "text": "Shift-Return breaks the line in the chat field; Return still sends.",
+        "symbol": "return",
+        "color": "2775CA"
+      },
+      {
+        "title": "The trading key waits for a deposit",
+        "text": "Hyperliquid takes a trading key once the account has had a deposit. Until then the first steps don't ask for Touch ID; afterwards Settings › Wallet › Key and signing has the button.",
+        "symbol": "key.fill",
+        "color": "072723"
+      }
+    ]
+  },
+  {
     "version": "0.2",
     "date": "2026-10-01",
     "stories": [
