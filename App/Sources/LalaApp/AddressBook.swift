@@ -706,10 +706,17 @@ extension Workspace {
     /// and the EVM networks' don't mix, and NEAR or Hyperliquid have their own forms.
     func tokenRecipient(_ name: String, network: String?) throws -> (entry: SavedAddress, network: String) {
         let key = name.lowercased()
-        guard let entry = addressBook.first(where: { $0.name.lowercased() == key }) ?? ownWallet(key) ?? addressBook.first(where: { $0.name.lowercased().contains(key) }) else {
+        let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo"]
+        // One name can be saved on several networks («Automation» on Solana and on Base): the entry that can receive
+        // on the network named comes first.
+        func fits(_ e: SavedAddress) -> Bool {
+            guard let network else { return true }
+            return e.network.rawValue == network || (evm.contains(network) && (evm.contains(e.network.rawValue) || e.network == .hyperliquid))
+        }
+        let named = addressBook.filter { $0.name.lowercased() == key }, near = addressBook.filter { $0.name.lowercased().contains(key) }
+        guard let entry = named.first(where: fits) ?? named.first ?? ownWallet(key) ?? near.first(where: fits) ?? near.first else {
             throw ExecutionError("There’s no “\(name)” in Addresses. Save it there first, then send by its name.")
         }
-        let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo"]
         let saved = entry.network.rawValue, net = network ?? saved
         guard net == saved || (evm.contains(net) && (evm.contains(saved) || saved == "hyperliquid")) else {
             throw ExecutionError("“\(entry.name)” is a \(entry.network.title) address: it can't receive on \(AddressCheck.Network(rawValue: net)?.title ?? net).")
