@@ -7,8 +7,6 @@
 	<key>keychain-access-groups</key>
 	<array>
 		<string>$(AppIdentifierPrefix)app.ihatecrypto.mac.signer</string>
-		<!-- LALA's group, read once to move its wallets over (LegacyMove); the first group above is where everything new goes. -->
-		<string>$(AppIdentifierPrefix)app.lala.mac.signer</string>
 	</array>
 </dict>
 </plist>

@@ -18,10 +18,6 @@ public enum SignerRequest: Codable, Sendable {
     case createWallet(requirePresence: Bool)
     /// Removes the active wallet; asks for Touch ID first.
     case forget
-    /// Once, on a Mac that ran LALA: its signer's wallets, sealed under LALA's Keychain names, sealed again under
-    /// ihatecrypto's (Touch ID once). `registry`: the old signer's list, for the labels and the automation wallet;
-    /// every address is derived again in the signer and must match.
-    case adoptLegacy(registry: [SignerWallet], active: String?)
     /// A single private key from another wallet (`ImportedKey`: a Solana key from Phantom, an EVM key from MetaMask),
     /// stored like a phrase and added as a wallet that signs only on that key's chain.
     case importPrivateKey(key: String)

@@ -31,8 +31,7 @@ targets:
     type: application
     platform: macOS
     sources: [../Sources/IhatecryptoApp]
-    # ihatecrypto.app, app.ihatecrypto.mac. Until 2026-10 it was LALA / app.lala.mac: a Mac that ran it moves its settings,
-    # Application Support and wallets over once (LegacyMove, in the app and in the signer).
+    # ihatecrypto.app, app.ihatecrypto.mac: its name in the Dock, menu bar, notifications and Touch ID.
     dependencies:
       - package: ihatecrypto
         product: IhatecryptoKit

@@ -21,8 +21,7 @@ enum SeedStore {
 
     static let service = "app.ihatecrypto.seed"
 
-    /// `service`: LALA's name for the same items when LegacyMove reads them («app.lala.seed»).
-    static func item(_ account: String, service: String = service) -> [String: Any] {
+    static func item(_ account: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
             kSecAttrService as String: service,
@@ -48,8 +47,8 @@ enum SeedStore {
     }
 
     /// The sealed seed and the tag of the key that opens it.
-    private static func sealed(_ account: String, service: String = service) -> (data: Data, tag: Data)? {
-        var q = item(account, service: service)
+    private static func sealed(_ account: String) -> (data: Data, tag: Data)? {
+        var q = item(account)
         q[kSecReturnData as String] = true
         q[kSecReturnAttributes as String] = true
         var out: CFTypeRef?
@@ -175,18 +174,8 @@ enum SeedStore {
         return seed
     }
 
-    /// A wallet's secret as LALA's signer kept it (LegacyMove): its sealed item under «app.lala.seed», opened with its
-    /// Enclave key in LALA's group, or wallet «1» from before sealing.
-    static func openLegacy(id: String, context: LAContext) throws -> Data {
-        if let sealed = sealed(account(id), service: LegacyMove.seedService) { return try open(sealed, context: context) }
-        guard id == SignerWallet.firstID, let seed = read(legacyAccount, service: LegacyMove.seedService, context: context) else {
-            throw WalletError("No wallet «\(id)» under LALA's names.")
-        }
-        return seed
-    }
-
-    private static func read(_ account: String, service: String = service, context: LAContext?) -> Data? {
-        var q = item(account, service: service)
+    private static func read(_ account: String, context: LAContext?) -> Data? {
+        var q = item(account)
         q[kSecReturnData as String] = true
         if let context { q[kSecUseAuthenticationContext as String] = context }
         var out: CFTypeRef?

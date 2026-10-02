@@ -95,9 +95,6 @@ enum Signer {
             try confirmInPerson("add a wallet from a recovery phrase to ihatecrypto and sign with it")
             return try store(phrase: phrase, passphrase: passphrase, requirePresence: requirePresence)
 
-        case .adoptLegacy(let registry, let active):
-            return try LegacyMove.adopt(registry, active: active)
-
         case .importPrivateKey(let text):
             let imported = try ImportedKey.parse(text) // a malformed key fails before any prompt
             let address = try imported.address()

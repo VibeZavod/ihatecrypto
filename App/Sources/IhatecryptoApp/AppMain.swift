@@ -11,9 +11,8 @@ import SwiftUI
 struct AppMain: App {
     /// The main window's title; DebugAPI and the window test find the window by it.
     static let mainTitle = "ihatecrypto"
-    /// Created once with the app, so the watch loop below outlives the window. After LegacyMove.copyData: it reads the
-    /// settings and Application Support as they are once LALA's are copied.
-    private let workspace: Workspace
+    /// Created once with the app, so the watch loop below outlives the window.
+    private let workspace = Workspace()
 
     /// `-signerSelfTest YES`: checks the signing process inside ihatecrypto.app with the public test phrase, then quits.
     /// The main window stays empty so nothing else (balances, model logins) runs meanwhile.
@@ -30,8 +29,6 @@ struct AppMain: App {
             .contains(where: { $0.processIdentifier != getpid() && !$0.isTerminated }) {
             exit(0)
         }
-        LegacyMove.copyData()
-        workspace = Workspace()
         if selfTest {
             Task { exit(await SignerSelfTest.run() ? 0 : 1) }
         } else {
@@ -286,7 +283,6 @@ struct ContentView: View {
                 log("import: ok=\(r?.ok ?? false) \(r?.solanaAddress ?? "") \(r?.evmAddress ?? "") \(r?.error ?? "")")
             }
             #endif
-            await LegacyMove.adoptWallets()
             await ws.loadSigner()
             #if DEBUG
             // `-openBrowser <url>`: opens the dApp browser on that page, once the wallet is known.

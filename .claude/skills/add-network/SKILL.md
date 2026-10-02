@@ -77,7 +77,7 @@ curl -s https://api.relay.link/chains | python3 -c "import json,sys; [print(c['i
 4. Библиотека блоков: открыть «Add block» и увидеть группу сети с логотипами (скриншот).
 5. UI-сценарий в `App/Tools/uitest-scenarios.json`: бридж рисует маршрут `SOLANA → RELAY → <NET>`. Прогон: `python3 App/Tools/uitest.py <слово>` (нужен Settings › Debugging › Local debug API).
 6. Скриншот Settings › Modules: `open -g ~/Applications/ihatecrypto.app --args -openPlace settings -settingsTab modules`, затем `screencapture -l <windowID>` (id окна через `CGWindowListCopyWindowInfo`). Убедиться, что иконка видна в тёмной теме.
-7. Реальные деньги — только после Confirm/Touch ID пользователя или с тестового кошелька в рамках выданного бюджета (память `lala-uitest`). Сам никогда не подписывай с основного кошелька.
+7. Реальные деньги — только после Confirm/Touch ID пользователя или с тестового кошелька в рамках выданного бюджета (память `ihatecrypto-uitest`). Сам никогда не подписывай с основного кошелька.
 
 ## 4. Коммит и сборка (в репозитории параллельно работают другие сессии)
 
