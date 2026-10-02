@@ -190,6 +190,8 @@ struct FavoritesBoard: View {
     @State private var search = ""
     @State private var adding = false
     @State private var editing: SavedAddress?
+    @State private var confirmingAll = false
+    @State private var confirmAllError: String?
 
     var body: some View {
         let items = filtered
@@ -236,8 +238,17 @@ struct FavoritesBoard: View {
                           systemImage: "exclamationmark.shield")
                         .font(.ui(10, .semibold)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true)
                     Spacer()
-                    Button("Confirm all…") { Task { try? await ws.confirmAddresses(unconfirmed) } }.buttonStyle(.bordered)
+                    Button(confirmingAll ? "Confirming…" : "Confirm all…") {
+                        confirmingAll = true
+                        confirmAllError = nil
+                        Task {
+                            do { try await ws.confirmAddresses(unconfirmed) } catch { confirmAllError = "Not confirmed: " + error.localizedDescription }
+                            confirmingAll = false
+                        }
+                    }
+                    .buttonStyle(.bordered).disabled(confirmingAll)
                 }
+                if let confirmAllError { Text(confirmAllError).font(.ui(10)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true) }
             }
             if items.isEmpty { empty }
             ForEach(items) { entry in
@@ -295,6 +306,8 @@ struct AddressCard: View {
     var readOnly = false
     var edit: (SavedAddress) -> Void = { _ in }
     @State private var confirmDelete = false
+    @State private var confirming = false
+    @State private var confirmError: String?
 
     private static let gold = Color(hex: 0xF5B301)
 
@@ -337,14 +350,26 @@ struct AddressCard: View {
                 Label("Memo / tag: \(entry.memo)", systemImage: "number").font(.ui(10, .semibold)).foregroundStyle(Brand.jevInk)
             }
             if !entry.note.isEmpty { Text(entry.note).font(.ui(10)).foregroundStyle(.secondary) }
-            if !readOnly, !ws.isConfirmed(entry) {
+            // Its state in the signer's book, always on the card: confirmed (green), or not yet, with Confirm….
+            if !readOnly, ws.isConfirmed(entry) {
+                Label("Confirmed with Touch ID: money goes only to this address", systemImage: "checkmark.shield.fill")
+                    .font(.ui(10, .semibold)).foregroundStyle(Brand.profit)
+            } else if !readOnly {
                 HStack(spacing: 8) {
                     Label("Not confirmed with Touch ID: nothing is sent to it", systemImage: "exclamationmark.shield")
                         .font(.ui(10, .semibold)).foregroundStyle(Brand.loss)
                     Spacer()
-                    Button("Confirm…") { Task { try? await ws.confirmAddresses([entry]) } }
-                        .buttonStyle(.bordered).help("Touch ID, with the whole address on the prompt: check it against its source")
+                    Button(confirming ? "Confirming…" : "Confirm…") {
+                        confirming = true
+                        confirmError = nil
+                        Task {
+                            do { try await ws.confirmAddresses([entry]) } catch { confirmError = "Not confirmed: " + error.localizedDescription }
+                            confirming = false
+                        }
+                    }
+                    .buttonStyle(.bordered).disabled(confirming).help("Touch ID, with the whole address on the prompt: check it against its source")
                 }
+                if let confirmError { Text(confirmError).font(.ui(10)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true) }
             }
             HStack(spacing: 14) {
                 CopyButton(title: "Copy", text: entry.address, help: "Copy the address")
