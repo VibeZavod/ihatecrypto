@@ -354,11 +354,14 @@ struct RouteCards: View {
 
 /// The assistant's cursor while it lays out a route: the arrow with the coin riding on it.
 struct CoinCursor: View {
+    /// The coin's face: building the route by default; the first screen's demo changes it as it goes.
+    var mood: LalaLogo.Mood = .thinking
+
     var body: some View {
         ZStack(alignment: .topLeading) {
             Image(systemName: "cursorarrow").font(.system(size: 22, weight: .bold)).foregroundStyle(Brand.accent)
                 .shadow(color: .white, radius: 0.5)
-            LalaLogo(size: 30, mood: .thinking)
+            LalaLogo(size: 30, mood: mood)
                 .shadow(color: .black.opacity(0.18), radius: 3, y: 1)
                 .offset(x: 14, y: 16)
         }

@@ -239,10 +239,19 @@ struct MenuBarContent: View {
 struct ContentView: View {
     @Environment(Workspace.self) private var ws
     @Environment(\.openWindow) private var openWindow
+    /// «Look around first» on the first screen: it doesn't come back.
+    @AppStorage("welcomeDone") private var welcomeDone = false
+    /// The onboarding's step while it runs (Onboarding.swift); empty otherwise.
+    @AppStorage("onboardingStep") private var onboardingStep = ""
 
     var body: some View {
         // The chat lives on the canvas only: Settings take the whole window, chat included.
-        Group { if ws.settingsOpen { SettingsView() } else { StudioView() } }
+        Group {
+            if ws.settingsOpen { SettingsView() }
+            else if !onboardingStep.isEmpty { OnboardingView() }
+            else if showWelcome { WelcomeView { welcomeDone = true } }
+            else { StudioView() }
+        }
             .frame(minWidth: 960, minHeight: 650)
             .toolbar(removing: .title)
             .task {
@@ -635,6 +644,13 @@ struct SettingsView: View {
             Label(ws.agentActive ? "Hyperliquid trading key on: orders only, can't withdraw"
                   : ws.ledgerActive ? "Hyperliquid trading key off: every order asks for the Ledger's buttons" : "Hyperliquid trading key off: every order asks for Touch ID",
                   systemImage: ws.agentActive ? "checkmark.circle.fill" : "circle")
+            // Hyperliquid accepts the key once the account has had a deposit; the onboarding offers it too.
+            if !ws.agentActive, ws.activeWallet?.evm != nil {
+                Button(ws.ledgerActive ? "Approve a trading key on the Ledger" : "Approve a trading key", systemImage: "key") {
+                    Task { await ws.enableAgent() }
+                }
+                .disabled(ws.executing)
+            }
             if ws.signerWallet != nil {
                 Button("Forget the key on this Mac…", role: .destructive) { confirmForget = true }
                     .confirmationDialog("Forget the wallet key on this Mac?", isPresented: $confirmForget) {
@@ -749,5 +765,17 @@ extension ProviderKind {
         case .apiKey: "API key or credits"
         case .local: "On this Mac"
         }
+    }
+}
+
+extension ContentView {
+    /// The first screen, until the signer has a wallet or an address is watched, unless put aside. A wallet made from
+    /// it ends it by itself. `-showWelcome YES` (Debug) shows it anyway.
+    var showWelcome: Bool {
+        guard !welcomeDone else { return false }
+        #if DEBUG
+        if UserDefaults.standard.bool(forKey: "showWelcome") { return true }
+        #endif
+        return ws.signerHasWallet == false && ws.solanaAddress.isEmpty && ws.hlAddress.isEmpty
     }
 }

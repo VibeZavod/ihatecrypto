@@ -243,18 +243,9 @@ struct ImportWalletView: View {
         }
     }
 
-    /// All 12 words at once, for a password manager: marked concealed and transient so clipboard history apps skip
-    /// them, kept on this Mac (no Universal Clipboard), and wiped after 60 s unless something else was copied since.
+    /// All 12 words at once, for a password manager (SecretPasteboard), wiped after 60 s.
     private func copy(_ words: [String]) {
-        let board = NSPasteboard.general
-        board.prepareForNewContents(with: .currentHostOnly)
-        let item = NSPasteboardItem()
-        item.setString(words.joined(separator: " "), forType: .string)
-        for marker in ["org.nspasteboard.ConcealedType", "org.nspasteboard.TransientType"] {
-            item.setData(Data(), forType: NSPasteboard.PasteboardType(marker))
-        }
-        board.writeObjects([item])
-        let change = board.changeCount
+        let change = SecretPasteboard.copy(words.joined(separator: " "))
         copiedChange = change
         Task {
             try? await Task.sleep(for: .seconds(60))
@@ -263,7 +254,7 @@ struct ImportWalletView: View {
     }
 
     private func wipeCopied() {
-        if let change = copiedChange, NSPasteboard.general.changeCount == change { NSPasteboard.general.clearContents() }
+        SecretPasteboard.wipe(copiedChange)
         copiedChange = nil
     }
 
@@ -312,5 +303,26 @@ struct ImportWalletView: View {
         }
         phrase = ""
         passphrase = ""
+    }
+}
+
+/// A secret on the clipboard (recovery words): marked concealed and transient so clipboard history apps skip it, kept
+/// on this Mac (no Universal Clipboard). The caller wipes it later by the change count `copy` returns.
+enum SecretPasteboard {
+    static func copy(_ text: String) -> Int {
+        let board = NSPasteboard.general
+        board.prepareForNewContents(with: .currentHostOnly)
+        let item = NSPasteboardItem()
+        item.setString(text, forType: .string)
+        for marker in ["org.nspasteboard.ConcealedType", "org.nspasteboard.TransientType"] {
+            item.setData(Data(), forType: NSPasteboard.PasteboardType(marker))
+        }
+        board.writeObjects([item])
+        return board.changeCount
+    }
+
+    /// Clears the clipboard only if it still holds what `copy` wrote.
+    static func wipe(_ change: Int?) {
+        if let change, NSPasteboard.general.changeCount == change { NSPasteboard.general.clearContents() }
     }
 }

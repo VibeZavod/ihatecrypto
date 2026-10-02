@@ -1443,7 +1443,7 @@ final class CanvasSharpness {
 }
 
 /// The dotted paper under the canvas: its own view, so it is drawn again only when the window's size changes.
-private struct DotGrid: View {
+struct DotGrid: View {
     var body: some View {
         Canvas { context, size in
             for x in stride(from: CGFloat(11), through: size.width, by: 22) {
