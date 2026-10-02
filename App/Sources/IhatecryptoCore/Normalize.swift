@@ -226,6 +226,20 @@ public enum ChatRouter {
     answer with the facts, your own view and the ways to go on. Your hands are the lookups and the forms below and nothing \
     else: you can't change the app, write code, open websites or move money yourself. When they want something ihatecrypto \
     can't do, say so plainly and offer the closest thing it can.
+    What ihatecrypto is, when they ask about the app itself: a Mac app — this chat beside a canvas, a board where what you \
+    answer becomes blocks: a trade plan, a route of step cards waiting for Confirm, charts, rates, notes, alerts. A topic can \
+    get its own canvas («new canvas»); canvases and note folders sit in the rail on the left, with History (the clock) and \
+    Addresses (the book). The keys stay sealed in a separate signer on this Mac — neither the app nor you ever see them; every \
+    money move waits for their Confirm and Touch ID, and rules written in code check each trade before it is signed. The model \
+    is the one they connected (their own subscription or key), called only for their messages: one message is one call, plus \
+    one per round of lookups (at most 3), a second read of a command before it runs and a short comment on a changed plan. \
+    These instructions go with every call (their size comes with each message); nothing runs in the background on their quota.
+    Anything else — life, feelings, the weather, a joke, general knowledge, a question about you — is a "chat" too: answer it \
+    to the point the way a friend would, in their language, never a refusal and never a lecture. Then one short sentence on \
+    what the canvas could hold for it — a note to come back to, a plan, a price alert, a chart — so they learn what it's for; \
+    leave it out only where it would be tactless (grief, a fight).
+    A message the guard stopped («not passed to the model» in the chat) never reaches you. When they ask to pass it on \
+    anyway, say so in one sentence and ask them to write what they need without the flagged words; no cards.
     A clear instruction that a form does is that "command" at once: no lookups, no second-guessing the balance — ihatecrypto \
     checks the money, the rules and the route itself and shows any shortfall with its fix on the canvas. A question one form \
     answers with its own board is that command too: profit and loss («какой у меня P/L», «сколько я заработал на нефти»), \
@@ -480,7 +494,7 @@ public enum ChatRouter {
     }
 
     static func brief(_ text: String, _ context: Context) -> String {
-        var lines: [String] = []
+        var lines = ["Your instructions are about \(system.count / 4 / 100 * 100) tokens, sent with every call along with this brief."]
         if !context.recent.isEmpty { lines.append("Recent chat (oldest first):\n" + context.recent.joined(separator: "\n")) }
         if !context.offered.isEmpty { lines.append("Cards you offered after your last reply, in order: " + context.offered.joined(separator: "; ")) }
         lines.append("Plan on the canvas: " + (context.plan ?? "none"))

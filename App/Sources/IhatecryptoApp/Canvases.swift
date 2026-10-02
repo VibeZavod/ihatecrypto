@@ -1958,7 +1958,12 @@ extension Workspace {
 
     /// The last few lines of this canvas's chat, for a model reading a follow-up like «1» or «yes».
     func recentChat() -> [String] {
+        let chat = Array(messages.dropFirst())
+        // A message the guard stopped never reaches a model, not even as history behind a «pass it»: only the guard's reply stays.
+        let stopped = Set(chat.indices.dropLast().filter { chat[$0].fromUser && Message.stopsSteering(chat[$0 + 1].note) })
         // A long message the person wrote is read whole (up to 3000 characters); our own replies only need their gist.
-        messages.dropFirst().suffix(12).map { $0.fromUser ? "user: " + $0.text.prefix(3000) : "ihatecrypto: " + $0.text.prefix(600) }
+        return chat.indices.filter { !stopped.contains($0) }.suffix(12).map { i in
+            chat[i].fromUser ? "user: " + chat[i].text.prefix(3000) : "ihatecrypto: " + chat[i].text.prefix(600)
+        }
     }
 }

@@ -22,6 +22,10 @@ struct Message: Identifiable, Codable, Equatable {
     let fromUser: Bool
     let text: String
     var note: String?
+
+    /// The guard's notes on its reply to a message it stopped as steering (send()); that message never reaches a model.
+    static let guardLocal = "guard: local rules", guardBoth = "guard: rules and the second check"
+    static func stopsSteering(_ note: String?) -> Bool { note == guardLocal || note == guardBoth }
 }
 
 @Observable
@@ -683,7 +687,7 @@ final class Workspace {
                   + screen.problems.joined(separator: " ")
                   + say(" The message was not passed to the model and changed nothing.", " Сообщение не ушло модели и ничего не изменило.")
                   + (pastedAddress ? say(" To keep an address, save it in Addresses — the book button in the rail.", " Чтобы сохранить адрес, добавь его в адресную книгу — кнопка с книгой слева.") : ""),
-                  note: classifier == nil ? "guard: local rules" : "guard: rules and the second check")
+                  note: classifier == nil ? Message.guardLocal : Message.guardBoth)
             return
         }
         let before = intent

@@ -8,10 +8,12 @@ public enum InjectionHeuristics {
     static let commandPatterns = [
         #"ignore\s+(all\s+|any\s+|the\s+)?(previous|prior|above|earlier)\s+(instructions|rules|messages|prompts)"#,
         #"disregard\s+(all\s+|the\s+|any\s+)?(previous|prior|above|earlier)"#,
-        #"(system|developer)\s+(prompt|message|mode)"#,
+        // A prompt is named as a header or a tag that opens new orders («SYSTEM PROMPT: …», «[system]», «new system prompt»);
+        // a question about it («what's the system prompt size?») is not a command.
+        #"(system|developer)\s+(prompt|message)\s*[:>\]]|[\[<]\s*/?\s*(system|developer)\s*[\]>]|(new|override|updated)\s+(system|developer)\s+(prompt|message)|developer\s+mode"#,
         #"(you\s+are\s+now|new\s+instructions|do\s+not\s+tell\s+the\s+user|don't\s+tell\s+the\s+user)"#,
         #"(игнорируй|забудь|отмени)\s+(все\s+|всё\s+|предыдущие\s+|прежние\s+)*(инструкции|правила|указания)"#,
-        #"(системн\w+\s+промпт|новые\s+инструкции|ты\s+теперь|не\s+(говори|сообщай)\s+пользователю)"#,
+        #"(системн\w+\s+(промпт\w*|сообщени\w+)\s*:|нов\w+\s+системн\w+\s+промпт|новые\s+инструкции|ты\s+теперь|не\s+(говори|сообщай)\s+пользователю)"#,
     ]
     static let transferVerbs = #"(send|transfer|withdraw|bridge|deposit|approve|pay|отправ\w*|перевед\w*|перевест\w*|переведи|выведи|вывест\w*|скинь|пополн\w*|оплат\w*)"#
     static let evmAddress = #"0x[0-9a-fA-F]{40}"#
