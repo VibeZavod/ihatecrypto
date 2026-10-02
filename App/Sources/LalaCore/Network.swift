@@ -126,7 +126,8 @@ public enum Solana {
         public var tokens: [Holding] = []
     }
 
-    public static func balance(owner: String) async throws -> Balance {
+    /// `lendShares`: Jupiter Lend's share tokens (jlUSDC…) among the tokens too, for a transfer of them as they are.
+    public static func balance(owner: String, lendShares: Bool = false) async throws -> Balance {
         struct RPCError: Decodable { let message: String }
         struct Lamports: Decodable { struct R: Decodable { let value: UInt64 }; let result: R?; let error: RPCError? }
         struct Tokens: Decodable {
@@ -163,12 +164,12 @@ public enum Solana {
             let amount = try dec(info.tokenAmount.amount) / pow(10, info.tokenAmount.decimals)
             if info.mint == usdcMint { usdc += amount } else if amount > 0 { others[info.mint, default: 0] += amount }
         }
-        return Balance(sol: Decimal(l.value) / 1_000_000_000, usdc: usdc, tokens: await holdings(others))
+        return Balance(sol: Decimal(l.value) / 1_000_000_000, usdc: usdc, tokens: await holdings(others, lendShares: lendShares))
     }
 
     /// Names, icons and prices from Jupiter, 100 mints a request (its search's limit). Jupiter Lend's share tokens are
     /// left out: the Jupiter Lend row counts them. Without Jupiter the tokens still show, by mint and unpriced.
-    static func holdings(_ amounts: [String: Decimal]) async -> [Holding] {
+    static func holdings(_ amounts: [String: Decimal], lendShares: Bool = false) async -> [Holding] {
         let mints = amounts.keys.sorted()
         var pages: [Data] = []
         for start in stride(from: 0, to: mints.count, by: 100) {
@@ -177,16 +178,16 @@ public enum Solana {
                 pages.append(data)
             }
         }
-        return holdings(amounts, jupiter: pages)
+        return holdings(amounts, jupiter: pages, lendShares: lendShares)
     }
 
-    static func holdings(_ amounts: [String: Decimal], jupiter pages: [Data]) -> [Holding] {
+    static func holdings(_ amounts: [String: Decimal], jupiter pages: [Data], lendShares: Bool = false) -> [Holding] {
         let found = pages.flatMap { Holdings.json($0) as? [[String: Any]] ?? [] }
         let byMint = Dictionary(found.compactMap { t in (t["id"] as? String).map { ($0, t) } }) { a, _ in a }
         return amounts.compactMap { mint, amount -> Holding? in
             let t = byMint[mint] ?? [:]
             let tags = t["tags"] as? [String] ?? []
-            if tags.contains("jup-lend-earn") { return nil }
+            if tags.contains("jup-lend-earn"), !lendShares { return nil }
             return Holding(chain: "solana", contract: mint, amount: amount, symbol: t["symbol"] as? String ?? String(mint.prefix(4)) + "…",
                            icon: (t["icon"] as? String).flatMap(URL.init(string:)), price: Holdings.number(t["usdPrice"]),
                            verified: t["isVerified"] as? Bool == true || tags.contains("verified"), liquidity: Holdings.number(t["liquidity"]))

@@ -54,7 +54,7 @@ public enum SolanaGuard {
     /// Kamino's first deposit creates the user's own lookup table; only create and extend with the owner as authority pass.
     public static let lookupTableProgram = "AddressLookupTab1e1111111111111111111111111"
     public static let knownPrograms: [String: String] = [
-        system: "System", computeBudget: "Compute Budget", SPL.tokenProgram: "SPL Token",
+        system: "System", computeBudget: "Compute Budget", SPL.tokenProgram: "SPL Token", SPL.token2022Program: "SPL Token-2022",
         SPL.associatedTokenProgram: "Associated Token", jupiterSwap: "Jupiter Swap", jupiterLend: "Jupiter Lend Earn",
         relayDepository: "Relay Depository", kaminoLend: "Kamino Lend", lookupTableProgram: "Address Lookup Table",
     ]
@@ -119,7 +119,9 @@ public enum SolanaGuard {
                 } else {
                     v.problems.append("SOL goes to someone else's address \(to).")
                 }
-            case SPL.tokenProgram:
+            // Token-2022 shares the classic program's instructions and their layout; its extensions' own instructions
+            // (a transfer with a fee, confidential transfers…) are refused below like approvals.
+            case SPL.tokenProgram, SPL.token2022Program:
                 switch tag {
                 case 3, 12: // Transfer(source, dest, authority), TransferChecked(source, mint, dest, authority)
                     guard let to = account(tag == 3 ? 1 : 2) else { v.problems.append("Instruction \(n + 1): incomplete token transfer."); continue }

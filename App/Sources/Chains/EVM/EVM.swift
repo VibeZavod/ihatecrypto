@@ -99,6 +99,11 @@ public enum ERC20 {
         return Data([0xa9, 0x05, 0x9c, 0xbb]) + Data(count: 12) + recipient + Data(count: 24) + withUnsafeBytes(of: amount.bigEndian) { Data($0) }
     }
 
+    /// The same for amounts past 64 bits (a thousand tokens of 18 decimals), in the token's smallest units.
+    public static func transfer(to: String, units: Decimal) throws -> Data {
+        Data([0xa9, 0x05, 0x9c, 0xbb]) + (try ABI.address(to)) + (try ABI.word(units))
+    }
+
     /// balanceOf(address)
     public static func balanceOf(_ owner: String) throws -> Data {
         guard let who = Data(hex: owner), who.count == 20 else { throw WalletError("Invalid address: \(owner)") }

@@ -144,6 +144,11 @@ public enum WalletCommand: Equatable, Sendable {
     case closeNear(name: String)
     /// Native SOL to an address-book entry on Solana; the amount is always said.
     case sendSol(name: String, amount: Decimal)
+    /// «send all RAY on solana to Bybit», «send 1973 AI on robinhood to New wallet»: any token the wallet holds — by
+    /// ticker, contract or mint — to an address-book entry, as it is, on the same network: no swap, no bridge. Stock
+    /// tokens, Morpho's, Aave's and Jupiter Lend's shares, a network's own coin (ETH, POL: with a number). nil amount =
+    /// all of it; `network` nil = where the entry is saved.
+    case sendToken(name: String, token: String, amount: Decimal?, network: String? = nil)
     /// «задепозить», «пополнить», «my address»: money coming in from outside — show where to send it.
     case receive
     /// A Robinhood Stock Token (SPCX, TSLA…) bought on Robinhood Chain for USDC from Solana; `symbol` as the user named
@@ -343,6 +348,25 @@ public enum WalletCommand: Equatable, Sendable {
         if q.contains(/(?:close|delete|закр\w*|удали\w*)\s+(?:(?:the|my|мой)\s+)?(?:near|неар\w*)[\s-]*(?:account|аккаунт\w*)/),
            let m = text.firstMatch(of: /(?i).*\s(?:into|to|на|в)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/) {
             return .closeNear(name: String(m.1).trimmingCharacters(in: .whitespaces))
+        }
+        // «send all RAY on solana to Bybit», «отправь 1973 AI в робинхуде на New wallet»: any token, as it is, to a saved
+        // address. SOL with a number, NEAR, and USDC with a number but no network keep their own forms below.
+        if let m = text.firstMatch(of: /(?i)^\s*(?:send|transfer|отправь\w*|переведи|перевести|скинь|кинь)\s+(all|весь|всё|все|\d+(?:[.,]\d+)?)\s+(?:(?:the|my|мои|мой|моих)\s+)?\$?(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|[A-Za-z][A-Za-z0-9._-]{0,19})(?:\s+tokens?)?(?:\s+(?:on|in|в|на|по)\s+(?:the\s+)?(?:сети\s+)?(solana|солан\w*|base|бейс\w*|бейз\w*|баз[еыау]|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфир\w*|mainnet|robinhood|робин[гх]уд\w*|tempo|темпо\w*)(?:\s+(?:network|chain|сети))?)?\s+(?:to|на|для)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/) {
+            let amount = Decimal(string: String(m.1).replacingOccurrences(of: ",", with: "."))
+            let token = String(m.2), t = token.uppercased(), name = String(m.4).trimmingCharacters(in: .whitespaces)
+            let network = m.3.map { w -> String in
+                let s = String(w).lowercased()
+                return s.hasPrefix("sol") || s.hasPrefix("сол") ? "solana" : s.hasPrefix("баз") ? "base" : Self.network(s) ?? s
+            }
+            let stable = t == "USDC" || t == "USDG"
+            let ownForm = (t == "SOL" && amount != nil) || t == "NEAR" || (stable && amount != nil && network == nil)
+            // Our own places stay what they were; a pasted address is not a name; «send all the money» names no token.
+            let place = name.lowercased().wholeMatch(of: /(?:the\s+)?(?:solana|солан\w*|hyperliquid|хайперликвид\w*|base|бейс\w*|aave|kamino|hlp|vault|jupiter\w*|morpho)/) != nil
+            if !ownForm, !place, !["MONEY", "FUNDS", "EVERYTHING", "IT", "THEM", "TOKENS"].contains(t),
+               !name.lowercased().contains(/0x[0-9a-f]{6}/), name.count <= 40 {
+                if stable, let amount { return .sendTo(name: name, amount: amount, network: network) }
+                return .sendToken(name: name, token: token, amount: amount, network: network)
+            }
         }
         // «отправь 0.001 SOL на Old wallet», «send 0.01 SOL to Bybit»: native SOL to a saved Solana address.
         if let m = text.firstMatch(of: /(?i)(?:send|transfer|отправь\w*|переведи|перевести|скинь|кинь)\s+(\d+(?:[.,]\d+)?)\s*(?:sol|сол\w*)\s+(?:to|на|для)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/),
@@ -554,6 +578,9 @@ extension WalletCommand {
         case .sendNear(let name, let x): return "send \(n(x)) NEAR to \(name)"
         case .closeNear(let name): return "close your NEAR account and send all its NEAR to \(name)"
         case .sendSol(let name, let x): return "send \(Fmt.num(x, maxFraction: 9)) SOL to \(name)"
+        // The amount without grouping («1973.719299», not «1,973.72»): the text parses back to the same transfer.
+        case .sendToken(let name, let token, let x, let net):
+            return "send \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(token)\(net.map { " on \($0)" } ?? "") to \(name)"
         case .receive: return "show where to top up"
         case .buyStock(let s, let u): return "buy \(s.hasPrefix("0x") ? "the token \(s)" : "\(s) stock tokens") for \(n(u)) USDC on Robinhood Chain"
         case .sellStock(let s, let x): return "sell \(n(x)) \(s.hasPrefix("0x") ? "of the token \(s)" : "\(s) stock tokens") on Robinhood Chain"

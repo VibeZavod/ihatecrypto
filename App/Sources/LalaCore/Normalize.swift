@@ -145,6 +145,10 @@ public enum ChatRouter {
       send N USDC to <NAME from the address book> [on <network the user names — any, Ethereum mainnet too; they decide about the fee>] | top up (where to send money into ihatecrypto)
       send N NEAR to <NAME from the address book> | send all NEAR to <NAME> | close the NEAR account into <NAME>
       send N SOL to <NAME from the address book>
+      send <N|all> <TICKER, 0xCONTRACT or MINT> on <solana|base|arbitrum|polygon|ethereum|robinhood|tempo> to <NAME from the address book>
+        (any token the wallet holds, AS IT IS, on that same network — no swap, no bridge: memecoins, stock tokens (AI, TSLA…), Morpho's,
+        Aave's and Jupiter Lend's shares (gtUSDCp, aBasUSDC, jlUSDC), Token-2022 tokens; ETH or POL itself needs N. «переведи все RAY на Bybit»
+        = send all RAY on solana to Bybit; «скинь все токены на новый кошелёк» is one such command per token, joined by " then ")
     PAYING FOR A SERVICE (MPP on Tempo, the x402 way: an API that charges per request — search, data, email, phone calls, mailed letters,
       flights, token research…): pay <GET|POST> <URL> [<JSON body>]   (the URL and body exactly as the services lookup and the service's docs give them;
       the price comes from the service and shows on a card; paid in USDC on Tempo, bridged from Solana when short, only after Confirm)

@@ -1043,6 +1043,7 @@ extension Workspace {
         case .sendNear(let name, let asked): nearOutRoute(to: name, amount: asked, close: false)
         case .closeNear(let name): nearOutRoute(to: name, amount: nil, close: true)
         case .sendSol(let name, let amount): solOutRoute(to: name, amount: amount)
+        case .sendToken(let name, let token, let amount, let network): tokenOutRoute(to: name, token: token, amount: amount, network: network)
         case .pay: payRoute(command)
         case .bridge(let from, let to, let amount): bridgeRoute(from, to, amount)
         case .gas(let place, let usd): gasRoute(place, usd ?? 1)
@@ -1131,6 +1132,21 @@ extension Workspace {
                          steps: [
             step("sol", "FROM · SOLANA", "\(Fmt.num(amount, maxFraction: 9)) SOL", solana.map { "free: \(Fmt.num($0.sol, maxFraction: 6)) SOL" } ?? "", .solana),
             step("sol", "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", .solana),
+        ], warning: entry.lastSent == nil ? "First transfer to this address. Sending a small test amount first is the safe habit." : nil)
+    }
+
+    /// A token as it is to a saved address, on one network: what the portfolio last read of it there, when it has.
+    private func tokenOutRoute(to name: String, token: String, amount: Decimal?, network: String?) -> MoveRoute? {
+        guard let (entry, net) = try? tokenRecipient(name, network: network) else { return nil }
+        let ends = AddressCheck.ends(entry.address), place = AddressCheck.Network(rawValue: net)
+        let fill = RouteFill(rawValue: net) ?? .check, logo = place?.logo ?? "sol"
+        let held = holdings.first { $0.chain == net && ($0.symbol.lowercased() == token.lowercased() || $0.contract.lowercased() == token.lowercased()) }
+        let what = "\(amount.map { Fmt.num($0, maxFraction: 9) } ?? "all") \(held?.symbol ?? token)"
+        return MoveRoute(title: "Send \(what) to \(entry.name)",
+                         footer: "One transfer on \(place?.title ?? net), the token as it is: only this saved address may receive it. Say “do it” or press Confirm.",
+                         steps: [
+            step(logo, "FROM · \((place?.title ?? net).uppercased())", what, held.map { "held: \(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol)" } ?? "", fill),
+            step(logo, "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", fill),
         ], warning: entry.lastSent == nil ? "First transfer to this address. Sending a small test amount first is the safe habit." : nil)
     }
 
@@ -1850,6 +1866,9 @@ extension Workspace {
             reply(say("Your addresses are on the canvas\(sol.map { " — \($0) for USDC and SOL (recommended)" } ?? ""), plus Base for USDC and ETH. ihatecrypto can’t pull money in; send it there from an exchange or another wallet, on that network. It shows up within about 30 s and I’ll tell you when it arrives. To put money you already have into a vault, say “deposit 1 USDC into Jupiter”.",
                       "Твои адреса на холсте\(sol.map { " — \($0) для USDC и SOL (рекомендую)" } ?? ""), и Base для USDC и ETH. ihatecrypto не может сам забрать деньги: отправь их туда с биржи или другого кошелька, именно в этой сети. Они появятся примерно через 30 с, и я скажу, когда придут. Чтобы положить уже имеющиеся деньги в хранилище, скажи «положи 1 USDC в Jupiter»."), note: note)
             return
+        }
+        if case .sendToken(let name, _, _, let network) = command {
+            do { _ = try tokenRecipient(name, network: network) } catch { reply(error.localizedDescription, note: note); return }
         }
         let recipient: (name: String, network: AddressCheck.Network)? = switch command {
         case .sendNear(let name, _), .closeNear(let name): (name, .near)

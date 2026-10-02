@@ -62,19 +62,20 @@ public enum SPL {
         return (Base58.encode(signature), SolanaTransaction.compact(1) + signature + message)
     }
 
-    /// The same transfer as an unsigned message, for a signer that holds the key elsewhere.
+    /// The same transfer as an unsigned message, for a signer that holds the key elsewhere. `program`: the mint's own,
+    /// SPL Token or Token-2022 — both accounts and the TransferChecked derive from it.
     public static func transferMessage(payer payerAddress: String, to owner: String, mint: String, amount: UInt64, decimals: UInt8,
-                                       blockhash: String, microLamportsPerCU: UInt64 = 20_000) throws -> Data {
+                                       blockhash: String, microLamportsPerCU: UInt64 = 20_000, program: String = tokenProgram) throws -> Data {
         let payer = try Base58.decode(payerAddress)
         guard owner != payerAddress else { throw WalletError("Transfer to yourself") }
         let keys = [
             payer,                                                                 // 0 signer, writable
-            try Base58.decode(try associatedAccount(owner: payerAddress, mint: mint)), // 1 our token account
-            try Base58.decode(try associatedAccount(owner: owner, mint: mint)),   // 2 their token account
+            try Base58.decode(try associatedAccount(owner: payerAddress, mint: mint, program: program)), // 1 our token account
+            try Base58.decode(try associatedAccount(owner: owner, mint: mint, program: program)),   // 2 their token account
             try Base58.decode(owner),                                              // 3 readonly from here on
             try Base58.decode(mint),                                               // 4
             SolanaTransaction.systemProgram,                                       // 5
-            try Base58.decode(tokenProgram),                                       // 6
+            try Base58.decode(program),                                            // 6
             try Base58.decode(associatedTokenProgram),                             // 7
             SolanaTransaction.computeBudgetProgram,                                // 8
         ]

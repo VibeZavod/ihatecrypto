@@ -701,6 +701,30 @@ extension Workspace {
         if let i = addressBook.firstIndex(where: { $0.id == entry.id }) { addressBook[i].lastSent = Date() }
     }
 
+    /// Where a token sent as it is goes: the saved address by its name, and the network — the one the message names,
+    /// else where the entry is saved. A 0x address saved on one EVM network is the same address on another; Solana's
+    /// and the EVM networks' don't mix, and NEAR or Hyperliquid have their own forms.
+    func tokenRecipient(_ name: String, network: String?) throws -> (entry: SavedAddress, network: String) {
+        let key = name.lowercased()
+        guard let entry = addressBook.first(where: { $0.name.lowercased() == key }) ?? ownWallet(key) ?? addressBook.first(where: { $0.name.lowercased().contains(key) }) else {
+            throw ExecutionError("There’s no “\(name)” in Addresses. Save it there first, then send by its name.")
+        }
+        let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo"]
+        let saved = entry.network.rawValue, net = network ?? saved
+        guard net == saved || (evm.contains(net) && (evm.contains(saved) || saved == "hyperliquid")) else {
+            throw ExecutionError("“\(entry.name)” is a \(entry.network.title) address: it can't receive on \(AddressCheck.Network(rawValue: net)?.title ?? net).")
+        }
+        guard net == "solana" || evm.contains(net) else {
+            throw ExecutionError(saved == "near" ? "“\(entry.name)” is a NEAR account: send it NEAR, e.g. “send 0.1 NEAR to \(entry.name)”."
+                                                 : "On \(entry.network.title) only USDC moves: “send N USDC to \(entry.name)”.")
+        }
+        guard entry.memo.isEmpty || net != "solana" else {
+            throw ExecutionError("“\(entry.name)” needs a memo / tag, and ihatecrypto can’t add one to a Solana transfer — send it from the exchange’s app instead.")
+        }
+        if let off = ModuleNetwork(place: net).flatMap({ Modules.current.refusal(network: $0, ru: modulesRussian) }) { throw ExecutionError(off) }
+        return (entry, net)
+    }
+
     /// `quiet`: a step of a chain — its card shows, and a confirmed chain signs it at once: no «Sign it» line.
     func prepareTransfer(_ amount: Decimal, to name: String, network: String? = nil, note: String? = nil, quiet: Bool = false) {
         let key = name.lowercased()

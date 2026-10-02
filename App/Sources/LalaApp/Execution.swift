@@ -70,6 +70,14 @@ nonisolated struct XPCTradeSigner: TradeSigner {
         return raw
     }
 
+    func signEVMTransfer(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
+                         to: String, value: UInt64, recipients: [String]) async throws -> Data {
+        let reply = try await Self.signing { try await send(.signEVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFee: maxPriorityFee, maxFee: maxFee,
+                                                                      gasLimit: gasLimit, to: to, value: value, data: Data(), recipients: recipients)) }
+        guard reply.ok, let raw = reply.signedRaw else { throw ExecutionError(Self.reason(reply)) }
+        return raw
+    }
+
     func signNearIntentDeposit(amount: UInt128, depositAddress: String, nonce: UInt64, blockHash: Data) async throws -> Data {
         let reply = try await Self.signing { try await send(.signNearIntentDeposit(amount: "\(amount)", depositAddress: depositAddress, nonce: nonce, blockHash: blockHash)) }
         guard reply.ok, let raw = reply.signedRaw else { throw ExecutionError(Self.reason(reply)) }
@@ -379,6 +387,11 @@ extension Workspace {
             case .sendSol(let name, let amount):
                 guard let entry = savedAddress(name, on: .solana) else { throw ExecutionError("There’s no Solana address “\(name)” in Addresses.") }
                 reply(try await e.sendSOL(amount, to: entry.address, label: entry.name), note: "Solana")
+                markSent(entry)
+            case .sendToken(let name, let token, let amount, let network):
+                let (entry, net) = try tokenRecipient(name, network: network)
+                reply(try await e.sendToken(token, amount: amount, on: net, to: entry.address, label: entry.name),
+                      note: AddressCheck.Network(rawValue: net)?.title ?? net)
                 markSent(entry)
             case .aave(let deposit, let amount, let network):
                 guard let m = AaveV3.markets.first(where: { $0.chain == network }) else {

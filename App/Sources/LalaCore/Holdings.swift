@@ -253,3 +253,19 @@ public enum Holdings {
     /// Through the number's text: a JSON double's decimalValue turns 1.88 into 1.8799999….
     static func number(_ v: Any?) -> Decimal? { ((v as? NSNumber)?.stringValue ?? v as? String).flatMap { Decimal(string: $0) } }
 }
+
+extension Holdings {
+    public enum Pick: Equatable, Sendable { case one(Holding), none, several([Holding]) }
+
+    /// The holding a transfer names: by mint or contract (any case on EVM), else by ticker, any case. The network's own
+    /// coin wins its ticker («ETH»), and among tokens sharing one — an airdrop copying a real token's name — the only
+    /// one that looks real; otherwise `several`, and the address decides.
+    public static func pick(_ query: String, in held: [Holding]) -> Pick {
+        let q = query.trimmingCharacters(in: .whitespaces).lowercased()
+        if let one = held.first(where: { $0.contract.lowercased() == q }) { return .one(one) }
+        let named = held.filter { $0.symbol.lowercased() == q }
+        if let coin = named.first(where: \.native) { return .one(coin) }
+        let real = named.filter(\.looksReal)
+        return named.count == 1 ? .one(named[0]) : real.count == 1 ? .one(real[0]) : named.isEmpty ? .none : .several(named)
+    }
+}

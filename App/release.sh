@@ -3,6 +3,8 @@
 #   → dist/ihatecrypto-0.2.zip and dist/appcast.xml (with the release notes inside). Upload them to that URL: copies
 #     downloaded from it find the appcast there and update themselves. Keep dist/ between releases: the old zips make
 #     the small .delta updates.
+# A copy to hand over: ./release.sh 0.2   → dist/ihatecrypto-0.2.dmg, notarized, no update checks. Opens on any Mac
+#   with macOS 26 by a double click and starts on the first screen; the Keychain and Application Support stay here.
 # Needs, once on this Mac:
 #   - the «Developer ID Application» certificate of team N78L833HCS in the login Keychain (Xcode › Settings › Accounts);
 #   - a notarytool profile: xcrun notarytool store-credentials notary --apple-id … --team-id N78L833HCS
@@ -15,7 +17,7 @@
 # commit first, the script refuses uncommitted changes to Sources.
 set -e
 version=$1; site=${2%/}
-[[ -n $version && $site == https://* ]] || { echo "usage: ./release.sh <version> <https://site/path>"; exit 1; }
+[[ -n $version && ( -z $site || $site == https://* ) ]] || { echo "usage: ./release.sh <version> [<https://site/path>]"; exit 1; }
 cd "$(dirname "$0")"
 git diff --quiet HEAD -- Sources Xcode || { echo "Sources or Xcode have uncommitted changes: commit them first."; exit 1; }
 python3 Tools/release-notes.py "$version" > /dev/null || { echo "Sources/LalaApp/WhatsNew/whatsnew.json has no entry for $version."; exit 1; }
@@ -31,7 +33,7 @@ fail() { grep -E "error:|Command .* failed|FAILED" "$log" | cut -c1-300 | head -
 step "archive $version ($build)"
 xcodebuild -project Xcode/LALA.xcodeproj -scheme LALA -configuration Release -derivedDataPath $derived \
   -archivePath $out/ihatecrypto.xcarchive -allowProvisioningUpdates -skipPackagePluginValidation \
-  MARKETING_VERSION=$version CURRENT_PROJECT_VERSION=$build SPARKLE_FEED_URL=$site/appcast.xml archive > "$log" 2>&1 || fail
+  MARKETING_VERSION=$version CURRENT_PROJECT_VERSION=$build SPARKLE_FEED_URL=${site:+$site/appcast.xml} archive > "$log" 2>&1 || fail
 
 step "sign with Developer ID"
 cat > $out/export.plist <<EOF
@@ -48,7 +50,7 @@ xcodebuild -exportArchive -archivePath $out/ihatecrypto.xcarchive -exportPath $o
   -allowProvisioningUpdates > "$log" 2>&1 || fail
 app=$out/export/ihatecrypto.app
 codesign --verify --deep --strict "$app"
-[[ $(/usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$app/Contents/Info.plist") == $site/appcast.xml ]] || { echo "the feed didn't make it into Info.plist"; exit 1; }
+[[ -z $site || $(/usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$app/Contents/Info.plist") == $site/appcast.xml ]] || { echo "the feed didn't make it into Info.plist"; exit 1; }
 
 step "notarize (a few minutes)"
 ditto -c -k --keepParent "$app" $out/notarize.zip
@@ -56,6 +58,22 @@ xcrun notarytool submit $out/notarize.zip --keychain-profile notary --wait
 rm $out/notarize.zip
 xcrun stapler staple "$app"
 spctl --assess --type execute "$app"
+
+if [[ -z $site ]]; then
+  step "disk image"
+  dmg=$out/ihatecrypto-$version.dmg
+  rm -rf $out/dmg $dmg; mkdir $out/dmg
+  ditto "$app" $out/dmg/ihatecrypto.app
+  ln -s /Applications $out/dmg/Applications
+  hdiutil create -volname ihatecrypto -srcfolder $out/dmg -format UDZO $dmg > /dev/null
+  identity=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/ { print $2; exit }')
+  [[ -n $identity ]] && codesign --sign "$identity" --timestamp $dmg
+  xcrun notarytool submit $dmg --keychain-profile notary --wait
+  xcrun stapler staple $dmg
+  rm -rf $out/dmg $out/export $out/ihatecrypto.xcarchive $out/export.plist
+  echo "done: $out/ihatecrypto-$version.dmg — hand over this file only"
+  exit 0
+fi
 
 step "archive and appcast"
 ditto -c -k --sequesterRsrc --keepParent "$app" $out/ihatecrypto-$version.zip

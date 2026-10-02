@@ -37,14 +37,9 @@ struct LocalSigner: TradeSigner {
     func signHyperliquidUser(_ action: MsgPack, recipients: [String]) async throws -> EVMSignature {
         let verdict = HLGuard.check(action, owner: wallet.evm, recipients: Set(recipients))
         guard verdict.ok else { throw ExecutionError(verdict.problems.joined(separator: " ")) }
-        guard case .map(let pairs) = action, case .string("sendAsset")? = pairs.first(where: { $0.0 == "type" })?.1 else {
-            throw ExecutionError("Only sendAsset is signed here.")
-        }
-        let v = Dictionary(pairs, uniquingKeysWith: { a, _ in a })
-        func str(_ k: String) -> String { if case .string(let s)? = v[k] { return s }; return "" }
-        guard case .uint(let nonce)? = v["nonce"] else { throw ExecutionError("No nonce.") }
-        return try HLSigner.sendAsset(destination: str("destination"), sourceDex: str("sourceDex"), destinationDex: str("destinationDex"),
-                                      token: str("token"), amount: str("amount"), nonce: nonce, privateKey: keys.evm, mainnet: true).1
+        // As the signing process does: sendAsset and usdSend (the sweep's transfer to the new wallet) alike.
+        let (type, fields) = try HLSigner.userAction(action)
+        return try HLSigner.signUserAction(type, fields: fields, privateKey: keys.evm, mainnet: true)
     }
 
     func signRelayMapping(wallet w: String, depositor: String, id: Data, nonce: UInt64) async throws -> EVMSignature {
@@ -139,7 +134,7 @@ func moveMoney(_ text: String) async throws {
     case .evmToSolana(let net, let amount):
         guard let n = EVMNetwork.named(net) else { throw ExecutionError("ihatecrypto doesn't move money on \(net).") }
         print(try await executor.evmToSolana(n, usdc: amount))
-    case .sendTo, .sendNear, .closeNear, .sendSol: throw ExecutionError("Sending to a saved address works in the ihatecrypto app, where the address book is.")
+    case .sendTo, .sendNear, .closeNear, .sendSol, .sendToken: throw ExecutionError("Sending to a saved address works in the ihatecrypto app, where the address book is.")
     case .buyStock(let symbol, let usdc): print(try await executor.buyStock(symbol, usdc: usdc ?? 1))
     case .sellStock(let symbol, let amount): print(try await executor.sellStock(symbol, amount: amount))
     case .buyOn(let place, let token, let usdc, let from): print(try await executor.buyOn(EVMNetwork.named(place) ?? .base, token, usdc: usdc ?? 1, from: from))
@@ -436,7 +431,8 @@ func sweepHyperliquid(to destination: String) async throws {
         print("HLP \(Fmt.usd(vault.equity))\(vault.lockedUntil.map { ", locked until \(Fmt.date($0))" } ?? ""); then all perp USDC to \(destination) on Hyperliquid. Add --yes.")
         return
     }
-    if vault.equity > 0 { print(try await executor.hlp(deposit: false, amount: nil)) }
+    // Withdrawn already, HLP keeps a dust of equity (0.000003) that Hyperliquid refuses to withdraw.
+    if vault.equity >= 0.01 { print(try await executor.hlp(deposit: false, amount: nil)) }
     // Margin left on a HIP-3 exchange (xyz) joins the main balance first, so nothing stays behind.
     for dex in Hyperliquid.hip3Dexes {
         let idle = (try await Hyperliquid.dexBalance(user: signer.wallet.evm, dex: dex).withdrawable).rounded(6, .down)

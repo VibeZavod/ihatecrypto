@@ -546,7 +546,9 @@ enum Signer {
     /// one of the transaction's own accounts as the mint. A made-up "this is your account" is dropped.
     static func verifiedOwners(_ claimed: [String: String], mints: [String]) -> [String: String] {
         claimed.filter { account, owner in
-            mints.contains { (try? SPL.associatedAccount(owner: owner, mint: $0)) == account }
+            mints.contains { mint in
+                [SPL.tokenProgram, SPL.token2022Program].contains { (try? SPL.associatedAccount(owner: owner, mint: mint, program: $0)) == account }
+            }
         }
     }
 }

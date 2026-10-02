@@ -147,3 +147,22 @@ private let policy = SolanaPolicy(owner: me, recipients: [deposit])
     #expect(!HLGuard.check(action, owner: me, recipients: []).ok)
     #expect(!HLGuard.check(action, owner: me, recipients: ["0x0000000000000000000000000000000000000001"]).ok)
 }
+
+/// A Token-2022 transfer (PYUSD is one) passes to the approved owner's account, like an SPL Token one; to anyone else,
+/// or an approval through that program, it doesn't.
+@Test func guardTreatsToken2022LikeSPLToken() throws {
+    let mint = "2b1kV6DkPAnxd5ixfnxCpjxmKwqjjaYmCZfHsFu24GXo"
+    let program = SPL.token2022Program
+    let wire = try SPL.transferMessage(payer: me, to: deposit, mint: mint, amount: 1_000_000, decimals: 6, blockhash: me, program: program)
+    let m = try SolanaMessage.parse(message: wire)
+    let mine = try SPL.associatedAccount(owner: me, mint: mint, program: program)
+    let theirs = try SPL.associatedAccount(owner: deposit, mint: mint, program: program)
+    let classic = try SPL.associatedAccount(owner: deposit, mint: mint)
+    #expect(m.staticKeys.contains(theirs) && !m.staticKeys.contains(classic))
+    let owners = [mine: me, theirs: deposit]
+    #expect(SolanaGuard.check(m, accounts: m.staticKeys, policy: policy, tokenOwners: owners).ok)
+    let elsewhere = SolanaGuard.check(m, accounts: m.staticKeys, policy: SolanaPolicy(owner: me, recipients: []), tokenOwners: [mine: me])
+    #expect(!elsewhere.ok)
+    let (approve, accounts) = try message([me, mine, scam, program], [(3, [1, 2, 0], [4] + withUnsafeBytes(of: UInt64(5).littleEndian, Array.init))])
+    #expect(!SolanaGuard.check(approve, accounts: accounts, policy: policy, tokenOwners: [mine: me]).ok)
+}

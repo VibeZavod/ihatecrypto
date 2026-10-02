@@ -88,21 +88,28 @@ extension Executor {
     static func usdc(_ units: UInt64) -> String { Fmt.num(Decimal(units) / 1_000_000, maxFraction: 6) }
 
     func sendSolanaUSDC(_ units: UInt64, to owner: String, label: String) async throws -> String {
-        let mint = Relay.Currency.solanaUSDC
+        try await sendSPL(mint: Relay.Currency.solanaUSDC, units: units, decimals: 6, symbol: "USDC", to: owner, label: label)
+    }
+
+    /// An SPL token from the wallet's own account to `owner`'s, made for them when they have none (≈ 0.002 SOL of rent,
+    /// paid here); the simulation must show exactly `units` leaving. `program`: the mint's, SPL Token or Token-2022.
+    func sendSPL(mint: String, units: UInt64, decimals: UInt8, symbol: String, program: String = SPL.tokenProgram,
+                 to owner: String, label: String) async throws -> String {
+        func f(_ u: UInt64) -> String { Fmt.num(Decimal(u) / pow(Decimal(10), Int(decimals)), maxFraction: Int(decimals)) }
         let have = try await rpc.tokenBalance(owner: wallet.solana, mint: mint)
-        guard have >= units else { throw ExecutionError("\(Self.usdc(have)) USDC on Solana; the transfer needs \(Self.usdc(units)).") }
+        guard have >= units else { throw ExecutionError("\(f(have)) \(symbol) on Solana; the transfer needs \(f(units)).") }
         let (blockhash, lastValid) = try await rpc.latestBlockhash()
-        let unsigned = SolanaTransaction.unsigned(try SPL.transferMessage(payer: wallet.solana, to: owner, mint: mint, amount: units, decimals: 6, blockhash: blockhash))
+        let unsigned = SolanaTransaction.unsigned(try SPL.transferMessage(payer: wallet.solana, to: owner, mint: mint, amount: units, decimals: decimals, blockhash: blockhash, program: program))
         let message = try SolanaMessage.parse(transaction: unsigned)
-        let mine = try SPL.associatedAccount(owner: wallet.solana, mint: mint)
-        let owners = [mine: wallet.solana, try SPL.associatedAccount(owner: owner, mint: mint): owner]
+        let mine = try SPL.associatedAccount(owner: wallet.solana, mint: mint, program: program)
+        let owners = [mine: wallet.solana, try SPL.associatedAccount(owner: owner, mint: mint, program: program): owner]
         var verdict = SolanaGuard.check(message, accounts: message.staticKeys, policy: SolanaPolicy(owner: wallet.solana, recipients: [owner]), tokenOwners: owners)
         let solBefore = try await rpc.balance(wallet.solana)
         let simulation = try await rpc.simulate(unsigned, watch: [mine, wallet.solana], sigVerify: false)
         // A failed simulation says nothing about balances: stop here rather than quote made-up changes.
         if let error = simulation.error { throw ExecutionError("The simulation failed, so nothing was signed: \(error)") }
         verdict.merge(SolanaGuard.balances([
-            .init(label: "USDC", before: Int64(have), after: Int64(simulation.after[mine]?.token ?? 0), atLeast: -Int64(units)),
+            .init(label: symbol, before: Int64(have), after: Int64(simulation.after[mine]?.token ?? 0), atLeast: -Int64(units)),
             // The fee, plus the recipient's token account rent (≈ 0.002 SOL) when they have none yet.
             .init(label: "lamports", before: Int64(solBefore), after: Int64(simulation.after[wallet.solana]?.lamports ?? 0), atLeast: -3_000_000),
         ]))
@@ -112,12 +119,12 @@ extension Executor {
             throw ExecutionError("What was signed isn't what was checked.")
         }
         let signature = Base58.encode(signed.subdata(in: 1..<65))
-        try journal.append(.init(chain: "solana", id: signature, kind: .signed, note: "send \(Self.usdc(units)) USDC to \(label); valid until block \(lastValid)"))
+        try journal.append(.init(chain: "solana", id: signature, kind: .signed, note: "send \(f(units)) \(symbol) to \(label); valid until block \(lastValid)"))
         _ = try await rpc.send(signed)
         switch try await rpc.waitForConfirmation(signature, lastValidBlockHeight: lastValid) {
         case .confirmed:
             try journal.append(.init(chain: "solana", id: signature, kind: .confirmed))
-            return "Sent \(Self.usdc(units)) USDC to \(label) on Solana. https://solscan.io/tx/\(signature)"
+            return "Sent \(f(units)) \(symbol) to \(label) on Solana. https://solscan.io/tx/\(signature)"
         case .failed(let e):
             try journal.append(.init(chain: "solana", id: signature, kind: .failed, note: e))
             throw ExecutionError("The transfer failed: \(e). The money stayed.")
@@ -212,5 +219,125 @@ extension Executor {
             try journal.append(.init(chain: "solana", id: signature, kind: .expired))
             throw ExecutionError("The transfer didn't make it into a block; nothing moved. You can retry.")
         }
+    }
+}
+
+/// Any token the wallet holds on one network to a saved address, as it is — no swap, no bridge: Solana's SPL and
+/// Token-2022 tokens, an EVM network's ERC-20s (stock tokens, Morpho's and Aave's shares, memecoins) and its own coin.
+/// The token is named by ticker, contract or mint and read from the chain. Only `recipient` may receive it: the guard
+/// and the signer check.
+extension Executor {
+    /// nil amount = all of it; a network's own coin needs a number, since the fee comes out of it.
+    public func sendToken(_ query: String, amount: Decimal?, on network: String, to recipient: String, label: String) async throws -> String {
+        if network == "solana" { return try await sendSolanaToken(query, amount: amount, to: recipient, label: label) }
+        guard let net = EVMNetwork.named(network) else {
+            throw ExecutionError("ihatecrypto sends tokens as they are on Solana and the EVM networks, not on \(network).")
+        }
+        guard recipient.lowercased() != wallet.evm.lowercased() else { throw ExecutionError("That is this wallet's own address.") }
+        let (contract, symbol) = try await heldEVM(query, on: net)
+        if contract == "native" {
+            guard let amount else {
+                throw ExecutionError("Say how much \(net.gasCoin): its fee comes out of it, e.g. “send 0.001 \(net.gasCoin) on \(net.key) to \(label)”.")
+            }
+            return try await sendNative(amount, on: net, to: recipient, label: label)
+        }
+        guard let decimals = ABI.uint(in: try await net.rpc.read(contract, Data([0x31, 0x3c, 0xe5, 0x67])), word: 0), decimals <= 36 else {
+            throw ExecutionError("\(symbol) on \(net.name) doesn't answer decimals(): not a token ihatecrypto can send.")
+        }
+        let scale = pow(Decimal(10), Int(decimals))
+        func f(_ units: Decimal) -> String { Fmt.num(units / scale, maxFraction: Int(decimals)) }
+        let have = try await balance(contract, on: net.rpc)
+        var units = amount.map { ($0 * scale).rounded(0, .down) } ?? have
+        // All of the coin fees are paid in (Tempo's USDC) leaves a cent for the fee.
+        if amount == nil, contract.lowercased() == net.feeToken { units -= Decimal(net.feeReserve) }
+        guard units > 0 else { throw ExecutionError("No \(symbol) on \(net.name) to send.") }
+        guard units <= have else { throw ExecutionError("\(f(have)) \(symbol) on \(net.name); can't send \(f(units)).") }
+        let hash = try await sendEVM(net.rpc, to: contract, data: try ERC20.transfer(to: recipient, units: units),
+                                     note: "Send \(f(units)) \(symbol) to \(label)", recipients: [recipient])
+        return "Sent \(f(units)) \(symbol) to \(label) on \(net.name). \(net.explorer)/tx/\(hash)"
+    }
+
+    /// The token on `net` the user named: the network's coin, its dollar (USDC, USDG on Robinhood Chain), a contract,
+    /// or a ticker among what the wallet holds there (Holdings.pick).
+    private func heldEVM(_ query: String, on net: EVMNetwork) async throws -> (contract: String, symbol: String) {
+        let q = query.uppercased()
+        if q == net.gasCoin, net.feeToken == nil { return ("native", net.gasCoin) }
+        if (q == "USDC" && net.key != "robinhood") || (q == "USDG" && net.key == "robinhood") { return (net.usdc, q) }
+        if query.wholeMatch(of: /0x[0-9a-fA-F]{40}/) != nil {
+            return (query, ABI.string(try await net.rpc.read(query, Data([0x95, 0xd8, 0x9b, 0x41]))) ?? String(query.prefix(10)) + "…")
+        }
+        guard let held = await Holdings.evm(net.key, address: wallet.evm, native: false, skip: []) else {
+            throw ExecutionError("Couldn't read the tokens on \(net.name) just now: name it by its contract, or try again.")
+        }
+        switch Holdings.pick(query, in: held) {
+        case .one(let h): return (h.contract, h.symbol)
+        case .none: throw ExecutionError("This wallet holds no \(query) on \(net.name).")
+        case .several(let list):
+            throw ExecutionError("Several tokens on \(net.name) are called \(query): " + list.map { "\($0.contract) (\(Fmt.num($0.amount)))" }.joined(separator: ", ") + ". Name it by its contract.")
+        }
+    }
+
+    /// The network's own coin to a saved address: a plain transfer, the fee on top of it.
+    private func sendNative(_ amount: Decimal, on net: EVMNetwork, to recipient: String, label: String) async throws -> String {
+        let weiDecimal = (amount * pow(Decimal(10), 18)).rounded(0, .down)
+        guard weiDecimal > 0, weiDecimal < Decimal(UInt64.max) else { throw ExecutionError("Not an amount of \(net.gasCoin) to send: \(Fmt.num(amount, maxFraction: 18)).") }
+        let wei = NSDecimalNumber(decimal: weiDecimal).uint64Value
+        func f(_ w: UInt64) -> String { Fmt.num(Decimal(w) / pow(Decimal(10), 18), maxFraction: 18) }
+        let rpc = net.rpc
+        let estimate = try await rpc.estimateGas(from: wallet.evm, to: recipient, value: wei, data: Data())
+        let (tip, maxFee) = try await rpc.fees()
+        let gasLimit = estimate + estimate / 4
+        let have = try await rpc.balance(wallet.evm)
+        guard wei + gasLimit * maxFee <= have else {
+            throw ExecutionError("\(f(have)) \(net.gasCoin) on \(net.name): not enough for \(f(wei)) and the fee (up to \(f(gasLimit * maxFee))).")
+        }
+        let note = "Send \(f(wei)) \(net.gasCoin) to \(label)"
+        let raw = try await signer.signEVMTransfer(chainId: rpc.chainId, nonce: try await rpc.nonce(wallet.evm), maxPriorityFee: tip, maxFee: maxFee,
+                                                   gasLimit: gasLimit, to: recipient, value: wei, recipients: [recipient])
+        let hash = "0x" + Keccak.hash256(raw).hex
+        try journal.append(.init(chain: net.key, id: hash, kind: .signed, note: note))
+        _ = try await rpc.send(raw)
+        guard try await rpc.waitForReceipt(hash) else {
+            try journal.append(.init(chain: net.key, id: hash, kind: .failed, note: note))
+            throw ExecutionError("\(note) failed on \(net.name): \(net.explorer)/tx/\(hash)")
+        }
+        try journal.append(.init(chain: net.key, id: hash, kind: .confirmed))
+        return "Sent \(f(wei)) \(net.gasCoin) to \(label) on \(net.name). \(net.explorer)/tx/\(hash)"
+    }
+
+    /// An SPL or Token-2022 token, or SOL with a number, from the Solana wallet.
+    private func sendSolanaToken(_ query: String, amount: Decimal?, to owner: String, label: String) async throws -> String {
+        let q = query.uppercased()
+        if q == "SOL" {
+            guard let amount else { throw ExecutionError("Say how much SOL: the fee comes out of it, e.g. “send 0.05 SOL to \(label)”.") }
+            return try await sendSOL(amount, to: owner, label: label)
+        }
+        guard owner != wallet.solana else { throw ExecutionError("That is this wallet's own address.") }
+        let mint: String, symbol: String
+        if q == "USDC" { (mint, symbol) = (Relay.Currency.solanaUSDC, "USDC") }
+        else if query.wholeMatch(of: /[1-9A-HJ-NP-Za-km-z]{32,44}/) != nil { (mint, symbol) = (query, String(query.prefix(4)) + "…") }
+        else {
+            let held = try await LalaCore.Solana.balance(owner: wallet.solana, lendShares: true).tokens
+            switch Holdings.pick(query, in: held) {
+            case .one(let h): (mint, symbol) = (h.contract, h.symbol)
+            case .none: throw ExecutionError("This wallet holds no \(query) on Solana.")
+            case .several(let list):
+                throw ExecutionError("Several tokens on Solana are called \(query): " + list.map { "\($0.contract) (\(Fmt.num($0.amount)))" }.joined(separator: ", ") + ". Name it by its mint.")
+            }
+        }
+        // The mint's owner is its token program: SPL Token or Token-2022, and the accounts derive from it.
+        let info = try await rpc.call("getAccountInfo", [mint, ["encoding": "base64", "commitment": "confirmed"]]) as? [String: Any]
+        guard let program = (info?["value"] as? [String: Any])?["owner"] as? String, [SPL.tokenProgram, SPL.token2022Program].contains(program) else {
+            throw ExecutionError("\(mint) isn't a token mint on Solana.")
+        }
+        let mine = try SPL.associatedAccount(owner: wallet.solana, mint: mint, program: program)
+        let value = (try? await rpc.call("getTokenAccountBalance", [mine, ["commitment": "confirmed"]]) as? [String: Any])?["value"] as? [String: Any]
+        guard let value, let have = (value["amount"] as? String).flatMap(UInt64.init), let decimals = (value["decimals"] as? NSNumber)?.uint8Value else {
+            throw ExecutionError("This wallet holds no \(symbol) on Solana.")
+        }
+        let wanted = amount.map { ($0 * pow(Decimal(10), Int(decimals))).rounded(0, .down) }
+        guard wanted.map({ $0 > 0 && $0 <= Decimal(UInt64.max) }) ?? (have > 0) else { throw ExecutionError("Nothing to send.") }
+        let units = wanted.map { NSDecimalNumber(decimal: $0).uint64Value } ?? have
+        return try await sendSPL(mint: mint, units: units, decimals: decimals, symbol: symbol, program: program, to: owner, label: label)
     }
 }
