@@ -62,6 +62,19 @@ import Testing
     #expect(WalletCommand.parse("выведи 1 USDC в Solana") == .withdrawToSolana(1))
 }
 
+@Test func everyWithdrawalTakesAnAmount() {
+    // «выведи 3 USDC из камино» drew «only everything can come out»: the forms said no N.
+    #expect(WalletCommand.parse("withdraw 3 USDC from kamino") == .kamino(deposit: false, symbol: "USDC", amount: 3))
+    #expect(WalletCommand.parse("выведи 3 USDC из камино") == .kamino(deposit: false, symbol: "USDC", amount: 3))
+    #expect(WalletCommand.parse("withdraw 3 USDC from HLP") == .hlp(deposit: false, amount: 3))
+    #expect(WalletCommand.parse("withdraw 3 USDC from Aave on Arbitrum") == .aave(deposit: false, amount: 3, network: "arbitrum"))
+    #expect(WalletCommand.parse("withdraw 3 USDC from Morpho") == .morpho(deposit: false, amount: 3, network: "base"))
+    #expect(WalletCommand.parse("withdraw 3 USDC from the vault") == .lendWithdraw("USDC", 3))
+    for form in ["withdraw [N] <USDC|SOL> from kamino", "withdraw [N] USDC from HLP", "withdraw [N] USDC from Aave", "withdraw [N] USDC from Morpho"] {
+        #expect(ChatRouter.forms.contains(form), "\(form)")
+    }
+}
+
 @Test func routerFormsCoverTheParsers() {
     // Every form the model is told to write must parse locally, in the order the app tries the parsers.
     let ai = "0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18", markets: Set<String> = ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]

@@ -147,5 +147,7 @@ private func jwt(_ claims: [String: Any]) -> String {
     let error = await #expect(throws: LLMError.self) {
         try await AppleIntelligenceClient().complete(LLMRequest(model: info.defaultModel, messages: [LLMMessage(.system, brief), LLMMessage(.user, "hi")]))
     }
-    #expect(error?.message.hasPrefix("Apple Intelligence") == true)
+    // Said as what it is: too small for the chat, not «send it again».
+    #expect(error?.message.contains("4,096 tokens") == true)
+    #expect(AppleIntelligence.chatRefusal(model: AppleIntelligence.onDevice) != nil && AppleIntelligence.chatRefusal(model: "gpt-6.1-sol") == nil)
 }

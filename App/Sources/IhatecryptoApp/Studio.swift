@@ -2247,7 +2247,13 @@ private struct ChatComposer: View {
     /// The field's text when Esc closed the list: it stays closed until the text changes.
     @State private var dismissed: String?
 
-    private var suggestions: [ComposerSuggestion] { ws.draft == dismissed ? [] : ComposerSuggestion.for(ws.draft, ws: ws) }
+    /// Where the caret is in the field: «/» and «@» lists work on the word it's in, anywhere in the text.
+    @State private var selection: TextSelection?
+    private var caret: Int? {
+        guard case .selection(let r)? = selection?.indices, r.upperBound <= ws.draft.endIndex else { return nil }
+        return r.upperBound.utf16Offset(in: ws.draft)
+    }
+    private var suggestions: [ComposerSuggestion] { ws.draft == dismissed ? [] : ComposerSuggestion.for(ws.draft, caret: caret, ws: ws) }
     private var picked: ComposerSuggestion? { let rows = suggestions; return rows.indices.contains(pick) ? rows[pick] : nil }
 
     var body: some View {
@@ -2277,6 +2283,10 @@ private struct ChatComposer: View {
         }
         .padding(12)
         .onChange(of: ws.draft) { pick = 0 }
+        // A contract or mint typed after «@»: asked once, for the list above the field.
+        .task(id: ComposerSuggestion.mentionedAddress(ws.draft, caret: caret)) {
+            if let address = ComposerSuggestion.mentionedAddress(ws.draft, caret: caret) { await ws.lookUpContract(address) }
+        }
         // Whatever was heard goes into the field when listening ends (Done, or the recognizer stopping by itself);
         // the person reads it and sends it.
         .onChange(of: voice.listening) { was, now in
@@ -2332,7 +2342,7 @@ private struct ChatComposer: View {
             .popover(isPresented: $templatesOpen, arrowEdge: .top) {
                 TemplatesPanel { phrase in ws.draft = phrase; templatesOpen = false }
             }
-            TextField(ws.stepContext == nil ? "What should we do? / for blocks, @ for names" : ws.stepContext?.about == nil ? "Ask about this step…" : "Ask about \(ws.stepContext?.title ?? "it")…", text: Bindable(ws).draft, axis: .vertical)
+            TextField(ws.stepContext == nil ? "What should we do? / for blocks, @ for names" : ws.stepContext?.about == nil ? "Ask about this step…" : "Ask about \(ws.stepContext?.title ?? "it")…", text: Bindable(ws).draft, selection: $selection, axis: .vertical)
                 .textFieldStyle(.plain).font(.ui(14)).lineLimit(1...8)
                 // The caret in the brand's orange.
                 .tint(Brand.accent)
@@ -2394,61 +2404,124 @@ private struct ChatComposer: View {
 
     private func choose(_ row: ComposerSuggestion) {
         ws.draft = row.draft
+        // The caret right after what went in, so the rest of the text stays where it was.
+        selection = TextSelection(insertionPoint: String.Index(utf16Offset: min(row.caret, row.draft.utf16.count), in: row.draft))
         // A block's example is finished and sent by the person: the list stays closed on it.
         dismissed = row.draft
     }
 
     private func suggestionList(_ rows: [ComposerSuggestion]) -> some View {
         VStack(alignment: .leading, spacing: 2) {
-            ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
-                Button { choose(row) } label: {
-                    HStack(spacing: 8) {
-                        Image(systemName: row.icon).font(.system(size: 12, weight: .semibold))
-                            .foregroundStyle(i == pick ? Brand.accentInk : Color.secondary).frame(width: 18)
-                        Text(row.title).font(.ui(12.5, .semibold)).lineLimit(1).layoutPriority(1)
-                        Text(row.detail).font(.ui(11.5)).foregroundStyle(.secondary).lineLimit(1)
-                        Spacer(minLength: 0)
+            // Every row: past eight it scrolls, and the one ↑↓ picked stays in view.
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 2) {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { i, row in
+                            Button { choose(row) } label: {
+                                HStack(spacing: 8) {
+                                    rowIcon(row, lit: i == pick).frame(width: 18, height: 18)
+                                    Text(row.title).font(.ui(12.5, .semibold)).lineLimit(1).layoutPriority(1)
+                                    Text(row.detail).font(.ui(11.5)).foregroundStyle(.secondary).lineLimit(1)
+                                    Spacer(minLength: 0)
+                                }
+                                .padding(.horizontal, 9).frame(height: 30)
+                                .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(i == pick ? Brand.accent.opacity(0.14) : .clear))
+                                .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain).pointerStyle(.link)
+                            .onHover { if $0 { pick = i } }
+                            .id(i)
+                        }
                     }
-                    .padding(.horizontal, 9).frame(height: 30)
-                    .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(i == pick ? Brand.accent.opacity(0.14) : .clear))
-                    .contentShape(Rectangle())
                 }
-                .buttonStyle(.plain).pointerStyle(.link)
-                .onHover { if $0 { pick = i } }
+                .frame(height: CGFloat(min(rows.count, 8)) * 32 - 2)
+                .onChange(of: pick) { proxy.scrollTo(pick) }
             }
-            Text("↑↓ choose · Return puts it in · Esc closes").font(.ui(10)).foregroundStyle(.tertiary).padding(.horizontal, 9).padding(.top, 2)
+            Text(rows.count > 8 ? "\(rows.count) · scroll or ↑↓ · Return puts it in · Esc closes" : "↑↓ choose · Return puts it in · Esc closes")
+                .font(.ui(10)).foregroundStyle(.tertiary).padding(.horizontal, 9).padding(.top, 2)
         }
         .padding(5)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Brand.glassFill))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Brand.glassRim))
         .transition(.opacity)
     }
+
+    @ViewBuilder private func rowIcon(_ row: ComposerSuggestion, lit: Bool) -> some View {
+        if let url = row.image {
+            AsyncImage(url: url) { $0.resizable().scaledToFill() } placeholder: { Circle().fill(Color.primary.opacity(0.08)) }
+                .frame(width: 16, height: 16).clipShape(Circle())
+        } else if let logo = row.logo {
+            TokenLogo(name: logo, size: 16)
+        } else {
+            Image(systemName: row.icon).font(.system(size: 12, weight: .semibold)).foregroundStyle(lit ? Brand.accentInk : Color.secondary)
+        }
+    }
 }
 
 /// A row over the chat's field. «/» lists the blocks (BlockCatalog): a pick puts its example in the field to finish.
-/// «@» at the start of a word lists the address book and the favorite tokens: a pick puts the name in its place.
+/// «@» at the start of a word lists the address book and the favorite tokens: a pick puts the name in its place. A contract
+/// or mint after «@» is looked up (DexScreener) and a pick puts the address in, now known by its ticker.
 struct ComposerSuggestion: Identifiable, Equatable {
     var id: String { icon + title + detail }
     let icon: String
     let title: String
     let detail: String
-    /// The field's text once it's picked.
+    /// The field's text once it's picked, and where the caret goes then (UTF-16 offset).
     let draft: String
+    var caret = 0
+    /// A small logo in place of the symbol: TokenLogo's name, or a token's picture.
+    var logo: String?
+    var image: URL?
 
-    static func `for`(_ draft: String, ws: Workspace) -> [ComposerSuggestion] {
-        if draft.hasPrefix("/") {
-            let q = draft.dropFirst().lowercased().trimmingCharacters(in: .whitespaces)
-            return Array(BlockCatalog.all.filter { !$0.automatic && !$0.example.isEmpty }
-                .filter { q.isEmpty || "\($0.title) \($0.group) \($0.example)".lowercased().contains(q) }
-                .prefix(6).map { ComposerSuggestion(icon: "square.grid.2x2", title: $0.title, detail: $0.example, draft: $0.example) })
+    /// The word the caret is in, with the text before and after it.
+    static func word(_ draft: String, caret: Int?) -> (text: Substring, before: String, after: String) {
+        let at = String.Index(utf16Offset: min(max(0, caret ?? draft.utf16.count), draft.utf16.count), in: draft)
+        let start = draft[..<at].lastIndex(where: \.isWhitespace).map { draft.index(after: $0) } ?? draft.startIndex
+        let end = draft[at...].firstIndex(where: \.isWhitespace) ?? draft.endIndex
+        return (draft[start..<end], String(draft[..<start]), String(draft[end...]))
+    }
+
+    /// The contract or mint typed after «@» in the word at the caret, as typed (a mint's case matters).
+    static func mentionedAddress(_ draft: String, caret: Int?) -> String? {
+        let w = word(draft, caret: caret).text
+        guard w.hasPrefix("@") else { return nil }
+        let address = String(w.dropFirst())
+        return address.wholeMatch(of: /0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/) != nil ? address : nil
+    }
+
+    static func `for`(_ draft: String, caret: Int?, ws: Workspace) -> [ComposerSuggestion] {
+        let w = word(draft, caret: caret)
+        // A pick replaces the word; the rest of the text stays, the caret after what went in.
+        func row(_ icon: String, _ title: String, _ detail: String, put text: String, logo: String? = nil, image: URL? = nil) -> ComposerSuggestion {
+            let alone = w.before.isEmpty && w.after.isEmpty
+            let head = w.before + text + (alone ? "" : " ")
+            let tail = w.after.hasPrefix(" ") ? String(w.after.dropFirst()) : w.after
+            return ComposerSuggestion(icon: icon, title: title, detail: detail, draft: head + tail, caret: head.utf16.count, logo: logo, image: image)
         }
-        guard let at = draft.range(of: "@", options: .backwards), !draft[at.upperBound...].contains(where: \.isWhitespace),
-              at.lowerBound == draft.startIndex || draft[draft.index(before: at.lowerBound)].isWhitespace else { return [] }
-        let q = draft[at.upperBound...].lowercased(), head = String(draft[..<at.lowerBound])
-        let names = ws.addressBook.map { (icon: "person.crop.circle", title: $0.name, detail: $0.network.title) }
-            + ws.favoriteTokens.map { (icon: "star", title: $0.symbol, detail: "\($0.name) · \($0.chainTitle)") }
-        return Array(names.filter { q.isEmpty || $0.title.lowercased().contains(q) }.prefix(6)
-            .map { ComposerSuggestion(icon: $0.icon, title: $0.title, detail: $0.detail, draft: head + $0.title + " ") })
+        if w.text.hasPrefix("/") {
+            let q = w.text.dropFirst().lowercased()
+            return BlockCatalog.all.filter { !$0.automatic && !$0.example.isEmpty }
+                .filter { q.isEmpty || "\($0.title) \($0.group) \($0.example)".lowercased().contains(q) }
+                .map { row("square.grid.2x2", $0.title, $0.example, put: $0.example, logo: $0.logo) }
+        }
+        guard w.text.hasPrefix("@") else { return [] }
+        let q = w.text.dropFirst().lowercased()
+        if let address = mentionedAddress(draft, caret: caret) {
+            let short = "\(address.prefix(6))…\(address.suffix(4))"
+            guard let found = ws.contractLookups[address] else { return [row("magnifyingglass", short, "looking it up…", put: address)] }
+            guard !found.isEmpty else { return [row("questionmark.circle", short, "no market knows it", put: address)] }
+            // One row per network it trades on, the deepest pool first.
+            var chains = Set<String>()
+            return found.filter { chains.insert($0.chain).inserted }.map { t in
+                let net = ModuleNetwork(place: t.chain)
+                let detail = [t.name, net?.name ?? t.chain.capitalized, t.priceUSD.map { Fmt.usd($0) }, t.liquidityUSD.map { "liquidity \(Fmt.usd($0))" }]
+                    .compactMap { $0 }.joined(separator: " · ")
+                return row("circle.dotted", t.symbol, detail, put: t.address, logo: t.imageURL == nil ? net?.logo : nil, image: t.imageURL)
+            }
+        }
+        let names = ws.addressBook.map { row("person.crop.circle", $0.name, $0.network.title, put: $0.name, logo: $0.network.logo) }
+            + ws.favoriteTokens.map { row("star", $0.symbol, "\($0.name) · \($0.chainTitle)", put: $0.symbol, logo: $0.image == nil ? $0.chainLogo : nil, image: $0.image) }
+        return names.filter { q.isEmpty || $0.title.lowercased().contains(q) }
     }
 }
 
@@ -2584,10 +2657,14 @@ struct ChatModelMenu: View {
             .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 2)
             .help(info.note)
             ForEach(list, id: \.self) { id in
-                MenuRow(title: LLMCatalog.displayName(model: id), detail: id == info.defaultModel ? "recommended" : nil,
+                // A model too small for the chat's brief stays listed, faded, with the reason.
+                let off = LLMCatalog.chatRefusal(model: id)
+                MenuRow(title: LLMCatalog.displayName(model: id), detail: off != nil ? "too small for the chat" : id == info.defaultModel ? "recommended" : nil,
                         checked: info.id == ws.providerID && id == chosen(info)) { pick(info, model: id) }
                     .padding(.leading, 28)
-                    .help(id)
+                    .disabled(off != nil)
+                    .opacity(off != nil ? 0.5 : 1)
+                    .help(off ?? id)
             }
         }
     }

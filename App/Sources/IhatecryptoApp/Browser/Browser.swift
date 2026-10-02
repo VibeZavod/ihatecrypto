@@ -444,7 +444,7 @@ final class Browser {
         }
         // Programs ihatecrypto knows by name but doesn't sign for without asking are named, still marked as not on its list.
         let named = programs.sorted().map { p in
-            (name: SolanaGuard.knownPrograms[p] ?? Self.programNames[p] ?? "\(p.prefix(4))…\(p.suffix(4))", known: SolanaGuard.knownPrograms[p] != nil)
+            (name: SolanaGuard.knownPrograms[p] ?? "\(p.prefix(4))…\(p.suffix(4))", known: SolanaGuard.knownPrograms[p] != nil)
         }
         // One line per kind of check: an instruction repeated to the same program said the same thing twice.
         var seen = Set<String>()
@@ -456,13 +456,6 @@ final class Browser {
         review.programs = named
         return review
     }
-
-    /// Programs a site may call that ihatecrypto names but doesn't sign for without asking (checked on mainnet: both
-    /// are upgradeable programs; github.com/Kamino-Finance/kvault).
-    static let programNames = [
-        "KvauGMspG5k6rtzrqqn7WNn3oZdyKqLKwK2XWQ8FLjd": "Kamino Vault",
-        "FarmsPZpWu9i7Kky8tPN37rs2TpmMrAZrC7S7vJa91Hr": "Kamino Farms",
-    ]
 
     private func signed(_ d: Decimal) -> String { (d > 0 ? "+" : d < 0 ? "−" : "") + Fmt.num(abs(d), maxFraction: 9) }
 

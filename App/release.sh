@@ -26,6 +26,12 @@ out=dist; derived=.build/release
 sparkle=$derived/SourcePackages/artifacts/sparkle/Sparkle/bin
 mkdir -p $out
 (cd Xcode && xcodegen generate --quiet)
+# Private Cloud Compute is Apple's for Development, Ad hoc and App Store profiles only: the Developer ID copy goes without
+# it (its Apple models stay the one on the Mac). The file is put back however the script ends.
+cp Xcode/ihatecrypto.entitlements $out/ihatecrypto.entitlements.keep
+trap 'cp $out/ihatecrypto.entitlements.keep Xcode/ihatecrypto.entitlements; rm -f $out/ihatecrypto.entitlements.keep' EXIT
+# Absent until the capability is on the App ID app.ihatecrypto.mac (developer portal): nothing to take out then.
+/usr/libexec/PlistBuddy -c "Delete :com.apple.developer.private-cloud-compute" Xcode/ihatecrypto.entitlements 2>/dev/null || true
 log=$(mktemp -t ihatecrypto-release)
 step() { echo "· $1"; }
 fail() { grep -E "error:|Command .* failed|FAILED" "$log" | cut -c1-300 | head -20; echo "full log: $log"; exit 1; }

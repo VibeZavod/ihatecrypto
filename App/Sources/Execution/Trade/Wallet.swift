@@ -647,6 +647,12 @@ extension Executor {
         let decimals = ((supply?["value"] as? [String: Any])?["decimals"] as? NSNumber)?.intValue ?? 6
         let scale = Decimal(sign: .plus, exponent: decimals, significand: 1)
         let position = try await Kamino.positions(wallet: wallet.solana).first { $0.reserve == reserve.address }
+        // A deposit made on kamino.com sits in a Kamino Vault (Earn), not in Lend.
+        // ponytail: Lend first when both hold the token; «all» then leaves the vault, say it again for that.
+        if !deposit, position == nil,
+           let v = try await Kamino.vaultPositions(wallet: wallet.solana).first(where: { $0.mint == reserve.mint && $0.shares > 0 }) {
+            return try await kaminoVault(v, amount: requested, decimals: decimals, dryRun: dryRun)
+        }
         // Everything: ask for 1% over the value — Kamino caps a withdrawal at what is there (checked live), so no dust stays.
         let all = !deposit && requested == nil
         guard let amount = requested ?? (deposit ? nil : position.map { ($0.valueUSD * Decimal(string: "1.01")!).rounded(6, .up) }), amount > 0 else {
@@ -685,6 +691,32 @@ extension Executor {
         let changes = try await signAndSend(wire, lastValid: lastValid, owners: [myToken: wallet.solana], rules: rules,
                                             note: "Kamino \(deposit ? "deposit" : "withdraw") \(symbol)", lamportsAtLeast: lamports, dryRun: dryRun)
         let line = (dryRun ? "Kamino simulation (nothing signed): " : "Kamino \(symbol) \(Fmt.num(reserve.supplyAPY.rounded(2, .plain)))% APY: \(deposit ? "deposited \(Fmt.num(amount, maxFraction: 6)) \(symbol)" : all ? "withdrew everything" : "withdrew \(Fmt.num(amount, maxFraction: 6)) \(symbol)"). ")
+            + changes.joined(separator: "; ") + "."
+        report(line)
+        return line
+    }
+
+    /// Out of a Kamino Vault: `amount` of its token (nil = all), asked for in shares at Kamino's price per share, which
+    /// runs a hair above what comes out (3 asked → 2.999 in simulation). Shares staked in the vault's farm are unstaked
+    /// in the same transaction.
+    func kaminoVault(_ v: Kamino.VaultPosition, amount requested: Decimal?, decimals: Int, dryRun: Bool) async throws -> String {
+        // A cent short of the whole is the whole: «выведи 5» from 4.999 takes every share instead of failing.
+        let all = requested.map { $0 >= v.tokens - Decimal(string: "0.01")! } ?? true
+        if let requested, requested > v.tokens + Decimal(string: "0.01")! {
+            throw ExecutionError("Only \(Fmt.num(v.tokens, maxFraction: 6)) \(v.symbol) in \(v.name) on Kamino; can't withdraw \(Fmt.num(requested, maxFraction: 6)).")
+        }
+        let amount = all ? v.tokens : requested ?? v.tokens
+        guard amount > 0 else { throw ExecutionError("Say how much to withdraw from \(v.name).") }
+        let shares = all ? v.shares : min(v.shares, (amount * v.shares / v.tokens).rounded(6, .up))
+        let scale = Decimal(sign: .plus, exponent: decimals, significand: 1)
+        let expected = Int64(NSDecimalNumber(decimal: (amount * scale).rounded(0, .down)).int64Value)
+        let myToken = try SPL.associatedAccount(owner: wallet.solana, mint: v.mint)
+        let wire = try await Kamino.vaultWithdrawTransaction(wallet: wallet.solana, vault: v.vault, shares: shares)
+        let lastValid = try await rpc.latestBlockhash().lastValidBlockHeight
+        // ponytail: a SOL vault pays out wSOL, left wrapped in the token account.
+        let changes = try await signAndSend(wire, lastValid: lastValid, owners: [myToken: wallet.solana], rules: [(myToken, v.symbol, true, expected * 99 / 100)],
+                                            note: "Kamino \(v.name) withdraw", dryRun: dryRun)
+        let line = (dryRun ? "Kamino simulation (nothing signed): " : "Kamino \(v.name): withdrew \(all ? "everything, " : "")\(Fmt.num(amount, maxFraction: 6)) \(v.symbol). ")
             + changes.joined(separator: "; ") + "."
         report(line)
         return line

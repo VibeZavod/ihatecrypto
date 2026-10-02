@@ -57,7 +57,7 @@ final class Workspace {
     var otherTokens: [Holding] = []
     /// Aave and Morpho off Base, with money in them (Lending.swift).
     var lendingElsewhere: [LendingPosition] = []
-    /// Deposits in protocols ihatecrypto doesn't move itself: Kamino's vaults, Jupiter's other platforms (Protocols.swift).
+    /// Deposits made on a site: Kamino's vaults (withdrawn by the kamino form), Jupiter's other platforms (Protocols.swift).
     var protocolPositions: [ProtocolPosition] = []
     @ObservationIgnored var protocolsReadAt: Date?
     /// A read of the other networks' tokens is under way (refresh starts one and doesn't wait for it).
@@ -253,6 +253,8 @@ final class Workspace {
         didSet { LocalStore.save(tokenNames, "tokennames.json") }
     }
     @ObservationIgnored var tokenNamesAsked: Set<String> = []
+    /// Contracts and mints typed after «@» in the chat's field, with what DexScreener knows of each (lookUpContract).
+    var contractLookups: [String: [TokenLookup.Info]] = [:]
     var tokenBalances: [String: Decimal] {
         get { tokenBalancesRead }
         set { if newValue != tokenBalancesRead { tokenBalancesRead = newValue } }
@@ -300,6 +302,9 @@ final class Workspace {
     var tuning: String?
     /// Settings fill the main window in place of the canvas and the chat.
     var settingsOpen = false
+    /// A new version Sparkle has downloaded, waiting for a restart to install (Updater.swift): the app menu and the menu
+    /// bar's popover offer «Restart to update».
+    var updateReady: String?
 
     /// Shows Settings, on `tab` (a `SettingsView.Tab`) when given.
     func openSettings(_ tab: SettingsView.Tab? = nil) {
@@ -1032,6 +1037,8 @@ final class Workspace {
         case nil where unreadable:
             reply(say("\(model) answered, but not in a form ihatecrypto can read, so nothing ran. Say it another way, or pick another model above.",
                       "\(model) ответил, но не в том виде, который ihatecrypto может прочитать, поэтому ничего не запускал. Скажи иначе или выбери другую модель сверху."), note: model)
+        case nil where LLMCatalog.chatRefusal(model: model) != nil:
+            reply((LLMCatalog.chatRefusal(model: model) ?? "") + say(" Nothing ran. Pick another model above.", " Ничего не запускал. Выбери другую модель сверху."), note: model)
         case nil:
             reply(say("I couldn’t reach \(model) (\(failure.prefix(140))), so I didn’t act on this — nothing moved. Send it again, or pick another model above.",
                       "Не достучался до \(model) (\(failure.prefix(140))), поэтому ничего не сделал — ничего не ушло. Отправь ещё раз или выбери другую модель сверху."), note: model)
@@ -1101,6 +1108,11 @@ final class Workspace {
         c.offered = offered.map { "\($0.title) → \($0.command)\($0.recommended ? " (recommended)" : "")" }
         if intent != TradeIntent(), let json = try? JSONEncoder().encode(intent) { c.plan = String(decoding: json, as: UTF8.self) }
         if let ch = chart { c.canvas.append("chart \(ch.coin) (\(ch.range.title))") }
+        // Notes: «добавь заметку …» there goes to their folder without asking which.
+        if let n = noteCard, let folder = n.folder {
+            c.canvas.append("\(n.canvas == canvasID ? "this canvas is" : "a card opens") \(n.texts.count == 1 ? "a note" : "\(n.texts.count) notes") in folder «\(folder)»: "
+                            + n.texts.map { "«\($0.prefix(80))»" }.joined(separator: ", "))
+        }
         // The rates board, best first: «ок, положи туда 500» after «где лучше держать доллары?» is its top place.
         if let y = yieldOptions ?? heldAnswer?.yields, !y.isEmpty {
             c.canvas.append("rates board, best first: " + y.prefix(8).map { "\($0.place) \($0.asset) \(Fmt.num($0.apy.rounded(2, .plain)))%" }.joined(separator: ", "))
@@ -1153,8 +1165,11 @@ final class Workspace {
             if let u = usdc(on: net), u > 0 { c.balances.append("\(WalletCommand.placeName(net)) \(Fmt.num(u)) USDC idle") }
         }
         for p in lendingElsewhere where p.usdc > 0 { c.balances.append("\(p.place) \(Fmt.num(p.usdc)) USDC") }
-        // Made on a site, not by ihatecrypto: it can tell what's there, and its forms don't withdraw it (the site does).
-        for p in protocolPositions { c.balances.append("\(p.platform) \(p.name) \(p.amount ?? Fmt.usd(p.usd)) (\(Fmt.usd(p.usd)); managed on \(p.site))") }
+        // Made on a site. Kamino's vaults come out by the kamino form, any amount; the rest is managed on the site.
+        for p in protocolPositions {
+            let how = p.platform == "Kamino" ? "withdraw [N] \(p.symbol ?? "USDC") from kamino takes any amount of it" : "managed on \(p.site)"
+            c.balances.append("\(p.platform) \(p.name) \(p.amount ?? Fmt.usd(p.usd)) (\(Fmt.usd(p.usd)); \(how))")
+        }
         if near > 0 { c.balances.append("NEAR \(Fmt.num(near, maxFraction: 4)) NEAR") }
         if let r = robinhood {
             c.balances.append("Robinhood Chain \(Fmt.num(r.usdg)) USDG" + r.stocks.map { ", \(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol) stock" }.joined())

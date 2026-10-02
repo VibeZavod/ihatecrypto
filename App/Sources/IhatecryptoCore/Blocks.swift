@@ -61,7 +61,7 @@ public enum BlockCatalog {
 
         Block(group: "Earn", label: "INTO · JUPITER LEND", title: "Lend on Solana", form: "lend N USDC|SOL · withdraw N USDC from the vault",
               example: "lend 1 USDC", fill: "jupiter", logo: "jup"),
-        Block(group: "Earn", label: "INTO · KAMINO", title: "Kamino", form: "deposit N USDC|SOL to kamino · withdraw from kamino",
+        Block(group: "Earn", label: "INTO · KAMINO", title: "Kamino", form: "deposit N USDC|SOL to kamino · withdraw [N] USDC from kamino",
               example: "deposit 1 USDC to kamino", fill: "kamino", logo: "kamino"),
         Block(group: "Earn", label: "INTO · AAVE", title: "Aave", form: "lend N USDC on Aave on Base|Arbitrum|Polygon|Ethereum",
               example: "lend 2 USDC on Aave", fill: "aave", logo: "aave"),

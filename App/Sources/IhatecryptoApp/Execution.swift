@@ -530,13 +530,16 @@ extension Workspace {
         }
         switch command {
         case .withdrawToSolana(let asked): return lacks(hl?.withdrawable, asked, "Hyperliquid")
-        case .kamino(deposit: false, symbol: "USDC", amount: let asked): return lacks(kamino, asked, "Kamino")
+        case .kamino(deposit: false, symbol: "USDC", amount: let asked): return lacks(kaminoVault("USDC")?.tokens ?? kamino, asked, "Kamino")
         case .lendWithdraw("USDC", let asked): return lacks(lend.reduce(0) { $0 + $1.usdc }, asked, "Jupiter Lend")
         case .baseToSolana(let asked): return lacks(base?.usdc, asked, "Base")
         // «с базы на арбитрум» 50 with 1 there drew «Move 1 USDC» under «Понял: move 50»: the amount is said before the card.
         // Not inside a chain: a step before it may have just brought the money, and those balances load after the refresh.
         case .evmToSolana(let net, let asked) where !inChain, .bridge(from: let net, to: _, let asked) where !inChain:
             return lacks(usdc(on: net), asked, WalletCommand.placeName(net), net == "robinhood" ? "USDG" : "USDC")
+        // A buy that names where its money comes from («с арбитрума») pays from there or not at all: said before the card.
+        case .buyOn(_, _, let asked?, let from?) where !inChain && from != "solana":
+            return lacks(usdc(on: from), asked, WalletCommand.placeName(from), from == "robinhood" ? "USDG" : "USDC")
         case .hlp(deposit: false, amount: let asked):
             if let until = hlp.lockedUntil, until > Date(), hlp.equity > 0 {
                 return say("HLP is locked until \(Fmt.date(until)): Hyperliquid lets deposits out 4 days after they go in.",

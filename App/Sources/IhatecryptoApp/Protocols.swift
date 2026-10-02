@@ -3,9 +3,9 @@ import Foundation
 import IhatecryptoCore
 import SwiftUI
 
-/// Money in protocols ihatecrypto doesn't move itself, so a deposit made on a site in the browser still shows: Kamino's
-/// vaults (Earn) from Kamino, and Jupiter's other platforms (staked JUP, perps, predictions…) from Jupiter's portfolio.
-/// Shown on the portfolio, counted in the total, told to the chat.
+/// Money put in on a site, so a deposit made in the browser still shows: Kamino's vaults (Earn) from Kamino, and Jupiter's
+/// other platforms (staked JUP, perps, predictions…) from Jupiter's portfolio. Shown on the portfolio, counted in the
+/// total, told to the chat. Kamino's vaults come out with «withdraw [N] USDC from kamino» (Wallet.kaminoVault).
 struct ProtocolPosition: Equatable, Identifiable {
     var id: String { "\(platform) · \(name)" }
     /// «Kamino», «Jupiter».
@@ -20,10 +20,17 @@ struct ProtocolPosition: Equatable, Identifiable {
     let apy: Decimal?
     /// Where it's managed, for the chat and the row's help.
     let site: String
+    /// The token and how much of it, for a withdrawal by amount (Kamino's vaults).
+    var symbol: String? = nil
+    var tokens: Decimal? = nil
 }
 
 extension Workspace {
     var protocolUSD: Decimal { protocolPositions.reduce(0) { $0 + $1.usd } }
+    /// What «withdraw … from kamino» takes from: Lend when it holds anything, else the vault holding the token.
+    func kaminoVault(_ symbol: String) -> ProtocolPosition? {
+        kamino > 0 ? nil : protocolPositions.first { $0.platform == "Kamino" && $0.symbol == symbol }
+    }
 
     /// Read at most every two minutes with the balances; `force` after a site's transaction was signed. A source that
     /// doesn't answer keeps its last reading.
@@ -35,7 +42,7 @@ extension Workspace {
         async let jupiter = Self.jupiterPositions(wallet)
         let vaults = (await kamino)?.map { v in
             ProtocolPosition(platform: "Kamino", name: v.name, logo: "kamino", usd: v.valueUSD, amount: "\(Fmt.num(v.tokens)) \(v.symbol)",
-                             apy: v.apy, site: "kamino.com")
+                             apy: v.apy, site: "kamino.com", symbol: v.symbol, tokens: v.tokens)
         } ?? protocolPositions.filter { $0.platform == "Kamino" }
         let jup = await jupiter ?? protocolPositions.filter { $0.platform != "Kamino" }
         let found = (vaults + jup).filter { $0.usd >= Decimal(string: "0.01")! }

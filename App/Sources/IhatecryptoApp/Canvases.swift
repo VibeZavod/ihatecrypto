@@ -101,6 +101,9 @@ struct CanvasSession: Codable, Identifiable, Equatable {
     var pinnedAt: Date?
     /// A note written from the chat («запиши в папку ideas: …»): shown as a card on this canvas.
     var note: String?
+    /// The notes written to it after the first, oldest first: a card each.
+    var moreNotes: [String]?
+    var notes: [String] { (note.map { [$0] } ?? []) + (moreNotes ?? []) }
 
     /// Picked from the icon library (the row's «Change icon…»); nil = the sign of what the canvas holds.
     var icon: AddressIcon?
@@ -216,7 +219,8 @@ extension Workspace {
 
     /// «save this canvas to folder X» moves the open canvas there; «write to folder X: …» keeps the text there as a note: a
     /// card on a canvas of its own, titled by it. Written on a new canvas, that canvas becomes the note; otherwise the open
-    /// canvas stays open and shows the card with «Open». A new folder name makes the folder.
+    /// canvas stays open and shows the card with «Open». The next note to the same folder from there is one more card on
+    /// that note canvas, not a canvas of its own. A new folder name makes the folder.
     func folderCommand(_ command: FolderCommand, note: String? = nil) {
         switch command {
         case .save(let folder):
@@ -232,14 +236,19 @@ extension Workspace {
         case .note(let folder, let text):
             createFolder(folder)
             let title = text.count > 48 ? String(text.prefix(48)) + "…" : text
-            if canvasID == nil, messages.filter(\.fromUser).count <= 1 {
+            // This canvas is a note in that folder, or shows one: the note joins it as one more card.
+            if let i = canvases.firstIndex(where: { c in c.note != nil && c.folder == folder && (c.id == canvasID || c.id == noteCard?.canvas) }) {
+                canvases[i].moreNotes = (canvases[i].moreNotes ?? []) + [text]
+                canvases[i].updated = Date()
+                noteCard = NoteCard(canvas: canvases[i].id, folder: folder, texts: canvases[i].notes)
+            } else if canvasID == nil, messages.filter(\.fromUser).count <= 1 {
                 // A new canvas with only this message: it becomes the note, keeping the chat that wrote it.
                 newCanvasFolder = folder
                 saveCanvas()
                 if let id = canvasID, let i = canvases.firstIndex(where: { $0.id == id }) {
                     canvases[i].note = text
                     canvases[i].title = title
-                    noteCard = NoteCard(canvas: id, folder: folder, text: text)
+                    noteCard = NoteCard(canvas: id, folder: folder, texts: [text])
                 }
             } else {
                 // Only the greeting, as on every canvas: the note is its card, not a message.
@@ -247,7 +256,7 @@ extension Workspace {
                 c.title = title
                 c.note = text
                 canvases.insert(c, at: 0)
-                noteCard = NoteCard(canvas: c.id, folder: folder, text: text)
+                noteCard = NoteCard(canvas: c.id, folder: folder, texts: [text])
             }
             reply(say("Saved the note to «\(folder)» — it's on the canvas.", "Записал заметку в «\(folder)» — она на холсте."), note: note)
         }
@@ -309,7 +318,8 @@ extension Workspace {
         // A note is a card on the canvas. One written before 2026-10-01 was kept as the only message of a canvas in a folder.
         let oldNote = c.note == nil && c.folder != nil && c.messages.count == 1 && c.messages[0].fromUser ? c.messages[0].text : nil
         messages = oldNote == nil ? c.messages : Array(messages.prefix(1))
-        noteCard = (c.note ?? oldNote).map { NoteCard(canvas: c.id, folder: c.folder, text: $0) }
+        let notes = oldNote.map { [$0] } ?? c.notes
+        noteCard = notes.isEmpty ? nil : NoteCard(canvas: c.id, folder: c.folder, texts: notes)
         intent = c.intent
         executed = c.executed ? c.intent : nil
         if LLMCatalog.provider(id: c.providerID) != nil {
@@ -446,11 +456,11 @@ extension CanvasList {
     }
 }
 
-/// A note on the canvas it was written to.
+/// The notes of a note canvas, shown on the canvas they were written to.
 struct NoteCard: Equatable {
     var canvas: UUID
     var folder: String?
-    var text: String
+    var texts: [String]
 }
 
 /// A note from the chat as a card: on its own canvas in the folder, and where it was written (there with «Open»).
@@ -459,24 +469,31 @@ struct NoteBoard: View {
     let note: NoteCard
 
     var body: some View {
+        // A card per note, newest at the bottom; «Open» on the first only.
+        VStack(alignment: .leading, spacing: 10) {
+            ForEach(Array(note.texts.enumerated()), id: \.offset) { i, text in card(text, first: i == 0) }
+        }
+        .transition(.opacity)
+    }
+
+    private func card(_ text: String, first: Bool) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
                 Image(systemName: "note.text").font(.system(size: 15, weight: .semibold)).foregroundStyle(Brand.accentInk)
                 Text(note.folder.map { "Note · \($0)" } ?? "Note").font(.ui(13, .semibold)).foregroundStyle(.secondary)
                 Spacer()
-                if note.canvas != ws.canvasID, let c = ws.canvases.first(where: { $0.id == note.canvas }) {
+                if first, note.canvas != ws.canvasID, let c = ws.canvases.first(where: { $0.id == note.canvas }) {
                     Button("Open") { withAnimation(StudioView.spring) { ws.openCanvas(c) } }
                         .buttonStyle(.bordered).controlSize(.small).disabled(ws.busy)
                         .help("The note's own canvas, in its folder")
                 }
             }
-            Text(note.text).font(.ui(16, .medium)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            Text(text).font(.ui(16, .medium)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
         }
         .padding(18)
         .frame(width: 470, alignment: .leading)
         .background(RoundedRectangle(cornerRadius: 26).fill(Brand.card).shadow(color: .black.opacity(0.08), radius: 18, y: 10))
         .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Brand.cardBorder, lineWidth: 1.5))
-        .transition(.opacity)
     }
 }
 
@@ -1208,8 +1225,9 @@ extension Workspace {
             return (step(s == "SOL" ? "sol" : "usdc", "FROM · SOLANA", "\(n(x)) \(s)", s == "SOL" ? solSOL : solUSDC, .solana),
                     step("kamino", "INTO · KAMINO LEND", "\(n(x)) \(s)", "first deposit pays ≈ 0.03 SOL rent", .kamino))
         case .kamino(false, let s, let x):
-            let x = x ?? (s == "USDC" && kamino > 0 ? kamino : nil)
-            return (step("kamino", "FROM · KAMINO LEND", "\(n(x)) \(s)", "", .kamino),
+            let vault = kaminoVault(s)
+            let x = x ?? vault?.tokens ?? (s == "USDC" && kamino > 0 ? kamino : nil)
+            return (step("kamino", vault == nil ? "FROM · KAMINO LEND" : "FROM · KAMINO EARN", "\(n(x)) \(s)", vault.map { "\($0.name): \($0.amount ?? "")" } ?? "", .kamino),
                     step(s == "SOL" ? "sol" : "usdc", "TO · SOLANA", "\(n(x)) \(s)", "your wallet", .solana))
         case .stake(let x):
             return (step("sol", "FROM · SOLANA", "\(n(x)) SOL", solSOL, .solana),
@@ -1263,6 +1281,17 @@ extension Workspace {
         if let s = favoriteToken(contract)?.symbol ?? tokenNames[key] { return s }
         if tokenNamesAsked.insert(key).inserted { Task { await learnTokenName(contract) } }
         return nil
+    }
+
+    /// A contract or mint typed after «@» in the chat's field: what DexScreener knows of it, asked once. The user typed it
+    /// there to look it up, so it goes out; its ticker is learned for the cards and the chat.
+    func lookUpContract(_ address: String) async {
+        guard contractLookups[address] == nil else { return }
+        try? await Task.sleep(for: .milliseconds(300))   // the field still being typed or pasted into
+        guard !Task.isCancelled else { return }
+        let found = (try? await TokenLookup.lookup(address)) ?? []
+        contractLookups[address] = found
+        if let symbol = found.first?.symbol, favoriteToken(address) == nil { tokenNames[address.lowercased()] = symbol }
     }
 
     func learnTokenName(_ contract: String) async {
@@ -1410,8 +1439,9 @@ extension Workspace {
         // On the network itself, as the executor decides (Executor.buyHere): its quote says so; before it lands, the balances.
         let quoted = swapQuote.flatMap { q in q.command == command ? q.ways : nil }
         let src = from.flatMap { $0 == "solana" || $0 == place ? nil : $0 }
-        let here = keep || (usdc.map { u in quoted?.first.map { $0.way == "here" }
-            ?? (from != "solana" && (self.usdc(on: src ?? place) ?? 0) >= u) } ?? false)
+        // A source the user named is the card's, never Solana's ways: if it can't pay, the move is refused, not swapped.
+        let here = keep || (from != nil && from != "solana") || (usdc.map { u in quoted?.first.map { $0.way == "here" }
+            ?? (from != "solana" && (self.usdc(on: place) ?? 0) >= u) } ?? false)
         if here {
             let gets = quoted?.first { $0.way == "here" }?.gets
             let moving = usdc.map { "\(Fmt.num($0)) USDC" } ?? "\(sell.map { Fmt.num($0) } ?? "all") \(label)"

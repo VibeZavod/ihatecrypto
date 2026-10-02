@@ -1,6 +1,7 @@
 import Foundation
 import FoundationModels
 import LLMCore
+import OSLog
 import Security
 
 /// Apple Intelligence through the Foundation Models framework: the model on this Mac, and on macOS 27 the bigger one on
@@ -24,17 +25,39 @@ public struct AppleIntelligence: LLMProvider {
         return ProviderInfo(
             id: "apple", name: "Apple Intelligence", kind: .local, defaultModel: models.first ?? onDevice,
             note: "Apple's Foundation Models: free, no key. On this Mac the model holds only 4,096 tokens, too small for the chat's "
-                + "brief; Private Cloud Compute (32k, on Apple's servers) needs an entitlement Apple grants on request.",
+                + "brief. Private Cloud Compute (32k, on Apple's servers): " + (privateCloudBlocker ?? "available") + ".",
             unavailable: models.isEmpty ? reason(local) : nil,
             models: models
         )
     }()
 
-    static var hasPrivateCloud: Bool {
-        guard #available(macOS 27, *), let task = SecTaskCreateFromSelf(nil),
-              SecTaskCopyValueForEntitlement(task, entitlement as CFString, nil) as? Bool == true else { return false }
-        return PrivateCloudComputeLanguageModel().isAvailable
+    /// Why a model can't be the chat's: the one on this Mac holds 4,096 tokens and reads no Russian, and the chat's brief
+    /// alone is 5,042. Settings › Test still asks it.
+    public static func chatRefusal(model: String) -> String? {
+        model == onDevice ? "Apple's model on this Mac holds 4,096 tokens and doesn't read Russian, while the chat's brief alone is 5,042: "
+            + "it can't be the chat's model. Test it in Settings; the bigger Apple model comes once Apple grants the app its entitlement." : nil
     }
+
+    static var hasPrivateCloud: Bool { privateCloudBlocker == nil }
+
+    /// What keeps Private Cloud Compute away, said plainly; nil when it's there. Logged once (subsystem app.ihatecrypto.mac,
+    /// category apple-intelligence), since the menu only shows the model or not.
+    static let privateCloudBlocker: String? = {
+        let why: String? = {
+            guard #available(macOS 27, *) else { return "needs macOS 27" }
+            guard let task = SecTaskCreateFromSelf(nil), SecTaskCopyValueForEntitlement(task, entitlement as CFString, nil) as? Bool == true else {
+                return "this build isn't signed with Apple's entitlement"
+            }
+            switch PrivateCloudComputeLanguageModel().availability {
+            case .available: return nil
+            case .unavailable(.deviceNotEligible): return "Apple says this Mac or Apple Account isn't eligible"
+            case .unavailable(.systemNotReady): return "Apple's service isn't ready on this Mac yet (Apple Intelligence still setting up, or signed out of the Apple Account)"
+            case .unavailable(let other): return "unavailable (\(other))"
+            }
+        }()
+        Logger(subsystem: "app.ihatecrypto.mac", category: "apple-intelligence").notice("Private Cloud Compute: \(why ?? "available", privacy: .public)")
+        return why
+    }()
 
     static func reason(_ availability: SystemLanguageModel.Availability) -> String {
         switch availability {
@@ -69,6 +92,8 @@ struct AppleIntelligenceClient: LLMClient {
             throw LLMError("Apple Intelligence declined this request (its safety guardrails).")
         } catch {
             // macOS 27's LanguageModelError already reads well: «Content contains 8058 tokens, which exceeds … 4096.»
+            // Its «transcript exceeded the model's context size» is the same too-long case.
+            if error.localizedDescription.contains("context size") { throw LLMError(AppleIntelligence.chatRefusal(model: r.model) ?? "Apple Intelligence: the request is longer than this model holds.") }
             throw LLMError("Apple Intelligence: \(error.localizedDescription)")
         }
     }

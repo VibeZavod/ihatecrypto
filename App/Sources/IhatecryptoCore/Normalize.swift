@@ -123,9 +123,11 @@ public enum ChatRouter {
       buy token <0xCONTRACT> on <base|arbitrum|polygon|ethereum> for N USDC | sell [N] tokens <0xCONTRACT> on <base|arbitrum|polygon|ethereum>
     ANY SOLANA TOKEN BY ITS MINT (Jupiter; only while Safe search is off): buy token <MINT> for N USDC | sell [N] tokens <MINT>
     EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault") | withdraw [N] <USDC|SOL> from the vault
-      deposit N <USDC|SOL> to kamino | withdraw <USDC|SOL> from kamino | stake N SOL | unstake N JitoSOL
-      deposit N USDC to HLP | withdraw from HLP | lend N USDC on Aave [on <Base|Arbitrum|Polygon|Ethereum>] | withdraw USDC from Aave [on <network>]
-      deposit N USDC into Morpho [on <Base|Arbitrum|Ethereum>] | withdraw USDC from Morpho [on <network>]   (no network = Base; name it only when the user does)
+      deposit N <USDC|SOL> to kamino | withdraw [N] <USDC|SOL> from kamino   (Kamino Lend and Kamino's vaults, deposits made on kamino.com too) | stake N SOL | unstake N JitoSOL
+      deposit N USDC to HLP | withdraw [N] USDC from HLP | lend N USDC on Aave [on <Base|Arbitrum|Polygon|Ethereum>] | withdraw [N] USDC from Aave [on <network>]
+      deposit N USDC into Morpho [on <Base|Arbitrum|Ethereum>] | withdraw [N] USDC from Morpho [on <network>]   (no network = Base; name it only when the user does)
+      Every withdrawal takes any amount up to what is there; no N = all of it. «выведи 3 из камино» = withdraw 3 USDC from kamino,
+      never «withdraw all then deposit the rest back».
       where to keep <USDC|SOL> | spread [N] <USDC|SOL> [from <Solana|Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo>] across the best rates [max N% per protocol] [without <jupiter|kamino|aave|morpho>[, …]]
         («без kamino», «только aave и морфо» = without the others; N = at most that much; none = all that is free:
         USDC idle on Solana AND on Base, Arbitrum, Polygon, Ethereum, Robinhood and Tempo — each slice takes the money where it is, so never put a
@@ -165,7 +167,8 @@ public enum ChatRouter {
     APP: new canvas | clear the plan | lock | create an automation wallet   (a wallet without Touch ID that scheduled tasks spend from by
       themselves: «создай кошелёк автоматизации», «чтобы расписание работало без пальца»)
     FOLDERS: save this canvas to folder <NAME> | write to folder <NAME>: <TEXT>   (a folder in the sidebar; a new name makes it;
-      «сохрани в папку Ресерч», «запиши в папку Идеи: …» — the text kept whole as a note there)
+      «сохрани в папку Ресерч», «запиши в папку Идеи: …» — the text kept whole as a note there. A note with no folder named
+      («добавь заметку …», «ещё заметка: …») while the canvas shows notes in a folder goes to THAT folder, no question)
     NOW, IN STEPS (what no single form does, built from the forms above, up to 5): COMMAND then COMMAND [then COMMAND…]
       («выведи 5 с хайпера и положи в камино» = withdraw 5 USDC to Solana then deposit 5 USDC to kamino). The user confirms the chain once, at its first
       money move, and each step after it runs by itself once the one before went through. Moving money between places costs a

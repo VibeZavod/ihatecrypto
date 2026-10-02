@@ -51,12 +51,16 @@ public enum SolanaGuard {
     /// Relay Depository (github.com/relayprotocol/relay-depository), Anchor program.
     public static let relayDepository = "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2"
     public static let kaminoLend = "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD"
+    /// Kamino's vaults (Earn) and the farm their shares are staked in: a vault withdrawal unstakes, then redeems.
+    public static let kaminoVault = "KvauGMspG5k6rtzrqqn7WNn3oZdyKqLKwK2XWQ8FLjd"
+    public static let kaminoFarms = "FarmsPZpWu9i7Kky8tPN37rs2TpmMrAZrC7S7vJa91Hr"
     /// Kamino's first deposit creates the user's own lookup table; only create and extend with the owner as authority pass.
     public static let lookupTableProgram = "AddressLookupTab1e1111111111111111111111111"
     public static let knownPrograms: [String: String] = [
         system: "System", computeBudget: "Compute Budget", SPL.tokenProgram: "SPL Token", SPL.token2022Program: "SPL Token-2022",
         SPL.associatedTokenProgram: "Associated Token", jupiterSwap: "Jupiter Swap", jupiterLend: "Jupiter Lend Earn",
-        relayDepository: "Relay Depository", kaminoLend: "Kamino Lend", lookupTableProgram: "Address Lookup Table",
+        relayDepository: "Relay Depository", kaminoLend: "Kamino Lend", kaminoVault: "Kamino Vault", kaminoFarms: "Kamino Farms",
+        lookupTableProgram: "Address Lookup Table",
     ]
     /// Anchor discriminators: sha256("global:deposit_token")[0..<8], sha256("global:deposit_native")[0..<8].
     static let relayDepositToken = Data([0x0b, 0x9c, 0x60, 0xda, 0x27, 0xa3, 0xb4, 0x13])

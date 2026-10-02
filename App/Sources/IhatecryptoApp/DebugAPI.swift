@@ -284,7 +284,7 @@ final class DebugAPI {
         }
         if ws.showReceive { out["receive"] = true }
         if let saved = ws.savedBoard { out["saved"] = saved.displayTitle }
-        if let n = ws.noteCard { out["note"] = ["text": n.text, "folder": n.folder ?? NSNull(), "own": n.canvas == ws.canvasID] as [String: Any] }
+        if let n = ws.noteCard { out["note"] = ["text": n.texts.last ?? "", "texts": n.texts, "folder": n.folder ?? NSNull(), "own": n.canvas == ws.canvasID] as [String: Any] }
         return out
     }
 

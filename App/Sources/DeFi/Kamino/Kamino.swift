@@ -52,6 +52,12 @@ public enum Kamino {
         try await transaction("/ktx/klend/withdraw", wallet: wallet, reserve: reserve, amount: amount)
     }
 
+    /// Unsigned transaction redeeming `shares` of a Kamino Vault for its token; shares staked in the vault's farm are
+    /// unstaked in the same transaction (checked by simulation: 1 share of «Allez USDC» → 1.0665 USDC).
+    public static func vaultWithdrawTransaction(wallet: String, vault: String, shares: Decimal) async throws -> Data {
+        try await post("/ktx/kvault/withdraw", ["wallet": wallet, "kvault": vault, "amount": "\(shares)"])
+    }
+
     public struct Position: Sendable {
         public let reserve: String
         public let symbol: String
@@ -90,6 +96,9 @@ public enum Kamino {
         /// The vault's own name, «Allez USDC».
         public let name: String
         public let symbol: String
+        public let mint: String
+        /// The vault's shares, held and staked: what a withdrawal asks for.
+        public let shares: Decimal
         public let tokens: Decimal
         public let valueUSD: Decimal
         /// % a year.
@@ -113,7 +122,7 @@ public enum Kamino {
                     let m = try JSONSerialization.jsonObject(with: try await get("/kvaults/\(h.vault)/metrics")) as? [String: Any] ?? [:]
                     let tokens = h.shares * dec(m["tokensPerShare"]), v = vaults[h.vault]
                     return VaultPosition(vault: h.vault, name: v?.name ?? "Kamino Vault", symbol: v.map { symbols[$0.mint] ?? "\($0.mint.prefix(4))…" } ?? "?",
-                                         tokens: tokens, valueUSD: tokens * dec(m["tokenPrice"]), apy: dec(m["apy"]) * 100)
+                                         mint: v?.mint ?? "", shares: h.shares, tokens: tokens, valueUSD: tokens * dec(m["tokenPrice"]), apy: dec(m["apy"]) * 100)
                 }
             }
             var out: [VaultPosition] = []
@@ -145,10 +154,14 @@ public enum Kamino {
     }
 
     static func transaction(_ path: String, wallet: String, reserve: String, amount: Decimal) async throws -> Data {
+        try await post(path, ["wallet": wallet, "market": mainMarket, "reserve": reserve, "amount": "\(amount)"])
+    }
+
+    static func post(_ path: String, _ body: [String: String]) async throws -> Data {
         var request = URLRequest(url: URL(string: base + path)!, timeoutInterval: 30)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["wallet": wallet, "market": mainMarket, "reserve": reserve, "amount": "\(amount)"])
+        request.httpBody = try JSONSerialization.data(withJSONObject: body)
         let (data, _) = try await URLSession.shared.data(for: request)
         guard let j = try JSONSerialization.jsonObject(with: data) as? [String: Any], let b64 = j["transaction"] as? String,
               let wire = Data(base64Encoded: b64) else { throw KaminoError(data) }
