@@ -654,6 +654,11 @@ extension Workspace {
     /// The signer makes an agent key and signs its approval with the main key; the approval goes to Hyperliquid,
     /// and only when the exchange accepts it do orders switch to the agent.
     func enableAgent() async {
+        // Hyperliquid refuses a key for an account that has never had a deposit: say so before Touch ID or the Ledger.
+        if let evm = signerWallet?.evm, (try? await Hyperliquid.isNewAccount(evm)) == true {
+            reply("No trading key yet: Hyperliquid takes one once the account has had a deposit. Until then every order asks for \(ledgerActive ? "the Ledger's buttons" : "Touch ID"); after the first deposit, Settings › Wallet › Key and signing has the button.")
+            return
+        }
         if ledgerActive { await enableLedgerAgent(); return }
         executing = true
         defer { executing = false }

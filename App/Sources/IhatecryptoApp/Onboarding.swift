@@ -999,11 +999,16 @@ private struct TradingKeyStep: View {
     let next: () -> Void
     let back: () -> Void
     @State private var tried = false
+    /// The account has never had a deposit: Hyperliquid would refuse the key, so the step doesn't ask for Touch ID.
+    @State private var noDeposit = false
 
     var body: some View {
+        let ready = ws.agentActive || noDeposit
         OnboardingCard(mood: ws.agentActive ? .done : ws.executing ? .thinking : .idle, title: "A trading key for Hyperliquid",
-                       subtitle: "Because Hyperliquid is on. Without it every order asks for \(ws.ledgerActive ? "the Ledger's buttons" : "Touch ID"); with it, orders go straight through the rules.",
-                       primary: ws.agentActive ? "Continue" : ws.ledgerActive ? "Approve on the Ledger" : "Approve with Touch ID", icon: ws.agentActive ? nil : "touchid", busy: ws.executing, action: { ws.agentActive ? next() : approve() }) {
+                       subtitle: noDeposit && !ws.agentActive
+                           ? "Hyperliquid takes it once the account has had a deposit, so it waits until then. Until then every order asks for \(ws.ledgerActive ? "the Ledger's buttons" : "Touch ID")."
+                           : "Because Hyperliquid is on. Without it every order asks for \(ws.ledgerActive ? "the Ledger's buttons" : "Touch ID"); with it, orders go straight through the rules.",
+                       primary: ready ? "Continue" : ws.ledgerActive ? "Approve on the Ledger" : "Approve with Touch ID", icon: ready ? nil : "touchid", busy: ws.executing, action: { ready ? next() : approve() }) {
             VStack(alignment: .leading, spacing: 14) {
                 FactRow(icon: "arrow.left.arrow.right", title: "It opens and closes positions", line: "Orders, stops and takes, within the trade rules.")
                 FactRow(icon: "nosign", title: "It can't withdraw", line: "Hyperliquid itself refuses a withdrawal signed by it.")
@@ -1011,14 +1016,17 @@ private struct TradingKeyStep: View {
             }
             if ws.agentActive {
                 statusLine("The trading key is on.", ok: true)
+            } else if noDeposit {
+                statusLine("After the first deposit to Hyperliquid: Settings › Wallet › Key and signing has the button.")
             } else if tried, let said = ws.messages.last(where: { !$0.fromUser })?.text {
                 statusLine(said, ok: false)
-                Text("Hyperliquid accepts a trading key once the account has had a deposit. It can wait: Settings › Wallet › Key and signing has the same button.")
-                    .font(.ui(11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
         } quiet: {
             QuietButton("Back", action: back)
-            if !ws.agentActive { QuietButton("Later", action: next) }
+            if !ready { QuietButton("Later", action: next) }
+        }
+        .task {
+            if let evm = ws.signerWallet?.evm { noDeposit = (try? await Hyperliquid.isNewAccount(evm)) == true }
         }
     }
 
