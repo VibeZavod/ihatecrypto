@@ -60,10 +60,12 @@ extension Workspace {
         scheduleItem = key
         if currentScheduleKey == nil { scheduleReturn = canvasID }
         // Switching canvases closes the boards; the Schedule frame stays open, so the next item is one click away.
-        let frame = showSchedule
-        // Nothing moves on its own: the view stays where the user left it («при закрывании ничего не двигалось»).
+        // Nothing moves on its own: the view stays where the user left it («при закрывании ничего не двигалось»), and what
+        // the rail or a click opened beside it — the Schedule frame, a token's or a place's board — stays open
+        // («нажимаю на клоуз где скедуал, то оно закрывает и токен»).
+        let frame = showSchedule, place = detail
         keepViewport = true
-        defer { showSchedule = frame; keepViewport = false }
+        defer { showSchedule = frame; detail = place; keepViewport = false }
         if let c = canvases.first(where: { $0.schedule == key }) {
             if c.id != canvasID { openCanvas(c) }
             return
@@ -81,9 +83,9 @@ extension Workspace {
     /// view of the item and leaves the list; the Schedule frame opens it again.
     func closeScheduleCanvas() {
         guard let id = canvasID, let c = canvases.first(where: { $0.id == id }), c.schedule != nil, !busy else { return }
-        let frame = showSchedule
+        let frame = showSchedule, place = detail
         keepViewport = true
-        defer { showSchedule = frame; keepViewport = false }
+        defer { showSchedule = frame; detail = place; keepViewport = false }
         if let back = scheduleReturn.flatMap({ r in canvases.first { $0.id == r && $0.schedule == nil } }) { openCanvas(back) } else { newCanvas() }
         if !c.messages.contains(where: \.fromUser) { canvases.removeAll { $0.id == id } }
     }
