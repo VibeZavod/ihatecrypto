@@ -30,8 +30,9 @@ mkdir -p $out
 # it (its Apple models stay the one on the Mac). The file is put back however the script ends.
 cp Xcode/ihatecrypto.entitlements $out/ihatecrypto.entitlements.keep
 trap 'cp $out/ihatecrypto.entitlements.keep Xcode/ihatecrypto.entitlements; rm -f $out/ihatecrypto.entitlements.keep' EXIT
-# Absent until the capability is on the App ID app.ihatecrypto.mac (developer portal): nothing to take out then.
-/usr/libexec/PlistBuddy -c "Delete :com.apple.developer.private-cloud-compute" Xcode/ihatecrypto.entitlements 2>/dev/null || true
+# Absent until the capability is on the App ID app.ihatecrypto.mac (developer portal): then the file isn't touched.
+pcc=":com.apple.developer.private-cloud-compute"
+/usr/libexec/PlistBuddy -c "Print $pcc" Xcode/ihatecrypto.entitlements > /dev/null 2>&1 && /usr/libexec/PlistBuddy -c "Delete $pcc" Xcode/ihatecrypto.entitlements
 log=$(mktemp -t ihatecrypto-release)
 step() { echo "· $1"; }
 fail() { grep -E "error:|Command .* failed|FAILED" "$log" | cut -c1-300 | head -20; echo "full log: $log"; exit 1; }
@@ -68,15 +69,26 @@ spctl --assess --type execute "$app"
 if [[ -z $site ]]; then
   step "disk image"
   dmg=$out/ihatecrypto-$version.dmg
-  rm -rf $out/dmg $dmg; mkdir $out/dmg
+  rm -rf $out/dmg $out/rw.dmg $dmg; mkdir -p $out/dmg/.background
   ditto "$app" $out/dmg/ihatecrypto.app
   ln -s /Applications $out/dmg/Applications
-  hdiutil create -volname ihatecrypto -srcfolder $out/dmg -format UDZO $dmg > /dev/null
-  identity=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application/ { print $2; exit }')
+  cp Tools/dmg/background.tiff $out/dmg/.background/
+  cp "$app/Contents/Resources/AppIcon.icns" $out/dmg/.VolumeIcon.icns
+  # Read-write first: Finder lays out the window (the background with its arrow, the app left, Applications right;
+  # Tools/dmg), then it's compressed. macOS may ask once to let this control Finder; without it the window stays plain.
+  hdiutil create -volname ihatecrypto -srcfolder $out/dmg -fs HFS+ -format UDRW $out/rw.dmg > /dev/null
+  mount=$(hdiutil attach -readwrite -noverify -noautoopen $out/rw.dmg | awk -F'\t' '/\/Volumes\// { print $NF }')
+  xcrun SetFile -a C "$mount"
+  osascript Tools/dmg/layout.applescript "${mount#/Volumes/}" || echo "  Finder didn't lay out the window: the disk image works, without its background."
+  sync
+  hdiutil detach "$mount" -quiet
+  hdiutil convert $out/rw.dmg -format UDZO -imagekey zlib-level=9 -o $dmg > /dev/null
+  rm -f $out/rw.dmg
+  identity=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application.*N78L833HCS/ { print $2; exit }')
   [[ -n $identity ]] && codesign --sign "$identity" --timestamp $dmg
   xcrun notarytool submit $dmg --keychain-profile notary --wait
   xcrun stapler staple $dmg
-  rm -rf $out/dmg $out/export $out/ihatecrypto.xcarchive $out/export.plist
+  rm -rf $out/dmg $out/export $out/ihatecrypto.xcarchive $out/export.plist $out/notarize.zip
   echo "done: $out/ihatecrypto-$version.dmg — hand over this file only"
   exit 0
 fi
