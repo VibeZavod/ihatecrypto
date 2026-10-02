@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.3.1",
+    "date": "2026-10-03",
+    "stories": [
+      {
+        "title": "Updates come by themselves",
+        "text": "This copy looks at updates.ihatecrypto.ai once a day. A new version downloads in the background and goes in at «Restart to update»; the wallet, settings and canvases stay.",
+        "try": "check for updates",
+        "symbol": "arrow.down.circle.fill",
+        "color": "FF7A2F"
+      }
+    ]
+  },
+  {
     "version": "0.3",
     "date": "2026-10-03",
     "stories": [

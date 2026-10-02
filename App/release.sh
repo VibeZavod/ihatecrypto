@@ -1,8 +1,8 @@
 #!/bin/zsh
 # An update for the site: ./release.sh 0.2 https://example.com/ihatecrypto
-#   → dist/ihatecrypto-0.2.zip and dist/appcast.xml (with the release notes inside). Upload them to that URL: copies
-#     downloaded from it find the appcast there and update themselves. Keep dist/ between releases: the old zips make
-#     the small .delta updates.
+#   → dist/site/ihatecrypto-0.2.zip and dist/site/appcast.xml (with the release notes inside), plus dist/ihatecrypto-0.2.dmg
+#     for a first install. Upload dist/site/ to that URL: copies installed from that disk image find the appcast there and
+#     update themselves. Keep dist/site/ between releases: the old zips make the small .delta updates.
 # A copy to hand over: ./release.sh 0.2   → dist/ihatecrypto-0.2.dmg, notarized, no update checks. Opens on any Mac
 #   with macOS 26 by a double click and starts on the first screen; the Keychain and Application Support stay here.
 # Needs, once on this Mac:
@@ -66,38 +66,41 @@ rm $out/notarize.zip
 xcrun stapler staple "$app"
 spctl --assess --type execute "$app"
 
+step "disk image"
+dmg=$out/ihatecrypto-$version.dmg
+rm -rf $out/dmg $out/rw.dmg $dmg; mkdir -p $out/dmg/.background
+ditto "$app" $out/dmg/ihatecrypto.app
+ln -s /Applications $out/dmg/Applications
+cp Tools/dmg/background.tiff $out/dmg/.background/
+cp "$app/Contents/Resources/AppIcon.icns" $out/dmg/.VolumeIcon.icns
+# Read-write first: Finder lays out the window (the background with its arrow, the app left, Applications right;
+# Tools/dmg), then it's compressed. macOS may ask once to let this control Finder; without it the window stays plain.
+hdiutil create -volname ihatecrypto -srcfolder $out/dmg -fs HFS+ -format UDRW $out/rw.dmg > /dev/null
+mount=$(hdiutil attach -readwrite -noverify -noautoopen $out/rw.dmg | awk -F'\t' '/\/Volumes\// { print $NF }')
+xcrun SetFile -a C "$mount"
+osascript Tools/dmg/layout.applescript "${mount#/Volumes/}" || echo "  Finder didn't lay out the window: the disk image works, without its background."
+sync
+hdiutil detach "$mount" -quiet
+hdiutil convert $out/rw.dmg -format UDZO -imagekey zlib-level=9 -o $dmg > /dev/null
+rm -f $out/rw.dmg
+identity=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application.*N78L833HCS/ { print $2; exit }')
+[[ -n $identity ]] && codesign --sign "$identity" --timestamp $dmg
+xcrun notarytool submit $dmg --keychain-profile notary --wait
+xcrun stapler staple $dmg
+rm -rf $out/dmg
 if [[ -z $site ]]; then
-  step "disk image"
-  dmg=$out/ihatecrypto-$version.dmg
-  rm -rf $out/dmg $out/rw.dmg $dmg; mkdir -p $out/dmg/.background
-  ditto "$app" $out/dmg/ihatecrypto.app
-  ln -s /Applications $out/dmg/Applications
-  cp Tools/dmg/background.tiff $out/dmg/.background/
-  cp "$app/Contents/Resources/AppIcon.icns" $out/dmg/.VolumeIcon.icns
-  # Read-write first: Finder lays out the window (the background with its arrow, the app left, Applications right;
-  # Tools/dmg), then it's compressed. macOS may ask once to let this control Finder; without it the window stays plain.
-  hdiutil create -volname ihatecrypto -srcfolder $out/dmg -fs HFS+ -format UDRW $out/rw.dmg > /dev/null
-  mount=$(hdiutil attach -readwrite -noverify -noautoopen $out/rw.dmg | awk -F'\t' '/\/Volumes\// { print $NF }')
-  xcrun SetFile -a C "$mount"
-  osascript Tools/dmg/layout.applescript "${mount#/Volumes/}" || echo "  Finder didn't lay out the window: the disk image works, without its background."
-  sync
-  hdiutil detach "$mount" -quiet
-  hdiutil convert $out/rw.dmg -format UDZO -imagekey zlib-level=9 -o $dmg > /dev/null
-  rm -f $out/rw.dmg
-  identity=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application.*N78L833HCS/ { print $2; exit }')
-  [[ -n $identity ]] && codesign --sign "$identity" --timestamp $dmg
-  xcrun notarytool submit $dmg --keychain-profile notary --wait
-  xcrun stapler staple $dmg
-  rm -rf $out/dmg $out/export $out/ihatecrypto.xcarchive $out/export.plist $out/notarize.zip
+  rm -rf $out/export $out/ihatecrypto.xcarchive $out/export.plist
   echo "done: $out/ihatecrypto-$version.dmg — hand over this file only"
   exit 0
 fi
 
 step "archive and appcast"
-ditto -c -k --sequesterRsrc --keepParent "$app" $out/ihatecrypto-$version.zip
-python3 Tools/release-notes.py "$version" > $out/ihatecrypto-$version.html
+# Their own folder: generate_appcast reads every archive beside the feed, and the disk images in dist/ aren't updates.
+mkdir -p $out/site
+ditto -c -k --sequesterRsrc --keepParent "$app" $out/site/ihatecrypto-$version.zip
+python3 Tools/release-notes.py "$version" > $out/site/ihatecrypto-$version.html
 rm -rf $out/export $out/ihatecrypto.xcarchive $out/export.plist
 # Signs the new zip (and the feed: the app requires a signed one) with the key in the Keychain; the notes go inside.
-$sparkle/generate_appcast --download-url-prefix "$site/" $out
+$sparkle/generate_appcast --download-url-prefix "$site/" $out/site
 rm -f "$log"
-echo "done: upload $out/appcast.xml, $out/ihatecrypto-$version.zip and any .delta files to $site/"
+echo "done: upload $out/site/ to $site/; $out/ihatecrypto-$version.dmg is the first install (the site's download, or a friend)"
