@@ -42,7 +42,7 @@ enum Signer {
             guard agent.lowercased() != owner.lowercased() else { throw WalletError("The agent key matches the main key.") }
             let nonce = UInt64(Date().timeIntervalSince1970 * 1000)
             let (action, signature) = try withKey("evm", reason: "approve a trading key: orders without Touch ID; it can't withdraw money") {
-                try HLSigner.approveAgent(agent: agent, name: "lala", nonce: nonce, privateKey: $0, mainnet: true)
+                try HLSigner.approveAgent(agent: agent, name: "ihatecrypto", nonce: nonce, privateKey: $0, mainnet: true)
             }
             var r = SignerReply(ok: true)
             r.agentAddress = agent
@@ -95,6 +95,9 @@ enum Signer {
             try confirmInPerson("add a wallet from a recovery phrase to ihatecrypto and sign with it")
             return try store(phrase: phrase, passphrase: passphrase, requirePresence: requirePresence)
 
+        case .adoptLegacy(let registry, let active):
+            return try LegacyMove.adopt(registry, active: active)
+
         case .importPrivateKey(let text):
             let imported = try ImportedKey.parse(text) // a malformed key fails before any prompt
             let address = try imported.address()
@@ -106,7 +109,7 @@ enum Signer {
 
         case .setActiveWallet(let id):
             guard let wallet = Wallets.all.first(where: { $0.id == id }) else { throw WalletError("No such wallet.") }
-            // Which wallet signs, and whose addresses LALA shows for deposits, is the user's call in person.
+            // Which wallet signs, and whose addresses ihatecrypto shows for deposits, is the user's call in person.
             if wallet.id != Wallets.active?.id { try confirmInPerson("sign with the wallet «\(wallet.label)» from now on:\n\(addresses(wallet))") }
             Wallets.activate(wallet)
             var r = SignerReply(ok: true)
@@ -484,7 +487,7 @@ enum Signer {
     static var holdsPublicTestWallet: Bool { (try? address("solana")) == "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk" }
 
     /// Adding, switching or removing a wallet once there is one is the user's act, in person: Touch ID or the password.
-    /// A program that talks to the signer as LALA can't slip in its own wallet and wait for the user's deposits.
+    /// A program that talks to the signer as ihatecrypto can't slip in its own wallet and wait for the user's deposits.
     static func confirmInPerson(_ reason: String) throws {
         guard !Wallets.all.isEmpty, !holdsPublicTestWallet else { return }
         try SeedStore.confirm(reason)
@@ -502,7 +505,7 @@ enum Signer {
         try RecipientStore.add(new)
     }
 
-    /// A NEAR receiver LALA may pay: a valid account, among the saved addresses the app passed, with a real block hash.
+    /// A NEAR receiver ihatecrypto may pay: a valid account, among the saved addresses the app passed, with a real block hash.
     static func checkNearRecipient(_ receiver: String, _ recipients: [String], _ blockHash: Data) throws {
         guard AddressCheck.problem(receiver, network: .near) == nil else { throw WalletError("Not a NEAR account: \(receiver).") }
         guard recipients.contains(receiver) else { throw WalletError("\(receiver) isn't a saved address: NEAR goes only to one.") }

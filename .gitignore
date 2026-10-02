@@ -9,7 +9,7 @@ xcuserdata/
 # macOS
 .DS_Store
 
-# Never commit keys or wallets: the app keeps them in the Keychain and ~/.lala
+# Never commit keys or wallets: the app keeps them in the Keychain and ~/.ihatecrypto
 .env*
 *.pem
 *.p12

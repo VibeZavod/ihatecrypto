@@ -6,7 +6,7 @@ import ExecutionCore
 import Foundation
 import HyperliquidSigning
 import JupiterSwap
-import LalaCore
+import IhatecryptoCore
 import OneClickKit
 import RelayBridge
 import SolanaChain

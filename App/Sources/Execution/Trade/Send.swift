@@ -2,7 +2,7 @@ import EVMChain
 import ExecutionCore
 import HyperliquidSigning
 import Foundation
-import LalaCore
+import IhatecryptoCore
 import RelayBridge
 import SolanaChain
 import TxGuard
@@ -317,7 +317,7 @@ extension Executor {
         if q == "USDC" { (mint, symbol) = (Relay.Currency.solanaUSDC, "USDC") }
         else if query.wholeMatch(of: /[1-9A-HJ-NP-Za-km-z]{32,44}/) != nil { (mint, symbol) = (query, String(query.prefix(4)) + "…") }
         else {
-            let held = try await LalaCore.Solana.balance(owner: wallet.solana, lendShares: true).tokens
+            let held = try await IhatecryptoCore.Solana.balance(owner: wallet.solana, lendShares: true).tokens
             switch Holdings.pick(query, in: held) {
             case .one(let h): (mint, symbol) = (h.contract, h.symbol)
             case .none: throw ExecutionError("This wallet holds no \(query) on Solana.")

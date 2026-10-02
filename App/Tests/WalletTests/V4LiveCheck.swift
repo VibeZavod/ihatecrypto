@@ -3,8 +3,8 @@ import Foundation
 import Testing
 @testable import TradeExecution
 
-/// Reads Robinhood Chain (no signing): run with LALA_NET=1.
-@Test(.enabled(if: ProcessInfo.processInfo.environment["LALA_NET"] == "1"))
+/// Reads Robinhood Chain (no signing): run with IHATECRYPTO_NET=1.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
 func v4FindsTheAIPoolAndQuotesIt() async throws {
     let ai = "0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18", usdg = EVMRPC.robinhoodUSDG
     let key = try #require(await Executor.v4Pool(usdg, ai))
@@ -15,11 +15,11 @@ func v4FindsTheAIPoolAndQuotesIt() async throws {
     #expect(out > Decimal(string: "1800000000000000000000")!)
 }
 
-/// Prints the app's own calldata for a fork run: LALA_V4_MINOUT, LALA_V4_NOW.
-@Test(.enabled(if: ProcessInfo.processInfo.environment["LALA_V4_NOW"] != nil))
+/// Prints the app's own calldata for a fork run: IHATECRYPTO_V4_MINOUT, IHATECRYPTO_V4_NOW.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_V4_NOW"] != nil))
 func v4PrintsCalldataForAForkRun() throws {
     let env = ProcessInfo.processInfo.environment
-    let now = UInt64(env["LALA_V4_NOW"]!)!, minOut = Decimal(string: env["LALA_V4_MINOUT"]!)!
+    let now = UInt64(env["IHATECRYPTO_V4_NOW"]!)!, minOut = Decimal(string: env["IHATECRYPTO_V4_MINOUT"]!)!
     let key = UniswapV4.PoolKey(currency0: "0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18", currency1: EVMRPC.robinhoodUSDG, fee: 2300, tickSpacing: 23,
                                 hooks: "0x0000000000000000000000000000000000000000")
     print("P2=0x" + (try UniswapV4.permit2Approve(token: EVMRPC.robinhoodUSDG, spender: UniswapV4.robinhoodRouter, amount: 299_850_000, expiration: now + 1800)).hex)

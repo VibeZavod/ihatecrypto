@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""The notification sounds, drawn from numbers: `python3 App/Tools/make-sounds.py` writes Sources/LalaApp/Sounds/*.caf.
+"""The notification sounds, drawn from numbers: `python3 App/Tools/make-sounds.py` writes Sources/IhatecryptoApp/Sounds/*.caf.
 
 coin  — money arrived or a move finished: two quick metallic strikes, the second a fourth higher.
 chime — something wants a look (an alert, a Confirm, a stop): two soft round notes going up.
@@ -10,7 +10,7 @@ macOS keeps a sound it has played under its name: after changing one here, bump 
 import math, os, struct, subprocess, wave
 
 RATE, VERSION = 44100, 1
-OUT = os.path.join(os.path.dirname(__file__), "..", "Sources", "LalaApp", "Sounds")
+OUT = os.path.join(os.path.dirname(__file__), "..", "Sources", "IhatecryptoApp", "Sounds")
 
 
 def strike(t, f, partials, attack=0.0015, glide=0.0):

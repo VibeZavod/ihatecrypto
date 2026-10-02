@@ -1,6 +1,6 @@
 import EVMChain
 import Foundation
-import LalaCore
+import IhatecryptoCore
 
 /// A USDC place on an EVM network, for the planners: its rate, what is in it, and what a round trip there costs.
 public struct EVMPlace: Sendable {
@@ -34,7 +34,7 @@ extension Executor {
     // ponytail: fixed estimates; quote Relay per slice if the planners need them exact.
     static func bridgeUSD(_ net: EVMNetwork) -> Decimal { net.key == "ethereum" ? Decimal(string: "0.5")! : Decimal(string: "0.03")! }
 
-    /// Every Aave market and Morpho vault LALA knows, read at once. One whose rate, balance or gas can't be read is
+    /// Every Aave market and Morpho vault ihatecrypto knows, read at once. One whose rate, balance or gas can't be read is
     /// left out: nothing is planned into a place that wasn't checked.
     public func evmPlaces() async -> [EVMPlace] {
         let marks = (try? await Hyperliquid.markets()) ?? [:]

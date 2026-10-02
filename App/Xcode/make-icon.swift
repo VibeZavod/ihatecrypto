@@ -1,10 +1,10 @@
 // Draws ihatecrypto's app icon — the ridged orange coin rolling its eyes on a warm-white macOS squircle — into
-// Sources/LalaApp/Assets.xcassets/AppIcon.appiconset at every size macOS asks for.
+// Sources/IhatecryptoApp/Assets.xcassets/AppIcon.appiconset at every size macOS asks for.
 // Run from App/:  swift Xcode/make-icon.swift
 import AppKit
 
 let root = URL(fileURLWithPath: FileManager.default.currentDirectoryPath)
-let catalog = root.appending(path: "Sources/LalaApp/Assets.xcassets")
+let catalog = root.appending(path: "Sources/IhatecryptoApp/Assets.xcassets")
 let iconSet = catalog.appending(path: "AppIcon.appiconset")
 try FileManager.default.createDirectory(at: iconSet, withIntermediateDirectories: true)
 

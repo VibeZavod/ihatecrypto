@@ -1,13 +1,13 @@
 import EVMChain
 import ExecutionCore
 import Foundation
-import LalaCore
+import IhatecryptoCore
 import RelayBridge
 import SolanaChain
 import TxGuard
 import WalletCore
 
-/// An EVM network LALA moves USDC on: where to read it, where Relay reaches it, how much gas to keep there.
+/// An EVM network ihatecrypto moves USDC on: where to read it, where Relay reaches it, how much gas to keep there.
 public struct EVMNetwork: Sendable {
     public let name: String
     /// The journal's chain name.
@@ -58,7 +58,7 @@ public struct EVMNetwork: Sendable {
     // ponytail: fixed cent; read the base fee if Tempo's fees ever pass $0.001 a call.
     var feeReserve: UInt64 { feeToken == nil ? 0 : 10_000 }
 
-    /// nil for a network LALA doesn't move money on: never guessed.
+    /// nil for a network ihatecrypto doesn't move money on: never guessed.
     public static func of(chainId: UInt64) -> EVMNetwork? { all.first { $0.rpc.chainId == chainId } }
     public static func named(_ key: String) -> EVMNetwork? { all.first { $0.key == key } }
 
@@ -75,7 +75,7 @@ public struct EVMNetwork: Sendable {
     }
 }
 
-/// Aave v3 on any network LALA knows: USDC in and out. USDC missing there comes from Solana over Relay, with a little
+/// Aave v3 on any network ihatecrypto knows: USDC in and out. USDC missing there comes from Solana over Relay, with a little
 /// of the network's gas coin; a withdrawal goes back to Solana.
 extension Executor {
     static var baseGasFloorForPlan: UInt64 { EVMNetwork.base.gasFloor }
@@ -192,7 +192,7 @@ extension Executor {
             + "Say “move \(stable) from \(net.name) to Solana” to bring it back."
     }
 
-    /// The same from any EVM network LALA knows (Base, Arbitrum).
+    /// The same from any EVM network ihatecrypto knows (Base, Arbitrum).
     public func evmToSolana(_ net: EVMNetwork, usdc requested: Decimal?) async throws -> String { try await bridge(net, to: nil, usdc: requested) }
 
     /// USDC from one EVM network straight to another at our own address (Base → Robinhood Chain arrives as USDG there),

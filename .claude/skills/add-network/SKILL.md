@@ -37,43 +37,43 @@ curl -s https://api.relay.link/chains | python3 -c "import json,sys; [print(c['i
 - [ ] Новые селекторы в calldata (например, `transferWithMemo`) декодируются в `EVMCall.decode` так, чтобы подписант проверял получателя. Иначе вызов уходит как `.contract` без проверки.
 
 **Список сетей и иконки (не забывать: иконка — всегда)**
-- [ ] `App/Sources/LalaApp/Logos/<net>.png`: 256×256 RGB без прозрачности (на тёмной теме прозрачный чёрный логотип пропадает). Взять логотип Relay (`https://assets.relay.link/icons/<chainId>/light.png`) и подложить белый фон через PIL. Сам файл в Xcode добавлять не нужно: `build-app.sh` запускает `xcodegen`.
-- [ ] `App/Sources/LalaCore/Modules.swift`: `ModuleNetwork` (case, `name`, `uses`, `logo`). Строка `ModuleProtocol.relay.place`: добавить сеть. Если у сети своя функция (как MPP у Tempo), завести `ModuleKind`/`ModuleProtocol` с логотипом и свести к нему `refusal(_ command:)`.
-- [ ] `App/Sources/LalaApp/ModulesUI.swift` → `icon(_ k:)`: SF Symbol для нового `ModuleKind`, если он появился.
+- [ ] `App/Sources/IhatecryptoApp/Logos/<net>.png`: 256×256 RGB без прозрачности (на тёмной теме прозрачный чёрный логотип пропадает). Взять логотип Relay (`https://assets.relay.link/icons/<chainId>/light.png`) и подложить белый фон через PIL. Сам файл в Xcode добавлять не нужно: `build-app.sh` запускает `xcodegen`.
+- [ ] `App/Sources/IhatecryptoCore/Modules.swift`: `ModuleNetwork` (case, `name`, `uses`, `logo`). Строка `ModuleProtocol.relay.place`: добавить сеть. Если у сети своя функция (как MPP у Tempo), завести `ModuleKind`/`ModuleProtocol` с логотипом и свести к нему `refusal(_ command:)`.
+- [ ] `App/Sources/IhatecryptoApp/ModulesUI.swift` → `icon(_ k:)`: SF Symbol для нового `ModuleKind`, если он появился.
 - [ ] `App/Sources/Wallet/Core/AddressCheck.swift`: `Network` (case, `title`, формат адреса в `problem`).
-- [ ] `App/Sources/LalaApp/AddressBook.swift`: `AddressCheck.Network.logo`, вопрос «Which network is this 0x address on…», `Destination` в `transfer(...)`, баланс «from» в `TransferBoard`.
-- [ ] `App/Sources/LalaApp/Studio.swift` → `HoldingRow.chainLogos`: значок сети на токене в портфеле.
-- [ ] `App/Sources/LalaApp/Canvases.swift`: `RouteFill` (case + `color`), `outRoute`/`backRoute` (логотип брать через `ModuleNetwork(place:)?.logo`, а не хардкодом «eth»), текст про газ.
-- [ ] `App/Sources/LalaApp/RouteCards.swift`: `RouteFill.accent` для нового цвета и `places` (метка «TO · <NET>» означает свой кошелёк, а не отправку чужому).
+- [ ] `App/Sources/IhatecryptoApp/AddressBook.swift`: `AddressCheck.Network.logo`, вопрос «Which network is this 0x address on…», `Destination` в `transfer(...)`, баланс «from» в `TransferBoard`.
+- [ ] `App/Sources/IhatecryptoApp/Studio.swift` → `HoldingRow.chainLogos`: значок сети на токене в портфеле.
+- [ ] `App/Sources/IhatecryptoApp/Canvases.swift`: `RouteFill` (case + `color`), `outRoute`/`backRoute` (логотип брать через `ModuleNetwork(place:)?.logo`, а не хардкодом «eth»), текст про газ.
+- [ ] `App/Sources/IhatecryptoApp/RouteCards.swift`: `RouteFill.accent` для нового цвета и `places` (метка «TO · <NET>» означает свой кошелёк, а не отправку чужому).
 - [ ] Иконки токенов в портфеле: у `Holding.icon` должен быть URL, иначе будет кружок с буквой. Брать `featuredTokens[].metadata.logoURI` из Relay `/chains`.
 
 **Газ — никогда не тупик (правило пользователя)**
 - [ ] У сети с родной монетой (`feeToken == nil`) `EVMNetwork` задаёт `gasFloor` и `topupUSD`. Проверь, что `Relay.nativePrice(chainId:)` отдаёт цену монеты, а котировка Solana → сеть с `topupGas` довозит газ: `sendEVM` сам докупает газ перед транзакцией, которой его не хватает (`topUpGas`: с Solana, иначе Relay-своп USDC сети в монету).
-- [ ] Сеть есть в форме `add gas on <…>` (PositionCommand: слова сети в разборе газа, Normalize, блок «GAS · TOP UP»). Проверка: `LalaWalletCheck move "add gas on <сеть> for 1 USDC"` и котировка с `topupGas` без ошибок.
+- [ ] Сеть есть в форме `add gas on <…>` (PositionCommand: слова сети в разборе газа, Normalize, блок «GAS · TOP UP»). Проверка: `WalletCheck move "add gas on <сеть> for 1 USDC"` и котировка с `topupGas` без ошибок.
 - [ ] Сеть без родной монеты (как Tempo) — `feeToken`, а не газ; `add gas` для неё отвечает, что пополнять нечего.
 
 **Деньги и баланс**
 - [ ] `App/Sources/Execution/Trade/Send.swift`: `Destination.<net>` → `sendEVMUSDC(units, on: .<net>, …)`.
-- [ ] `App/Sources/LalaCore/Holdings.swift`: хост в `blockscout[...]` или ветка чтения через RPC. Затем добавить в `Workspace.loadHoldings` (кортеж `read`).
+- [ ] `App/Sources/IhatecryptoCore/Holdings.swift`: хост в `blockscout[...]` или ветка чтения через RPC. Затем добавить в `Workspace.loadHoldings` (кортеж `read`).
 - [ ] При необходимости `Workspace.<net>USDC` для карточек (по образцу `tempoUSDC`).
 
 **Блоки — обязательно, всегда (правило пользователя)**
-- [ ] `App/Sources/LalaCore/Blocks.swift`: у сети своя группа в `BlockCatalog.groups` (её имя = имя сети) и в ней все варианты: мост туда и обратно, перевод на сохранённый адрес, ежемесячный перевод («every month on the 1st: …»), каждый протокол или сервис сети (свопы, депозиты, платные API). Образец — группа «Tempo».
+- [ ] `App/Sources/IhatecryptoCore/Blocks.swift`: у сети своя группа в `BlockCatalog.groups` (её имя = имя сети) и в ней все варианты: мост туда и обратно, перевод на сохранённый адрес, ежемесячный перевод («every month on the 1st: …»), каждый протокол или сервис сети (свопы, депозиты, платные API). Образец — группа «Tempo».
 - [ ] У каждого блока: `fill` — `RouteFill` сети, `logo` — логотип сети или протокола, `form` — что делает и сколько стоит, `example` — рабочая команда.
-- [ ] Каждый `example` проверен вживую без денег: для денежных ходов — котировка или оценка газа, для платных API — `LalaWalletCheck move "pay …"` без `--yes` должен напечатать `Price:`. Не прошёл — в блоки не попадает (у Tempo так выпали fal/OpenAI со спонсированной комиссией и StableStudio с отложенным ответом).
+- [ ] Каждый `example` проверен вживую без денег: для денежных ходов — котировка или оценка газа, для платных API — `WalletCheck move "pay …"` без `--yes` должен напечатать `Price:`. Не прошёл — в блоки не попадает (у Tempo так выпали fal/OpenAI со спонсированной комиссией и StableStudio с отложенным ответом).
 - [ ] В общую форму «BRIDGE · RELAY» (группа Move money) дописать сеть. `BlocksTests.everyBlockExampleParses` зелёный.
 
 **Чат и команды**
-- [ ] `App/Sources/LalaCore/PositionCommand.swift`: слова сети в `network(_:)` и `network(in:)` (англ. и рус.: «темпо», «полигон»), регулярка `solanaTo`, условие `evmToSolana`, `placeName`.
-- [ ] `App/Sources/LalaCore/Normalize.swift`: формы «MOVING MONEY», `save … on <net>`, текст `places` (где живут деньги и как ходят). Если есть новые lookup-и, описать их в системном промпте.
-- [ ] `App/Sources/Wallet/Check/LocalSigner.swift` (CLI `LalaWalletCheck move`): сеть через `EVMNetwork.named`, никакого `?? .robinhood`.
+- [ ] `App/Sources/IhatecryptoCore/PositionCommand.swift`: слова сети в `network(_:)` и `network(in:)` (англ. и рус.: «темпо», «полигон»), регулярка `solanaTo`, условие `evmToSolana`, `placeName`.
+- [ ] `App/Sources/IhatecryptoCore/Normalize.swift`: формы «MOVING MONEY», `save … on <net>`, текст `places` (где живут деньги и как ходят). Если есть новые lookup-и, описать их в системном промпте.
+- [ ] `App/Sources/Wallet/Check/LocalSigner.swift` (CLI `WalletCheck move`): сеть через `EVMNetwork.named`, никакого `?? .robinhood`.
 - [ ] `App/Sources/LLM/Check/main.swift`: новые lookup-и в `lookup` для `--route`.
 
 ## 3. Проверка
 
-1. `cd App && swift build && swift build --build-tests && swift test --skip-build`: все наборы зелёные. Новые тесты кладутся в `App/Tests/LalaCoreTests/<Net>Tests.swift` (разбор команд в обе стороны, по-русски и по-английски, `ModuleNetwork(place:)`, `refusal`) и в `EVMTests` (selector/decoder).
-2. Модель на живых фразах: `swift run -q LalaLLMCheck chatgpt --route "переведи 5 USDC из соланы в <сеть>" "верни всё с <сеть> на солану" "сохрани 0x… как Shop в <сеть>"`. Каждая строка должна дать `✓ parses` с правильным направлением.
-3. Живые проверки без денег: `cast estimate` на transfer, approve и прочие вызовы от адреса с балансом; котировка Relay в обе стороны; `LalaWalletCheck move "<команда>"` без `--yes`.
+1. `cd App && swift build && swift build --build-tests && swift test --skip-build`: все наборы зелёные. Новые тесты кладутся в `App/Tests/IhatecryptoCoreTests/<Net>Tests.swift` (разбор команд в обе стороны, по-русски и по-английски, `ModuleNetwork(place:)`, `refusal`) и в `EVMTests` (selector/decoder).
+2. Модель на живых фразах: `swift run -q LLMCheck chatgpt --route "переведи 5 USDC из соланы в <сеть>" "верни всё с <сеть> на солану" "сохрани 0x… как Shop в <сеть>"`. Каждая строка должна дать `✓ parses` с правильным направлением.
+3. Живые проверки без денег: `cast estimate` на transfer, approve и прочие вызовы от адреса с балансом; котировка Relay в обе стороны; `WalletCheck move "<команда>"` без `--yes`.
 4. Библиотека блоков: открыть «Add block» и увидеть группу сети с логотипами (скриншот).
 5. UI-сценарий в `App/Tools/uitest-scenarios.json`: бридж рисует маршрут `SOLANA → RELAY → <NET>`. Прогон: `python3 App/Tools/uitest.py <слово>` (нужен Settings › Debugging › Local debug API).
 6. Скриншот Settings › Modules: `open -g ~/Applications/ihatecrypto.app --args -openPlace settings -settingsTab modules`, затем `screencapture -l <windowID>` (id окна через `CGWindowListCopyWindowInfo`). Убедиться, что иконка видна в тёмной теме.
@@ -92,8 +92,8 @@ curl -s https://api.relay.link/chains | python3 -c "import json,sys; [print(c['i
   EOF
   bash $S/commit.sh $S <files…>
   ```
-- Проверить, что HEAD собирается сам по себе: `git archive HEAD | tar -x -C $S/head`, `cp -cR App/.build $S/head/App/`, затем `swift build --target LalaApp` там. Рабочая копия может не собираться из-за чужих незаконченных правок, это не твой коммит.
-- Release только из HEAD: `$S/head/App/build-app.sh Release` (перед этим `pgrep -fl "xcodebuild -project"`). Предупредить другие сессии (`ListAgents` / `SendMessage`), затем `osascript -e 'tell application id "app.lala.mac" to quit'` и `open -g ~/Applications/ihatecrypto.app`.
+- Проверить, что HEAD собирается сам по себе: `git archive HEAD | tar -x -C $S/head`, `cp -cR App/.build $S/head/App/`, затем `swift build --target IhatecryptoApp` там. Рабочая копия может не собираться из-за чужих незаконченных правок, это не твой коммит.
+- Release только из HEAD: `$S/head/App/build-app.sh Release` (перед этим `pgrep -fl "xcodebuild -project"`). Предупредить другие сессии (`ListAgents` / `SendMessage`), затем `osascript -e 'tell application id "app.ihatecrypto.mac" to quit'` и `open -g ~/Applications/ihatecrypto.app`.
 - Сообщение коммита — как в истории: что теперь может пользователь, чем проверено, двигались ли деньги.
 
 ## Ловушки, на которые уже наступали

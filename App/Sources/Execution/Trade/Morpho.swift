@@ -1,7 +1,7 @@
 import EVMChain
 import ExecutionCore
 import Foundation
-import LalaCore
+import IhatecryptoCore
 
 /// The vault's net rate (after its fee) from Morpho's public API (api.morpho.org, no key); nil when it doesn't answer.
 public enum MorphoRates {
@@ -22,7 +22,7 @@ public enum MorphoRates {
     }
 }
 
-/// A Morpho vault on any network LALA knows, like Aave: USDC missing there comes from Solana over Relay; a withdrawal
+/// A Morpho vault on any network ihatecrypto knows, like Aave: USDC missing there comes from Solana over Relay; a withdrawal
 /// goes back to Solana.
 extension Executor {
     /// A vault deposit or redeem is ≈ 450k gas — several times an Aave supply — so Base keeps more ETH for it:

@@ -1,7 +1,7 @@
 import EVMChain
 import ExecutionCore
 import Foundation
-import LalaCore
+import IhatecryptoCore
 import WalletCore
 
 /// Rewards on Merkl claimed to this wallet: on each chain, one Distributor call paying every token owed there. The

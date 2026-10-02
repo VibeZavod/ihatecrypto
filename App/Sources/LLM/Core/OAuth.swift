@@ -61,7 +61,7 @@ public final class LoopbackServer: @unchecked Sendable {
         params.requiredLocalEndpoint = .hostPort(host: .ipv4(.loopback), port: port == 0 ? .any : NWEndpoint.Port(rawValue: port)!)
         params.allowLocalEndpointReuse = true
         let listener = try NWListener(using: params)
-        let queue = DispatchQueue(label: "lala.oauth.loopback")
+        let queue = DispatchQueue(label: "ihatecrypto.oauth.loopback")
         let (queries, sink) = AsyncStream.makeStream(of: [String: String].self)
 
         listener.newConnectionHandler = { connection in

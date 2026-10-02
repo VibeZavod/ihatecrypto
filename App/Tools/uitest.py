@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""LALA UI scenarios against the running app, through its local debug API (Settings → Debugging).
+"""ihatecrypto UI scenarios against the running app, through its local debug API (Settings → Debugging).
 
     python3 App/Tools/uitest.py                 # every scenario in uitest-scenarios.json
     python3 App/Tools/uitest.py deposit chart   # only those whose name contains a word
@@ -21,7 +21,7 @@ import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TOKEN = open(os.path.expanduser("~/Library/Application Support/LALA/debug-token")).read().strip()
+TOKEN = open(os.path.expanduser("~/Library/Application Support/ihatecrypto/debug-token")).read().strip()
 BASE = "http://127.0.0.1:51789"
 
 
@@ -111,7 +111,7 @@ def main():
     if start["boards"].get("pending") or start["executing"] or start["boards"].get("running"):
         sys.exit("A move waits for Confirm or runs on the open canvas: not touching it. Run the tests later.")
     back = start.get("canvasID")
-    print(f"LALA · {start['provider']} · {start['model']} · {len(scenarios)} scenarios\n")
+    print(f"ihatecrypto · {start['provider']} · {start['model']} · {len(scenarios)} scenarios\n")
     failed = skipped = 0
     try:
         for s in scenarios:
@@ -139,7 +139,7 @@ def main():
             for w in why:
                 print("      · " + w)
             if not ok and replies:
-                print("      LALA: " + replies[-1][:200])
+                print("      ihatecrypto: " + replies[-1][:200])
     finally:
         call("POST", "/restore", {"canvas": back} if back else {})
     print(f"\n{len(scenarios) - failed - skipped}/{len(scenarios) - skipped} passed" + (f", {skipped} skipped" if skipped else ""))

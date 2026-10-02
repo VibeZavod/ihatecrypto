@@ -14,7 +14,7 @@ public enum Rebalance {
         /// Dollars it costs to take money out to Solana (a bridge back), and why it can't leave now (a lock), or nil.
         public let exitCost: Decimal
         public let locked: String?
-        /// Dollars it costs to put money in (a bridge there, first-deposit rent, gas), and why LALA won't, or nil.
+        /// Dollars it costs to put money in (a bridge there, first-deposit rent, gas), and why ihatecrypto won't, or nil.
         public let entryCost: Decimal
         public let closed: String?
         /// The protocol the limit is counted per («Aave» on every network): see Allocation.Place.

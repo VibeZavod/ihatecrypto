@@ -1,7 +1,7 @@
 import ExecutionCore
 import Foundation
 import HyperliquidSigning
-import LalaCore
+import IhatecryptoCore
 import RelayBridge
 import SolanaChain
 import TxGuard
@@ -786,7 +786,7 @@ public enum HyperliquidAccount {
         return (Decimal(string: f.px) ?? 0, Decimal(string: f.closedPnl) ?? 0, Date(timeIntervalSince1970: f.time / 1000))
     }
 
-    /// Open orders on the main exchange and the HIP-3 ones LALA shows; coins are unique («xyz:CL»).
+    /// Open orders on the main exchange and the HIP-3 ones ihatecrypto shows; coins are unique («xyz:CL»).
     public static func openOrders(_ user: String) async throws -> [Order] {
         var out: [Order] = []
         for dex in [nil] + Hyperliquid.hip3Dexes.map(Optional.some) {

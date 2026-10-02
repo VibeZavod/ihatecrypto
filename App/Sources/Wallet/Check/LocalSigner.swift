@@ -4,7 +4,7 @@ import JupiterSwap
 import DeFiKamino
 import DeFiYields
 import EVMChain
-import LalaCore
+import IhatecryptoCore
 import SolanaChain
 import TradeExecution
 import TxGuard
@@ -215,7 +215,7 @@ func printPosition() async throws {
 }
 
 /// `browser-test-page <path>`: a local dApp page for the in-app browser test, with fresh unsigned transactions
-/// for the test wallet: a Memo (a program outside LALA's list) and a token Approve to a stranger (a drainer).
+/// for the test wallet: a Memo (a program outside ihatecrypto's list) and a token Approve to a stranger (a drainer).
 func writeBrowserTestPage(_ path: String) async throws {
     let signer = try LocalSigner()
     let owner = signer.wallet.solana
@@ -230,7 +230,7 @@ func writeBrowserTestPage(_ path: String) async throws {
         .init(pubkey: owner, isSigner: true, isWritable: false),
     ], data: Data([4]) + withUnsafeBytes(of: UInt64(1_000_000).littleEndian) { Data($0) })
     let approveWire = SolanaTransaction.unsigned(try SolanaTransaction.compileMessage([approve], payer: owner, blockhash: hash))
-    // EVM: reference signatures made here with the same key, which the page compares with LALA's.
+    // EVM: reference signatures made here with the same key, which the page compares with ihatecrypto's.
     let evm = signer.wallet.evm
     func hex(_ s: EVMSignature) -> String { "0x" + s.r.hex + s.s.hex + String(format: "%02x", s.v) }
     let login = "Sign in to the ihatecrypto test page (EVM)"

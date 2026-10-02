@@ -1,11 +1,11 @@
 # ihatecrypto.app with its signing process. `xcodegen` here, then build with xcodebuild (see ../build-app.sh).
 # The SwiftPM package one level up stays the source of the modules; this project only packages and signs.
-name: LALA
+name: ihatecrypto
 options:
   deploymentTarget:
     macOS: "26.0"
 packages:
-  Lala:
+  ihatecrypto:
     path: ..
   # Updates for the copy downloaded from the site (release.sh). An App Store build must leave it out.
   Sparkle:
@@ -27,43 +27,43 @@ settings:
     MARKETING_VERSION: "0.1"
     CURRENT_PROJECT_VERSION: "1"
 targets:
-  LALA:
+  ihatecrypto:
     type: application
     platform: macOS
-    sources: [../Sources/LalaApp]
-    # The product (ihatecrypto.app, its name in the Dock, menu bar, notifications and Touch ID) is ihatecrypto; the target
-    # and the identifier stay LALA / app.lala.mac, so the Keychain items, Application Support/LALA and the signer keep working.
+    sources: [../Sources/IhatecryptoApp]
+    # ihatecrypto.app, app.ihatecrypto.mac. Until 2026-10 it was LALA / app.lala.mac: a Mac that ran it moves its settings,
+    # Application Support and wallets over once (LegacyMove, in the app and in the signer).
     dependencies:
-      - package: Lala
-        product: LalaKit
+      - package: ihatecrypto
+        product: IhatecryptoKit
       - package: Sparkle
-      - target: LalaSigner
+      - target: IhatecryptoSigner
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.lala.mac
+        PRODUCT_BUNDLE_IDENTIFIER: app.ihatecrypto.mac
         PRODUCT_NAME: ihatecrypto
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
         # Sparkle's keys, merged into the generated plist. The feed is empty in a local build (no update checks);
         # release.sh passes the site's appcast.
-        INFOPLIST_FILE: LALA-Info.plist
+        INFOPLIST_FILE: ihatecrypto-Info.plist
         SPARKLE_FEED_URL: ""
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         INFOPLIST_KEY_LSApplicationCategoryType: public.app-category.finance
         # The chat's microphone: speech becomes text in the field, which the person reads and sends.
-        CODE_SIGN_ENTITLEMENTS: LALA.entitlements
+        CODE_SIGN_ENTITLEMENTS: ihatecrypto.entitlements
         INFOPLIST_KEY_NSMicrophoneUsageDescription: "After you click the chat's microphone, ihatecrypto listens and types what you say into the field. Nothing is sent until you send it."
         INFOPLIST_KEY_NSSpeechRecognitionUsageDescription: "What you say in the chat becomes text in its field, recognized on this Mac when your language's model is installed."
         # A Ledger Nano X, Stax or Flex over Bluetooth (Sources/Wallet/Ledger/BLE.swift).
         INFOPLIST_KEY_NSBluetoothAlwaysUsageDescription: "ihatecrypto talks to your Ledger over Bluetooth to read its addresses and ask it to sign. Every signature is approved on the Ledger itself."
   # Sandboxed, no network entitlement: it can only answer the app over XPC and read its own Keychain group.
   # Its Touch ID prompt names it and shows its icon: «ihatecrypto is trying to send 0.18 USDC to 0x060b…9Ff0 on Tempo»
-  # with the coin, not «LalaSigner» with a blank bundle's icon. The executable and identifier stay, so its Keychain does.
-  LalaSigner:
+  # with the coin, not «Signer» with a blank bundle's icon. The module keeps a name of its own: «Signer» is its main type.
+  IhatecryptoSigner:
     type: xpc-service
     platform: macOS
-    sources: [../Sources/Signer/Service, ../Sources/LalaApp/Assets.xcassets]
+    sources: [../Sources/Signer/Service, ../Sources/IhatecryptoApp/Assets.xcassets]
     info:
-      path: LalaSigner-Info.plist
+      path: Signer-Info.plist
       properties:
         # xcodegen writes this plist from here: the name the Touch ID window shows goes here, not in the file.
         CFBundleName: ihatecrypto
@@ -71,14 +71,15 @@ targets:
         XPCService:
           ServiceType: Application
     dependencies:
-      - package: Lala
-        product: LalaSignerKit
+      - package: ihatecrypto
+        product: IhatecryptoSignerKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.lala.mac.signer
-        PRODUCT_NAME: LalaSigner
+        PRODUCT_BUNDLE_IDENTIFIER: app.ihatecrypto.mac.signer
+        PRODUCT_NAME: Signer
+        PRODUCT_MODULE_NAME: IhatecryptoSigner
         # The generated plist would put CFBundleName = PRODUCT_NAME over the file's «ihatecrypto».
         GENERATE_INFOPLIST_FILE: NO
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
-        CODE_SIGN_ENTITLEMENTS: LalaSigner.entitlements
+        CODE_SIGN_ENTITLEMENTS: Signer.entitlements
         ENABLE_APP_SANDBOX: YES

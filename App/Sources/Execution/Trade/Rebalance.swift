@@ -5,7 +5,7 @@ import EVMChain
 import ExecutionCore
 import Foundation
 import HyperliquidSigning
-import LalaCore
+import IhatecryptoCore
 import RelayBridge
 import TxGuard
 
@@ -48,7 +48,7 @@ extension Executor {
 
     private static func moved(_ done: [String]) -> String { done.isEmpty ? "" : " Already moved: \(done.joined(separator: "; "))." }
 
-    /// Every place LALA can move USDC between, with what is in it, its rate and what getting out and in costs.
+    /// Every place ihatecrypto can move USDC between, with what is in it, its rate and what getting out and in costs.
     func rebalancePlaces() async throws -> [Rebalance.Place] {
         async let optionsCall = Yields.options(for: "USDC")
         async let vaultsCall = try? JupiterLend.vaults()

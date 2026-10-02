@@ -10,7 +10,7 @@ public enum Allocation {
         public let apy: Decimal
         /// Already there, in the asset's units.
         public let existing: Decimal
-        /// Why LALA will not put money here now, or nil.
+        /// Why ihatecrypto will not put money here now, or nil.
         public let blocked: String?
         /// The protocol the limit is counted per: «Aave» for every Aave market, whatever the network — the same
         /// contracts' risk, so spreading over networks doesn't get around it.

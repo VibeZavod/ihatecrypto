@@ -4,7 +4,7 @@ import WalletCore
 
 /// The only door into the signing process. Requests and replies are Codable JSON over one XPC call,
 /// so the boundary is a small, auditable list rather than an object graph.
-@objc public protocol LalaSignerXPC {
+@objc public protocol SignerXPC {
     func handle(_ request: Data, reply: @escaping @Sendable (Data) -> Void)
 }
 
@@ -18,6 +18,10 @@ public enum SignerRequest: Codable, Sendable {
     case createWallet(requirePresence: Bool)
     /// Removes the active wallet; asks for Touch ID first.
     case forget
+    /// Once, on a Mac that ran LALA: its signer's wallets, sealed under LALA's Keychain names, sealed again under
+    /// ihatecrypto's (Touch ID once). `registry`: the old signer's list, for the labels and the automation wallet;
+    /// every address is derived again in the signer and must match.
+    case adoptLegacy(registry: [SignerWallet], active: String?)
     /// A single private key from another wallet (`ImportedKey`: a Solana key from Phantom, an EVM key from MetaMask),
     /// stored like a phrase and added as a wallet that signs only on that key's chain.
     case importPrivateKey(key: String)
@@ -118,7 +122,7 @@ public struct SignerWallet: Codable, Sendable, Equatable, Identifiable {
     public var isTest: Bool { test == true }
     public var isAutomation: Bool { automation == true }
 
-    /// Wallet «1» is the one LALA held before several wallets: its Keychain items keep their old names.
+    /// Wallet «1» is the one ihatecrypto held before several wallets: its Keychain items keep their old names.
     public static let firstID = "1"
 
     /// The registry the signer keeps. Before several wallets there was one sealed seed and its addresses in the
@@ -184,22 +188,22 @@ public struct SignerReply: Codable, Sendable {
 
 /// App side: talks to the XPC service embedded in the bundle. Unavailable when running from `swift run`.
 public final class SignerClient: @unchecked Sendable {
-    public static let serviceName = "app.lala.mac.signer"
+    public static let serviceName = "app.ihatecrypto.mac.signer"
     /// The service ships inside ihatecrypto.app; a `swift run` build has none.
     public static var isAvailable: Bool {
-        FileManager.default.fileExists(atPath: Bundle.main.bundleURL.appending(path: "Contents/XPCServices/LalaSigner.xpc").path)
+        FileManager.default.fileExists(atPath: Bundle.main.bundleURL.appending(path: "Contents/XPCServices/Signer.xpc").path)
     }
     private let connection: NSXPCConnection
 
     public init() {
         connection = NSXPCConnection(serviceName: Self.serviceName)
-        connection.remoteObjectInterface = NSXPCInterface(with: LalaSignerXPC.self)
+        connection.remoteObjectInterface = NSXPCInterface(with: SignerXPC.self)
         connection.resume()
     }
 
     deinit { connection.invalidate() }
 
-    /// Set while LALA handles a message from its local debug API (DebugAPI.swift): only status requests pass, so
+    /// Set while ihatecrypto handles a message from its local debug API (DebugAPI.swift): only status requests pass, so
     /// nothing that came from outside the window can sign or change the key, whatever path the message takes —
     /// except a trade's signatures while a test wallet signs (the user made it for exactly that; no Touch ID).
     /// Adding, switching, renaming or removing wallets never passes.
@@ -222,7 +226,7 @@ public final class SignerClient: @unchecked Sendable {
         return try await withCheckedThrowingContinuation { continuation in
             let proxy = connection.remoteObjectProxyWithErrorHandler { error in
                 continuation.resume(throwing: WalletError("The signer is unavailable: \(error.localizedDescription)"))
-            } as? LalaSignerXPC
+            } as? SignerXPC
             guard let proxy else {
                 continuation.resume(throwing: WalletError("The signer is unavailable."))
                 return

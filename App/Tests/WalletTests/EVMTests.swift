@@ -112,7 +112,7 @@ import WalletCore
 }
 
 @Test func relayDepositorySelector() {
-    // Relay's v2 depository on EVM chains: the selector LALA checks before signing a Base → Solana deposit.
+    // Relay's v2 depository on EVM chains: the selector ihatecrypto checks before signing a Base → Solana deposit.
     #expect(Keccak.hash256(Data("depositErc20(address,address,uint256,bytes32)".utf8)).prefix(4).hex == "e8017952")
 }
 

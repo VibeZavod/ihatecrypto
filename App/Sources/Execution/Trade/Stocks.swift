@@ -1,7 +1,7 @@
 import EVMChain
 import ExecutionCore
 import Foundation
-import LalaCore
+import IhatecryptoCore
 import RelayBridge
 import TxGuard
 import WalletCore

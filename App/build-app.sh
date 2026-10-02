@@ -6,8 +6,8 @@
 set -e
 cd "$(dirname "$0")/Xcode"
 xcodegen generate --quiet
-log=$(mktemp -t lala-build)
-if ! xcodebuild -project LALA.xcodeproj -scheme LALA -configuration "${1:-Release}" -derivedDataPath ../.build/xcode \
+log=$(mktemp -t ihatecrypto-build)
+if ! xcodebuild -project ihatecrypto.xcodeproj -scheme ihatecrypto -configuration "${1:-Release}" -derivedDataPath ../.build/xcode \
      -allowProvisioningUpdates -skipPackagePluginValidation build > "$log" 2>&1; then
   grep -E "error:|DESERIALIZATION|Command .* failed|BUILD FAILED" "$log" | cut -c1-300 | head -20
   echo "full log: $log"

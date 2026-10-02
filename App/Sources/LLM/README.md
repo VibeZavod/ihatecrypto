@@ -1,6 +1,6 @@
 # LLM: model access
 
-Each way of connecting is a separate SwiftPM module in its own folder. The trading plan (`LalaCore`) knows only the `LLMClient` protocol from `Core` and does not depend on the providers.
+Each way of connecting is a separate SwiftPM module in its own folder. The trading plan (`IhatecryptoCore`) knows only the `LLMClient` protocol from `Core` and does not depend on the providers.
 
 ```
 Core/        LLMClient, LLMProvider, Credential, HTTP, PKCE, LoopbackServer
@@ -10,7 +10,7 @@ ChatGPT/     Plus/Pro subscription through the Codex backend; sign in via the br
 ClaudeCode/  Claude subscription through the installed Claude Code (`claude -p` with no tools)
 Apple/       Apple Intelligence (Foundation Models): on this Mac, or Private Cloud Compute with Apple's entitlement
 Catalog/     every provider, including unavailable ones with the reason (Grok, Gemini by subscription)
-Check/       `swift run LalaLLMCheck <id> "text"` — checks one provider from the terminal
+Check/       `swift run LLMCheck <id> "text"` — checks one provider from the terminal
 ```
 
 ## Adding a provider
@@ -19,7 +19,7 @@ Check/       `swift run LalaLLMCheck <id> "text"` — checks one provider from t
 2. Another protocol or sign-in: a folder `Sources/LLM/<Name>/` with a type implementing `LLMProvider`:
    `info`, `client(_:save:)`, and if needed `signIn(open:)`, `existingLogin()`, `models(_:)`.
 3. A target in `Package.swift` (depends only on `LLMCore`) and one line in `LLMCatalog.all`.
-4. A test in `Tests/LLMTests` and a check with `swift run LalaLLMCheck <id>`.
+4. A test in `Tests/LLMTests` and a check with `swift run LLMCheck <id>`.
 
 ## Rules
 

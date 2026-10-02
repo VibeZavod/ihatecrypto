@@ -1,10 +1,10 @@
 import Foundation
 import WalletCore
 
-/// A throwaway hot wallet for live tests with small amounts. The phrase sits in ~/.lala/test-wallet.txt
+/// A throwaway hot wallet for live tests with small amounts. The phrase sits in ~/.ihatecrypto/test-wallet.txt
 /// (folder 0700, file 0600), like Solana CLI's id.json. It is never printed. Not the app's key storage.
 enum TestWallet {
-    static let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".lala")
+    static let folder = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent(".ihatecrypto")
     static let file = folder.appendingPathComponent("test-wallet.txt")
 
     static func create() throws {

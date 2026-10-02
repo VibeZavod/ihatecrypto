@@ -1,7 +1,7 @@
 import Foundation
 import HyperliquidSigning
 import JupiterSwap
-import LalaCore
+import IhatecryptoCore
 import DeFiJupiterLend
 import EVMChain
 import ExecutionCore
@@ -13,7 +13,7 @@ import TradeExecution
 import TxGuard
 import WalletCore
 
-// Live checks with real services and the throwaway test wallet (~/.lala/test-wallet.txt).
+// Live checks with real services and the throwaway test wallet (~/.ihatecrypto/test-wallet.txt).
 // Nothing is sent without --yes; amounts are capped.
 //   new-wallet | address | balances
 //   simulate                      build and simulate a SOL transfer and a Jupiter swap, send nothing
@@ -92,7 +92,7 @@ do {
     case "sweep-evm": try await sweepEVM(to: args.dropFirst().first { !$0.hasPrefix("--") } ?? "")
     case "sweep-hyperliquid": try await sweepHyperliquid(to: args.dropFirst().first { !$0.hasPrefix("--") } ?? "")
     case "ledger": try await ledgerCheck(Array(args.dropFirst()))
-    case "browser-test-page": try await writeBrowserTestPage(args.dropFirst().first ?? "/tmp/lala-test.html")
+    case "browser-test-page": try await writeBrowserTestPage(args.dropFirst().first ?? "/tmp/ihatecrypto-test.html")
     default: print("Unknown command: \(command)"); exit(2)
     }
 } catch {
@@ -423,7 +423,7 @@ func hyperliquidSignatureCheck() async throws {
     let (spot, s2) = try HLSigner.spotSend(destination: "0x0000000000000000000000000000000000000001", token: "USDC:0xeb62eee3685fc4c43992febcd9e75443",
                                            amount: 1, time: t + 1, privateKey: key, mainnet: false)
     try await check("spotSend", spot, t + 1, s2)
-    let (approve, s3) = try HLSigner.approveAgent(agent: "0x0000000000000000000000000000000000000002", name: "lala", nonce: t + 2, privateKey: key, mainnet: false)
+    let (approve, s3) = try HLSigner.approveAgent(agent: "0x0000000000000000000000000000000000000002", name: "ihatecrypto", nonce: t + 2, privateKey: key, mainnet: false)
     try await check("agent approval", approve, t + 2, s3)
 }
 
@@ -465,7 +465,7 @@ func agentRoundTrip(usd: Decimal) async throws {
     print("Agent: \(agent)")
     guard send else { print("Add --yes."); return }
     let nonce = UInt64(Date().timeIntervalSince1970 * 1000)
-    let (action, signature) = try HLSigner.approveAgent(agent: agent, name: "lala", nonce: nonce, privateKey: keys.evm, mainnet: true)
+    let (action, signature) = try HLSigner.approveAgent(agent: agent, name: "ihatecrypto", nonce: nonce, privateKey: keys.evm, mainnet: true)
     print("[\(stamp())] Agent approval: \(try await postExchange(action, nonce: nonce, signature: signature, agent: agent))")
     try await Task.sleep(for: .seconds(2))
     try await roundTrip(usd: usd, signingKey: agentKey)

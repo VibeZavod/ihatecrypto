@@ -2,7 +2,7 @@ import DeFiJupiterLend
 import DeFiKamino
 import Foundation
 
-/// Where an asset earns right now, across the protocols LALA knows, with what LALA can do there and the catch.
+/// Where an asset earns right now, across the protocols ihatecrypto knows, with what ihatecrypto can do there and the catch.
 public enum Yields {
     public struct Option: Sendable {
         public let asset: String
@@ -10,7 +10,7 @@ public enum Yields {
         /// % a year.
         public let apy: Decimal
         public let tvlUSD: Decimal?
-        /// The chat phrase that puts money there, when LALA can.
+        /// The chat phrase that puts money there, when ihatecrypto can.
         public let how: String?
         public let note: String
 

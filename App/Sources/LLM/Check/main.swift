@@ -1,14 +1,14 @@
 import Foundation
 import LLMCatalog
-import LalaCore
+import IhatecryptoCore
 import LLMCore
 
 // Checks one provider from the terminal, without the app:
-//   swift run LalaLLMCheck                      list providers and existing logins
-//   swift run LalaLLMCheck chatgpt "hello"      reuse an existing login (Codex CLI, Claude Code)
-//   LALA_LLM_KEY=sk-… swift run LalaLLMCheck deepseek "hello"
-//   LALA_LLM_MODEL=… overrides the default model.
-//   swift run LalaLLMCheck chatgpt --route "купи AI на $2" …   how the chat router reads each message
+//   swift run LLMCheck                      list providers and existing logins
+//   swift run LLMCheck chatgpt "hello"      reuse an existing login (Codex CLI, Claude Code)
+//   IHATECRYPTO_LLM_KEY=sk-… swift run LLMCheck deepseek "hello"
+//   IHATECRYPTO_LLM_MODEL=… overrides the default model.
+//   swift run LLMCheck chatgpt --route "купи AI на $2" …   how the chat router reads each message
 
 let args = Array(CommandLine.arguments.dropFirst())
 let env = ProcessInfo.processInfo.environment
@@ -25,15 +25,15 @@ guard let provider = LLMCatalog.provider(id: id) else {
     exit(2)
 }
 
-let credential = env["LALA_LLM_KEY"].map(Credential.apiKey) ?? provider.existingLogin()
-let model = env["LALA_LLM_MODEL"] ?? provider.info.defaultModel
+let credential = env["IHATECRYPTO_LLM_KEY"].map(Credential.apiKey) ?? provider.existingLogin()
+let model = env["IHATECRYPTO_LLM_MODEL"] ?? provider.info.defaultModel
 let prompt = args.dropFirst().first ?? "Answer in one word: working"
 
 // `--verify "message" "command"`: the second reading alone, as the chat runs it on every command.
 if prompt == "--verify", args.count >= 4 {
     var context = ChatRouter.Context()
-    context.plan = env["LALA_ROUTE_PLAN"]
-    context.recent = env["LALA_ROUTE_RECENT"].map { $0.components(separatedBy: "|") } ?? []
+    context.plan = env["IHATECRYPTO_ROUTE_PLAN"]
+    context.recent = env["IHATECRYPTO_ROUTE_RECENT"].map { $0.components(separatedBy: "|") } ?? []
     context.replyLanguage = args[2].contains(/[а-яА-ЯёЁ]/) ? "Russian" : "English"
     let client = try provider.client(credential, save: { _ in })
     let why = try await ChatRouter.verify(args[2], command: args[3], context: context, client: client, model: model)
@@ -46,19 +46,19 @@ if prompt == "--route" {
     context.favorites = ["AI (Artificial Inu) = 0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18 on Robinhood Chain"]
     context.addressBook = ["Bybit", "Mom"]
     context.balances = ["Solana 22.38 USDC, 0.0297 SOL", "Hyperliquid $7.47"]
-    context.plan = env["LALA_ROUTE_PLAN"]
+    context.plan = env["IHATECRYPTO_ROUTE_PLAN"]
     context.capital = "$29.85"
-    // `LALA_ROUTE_RECENT="user: …|LALA: …"`: the chat before the message, to check follow-ups like «да».
-    context.recent = env["LALA_ROUTE_RECENT"].map { $0.components(separatedBy: "|") } ?? []
-    // `LALA_SAFE_SEARCH=0`: as with Safe search off in Settings.
-    context.safeSearch = env["LALA_SAFE_SEARCH"] != "0"
-    // `LALA_ROUTE_CANVAS="waiting for Confirm: …|chart ETH (1 day)"` and `LALA_ROUTE_BALANCES="Ethereum 18,587 USDC idle|…"`:
+    // `IHATECRYPTO_ROUTE_RECENT="user: …|ihatecrypto: …"`: the chat before the message, to check follow-ups like «да».
+    context.recent = env["IHATECRYPTO_ROUTE_RECENT"].map { $0.components(separatedBy: "|") } ?? []
+    // `IHATECRYPTO_SAFE_SEARCH=0`: as with Safe search off in Settings.
+    context.safeSearch = env["IHATECRYPTO_SAFE_SEARCH"] != "0"
+    // `IHATECRYPTO_ROUTE_CANVAS="waiting for Confirm: …|chart ETH (1 day)"` and `IHATECRYPTO_ROUTE_BALANCES="Ethereum 18,587 USDC idle|…"`:
     // the canvas and the money as the app gives them, for follow-ups about a waiting card.
-    if let canvas = env["LALA_ROUTE_CANVAS"] { context.canvas = canvas.components(separatedBy: "|") }
-    if let b = env["LALA_ROUTE_BALANCES"] { context.balances = b.components(separatedBy: "|") }
+    if let canvas = env["IHATECRYPTO_ROUTE_CANVAS"] { context.canvas = canvas.components(separatedBy: "|") }
+    if let b = env["IHATECRYPTO_ROUTE_BALANCES"] { context.balances = b.components(separatedBy: "|") }
     let client = try provider.client(credential, save: { _ in })
-    // `LALA_MARKETS="BTC,ETH,…,xyz:CL"`: Hyperliquid's real list, for the plans test.
-    let markets: Set<String> = env["LALA_MARKETS"].map { Set($0.components(separatedBy: ",")) } ?? ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]
+    // `IHATECRYPTO_MARKETS="BTC,ETH,…,xyz:CL"`: Hyperliquid's real list, for the plans test.
+    let markets: Set<String> = env["IHATECRYPTO_MARKETS"].map { Set($0.components(separatedBy: ",")) } ?? ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]
     // Real token lookups; the app's own data (portfolio, markets, rates) is what the context above says.
     let balances = context.balances.joined(separator: "; ")
     let lookup: @Sendable (ChatRouter.Lookup) async -> String = { l in
@@ -83,8 +83,8 @@ if prompt == "--route" {
             }
             let reading = try await ChatRouter.route(message, context: context, client: client, model: model, markets: markets,
                                                      lookup: lookup, check: secondReading)
-            // `LALA_ROUTE_JSON=1`: one JSON line per message with the plan it leads to, for the plans test.
-            if env["LALA_ROUTE_JSON"] == "1" {
+            // `IHATECRYPTO_ROUTE_JSON=1`: one JSON line per message with the plan it leads to, for the plans test.
+            if env["IHATECRYPTO_ROUTE_JSON"] == "1" {
                 let base = context.plan.flatMap { try? JSONDecoder().decode(TradeIntent.self, from: Data($0.utf8)) } ?? TradeIntent()
                 var out: [String: Any] = ["message": m, "seconds": Date().timeIntervalSince(started)]
                 var intent: TradeIntent?

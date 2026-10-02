@@ -19,10 +19,13 @@ enum SeedStore {
         data.withUnsafeMutableBytes { b in if let p = b.baseAddress { _ = memset_s(p, b.count, 0, b.count) } }
     }
 
-    static func item(_ account: String) -> [String: Any] {
+    static let service = "app.ihatecrypto.seed"
+
+    /// `service`: LALA's name for the same items when LegacyMove reads them («app.lala.seed»).
+    static func item(_ account: String, service: String = service) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "app.lala.seed",
+            kSecAttrService as String: service,
             kSecAttrAccount as String: account,
             kSecUseDataProtectionKeychain as String: true,
         ]
@@ -45,8 +48,8 @@ enum SeedStore {
     }
 
     /// The sealed seed and the tag of the key that opens it.
-    private static func sealed(_ account: String) -> (data: Data, tag: Data)? {
-        var q = item(account)
+    private static func sealed(_ account: String, service: String = service) -> (data: Data, tag: Data)? {
+        var q = item(account, service: service)
         q[kSecReturnData as String] = true
         q[kSecReturnAttributes as String] = true
         var out: CFTypeRef?
@@ -55,7 +58,7 @@ enum SeedStore {
         return (data, tag)
     }
 
-    /// The one seed LALA held before several wallets, sealed or from before sealing: what wallet «1» migrates from.
+    /// The one seed ihatecrypto held before several wallets, sealed or from before sealing: what wallet «1» migrates from.
     static var firstPresent: Bool { present(sealedAccount) || present(legacyAccount) }
 
     private static func present(_ account: String) -> Bool {
@@ -84,7 +87,7 @@ enum SeedStore {
                                                            presence ? [.privateKeyUsage, .userPresence] : [.privateKeyUsage], &error) else {
             throw fail("Couldn't set access to the key")
         }
-        let tag = Data("app.lala.seed.key.\(UUID().uuidString)".utf8)
+        let tag = Data("app.ihatecrypto.seed.key.\(UUID().uuidString)".utf8)
         let attributes: [String: Any] = [
             kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
             kSecAttrKeySizeInBits as String: 256,
@@ -144,23 +147,7 @@ enum SeedStore {
             return fresh
         }
         do {
-            if let sealed = sealed(account(id)) {
-                var q = keyQuery(sealed.tag)
-                q[kSecReturnRef as String] = true
-                q[kSecUseAuthenticationContext as String] = context
-                var ref: CFTypeRef?
-                guard SecItemCopyMatching(q as CFDictionary, &ref) == errSecSuccess, let ref else { throw WalletError("The Secure Enclave key is missing.") }
-                var error: Unmanaged<CFError>?
-                // The Enclave asks for Touch ID or the password here, unless this context already did.
-                guard let opened = SecKeyCreateDecryptedData(ref as! SecKey, algorithm, sealed.data as CFData, &error) else {
-                    throw WalletError("Touch ID was cancelled or didn't match: nothing was signed.")
-                }
-                // Our own copy, which the caller wipes; the Security framework's buffer is cleared before it's released.
-                let bytes = CFDataGetBytePtr(opened), count = CFDataGetLength(opened)
-                let seed = Data(bytes: bytes!, count: count)
-                _ = memset_s(UnsafeMutableRawPointer(mutating: bytes!), count, 0, count)
-                return seed
-            }
+            if let sealed = sealed(account(id)) { return try open(sealed, context: context) }
             guard id == SignerWallet.firstID, let seed = read(legacyAccount, context: context) else { throw WalletError("No wallet imported.") }
             return seed
         } catch {
@@ -169,8 +156,37 @@ enum SeedStore {
         }
     }
 
-    private static func read(_ account: String, context: LAContext?) -> Data? {
-        var q = item(account)
+    /// A sealed secret opened with its Enclave key, wherever that key's group is.
+    private static func open(_ sealed: (data: Data, tag: Data), context: LAContext) throws -> Data {
+        var q = keyQuery(sealed.tag)
+        q[kSecReturnRef as String] = true
+        q[kSecUseAuthenticationContext as String] = context
+        var ref: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &ref) == errSecSuccess, let ref else { throw WalletError("The Secure Enclave key is missing.") }
+        var error: Unmanaged<CFError>?
+        // The Enclave asks for Touch ID or the password here, unless this context already did.
+        guard let opened = SecKeyCreateDecryptedData(ref as! SecKey, algorithm, sealed.data as CFData, &error) else {
+            throw WalletError("Touch ID was cancelled or didn't match: nothing was signed.")
+        }
+        // Our own copy, which the caller wipes; the Security framework's buffer is cleared before it's released.
+        let bytes = CFDataGetBytePtr(opened), count = CFDataGetLength(opened)
+        let seed = Data(bytes: bytes!, count: count)
+        _ = memset_s(UnsafeMutableRawPointer(mutating: bytes!), count, 0, count)
+        return seed
+    }
+
+    /// A wallet's secret as LALA's signer kept it (LegacyMove): its sealed item under «app.lala.seed», opened with its
+    /// Enclave key in LALA's group, or wallet «1» from before sealing.
+    static func openLegacy(id: String, context: LAContext) throws -> Data {
+        if let sealed = sealed(account(id), service: LegacyMove.seedService) { return try open(sealed, context: context) }
+        guard id == SignerWallet.firstID, let seed = read(legacyAccount, service: LegacyMove.seedService, context: context) else {
+            throw WalletError("No wallet «\(id)» under LALA's names.")
+        }
+        return seed
+    }
+
+    private static func read(_ account: String, service: String = service, context: LAContext?) -> Data? {
+        var q = item(account, service: service)
         q[kSecReturnData as String] = true
         if let context { q[kSecUseAuthenticationContext as String] = context }
         var out: CFTypeRef?
@@ -212,11 +228,12 @@ enum SeedStore {
 /// Addresses outside the wallet that the user allowed money to go to, each confirmed in person once. Kept in the
 /// signer's own Keychain group, so the app — or anything posing as it — can't add one silently.
 enum RecipientStore {
+    static let service = "app.ihatecrypto.recipients"
     /// Per wallet: an address approved for one wallet isn't approved for another.
     static func query(_ id: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "app.lala.recipients",
+            kSecAttrService as String: service,
             kSecAttrAccount as String: Wallets.scoped("approved", id),
             kSecUseDataProtectionKeychain as String: true,
         ]
@@ -250,11 +267,12 @@ enum RecipientStore {
 
 /// The Hyperliquid agent key: data-protection Keychain, this device, no Touch ID — it cannot withdraw.
 enum AgentStore {
+    static let service = "app.ihatecrypto.agent"
     /// Per wallet: each wallet's Hyperliquid account approves its own trading key.
     static func query(_ id: String) -> [String: Any] {
         [
             kSecClass as String: kSecClassGenericPassword,
-            kSecAttrService as String: "app.lala.agent",
+            kSecAttrService as String: service,
             kSecAttrAccount as String: Wallets.scoped("hyperliquid", id),
             kSecUseDataProtectionKeychain as String: true,
         ]
