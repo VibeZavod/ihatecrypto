@@ -103,4 +103,4 @@ rm -rf $out/export $out/ihatecrypto.xcarchive $out/export.plist
 # Signs the new zip (and the feed: the app requires a signed one) with the key in the Keychain; the notes go inside.
 $sparkle/generate_appcast --download-url-prefix "$site/" $out/site
 rm -f "$log"
-echo "done: upload $out/site/ to $site/; $out/ihatecrypto-$version.dmg is the first install (the site's download, or a friend)"
+echo "done: publish $out/site/ to $site/ (updates.ihatecrypto.ai: npx wrangler deploy -c Tools/updates/wrangler.jsonc); $out/ihatecrypto-$version.dmg is the first install (the site's download, or a friend)"
