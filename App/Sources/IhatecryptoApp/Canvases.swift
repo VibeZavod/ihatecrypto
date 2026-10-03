@@ -295,6 +295,7 @@ extension Workspace {
         guard let new = Self.folderName(name), new != old else { return }
         for i in canvases.indices where canvases[i].folder == old { canvases[i].folder = new }
         folders = folders.filter { $0 != old && $0 != new } + [new]
+        if let icon = folderIcons.removeValue(forKey: old), folderIcons[new] == nil { folderIcons[new] = icon }
         if newCanvasFolder == old { newCanvasFolder = new }
     }
 
@@ -302,6 +303,7 @@ extension Workspace {
     func deleteFolder(_ name: String) {
         for i in canvases.indices where canvases[i].folder == name { canvases[i].folder = nil }
         folders.removeAll { $0 == name }
+        folderIcons[name] = nil
         if newCanvasFolder == name { newCanvasFolder = nil }
     }
 
@@ -578,6 +580,7 @@ struct FolderRow: View {
     @State private var hover = false
     @State private var renaming = false
     @State private var draft = ""
+    @State private var picking = false
 
     var body: some View {
         HStack(spacing: 4) {
@@ -585,7 +588,11 @@ struct FolderRow: View {
                 HStack(spacing: 8) {
                     Image(systemName: "chevron.right").font(.system(size: 9, weight: .bold)).foregroundStyle(.tertiary)
                         .rotationEffect(.degrees(folded ? 0 : 90))
-                    Image(systemName: folded ? "folder" : "folder.fill").font(.system(size: 12)).foregroundStyle(Brand.accentInk)
+                    if let icon = ws.folderIcons[name] {
+                        PickedIcon(icon: icon, size: 18, letter: name)
+                    } else {
+                        Image(systemName: folded ? "folder" : "folder.fill").font(.system(size: 12)).foregroundStyle(Brand.accentInk)
+                    }
                     Text(name).font(.ui(12.5, .semibold)).lineLimit(1)
                     Spacer(minLength: 0)
                     Text("\(count)").font(.ui(10)).foregroundStyle(.tertiary).monospacedDigit()
@@ -603,11 +610,14 @@ struct FolderRow: View {
             .pointerStyle(.link)
             .opacity(hover ? 1 : 0)
             .allowsHitTesting(hover)
-            .help("New canvas here, rename, delete")
+            .help("New canvas here, rename, change icon, delete")
         }
         .padding(.horizontal, 8).padding(.vertical, 4)
         .onHover { hover = $0 }
         .contextMenu { actions }
+        .popover(isPresented: $picking, arrowEdge: .trailing) {
+            IconPicker(icon: Binding(get: { ws.folderIcons[name] }, set: { ws.folderIcons[name] = $0 }), name: name)
+        }
         .alert("Rename folder", isPresented: $renaming) {
             TextField("Folder name", text: $draft)
             Button("Rename") { withAnimation(.snappy) { ws.renameFolder(name, to: draft) } }
@@ -622,6 +632,7 @@ struct FolderRow: View {
             }
             .disabled(!ws.canSwitchCanvas)
             Button { draft = name; renaming = true } label: { Label("Rename", systemImage: "pencil") }
+            Button { picking = true } label: { Label("Change icon…", systemImage: "face.smiling") }
             Divider()
             Button(role: .destructive) { withAnimation(.snappy) { ws.deleteFolder(name) } } label: { Label("Delete folder (canvases stay)", systemImage: "trash") }
         }

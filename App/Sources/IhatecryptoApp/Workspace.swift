@@ -231,6 +231,10 @@ final class Workspace {
     var folders: [String] = UserDefaults.standard.stringArray(forKey: "canvasFolders") ?? [] {
         didSet { UserDefaults.standard.set(folders, forKey: "canvasFolders") }
     }
+    /// A folder's picture by its name («Change icon…» on the folder); none = the folder sign.
+    var folderIcons: [String: AddressIcon] = LocalStore.load("folder-icons.json") ?? [:] {
+        didSet { LocalStore.save(folderIcons, "folder-icons.json") }
+    }
     /// The folder a fresh canvas goes into once it's kept («New canvas here» on a folder).
     var newCanvasFolder: String?
     /// The portfolio's value every ten minutes for 30 days (Alerts.swift).
@@ -492,6 +496,8 @@ final class Workspace {
         return true
     }
     @ObservationIgnored private var signedInCache: Set<String> = []
+    /// A model reads the chat (`llmClient()` would make one), for views: without one only typed commands work.
+    var hasModel: Bool { provider.info.unavailable == nil && (provider.info.kind == .local || signedIn) }
 
     func setCredential(_ credential: Credential?) {
         Keychain.save(credential, for: providerID)
@@ -931,8 +937,8 @@ final class Workspace {
             await editPlanWithModel(text, client: client, before: before)
             return
         } else {
-            reply(say("I didn’t get that. Without a model I understand: long/short, a ticker ($ETH), “risk $10”, “stop 3%”, “take 6%”, “leverage 2x”, “100 USDC” — in English or Russian. For other languages and free wording like “take closer”, connect a model in Settings (⌘,): a ChatGPT subscription, Claude Code, OpenRouter or an API key.",
-                      "Не понял. Без модели я понимаю: лонг/шорт, тикер ($ETH), «риск $10», «стоп 3%», «тейк 6%», «плечо 2x», «100 USDC» — по-русски и по-английски. Для других языков и свободных формулировок вроде «тейк поближе» подключи модель в настройках (⌘,): подписку ChatGPT, Claude Code, OpenRouter или API-ключ."))
+            reply(say("I didn’t get that. No model is connected, so I read commands, not free talk: “long ETH risk $5”, “stop 3%”, “take 6%”, “leverage 2x”, “send 5 USDC to Bybit”, “deposit 1 USDC into Jupiter” — in English or Russian. With or without a model, nothing moves until you press Confirm and touch Touch ID. For free wording in any language, connect a model in Settings › Sign-ins (⌘,): a ChatGPT or Claude subscription, OpenRouter or an API key.",
+                      "Не понял. Модель не подключена, поэтому я понимаю команды, а не свободный разговор: «лонг ETH риск $5», «стоп 3%», «тейк 6%», «плечо 2x», «отправь 5 USDC на Bybit», «положи 1 USDC в Jupiter» — по-русски и по-английски. С моделью или без, ничего не выполняется, пока ты не нажмёшь Confirm и не приложишь Touch ID. Чтобы писать свободно на любом языке, подключи модель в Settings › Sign-ins (⌘,): подписку ChatGPT или Claude, OpenRouter или API-ключ."))
         }
         await refreshQuote()
         startPlanReview()

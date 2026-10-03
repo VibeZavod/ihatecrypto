@@ -1167,7 +1167,15 @@ struct StudioCanvas: View {
                 BrandLogo(size: 34)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Pick a starting block").font(.ui(18, .bold))
-                    Text("or type anything in the chat").font(.ui(12)).foregroundStyle(.secondary)
+                    if ws.hasModel {
+                        Text("or type anything in the chat").font(.ui(12)).foregroundStyle(.secondary)
+                    } else {
+                        // Without a model the chat reads commands only; nothing moves without Confirm and Touch ID either way.
+                        HStack(spacing: 6) {
+                            Text("No model connected — the chat reads commands like “long ETH risk $5”").font(.ui(12)).foregroundStyle(.secondary)
+                            Button("Connect a model") { ws.openSettings(.signIns) }.buttonStyle(.link).font(.ui(12, .semibold))
+                        }
+                    }
                 }
             }
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(148), spacing: 12), count: 3), alignment: .leading, spacing: 12) {
