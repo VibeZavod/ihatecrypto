@@ -870,10 +870,20 @@ final class Workspace {
         // With a position or a waiting limit, «стоп в безубыток», «закрой половину» act on it, not on the plan.
         if !positions.isEmpty || pendingEntry != nil, let command = PositionCommand.parse(text) {
             if let coin = targetCoin(for: text) {
-                await manage(command, coin: coin)
+                switch command {
+                case .close, .cancelOrders:
+                    // A close or a cancel can't be taken back: it waits for Confirm, as when a model reads it.
+                    pendingAction = .position(command, coin: coin)
+                    pendingText = text
+                    reply(say("“\(text)” for \(IntentParser.pretty(coin)): say “do it” or press Confirm to go ahead.",
+                              "«\(text)» для \(IntentParser.pretty(coin)): напиши «делай» или нажми Confirm."))
+                default:
+                    await manage(command, coin: coin)
+                }
             } else {
                 let open = positions.map { "\($0.size > 0 ? "long" : "short") \(IntentParser.pretty($0.coin))" }.joined(separator: ", ")
-                reply("Which position? Open: \(open). Name it, e.g. “\(text) \(positions.first.map { IntentParser.pretty($0.coin).components(separatedBy: " (").first ?? $0.coin } ?? "")”.")
+                let example = "\(text) \(positions.first.map { IntentParser.pretty($0.coin).components(separatedBy: " (").first ?? $0.coin } ?? "")"
+                reply(say("Which position? Open: \(open). Name it, e.g. “\(example)”.", "Какую позицию? Открыты: \(open). Назови её, например «\(example)»."))
             }
             return
         }
