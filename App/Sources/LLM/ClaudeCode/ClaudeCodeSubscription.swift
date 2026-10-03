@@ -71,31 +71,51 @@ struct ClaudeCodeClient: LLMClient {
         process.standardError = stderr
         try process.run()
         let pid = process.processIdentifier
-        let watchdog = Task { () -> Bool in
-            do { try await Task.sleep(for: timeout) } catch { return false }
-            kill(pid, SIGTERM)
-            return true
-        }
+        // The waits and the watchdog run on Dispatch, never on Swift's few cooperative threads: several runs at once
+        // (the tests) had their blocking reads hold every one of those threads, and a watchdog Task never got one to stop
+        // the process.
+        let timedOut = Flag()
+        let watchdog = DispatchWorkItem { timedOut.set(); kill(pid, SIGTERM) }
+        let (seconds, attoseconds) = timeout.components
+        DispatchQueue.global().asyncAfter(deadline: .now() + .milliseconds(Int(seconds * 1000 + attoseconds / 1_000_000_000_000_000)), execute: watchdog)
         defer { watchdog.cancel() }
-        // The prompt and stderr on threads of their own, so a run that stops reading or fills stderr can't block the wait;
-        // a stopped run gives the write EPIPE, not the app a SIGPIPE.
+        // The prompt and stderr on their own, so a run that stops reading or fills stderr can't block the wait; a stopped
+        // run gives the write EPIPE, not the app a SIGPIPE.
         let writer = stdin.fileHandleForWriting
         _ = fcntl(writer.fileDescriptor, F_SETNOSIGPIPE, 1)
-        Task.detached { try? writer.write(contentsOf: Data(input.utf8)); try? writer.close() }
-        let errors = Task.detached { (try? stderr.fileHandleForReading.readToEnd()) ?? Data() }
-        let data = try await withTaskCancellationHandler {
-            try await Task.detached { try stdout.fileHandleForReading.readToEnd() ?? Data() }.value
+        DispatchQueue.global().async { try? writer.write(contentsOf: Data(input.utf8)); try? writer.close() }
+        async let errors = Self.readAll(stderr.fileHandleForReading)
+        let data = await withTaskCancellationHandler {
+            await Self.readAll(stdout.fileHandleForReading)
         } onCancel: { kill(pid, SIGTERM) }
-        process.waitUntilExit()
+        nonisolated(unsafe) let running = process
+        await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
+            DispatchQueue.global().async { running.waitUntilExit(); done.resume() }
+        }
         watchdog.cancel()
-        if await watchdog.value {
+        if timedOut.value {
             throw LLMError("Claude Code didn't answer in \(timeout.components.seconds) s, so it was stopped. Send it again, or pick another model.")
         }
         try Task.checkCancellation()
         if data.isEmpty, process.terminationStatus != 0 {
-            let said = String(decoding: (await errors.value).suffix(300), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            let said = String(decoding: (await errors).suffix(300), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
             throw LLMError("Claude Code stopped with code \(process.terminationStatus)" + (said.isEmpty ? "." : ": \(said)"))
         }
         return data
     }
+
+    /// A pipe read to its end on a Dispatch thread.
+    static func readAll(_ handle: FileHandle) async -> Data {
+        await withCheckedContinuation { (done: CheckedContinuation<Data, Never>) in
+            DispatchQueue.global().async { done.resume(returning: (try? handle.readToEnd()) ?? Data()) }
+        }
+    }
+}
+
+/// Whether the watchdog stopped the run, set on a Dispatch thread and read after the wait.
+private final class Flag: @unchecked Sendable {
+    private let lock = NSLock()
+    private var on = false
+    func set() { lock.withLock { on = true } }
+    var value: Bool { lock.withLock { on } }
 }
