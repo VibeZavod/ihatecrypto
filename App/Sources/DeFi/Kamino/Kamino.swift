@@ -14,6 +14,8 @@ public enum Kamino {
         /// Supply APY, % a year.
         public let supplyAPY: Decimal
         public let tvlUSD: Decimal
+        /// The token's dollar price: the reserve's supply in dollars over its supply in tokens (0 when empty).
+        public var priceUSD: Decimal = 0
     }
 
     /// One reserve per token: the market has several for USDC, the one holding the money is the real one.
@@ -24,7 +26,9 @@ public enum Kamino {
         var best: [String: Reserve] = [:]
         for r in rows {
             guard let address = r["reserve"] as? String, let symbol = r["liquidityToken"] as? String, let mint = r["liquidityTokenMint"] as? String else { continue }
-            let reserve = Reserve(address: address, symbol: symbol, mint: mint, supplyAPY: dec(r["supplyApy"]) * 100, tvlUSD: dec(r["totalSupplyUsd"]))
+            let supplied = dec(r["totalSupply"])
+            let reserve = Reserve(address: address, symbol: symbol, mint: mint, supplyAPY: dec(r["supplyApy"]) * 100, tvlUSD: dec(r["totalSupplyUsd"]),
+                                  priceUSD: supplied > 0 ? dec(r["totalSupplyUsd"]) / supplied : 0)
             if reserve.tvlUSD > best[mint]?.tvlUSD ?? -1 { best[mint] = reserve }
         }
         return best.values.sorted { $0.tvlUSD > $1.tvlUSD }

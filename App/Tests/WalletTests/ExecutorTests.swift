@@ -75,6 +75,20 @@ import WalletCore
     #expect(Executor.stopBreaksRule(long: true, entry: 120_000, size: Decimal(string: "0.01")!, stop: 117_000, current: 118_000, equity: 2000, policy: policy) == nil)
 }
 
+@Test func gasTopUpTargetIsAWholeNumberOfWei() {
+    // $1 at $3000 an ETH, 80% of it: 266,666,666,666,666 wei, not the 0 an unrounded quotient read as.
+    #expect(Executor.gasExpected(usd: 1, price: 3000) == 266_666_666_666_666)
+    #expect(Executor.gasExpected(usd: 2, price: Decimal(string: "2456.37")!) > 600_000_000_000_000)
+    #expect(Executor.gasExpected(usd: 1, price: 0) == 1)
+}
+
+@Test func kaminoWithdrawAllAsksForTokensNotDollars() {
+    // 1.3 SOL worth $200 at ≈ $153.85: ask ≈ 1.313 SOL (1% over), not 202.
+    let sol = Executor.kaminoAll(valueUSD: 200, priceUSD: Decimal(string: "153.846153")!)
+    #expect(sol > Decimal(string: "1.312")! && sol < Decimal(string: "1.314")!)
+    #expect(Executor.kaminoAll(valueUSD: 100, priceUSD: 1) == 101)   // a stablecoin: as before
+}
+
 @Test func rentIsReadFromTheSimulationLines() {
     // The Kamino rule refuses a first deposit whose rent is over a tenth of the amount; it reads the SOL line.
     #expect(Executor.solSpent(["USDC: -1000000 (raw units)", "SOL: −0.029794 (fees and rent for new accounts)"]) == Decimal(string: "0.029794"))

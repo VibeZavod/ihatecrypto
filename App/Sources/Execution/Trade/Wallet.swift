@@ -635,8 +635,14 @@ extension Executor {
         return max(0, -(Decimal(string: number) ?? 0))
     }
 
+    /// What «withdraw all» asks Kamino for, in tokens: the position's dollars at the token's price, 1% over. In dollars it
+    /// asked 202 «SOL» for 1.3 SOL, and the guard refused every time.
+    static func kaminoAll(valueUSD: Decimal, priceUSD: Decimal) -> Decimal {
+        (valueUSD / priceUSD * Decimal(string: "1.01")!).rounded(6, .up)
+    }
+
     /// Kamino Lend, main market. `symbol`: USDC, SOL, USDT… `amount` in tokens; withdraw with nil takes the whole
-    /// position (USD value for stablecoins). `dryRun` only simulates: the first deposit's rent shows up here.
+    /// position (its dollars at the token's price). `dryRun` only simulates: the first deposit's rent shows up here.
     /// `acceptRent`: the user asked for Kamino knowing the first deposit's rent, so the 10% rule does not stop it.
     public func kamino(_ symbol: String, amount requested: Decimal?, deposit: Bool, dryRun: Bool = false, acceptRent: Bool = false) async throws -> String {
         guard let reserve = try await Kamino.reserves().first(where: { $0.symbol.uppercased() == symbol.uppercased() }) else {
@@ -655,7 +661,8 @@ extension Executor {
         }
         // Everything: ask for 1% over the value — Kamino caps a withdrawal at what is there (checked live), so no dust stays.
         let all = !deposit && requested == nil
-        guard let amount = requested ?? (deposit ? nil : position.map { ($0.valueUSD * Decimal(string: "1.01")!).rounded(6, .up) }), amount > 0 else {
+        if all, position != nil, reserve.priceUSD <= 0 { throw ExecutionError("Kamino gave no \(symbol) price just now; say how much to withdraw.") }
+        guard let amount = requested ?? (deposit ? nil : position.map { Self.kaminoAll(valueUSD: $0.valueUSD, priceUSD: reserve.priceUSD) }), amount > 0 else {
             throw ExecutionError(deposit ? "How much should go into Kamino?" : "No \(symbol) position in Kamino.")
         }
         let units = NSDecimalNumber(decimal: (amount * scale).rounded(0, .down)).uint64Value
