@@ -195,7 +195,8 @@ struct ChartHover: View {
                         guard case .active(let p) = phase, let at: Date = proxy.value(atX: p.x - plot.minX) else { index = nil; return }
                         index = points.indices.min { abs(points[$0].time.timeIntervalSince(at)) < abs(points[$1].time.timeIntervalSince(at)) }
                     }
-                if let i = index, let x = proxy.position(forX: points[i].time), let y = proxy.position(forY: points[i].price) {
+                // A refresh can bring fewer candles while the pointer stays put, so the index may be past the end.
+                if let i = index, points.indices.contains(i), let x = proxy.position(forX: points[i].time), let y = proxy.position(forY: points[i].price) {
                     Group {
                         Rectangle().fill(Color.secondary.opacity(0.6)).frame(width: 1, height: plot.height).position(x: plot.minX + x, y: plot.midY)
                         Circle().fill(Color.primary).frame(width: 7, height: 7).position(x: plot.minX + x, y: plot.minY + y)
