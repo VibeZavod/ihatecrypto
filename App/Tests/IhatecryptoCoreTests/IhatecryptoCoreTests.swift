@@ -306,6 +306,16 @@ private struct StubModel: LLMClient {
     #expect(SiteCheck.check(host: "raydlum.io") == .lookalike("raydium.io"))
     #expect(SiteCheck.check(host: "example.com") == .unknown)
     #expect(SiteCheck.check(host: "") == .local)
+    // A known name inside another domain, a dash for its dot, or letters from another alphabet (punycode).
+    #expect(SiteCheck.check(host: "jup.ag.claim-airdrop.com") == .lookalike("jup.ag"))
+    #expect(SiteCheck.check(host: "jup-ag.com") == .lookalike("jup.ag"))
+    #expect(SiteCheck.check(host: "hyperliquid-app.xyz") == .lookalike("app.hyperliquid.xyz"))
+    #expect(SiteCheck.check(host: "hyperliquid.exchange") == .lookalike("app.hyperliquid.xyz"))
+    #expect(SiteCheck.check(host: "hyperliquid.xyz.evil.io") == .lookalike("app.hyperliquid.xyz"))
+    #expect(SiteCheck.check(host: "kamino-finance.app") == .lookalike("kamino.finance"))
+    #expect(SiteCheck.check(host: "xn--jp-zka.ag") != .unknown)
+    #expect(SiteCheck.check(host: "station.jup.ag") == .known)
+    #expect(SiteCheck.check(host: "app.hyperliquid.xyz") == .known)
 }
 
 @Test func phishingListBlocksADomainAndEverythingUnderIt() {

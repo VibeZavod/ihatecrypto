@@ -13,9 +13,19 @@ public enum SiteCheck {
         if h.isEmpty { return .local }
         if known.contains(where: { h == $0 || h.hasSuffix("." + $0) }) { return .known }
         let base = h.split(separator: ".").suffix(2).joined(separator: ".")
+        // A known name as a part of a label anywhere else (jup.ag.claim-airdrop.com, hyperliquid-app.xyz, kamino-finance.app,
+        // jup-ag.com) is the other classic fake, and so is any punycode label: letters from another alphabet that look like ours.
+        let parts = Set(h.split(whereSeparator: { $0 == "." || $0 == "-" }).map(String.init))
+        if let named = known.first(where: { parts.contains(brand($0)) }) { return .lookalike(named) }
+        if h.split(separator: ".").contains(where: { $0.hasPrefix("xn--") }) {
+            return .lookalike(known.min { distance(base, $0) < distance(base, $1) } ?? known[0])
+        }
         if let near = known.first(where: { distance(base, $0) <= 2 || distance(h, $0) <= 2 }) { return .lookalike(near) }
         return .unknown
     }
+
+    /// The name a known site goes by: the label before its top-level domain («hyperliquid» of app.hyperliquid.xyz).
+    static func brand(_ domain: String) -> String { String(domain.split(separator: ".").dropLast().last ?? "") }
 
     /// On MetaMask's phishing list (eth-phishing-detect): the host or any domain above it is blocked, unless the list's
     /// allowlist names one of them («evil.github.io» is blocked by its own entry, not by github.io).
