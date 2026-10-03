@@ -1,8 +1,8 @@
 import Foundation
 
 /// eth_signTypedData_v4 as sites send it, parsed and hashed here rather than trusted from the page.
-/// Only flat structs (what logins and Hyperliquid's own actions use); anything nested is refused, and token
-/// spending permissions (Permit, Permit2 and their kin) are recognised so they can be refused outright.
+/// Only flat structs (what logins use); anything nested is refused, and token spending permissions (Permit, Permit2
+/// and their kin), Hyperliquid's own actions and payments by signature are recognised so they can be refused outright.
 public struct TypedData: Sendable {
     public let primaryType: String
     public let domainName: String
@@ -21,6 +21,39 @@ public struct TypedData: Sendable {
         if Self.permitTypes.contains(primaryType) || primaryType.lowercased().contains("permit") { return true }
         let names = Set(fields.map { $0.name.lowercased() })
         return names.contains("spender") || (names.contains("operator") && names.contains("approved"))
+    }
+
+    /// EIP-3009: USDC and its kin move by a signed message that whoever holds it submits.
+    static let authorizations: Set<String> = ["TransferWithAuthorization", "ReceiveWithAuthorization"]
+    static let payeeNames: Set<String> = ["to", "recipient", "destination", "receiver", "beneficiary", "dst"]
+
+    /// Why a site's typed data isn't signed, or nil. Besides spending permissions: Hyperliquid's own actions — its
+    /// user-signed ones (Withdraw, UsdSend, SpotSend, ApproveAgent…, domain «HyperliquidSignTransaction») and the L1
+    /// «Agent» that signs an action's hash blind — which the main key, the Hyperliquid account's own, signs only in
+    /// ihatecrypto's guarded steps; EIP-3009 transfers by signature; any struct that names a payee and an amount.
+    public var refusal: String? {
+        if isTokenPermission {
+            return "\(primaryType): this is permission to spend your tokens (Permit) — the drainers' main trick. ihatecrypto doesn't sign these."
+        }
+        if domainName == "HyperliquidSignTransaction" || (domainName == "Exchange" && primaryType == "Agent") {
+            return "\(primaryType): a Hyperliquid action signed with your main key (a withdrawal, a transfer, a key approval). ihatecrypto signs those only in its own steps, never for a site."
+        }
+        if Self.authorizations.contains(primaryType) {
+            return "\(primaryType): moves your tokens by signature (EIP-3009). ihatecrypto doesn't sign that for a site."
+        }
+        let names = fields.map { $0.name.lowercased() }
+        if let payee = names.first(where: Self.payeeNames.contains), names.contains(where: { $0 == "value" || $0 == "wad" || $0.contains("amount") }) {
+            return "\(primaryType) sends an amount to its «\(payee)»: ihatecrypto doesn't sign payments as typed data."
+        }
+        return nil
+    }
+
+    /// The Touch ID prompt's text: the type, the site's name for itself and the fields with their values, as text that
+    /// can't draw a line of its own (breaks, controls and bidi marks dropped) and doesn't run on.
+    public var prompt: String {
+        func plain(_ s: String, _ n: Int) -> String { String(String(s.unicodeScalars.filter { !AddressCheck.hidden($0) }).prefix(n)) }
+        return (["sign \(plain(primaryType, 60)) for «\(plain(domainName, 60))»"] + fields.prefix(8).map { "\(plain($0.name, 30)): \(plain($0.value, 70))" })
+            .joined(separator: "\n")
     }
 
     public static func parse(_ json: Data) throws -> TypedData {

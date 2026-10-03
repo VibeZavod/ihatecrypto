@@ -235,8 +235,11 @@ func writeBrowserTestPage(_ path: String) async throws {
     func hex(_ s: EVMSignature) -> String { "0x" + s.r.hex + s.s.hex + String(format: "%02x", s.v) }
     let login = "Sign in to the ihatecrypto test page (EVM)"
     let personal = hex(try EVMSigner.sign(digest: PersonalMessage.digest(Data(login.utf8)), privateKey: signer.keys.evm))
-    let typedJSON = #"{"types":{"EIP712Domain":[{"name":"name","type":"string"},{"name":"version","type":"string"},{"name":"chainId","type":"uint256"},{"name":"verifyingContract","type":"address"}],"HyperliquidTransaction:ApproveAgent":[{"name":"hyperliquidChain","type":"string"},{"name":"agentAddress","type":"address"},{"name":"agentName","type":"string"},{"name":"nonce","type":"uint64"}]},"primaryType":"HyperliquidTransaction:ApproveAgent","domain":{"name":"HyperliquidSignTransaction","version":"1","chainId":42161,"verifyingContract":"0x0000000000000000000000000000000000000000"},"message":{"hyperliquidChain":"Mainnet","agentAddress":"0x00000000000000000000000000000000000000aa","agentName":"test","nonce":1700000000000}}"#
+    // A site's typed login signs like the reference; Hyperliquid's own ApproveAgent never signs for a site (the main key is
+    // the Hyperliquid account's key: the app signs its actions only in its own guarded steps).
+    let typedJSON = #"{"types":{"EIP712Domain":[{"name":"name","type":"string"},{"name":"version","type":"string"},{"name":"chainId","type":"uint256"}],"Login":[{"name":"contents","type":"string"},{"name":"nonce","type":"uint256"}]},"primaryType":"Login","domain":{"name":"ihatecrypto test","version":"1","chainId":42161},"message":{"contents":"Sign in to the ihatecrypto test page","nonce":1}}"#
     let typedSig = hex(try EVMSigner.sign(digest: TypedData.parse(Data(typedJSON.utf8)).digest, privateKey: signer.keys.evm))
+    let agentJSON = #"{"types":{"EIP712Domain":[{"name":"name","type":"string"},{"name":"version","type":"string"},{"name":"chainId","type":"uint256"},{"name":"verifyingContract","type":"address"}],"HyperliquidTransaction:ApproveAgent":[{"name":"hyperliquidChain","type":"string"},{"name":"agentAddress","type":"address"},{"name":"agentName","type":"string"},{"name":"nonce","type":"uint64"}]},"primaryType":"HyperliquidTransaction:ApproveAgent","domain":{"name":"HyperliquidSignTransaction","version":"1","chainId":42161,"verifyingContract":"0x0000000000000000000000000000000000000000"},"message":{"hyperliquidChain":"Mainnet","agentAddress":"0x00000000000000000000000000000000000000aa","agentName":"test","nonce":1700000000000}}"#
     let permitJSON = #"{"types":{"Permit":[{"name":"owner","type":"address"},{"name":"spender","type":"address"},{"name":"value","type":"uint256"},{"name":"nonce","type":"uint256"},{"name":"deadline","type":"uint256"}]},"primaryType":"Permit","domain":{"name":"USD Coin","version":"2","chainId":42161,"verifyingContract":"0xaf88d065e77c8cC2239327C5EDb3A432268e5831"},"message":{"owner":"\#(evm)","spender":"0x000000000000000000000000000000000000dEaD","value":"115792089237316195423570985008687907853269984665640564039457584007913129639935","nonce":0,"deadline":"99999999999"}}"#
     let html = """
     <!doctype html><meta charset="utf-8"><title>ihatecrypto test dApp</title><pre id="out">waiting</pre>
@@ -280,7 +283,8 @@ func writeBrowserTestPage(_ path: String) async throws {
       const sig = await req('personal_sign', ['0x' + [...new TextEncoder().encode('\(login)')].map(b => b.toString(16).padStart(2, '0')).join(''), addr]);
       log('personal_sign: ' + (sig === '\(personal)' ? 'matches reference' : 'FAIL ' + sig));
       const typed = await req('eth_signTypedData_v4', [addr, JSON.stringify(\(typedJSON))]);
-      log('typed data (Hyperliquid ApproveAgent): ' + (typed === '\(typedSig)' ? 'matches reference' : 'FAIL ' + typed));
+      log('typed data (site login): ' + (typed === '\(typedSig)' ? 'matches reference' : 'FAIL ' + typed));
+      await refused('Hyperliquid ApproveAgent for a site', 'eth_signTypedData_v4', [addr, JSON.stringify(\(agentJSON))]);
       await refused('Permit (unlimited USDC to a stranger)', 'eth_signTypedData_v4', [addr, JSON.stringify(\(permitJSON))]);
       await refused('blind 32-byte hash', 'personal_sign', ['0x' + 'aa'.repeat(32), addr]);
       // EVM transactions on Arbitrum; the account has no ETH, so a signed one is refused by the node for funds,

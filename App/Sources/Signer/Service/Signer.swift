@@ -340,13 +340,13 @@ enum Signer {
 
         case .signTypedData(let json):
             let typed = try TypedData.parse(json)
-            guard !typed.isTokenPermission else {
+            if let refusal = typed.refusal {
                 var v = Verdict()
-                v.problems.append("\(typed.primaryType): this is permission to spend your tokens (Permit) — the drainers' main trick. ihatecrypto doesn't sign these.")
+                v.problems.append(refusal)
                 return refused(v)
             }
             var r = SignerReply(ok: true)
-            r.signature = try withKey("evm", reason: "sign \(typed.primaryType) for «\(typed.domainName)»") { try EVMSigner.sign(digest: typed.digest, privateKey: $0) }
+            r.signature = try withKey("evm", reason: typed.prompt) { try EVMSigner.sign(digest: typed.digest, privateKey: $0) }
             r.checks = ["Signed \(typed.primaryType) data for «\(typed.domainName)»; the hash was computed by the signer."]
             return r
 

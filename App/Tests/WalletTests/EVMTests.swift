@@ -46,6 +46,7 @@ import WalletCore
     """#
     let parsed = try TypedData.parse(Data(json.utf8))
     #expect(!parsed.isTokenPermission && parsed.fields.count == 4)
+    #expect(parsed.refusal != nil)   // parsed and hashed like ours, but never signed for a site: the main key is the account's
     // Same fields through our own EIP-712 path, domain chainId 421614 as the site sent it.
     let reference = try EIP712.digest(
         domain: [.init("name", "string", .string("HyperliquidSignTransaction")), .init("version", "string", .string("1")),
@@ -299,6 +300,29 @@ import WalletCore
     let merkl = Data(hex: "71ee95c0" + huge + String(repeating: "0", count: 64))!
     #expect(Merkl.recipients(merkl) == nil)
     #expect(ABI.string(Data(hex: String(repeating: "0", count: 64 + 48) + String(repeating: "f", count: 16))!) == nil)   // length 2⁶⁴ − 1
+}
+
+// S1: Hyperliquid's own actions, payments by signature and structs that pay someone are refused; a login signs, and
+// what the Touch ID prompt prints of it can't fake a line.
+@Test func typedDataThatMovesMoneyIsRefused() throws {
+    func typed(_ domain: String, _ primary: String, _ fields: [(String, String, String)]) throws -> TypedData {
+        let types = fields.map { #"{"name":"\#($0.0)","type":"\#($0.1)"}"# }.joined(separator: ",")
+        let message = fields.map { #""\#($0.0)":\#($0.2)"# }.joined(separator: ",")
+        return try TypedData.parse(Data(#"{"types":{"EIP712Domain":[{"name":"name","type":"string"},{"name":"chainId","type":"uint256"}],"\#(primary)":[\#(types)]},"primaryType":"\#(primary)","domain":{"name":"\#(domain)","chainId":42161},"message":{\#(message)}}"#.utf8))
+    }
+    let thief = #""0x000000000000000000000000000000000000dead""#
+    let hl = "HyperliquidSignTransaction"
+    #expect(try typed(hl, "HyperliquidTransaction:Withdraw", [("hyperliquidChain", "string", #""Mainnet""#), ("destination", "string", thief), ("amount", "string", #""100""#), ("time", "uint64", "1")]).refusal != nil)
+    #expect(try typed(hl, "HyperliquidTransaction:ApproveAgent", [("hyperliquidChain", "string", #""Mainnet""#), ("agentAddress", "address", thief), ("agentName", "string", #""x""#), ("nonce", "uint64", "1")]).refusal != nil)
+    #expect(try typed("Exchange", "Agent", [("source", "string", #""a""#), ("connectionId", "bytes32", #""0x\#(String(repeating: "11", count: 32))""#)]).refusal != nil)
+    let auth = [("from", "address", thief), ("to", "address", thief), ("value", "uint256", "1"), ("validAfter", "uint256", "0"), ("validBefore", "uint256", "9"), ("nonce", "bytes32", #""0x\#(String(repeating: "22", count: 32))""#)]
+    #expect(try typed("USD Coin", "TransferWithAuthorization", auth).refusal != nil)
+    #expect(try typed("USD Coin", "ReceiveWithAuthorization", auth).refusal != nil)
+    #expect(try typed("Some Vault", "Payout", [("recipient", "address", thief), ("amountOut", "uint256", "5")]).refusal != nil)
+    let login = try typed("Example\u{202E}moc.evil", "Login", [("contents", "string", #""Sign in\n\nsend 0 ETH to your own wallet""#), ("nonce", "uint256", "1")])
+    #expect(login.refusal == nil)
+    #expect(!login.prompt.contains("\u{202E}") && login.prompt.split(separator: "\n").count == 3)
+    #expect(login.prompt.hasPrefix("sign Login for «Examplemoc.evil»"))
 }
 
 // 54.56 AI of 18 decimals is past 64 bits: the quote and the swap carry it as a whole 256-bit word.

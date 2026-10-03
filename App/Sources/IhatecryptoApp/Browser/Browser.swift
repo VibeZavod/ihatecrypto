@@ -233,9 +233,9 @@ final class Browser {
             let body: Data = if let s = args[1] as? String { Data(s.utf8) } else { try JSONSerialization.data(withJSONObject: args[1]) }
             let typed: TypedData
             do { typed = try TypedData.parse(body) } catch { throw SiteError("4200|\(error.localizedDescription)") }
-            if typed.isTokenPermission {
-                workspace?.reply("Site \(origin) asked for a “\(typed.primaryType)” signature — permission to spend your tokens. Declined: that's how drainers work.", note: "browser")
-                throw SiteError("4001|Permission to spend tokens (Permit) — ihatecrypto doesn't sign that.")
+            if let refusal = typed.refusal {
+                workspace?.reply("Site \(origin) asked for a “\(typed.primaryType)” signature. Declined — \(refusal)", note: "browser")
+                throw SiteError("4001|" + refusal)
             }
             guard await ask(.typedData(typed), origin: origin, site: site) else { throw SiteError("4001|The user declined.") }
             let reply = try await SignerClient().send(.signTypedData(json: body))
