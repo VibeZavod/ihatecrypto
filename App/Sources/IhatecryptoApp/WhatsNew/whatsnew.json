@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.4",
+    "date": "2026-10-03",
+    "stories": [
+      {
+        "title": "Safer signatures",
+        "text": "A site can't get a signature that moves money off Hyperliquid or sends USDC on its own; coins, NFTs and spending rights go only to addresses you approved, with the amount and the network fee on the prompt.",
+        "symbol": "lock.shield.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Understands you better",
+        "text": "«2,500» is two and a half thousand, «sell SOL for $10» never sells it all, «ok?» is a question and not a yes, and an answer in the wrong unit is asked again.",
+        "symbol": "text.bubble.fill",
+        "color": "2775CA"
+      },
+      {
+        "title": "Trades keep their stop",
+        "text": "«cancel the limit» removes only the entries still waiting; the position, its stop and its take stay. A limit on a pullback brings enough margin to be placed.",
+        "symbol": "chart.line.uptrend.xyaxis",
+        "color": "0B7A55"
+      },
+      {
+        "title": "Steadier everywhere",
+        "text": "Withdrawing from Aave or Morpho brings back only what came out, switching wallets drops cards made for the other one, and a hung model can't freeze the chat.",
+        "symbol": "checkmark.seal.fill",
+        "color": "4615C8"
+      }
+    ]
+  },
+  {
     "version": "0.3.1",
     "date": "2026-10-03",
     "stories": [
