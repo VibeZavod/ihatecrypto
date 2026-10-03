@@ -116,6 +116,8 @@ struct CanvasSession: Codable, Identifiable, Equatable {
 struct CanvasOutcome: Codable, Equatable {
     var at: Date
     var ok: Bool
+    /// Not ok, but not failed either: sent with no outcome back (Execution.swift unsettled); never offered again.
+    var unknown: Bool?
 }
 
 /// A finished move kept on its canvas once the next one begins.
@@ -800,7 +802,7 @@ struct SavedBoard: View {
         VStack(alignment: .leading, spacing: 12) {
             if let o = canvas.outcome {
                 HStack(spacing: 12) {
-                    Label("\(o.ok ? "Executed" : "Failed") · \(Fmt.date(o.at))", systemImage: o.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
+                    Label("\(o.ok ? "Executed" : o.unknown == true ? "Sent, status unknown" : "Failed") · \(Fmt.date(o.at))", systemImage: o.ok ? "checkmark.circle.fill" : "xmark.octagon.fill")
                         .font(.ui(13, .semibold)).foregroundStyle(o.ok ? Brand.profit : Brand.loss)
                     // The same move again: a fresh card with new quotes, waiting for Confirm like the first time. What the
                     // failed run already did stays done (USDC it bridged waits on that network; the chat said so).

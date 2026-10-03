@@ -201,10 +201,15 @@ public enum Relay {
     }
 
     /// "waiting", "pending", "submitted", "success", "delayed", "refund", "failure".
+    /// Asked while money is on its way: a throttle, a server error or a dropped connection is asked again (RPCRetry)
+    /// rather than ending the move as failed while the order is still running.
     public static func status(requestId: String) async throws -> (status: String, destinationTxs: [String]) {
-        let (data, _) = try await URLSession.shared.data(from: URL(string: "\(base)/intents/status/v3?requestId=\(requestId)")!)
-        guard let j = try JSONSerialization.jsonObject(with: data) as? [String: Any], let status = j["status"] as? String else { throw RelayError(data) }
-        return (status, j["txHashes"] as? [String] ?? [])
+        try await RPCRetry.run { try await URLSession.shared.data(from: URL(string: "\(base)/intents/status/v3?requestId=\(requestId)")!) } answer: { data, code in
+            guard let j = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any], let status = j["status"] as? String else {
+                throw RPCRetry.Again(code == 429 || code >= 500, RelayError(data))
+            }
+            return (status, j["txHashes"] as? [String] ?? [])
+        }
     }
 }
 

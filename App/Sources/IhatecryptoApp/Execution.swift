@@ -113,15 +113,36 @@ extension Workspace {
         return !b.isEmpty && b.allSatisfy { [.ready, .warning, .info].contains($0.status) }
     }
 
-    func executor(_ wallet: TradeWallet) -> Executor {
+    /// Everything signed, written before it's sent (Journal.swift).
+    var journalURL: URL {
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "ihatecrypto")
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        return folder.appending(path: "journal.jsonl")
+    }
+
+    /// What went out since `start` with no outcome yet — signed in the journal and nothing after: a receipt that didn't
+    /// come, a Relay order still on its way. Each as where to look.
+    func unsettled(since start: Date) -> [String] {
+        let from = Date(timeIntervalSince1970: start.timeIntervalSince1970.rounded(.down))   // the journal keeps whole seconds
+        return ((try? Journal(url: journalURL).unresolved()) ?? []).filter { $0.at >= from }.map { e in
+            switch e.chain {
+            case "solana": "https://solscan.io/tx/\(e.id)"
+            case "near": "https://nearblocks.io/txns/\(e.id)"
+            case "relay": "Relay order \(e.id)"
+            case "1click": "1Click deposit \(e.id)"
+            case "hyperliquid": "Hyperliquid «\(e.note)»"
+            default: EVMNetwork.named(e.chain).map { "\($0.explorer)/tx/\(e.id)" } ?? "\(e.chain) \(e.id)"
+            }
+        }
+    }
+
+    func executor(_ wallet: TradeWallet) -> Executor {
         // A scheduled task on the automation wallet (Tasks.swift): its addresses, and the signer told which wallet signs.
         let automation = TaskRun.automation
         let wallet = automation.map { TradeWallet(solana: $0.solana ?? wallet.solana, evm: $0.evm ?? wallet.evm) } ?? wallet
         let signer: any TradeSigner = if let automation { XPCTradeSigner(asWallet: automation.id) }
             else if ledgerActive { ledgerSigner(wallet) } else { XPCTradeSigner() }
-        return Executor(wallet: wallet, signer: signer, journal: Journal(url: folder.appending(path: "journal.jsonl"))) { [weak self] text in
+        return Executor(wallet: wallet, signer: signer, journal: Journal(url: journalURL)) { [weak self] text in
             Task { @MainActor in
                 self?.reply(text, note: "execution")
                 self?.runningAction?.lines.append(text)
@@ -323,7 +344,17 @@ extension Workspace {
         } else {
             route(command)
         }
-        func finish(_ ok: Bool) {
+        // Only a money move owns the board, and only a call that found nothing running owns `executing`: a schedule or a
+        // preview finishing while a move runs must not take its board away, end its signing session or start a chain's
+        // next step (continueTask).
+        let ownsBoard = movesMoney(command, confirmed: confirmed)
+        let ownsExecuting: Bool = switch command {
+        case .schedule, .stopSchedules: false
+        default: !executing
+        }
+        /// `unknown`: sent, but no outcome came — it may have gone through, so no «Try again».
+        func finish(_ ok: Bool, unknown: Bool = false) {
+            guard ownsBoard else { return }
             // The steps as the run left them: a paid request's last card says «answered», not «the answer comes here».
             let steps = runningAction?.steps ?? confirmedRoute?.steps ?? []
             // A chain going on keeps this board until its next step's takes its place (runSteps): dropped here, the
@@ -333,28 +364,28 @@ extension Workspace {
             } else {
                 runningAction = nil
             }
-            guard movesMoney(command, confirmed: confirmed) else { return }
-            finishedAction = (confirmedRoute?.title ?? readable(Self.canvasTitle(command)), CanvasOutcome(at: Date(), ok: ok), steps)
-            retryCommand = ok ? nil : (canvasID, command)
+            finishedAction = (confirmedRoute?.title ?? readable(Self.canvasTitle(command)), CanvasOutcome(at: Date(), ok: ok, unknown: unknown ? true : nil), steps)
+            retryCommand = ok || unknown ? nil : (canvasID, command)
             // The outcome board comes from the saved canvas: save now, not after the balance refresh that follows,
             // or the canvas stays blank for those seconds.
             saveCanvas()
             notify(.moves, confirmedRoute?.title ?? readable(Self.canvasTitle(command)),
                    ok ? say("Done — checked, signed and confirmed.", "Готово — проверено, подписано и подтверждено сетью.")
+                      : unknown ? say("Sent, status unknown — check the links in the chat before doing it again.", "Отправлено, статус неизвестен — проверь ссылки в чате, прежде чем повторять.")
                       : say("It didn’t go through; the chat says why.", "Не прошло — причина в чате."), record: false, failed: !ok)
         }
-        if movesMoney(command, confirmed: confirmed) {
+        if ownsBoard {
             withAnimation(StudioView.spring) {
                 runningAction = (confirmedRoute?.title ?? readable(Self.canvasTitle(command)), confirmedRoute?.steps ?? [], [], Date())
             }
         }
-        switch command {
-        case .schedule, .stopSchedules: break
-        default:
-            executing = true
-        }
+        if ownsExecuting { executing = true }
         // The board first: `executing` going false starts a chain's next step (continueTask), which lays its own board.
-        defer { runningAction = nil; executing = false }
+        defer {
+            if ownsBoard { runningAction = nil }
+            if ownsExecuting { executing = false }
+        }
+        let started = Date()
         do {
             let e = executor(wallet)
             switch command {
@@ -480,6 +511,14 @@ extension Workspace {
                                           "Ahora no vale la pena mover nada: los motivos están en el lienzo."), note: "DeFi")
                 }
             case .schedule(let asset, let usdc, let days):
+                // A schedule buys later with nobody at the window: never set up from the debug API (its runs would sign
+                // outside its marker), and never «every 0 days», which would spin forever finding the next date.
+                if SignerClient.untrusted, activeWallet?.isTest != true {
+                    reply(say("Recurring buys can’t be set up from the debug API: type it in the window yourself.",
+                              "Регулярные покупки нельзя завести из отладочного API: напиши это в окне сам."), note: "debug API")
+                    return
+                }
+                guard days > 0 else { reply(say("A recurring buy needs at least a day between buys.", "Между регулярными покупками нужен хотя бы день.")); return }
                 // The per-purchase rule applies to each run; a schedule adds up, so it is shown per month too.
                 schedules.removeAll { $0.symbol == asset.symbol }
                 schedules.append(Schedule(symbol: asset.symbol, usdc: usdc, days: days, next: Date()))
@@ -497,8 +536,15 @@ extension Workspace {
             }
             finish(true)
         } catch {
-            reply(say("Failed: ", "Не вышло: ") + error.localizedDescription)
-            finish(false)
+            // Sent, but no outcome came back: it may well have gone through, and a second try would pay twice.
+            let sent = ownsBoard ? unsettled(since: started) : []
+            if sent.isEmpty {
+                reply(say("Failed: ", "Не вышло: ") + error.localizedDescription)
+            } else {
+                reply(say("Sent, status unknown: ", "Отправлено, статус неизвестен: ") + error.localizedDescription + " "
+                      + say("Check before doing it again: ", "Проверь, прежде чем повторять: ") + sent.joined(separator: " · "))
+            }
+            finish(false, unknown: !sent.isEmpty)
         }
         await refresh()
     }
@@ -597,10 +643,15 @@ extension Workspace {
             await guardPositions()
             return
         }
-        executing = true
-        defer { runningAction = nil; executing = false }   // the board first: `executing` going false starts a chain's next step
+        // As in move(): only what this call set is reset, so a stop moved during a running move leaves that move's board.
+        let ownsExecuting = !executing
+        if ownsExecuting { executing = true }
         // A close keeps its card on the canvas while it goes through, then leaves it as Done or Failed: nothing vanishes.
         let shown = if case .close(let share) = command { closeRoute(share, coin: coin) } else { nil as (title: String, steps: [ActivityBubble])? }
+        defer {   // the board first: `executing` going false starts a chain's next step
+            if shown != nil { runningAction = nil }
+            if ownsExecuting { executing = false }
+        }
         if let shown { runningAction = (shown.title, shown.steps, [], Date()) }
         var ok = true
         do { _ = try await executor(wallet).manage(command, asset: coin, policy: policy, equity: equity) } catch { ok = false; reply(say("Failed: ", "Не вышло: ") + error.localizedDescription) }
@@ -694,8 +745,15 @@ extension Workspace {
     func runSchedules() async {
         guard let wallet = signerWallet, !executing else { return }
         // ponytail: a buy due while paused runs at once when switched back on; advance it on resume if that bothers.
-        for index in schedules.indices where schedules[index].next <= Date() && schedules[index].paused != true && !schedulePaused {
-            guard let asset = schedules[index].asset else { continue }
+        // By symbol (one schedule each), found again after every await: «stop recurring buys» or a wallet switch during a
+        // buy's Touch ID changes the list, and an index kept across it crashed.
+        func find(_ symbol: String) -> Int? {
+            guard signerWallet?.solana == wallet.solana else { return nil }
+            return schedules.firstIndex { $0.symbol == symbol }
+        }
+        for symbol in schedules.filter({ $0.next <= Date() && $0.paused != true }).map(\.symbol) {
+            guard !schedulePaused, let index = find(symbol), schedules[index].next <= Date(), schedules[index].paused != true,
+                  let asset = schedules[index].asset else { continue }
             // Jupiter or Solana switched off: this run is skipped, the schedule stays.
             if let off = Modules.current.refusal(.jupiter, ru: modulesRussian) {
                 schedules[index].advance()
@@ -713,6 +771,8 @@ extension Workspace {
                 continue
             }
             ledgerWaitNotified.remove(asset.symbol)
+            // A move the user started meanwhile has the flag: this buy waits for the next round rather than share it.
+            guard !executing, let index = find(symbol) else { continue }
             let usdc = schedules[index].usdc
             schedules[index].advance()
             executing = true
@@ -728,7 +788,8 @@ extension Workspace {
                 let line = try await executor(wallet).swap(asset, buy: true, amount: usdc, equity: equity)
                 notify(.moves, say("\(asset.symbol) purchase", "Покупка \(asset.symbol)"), line, schedule: "buy:\(asset.symbol)")
             } catch {
-                let text = "Scheduled \(asset.symbol) purchase failed: \(error.localizedDescription). Next one: \(Fmt.date(schedules[index].next))."
+                let next = find(symbol).map { Fmt.date(schedules[$0].next) } ?? "none, the schedule was stopped"
+                let text = "Scheduled \(asset.symbol) purchase failed: \(error.localizedDescription). Next one: \(next)."
                 reply(text)
                 notify(.moves, say("\(asset.symbol) purchase failed", "Покупка \(asset.symbol) не прошла"), text, schedule: "buy:\(asset.symbol)", failed: true)
             }

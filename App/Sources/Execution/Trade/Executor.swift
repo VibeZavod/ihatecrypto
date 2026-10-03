@@ -713,11 +713,14 @@ public actor Executor {
         _ = try await rpc.send(signed)
         switch try await rpc.waitForConfirmation(signature, lastValidBlockHeight: b.lastValid) {
         case .confirmed: try journal.append(.init(chain: "solana", id: signature, kind: .confirmed))
+        // Relay's order ends with its deposit: left «signed», the app would take the move for one still on its way.
         case .failed(let e):
             try journal.append(.init(chain: "solana", id: signature, kind: .failed, note: e))
+            try journal.append(.init(chain: "relay", id: b.requestId, kind: .failed, note: "its Solana deposit failed"))
             throw ExecutionError("The bridge transaction failed: \(e). The money stayed on Solana.")
         case .expired:
             try journal.append(.init(chain: "solana", id: signature, kind: .expired))
+            try journal.append(.init(chain: "relay", id: b.requestId, kind: .expired))
             throw ExecutionError("The bridge transaction didn't make it into a block. The money stayed on Solana; you can retry.")
         }
         while Date().timeIntervalSince(started) < 180 {
