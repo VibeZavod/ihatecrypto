@@ -706,7 +706,8 @@ final class Workspace {
         // Read once per message: each read is a Keychain round trip and a JSON decode.
         let client = llmClient()
         // Anything but a confirmation, or the amount a step asked for, takes over from the steps that waited for it
-        // (with a model, once it reads a command: a question about the card keeps them, see below).
+        // (with a model, once it reads a command: a question about the card keeps them, see below). An amount in the
+        // wrong unit counts too: it is asked again below, and the steps keep waiting for the answer.
         if !confirms, client == nil || declines, awaitingAmount == nil || WalletCommand.amountAnswer(text) == nil { taskQueue = nil }
         // With a model, a card waiting for Confirm stays while the model reads the message with it in view: a question
         // about it («это точно лучший маршрут?», «а комиссия какая?») is answered and the card keeps waiting; only a new
@@ -742,9 +743,20 @@ final class Workspace {
                 reply(say("OK, not doing that.", "Хорошо, не делаю."))
                 return
             }
-            if let value = WalletCommand.amountAnswer(text) {
+            if let value = WalletCommand.amountAnswer(text, for: waiting) {
                 awaitingAmount = nil
                 await handleWallet(waiting.with(amount: value))
+                return
+            }
+            // An amount in another unit («$5» to a SOL stake, «1 sol» to a USDC deposit) or under the coin's smallest one:
+            // asked again in the unit the question is in, never read as that coin.
+            if let value = WalletCommand.amountAnswer(text) {
+                let unit = waiting.amountAsset, least = unit == "SOL" ? "0.000000001" : "0.000001", example = unit == "SOL" ? "0.01" : "1"
+                reply(value < Decimal(string: least)!
+                      ? say("That's less than the smallest \(unit) amount (\(least)). How much \(unit)? Write a number in \(unit), for example “\(example)”.",
+                            "Это меньше самой малой суммы \(unit) (\(least)). Сколько \(unit)? Напиши число в \(unit), например «\(example)».")
+                      : say("The question is in \(unit). How much \(unit)? Write a number in \(unit), for example “\(example)”.",
+                            "Вопрос в \(unit). Сколько \(unit)? Напиши число в \(unit), например «\(example)»."))
                 return
             }
             if ChatWords.confirms(text) {

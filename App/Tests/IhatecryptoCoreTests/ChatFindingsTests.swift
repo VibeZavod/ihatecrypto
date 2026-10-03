@@ -23,6 +23,17 @@ import Testing
     #expect(ChatRouter.addressesAllowed("buy token \(a) on base for 5 USDC", userText: "", known: [a.lowercased()], found: [], displays: shows, markets: []))
 }
 
+/// The chat asks «How much SOL?» again (naming `amountAsset`) when the reply is an amount, but not one for this question.
+@Test func anAmountInTheWrongUnitIsAskedAgain() {   // C8, R1, R3
+    let deposit = WalletCommand.lendDeposit("USDC", nil)
+    for (reply, waiting) in [("$5", WalletCommand.stake(nil)), ("на 5 долларов", .stake(nil)), ("1 sol", deposit), ("0.0000001", deposit)] {
+        #expect(WalletCommand.amountAnswer(reply) != nil && WalletCommand.amountAnswer(reply, for: waiting) == nil, "\(reply)")
+    }
+    #expect(WalletCommand.stake(nil).amountAsset == "SOL" && deposit.amountAsset == "USDC")
+    #expect(WalletCommand.amountAnswer("0.5", for: .stake(nil)) == Decimal(string: "0.5"))
+    #expect(WalletCommand.amountAnswer("long ETH") == nil)   // not an amount: the message goes on as before
+}
+
 @Test func aChangeInWordsNeverSignsTheCard() {   // C10
     for change in ["добавь ещё триста", "make it five hundred", "давай половину", "удвой", "double it", "add another hundred",
                    "сделай 800", "да, но на тысячу", "yes but two thousand", "давай поменьше", "давай сто"] {

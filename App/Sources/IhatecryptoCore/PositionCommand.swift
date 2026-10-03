@@ -587,7 +587,7 @@ extension WalletCommand {
 
     /// What the amount of a command waiting for one counts: SOL for a stake, the deposited coin for Jupiter Lend and Kamino,
     /// else USDC (buys are paid in it).
-    var amountAsset: String {
+    public var amountAsset: String {
         switch self {
         case .lendDeposit(let s, _), .kamino(_, let s, _): s
         case .stake: "SOL"
