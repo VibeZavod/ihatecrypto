@@ -64,6 +64,15 @@ private let sol = SpotAsset.all[0]
     #expect(PositionCommand.parse("отмени ордер") == .cancelOrders)
 }
 
+@Test func aQuestionOrANegationIsNoYesOrNo() {   // C6, R4
+    for text in ["ok?", "да?", "confirm?", "sure?", "let it go", "да ну", "да ну его", "да не", "no don't", "¿sí?"] {
+        #expect(!ChatWords.confirms(text), "\(text)")
+    }
+    for text in ["не отменяй", "don't cancel", "отменить?", "не отменяй, давай"] { #expect(!ChatWords.declines(text), "\(text)") }
+    for text in ["да", "давай", "do it", "yes please", "ok", "ну давай", "let's go"] { #expect(ChatWords.confirms(text), "\(text)") }
+    for text in ["нет", "не надо", "не, передумал", "cancel", "never mind"] { #expect(ChatWords.declines(text), "\(text)") }
+}
+
 @Test func anAnswerInAnotherUnitDoesNotFillTheQuestion() {   // C8, R1, R2, R3
     #expect(WalletCommand.amountAnswer("$5", for: .stake(nil)) == nil)
     #expect(WalletCommand.amountAnswer("на 5 долларов", for: .stake(nil)) == nil)

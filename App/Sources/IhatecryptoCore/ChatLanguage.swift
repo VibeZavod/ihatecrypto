@@ -42,8 +42,14 @@ public enum ChatWords {
     /// A confirmation is the whole message: «делай», «да, давай», «yes, do it», «sí, hazlo», «ok». Anything more is a
     /// change or a question the model reads: «давай на 30» signed the waiting 20 when a confirmation only had to start
     /// with «давай»; «si quieres…» is an «if».
+    /// A «?» asks and a «не / don't / not» refuses («ok?», «да?», «да не»); «да ну (его)» and «let it go» brush the card
+    /// off: all of them are for the model.
     public static func confirms(_ text: String) -> Bool {
         let words = text.lowercased().split { !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "’" }.map(String.init)
+        let line = " " + words.joined(separator: " ") + " "
+        if text.contains(where: { $0 == "?" || $0 == "¿" }) || words.contains(where: negations.contains) || line.contains(" да ну ") || line.contains(" let it go ") {
+            return false
+        }
         return !words.isEmpty && words.allSatisfy { yes.contains($0) || filler.contains($0) } && words.contains(where: yes.contains)
     }
     static let yes: Set<String> = [
@@ -52,6 +58,7 @@ public enum ChatWords {
         "do", "go", "yes", "confirm", "confirmed", "sign", "ok", "okay", "yep", "yeah", "sure", "proceed",
         "sí", "si", "dale", "hazlo", "confirmo", "adelante", "vale", "claro", "acuerdo",
     ]
+    static let negations: Set<String> = ["не", "нет", "ни", "no", "not", "never", "nope", "nah", "don't", "don’t", "dont"]
     /// Words that can go with a «yes» without changing it: «да, давай, сделай это», «yes please, do it now».
     static let filler: Set<String> = [
         "это", "его", "её", "ее", "сделай", "сейчас", "теперь", "пожалуйста", "плиз", "так", "ну", "и", "вперёд", "вперед", "конечно", "хорошо",
@@ -61,8 +68,13 @@ public enum ChatWords {
 
     /// A whole-message «no»: «нет», «cancel», «no gracias», «déjalo», «стоп, передумал», «nevermind, forget it».
     /// Like a confirmation, only no-words and fillers: «не на арбитруме» is a change the model reads.
+    /// «отменить?» asks; «не отменяй», «don't cancel» keep the card («не, передумал», with its comma, still drops it).
     public static func declines(_ text: String) -> Bool {
         let q = text.lowercased()
+        if q.contains(where: { $0 == "?" || $0 == "¿" })
+            || q.matches(of: /(?:^|[^\p{L}'’])(?:не|not|never|don['’]?t|dont)\s+([\p{L}'’]+)/).contains(where: { no.contains(String($0.1)) }) {
+            return false
+        }
         if q.wholeMatch(of: /\s*(?:no|nope|cancel|stop|нет|не\s+надо|отмена|отмени\w*|стоп|nein|abbrechen|non|annuler|cancelar|cancela|no\s+gracias|déjalo|dejalo|olvídalo|olvidalo|detente|para|não|nao|nie|anuluj)[.!\s]*/) != nil {
             return true
         }
