@@ -70,7 +70,7 @@ extension Workspace {
             if c.id != canvasID { openCanvas(c) }
             return
         }
-        guard !busy else { return }
+        guard canSwitchCanvas else { return }
         // Only the greeting, as on every canvas: the item is its card, not a message.
         var c = CanvasSession(providerID: providerID, model: model, messages: Array(messages.prefix(1)), intent: TradeIntent())
         c.title = scheduleEntries.first { $0.id == key }?.title ?? "Scheduled"
@@ -82,7 +82,7 @@ extension Workspace {
     /// Closes an item's canvas: back to the canvas it was opened from (or a new one). Nothing written on it, it was only a
     /// view of the item and leaves the list; the Schedule frame opens it again.
     func closeScheduleCanvas() {
-        guard let id = canvasID, let c = canvases.first(where: { $0.id == id }), c.schedule != nil, !busy else { return }
+        guard let id = canvasID, let c = canvases.first(where: { $0.id == id }), c.schedule != nil, canSwitchCanvas else { return }
         let frame = showSchedule, place = detail
         keepViewport = true
         defer { showSchedule = frame; detail = place; keepViewport = false }

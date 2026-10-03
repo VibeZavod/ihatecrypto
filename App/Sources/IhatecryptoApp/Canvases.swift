@@ -167,24 +167,28 @@ extension Workspace {
         if let i = canvases.firstIndex(where: { $0.id == c.id }) { canvases[i] = c } else { canvases.append(c) }
     }
 
+    /// Another canvas may open: nothing is being answered or carried out. A move saves its outcome, title, replies and
+    /// «Try again» to the canvas open when it ends, so that canvas can't change under it.
+    var canSwitchCanvas: Bool { !busy && !executing && runningAction == nil }
+
     func openCanvas(_ c: CanvasSession) {
         // The open canvas clicked again: its board back as it was kept, when nothing on it runs or waits for Confirm —
         // its boards closed had left it bare and the click did nothing («при повторном нажатии на этот канвас ничего
         // не происходит»).
         if c.id == canvasID {
-            guard !busy, !executing, pendingAction == nil, pendingAllocation == nil, runningAction == nil else { return }
+            guard canSwitchCanvas, pendingAction == nil, pendingAllocation == nil, awaitingAmount == nil else { return }
             saveCanvas()
             if let kept = canvases.first(where: { $0.id == c.id }) { load(kept) }
             return
         }
-        guard !busy else { return }
+        guard canSwitchCanvas else { return }
         saveCanvas()
         load(c)
         Task { await refreshQuote() }
     }
 
     func newCanvas() {
-        guard !busy else { return }
+        guard canSwitchCanvas else { return }
         saveCanvas()
         clearCanvas()
         canvasID = nil
@@ -207,6 +211,7 @@ extension Workspace {
 
     /// A fresh canvas that goes into `folder` as soon as it's kept.
     func newCanvas(in folder: String) {
+        guard canSwitchCanvas else { return }
         newCanvas()
         newCanvasFolder = folder
     }
@@ -302,7 +307,11 @@ extension Workspace {
     var canvasFolders: [String] { Array(Set(folders + canvases.compactMap(\.folder))).sorted { $0.localizedStandardCompare($1) == .orderedAscending } }
 
     func deleteCanvas(_ id: UUID) {
-        if id == canvasID { newCanvas() }
+        // The open one only when another can take its place: an answer still being written would save it back.
+        if id == canvasID {
+            guard canSwitchCanvas else { return }
+            newCanvas()
+        }
         canvases.removeAll { $0.id == id }
         // A price alert that waited to prepare its plan goes with it.
         alerts.removeAll { $0.plan == id }
@@ -353,6 +362,8 @@ extension Workspace {
         pendingAllocation = nil
         pendingAction = nil
         pendingText = nil
+        // «How much SOL into Kamino?» was asked here: a bare number on the next canvas answers something else.
+        awaitingAmount = nil
         finishedAction = nil
         planReview = nil
         savedBoard = nil
@@ -399,7 +410,7 @@ struct CanvasList: View {
                 Button { withAnimation(StudioView.spring) { ws.newCanvas() }; close?() } label: {
                     Label("New", systemImage: "square.and.pencil").font(.ui(10, .semibold)).padding(.horizontal, 8)
                 }
-                .buttonStyle(.hoverIcon).help(ws.busy ? "ihatecrypto is still answering" : "New canvas").disabled(ws.busy)
+                .buttonStyle(.hoverIcon).help(ws.canSwitchCanvas ? "New canvas" : ws.busy ? "ihatecrypto is still answering" : "A move is running on this canvas").disabled(!ws.canSwitchCanvas)
                 .padding(.trailing, -8)   // the word lines up with the rows' right edge; only the hover wash goes past it
             }
             let items = ws.canvases.sorted { $0.updated > $1.updated }
@@ -486,7 +497,7 @@ struct NoteBoard: View {
                 Spacer()
                 if first, note.canvas != ws.canvasID, let c = ws.canvases.first(where: { $0.id == note.canvas }) {
                     Button("Open") { withAnimation(StudioView.spring) { ws.openCanvas(c) } }
-                        .buttonStyle(.bordered).controlSize(.small).disabled(ws.busy)
+                        .buttonStyle(.bordered).controlSize(.small).disabled(!ws.canSwitchCanvas)
                         .help("The note's own canvas, in its folder")
                 }
             }
@@ -593,7 +604,7 @@ struct FolderRow: View {
             Button { withAnimation(StudioView.spring) { ws.newCanvas(in: name) } } label: {
                 Label("New canvas here", systemImage: "square.and.pencil")
             }
-            .disabled(ws.busy)
+            .disabled(!ws.canSwitchCanvas)
             Button { draft = name; renaming = true } label: { Label("Rename", systemImage: "pencil") }
             Divider()
             Button(role: .destructive) { withAnimation(.snappy) { ws.deleteFolder(name) } } label: { Label("Delete folder (canvases stay)", systemImage: "trash") }
@@ -742,6 +753,7 @@ struct CanvasRow: View {
         } label: { Label("Move to folder", systemImage: "folder") }
         Divider()
         Button(role: .destructive) { withAnimation { ws.deleteCanvas(canvas.id) } } label: { Label("Delete canvas", systemImage: "trash") }
+            .disabled(current && !ws.canSwitchCanvas)
     }
 
     private func commitRename() {

@@ -57,7 +57,7 @@ extension Workspace {
     /// The first task whose time has come, on a canvas of its own, once nothing else is going on: the user's card
     /// waiting for Confirm, a reply being written, a move running or half-typed text come first.
     func runDueTask() async {
-        guard !schedulePaused, let i = tasks.firstIndex(where: { $0.next <= Date() && $0.paused != true }), !busy, !thinking, !executing, !preparing,
+        guard !schedulePaused, let i = tasks.firstIndex(where: { $0.next <= Date() && $0.paused != true }), canSwitchCanvas, !thinking, !preparing,
               pendingAction == nil, pendingAllocation == nil, prepared == nil, awaitingAmount == nil, draft.isEmpty else { return }
         var task = tasks[i]
         if task.advance() { tasks[i] = task } else { tasks.remove(at: i) }
