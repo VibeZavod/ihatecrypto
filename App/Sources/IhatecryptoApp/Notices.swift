@@ -55,16 +55,19 @@ struct ChatAndNoticeSettings: View {
     @AppStorage("chatLanguage") private var language = ChatLanguage.auto.rawValue
 
     var body: some View {
-        Section("Chat and notifications") {
-            Picker("Reply language", selection: $language) {
-                Text("Auto — the language you write in").tag(ChatLanguage.auto.rawValue)
-                Text("English").tag(ChatLanguage.en.rawValue)
-                Text("Русский").tag(ChatLanguage.ru.rawValue)
-            }
+        SettingsCard(icon: "bell", title: "Chat and notifications", line: "Notifications show while ihatecrypto is in the background or in the menu bar; a click brings its window back.") {
             NoticePermission()
-            ForEach(Notice.allCases, id: \.self) { NoticeToggle(kind: $0) }
-            Text("Notifications show while ihatecrypto is in the background or in the menu bar; a click brings its window back.")
-                .font(.ui(10)).foregroundStyle(.secondary)
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 18, alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 0) {
+                ForEach(Notice.allCases, id: \.self) { NoticeToggle(kind: $0) }
+            }
+            SettingsRow("Reply language") {
+                Picker("Reply language", selection: $language) {
+                    Text("Auto — the language you write in").tag(ChatLanguage.auto.rawValue)
+                    Text("English").tag(ChatLanguage.en.rawValue)
+                    Text("Русский").tag(ChatLanguage.ru.rawValue)
+                }
+                .labelsHidden().fixedSize()
+            }
         }
     }
 }
@@ -139,7 +142,9 @@ private struct NoticeToggle: View {
         _on = AppStorage(wrappedValue: true, "notice.\(kind.rawValue)")
     }
 
-    var body: some View { Toggle(kind.title, isOn: $on) }
+    var body: some View {
+        SettingsRow(kind.title) { Toggle(kind.title, isOn: $on).toggleStyle(AccentSwitch()) }.padding(.bottom, 8)
+    }
 }
 
 /// A click on a notification brings the main window back, even when only the menu bar item was left. Shown while

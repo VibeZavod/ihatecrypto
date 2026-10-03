@@ -97,9 +97,13 @@ extension Workspace {
     /// «Main · phrase: Solana AN5b…e8cL, EVM 0x1523…F656» — what a wallet can sign for.
     static func describe(_ w: SignerWallet) -> String {
         func short(_ s: String) -> String { "\(s.prefix(4))…\(s.suffix(4))" }
-        let kind = w.kind == "phrase" ? "recovery phrase" : w.kind == "ledger" ? "Ledger, confirm on the device" : w.kind == "solana" ? "Solana key only" : "EVM key only"
         let parts = [w.solana.map { "Solana \(short($0))" }, w.evm.map { "EVM \(short($0))" }, w.near.map { "NEAR \(short($0))" }].compactMap { $0 }
-        return "\(kind) · " + parts.joined(separator: ", ")
+        return "\(kindName(w)) · " + parts.joined(separator: ", ")
+    }
+
+    /// «recovery phrase», «Ledger, confirm on the device»…: what kind of key a wallet is.
+    static func kindName(_ w: SignerWallet) -> String {
+        w.kind == "phrase" ? "recovery phrase" : w.kind == "ledger" ? "Ledger, confirm on the device" : w.kind == "solana" ? "Solana key only" : "EVM key only"
     }
 
     /// «переключись на кошелёк Main», «switch to wallet Trading»: the wallet it names, by its name. An exact app
