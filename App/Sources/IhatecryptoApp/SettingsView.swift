@@ -14,6 +14,7 @@ struct SettingsView: View {
     @State private var alwaysRunningError: String?
     @AppStorage("chatLanguage") private var language = ChatLanguage.auto.rawValue
     @AppStorage(AppTheme.key) private var theme = AppTheme.system.rawValue
+    @AppStorage(AppLanguage.key) private var appLanguage = AppLanguage.system.rawValue
     static let tabKey = "settingsTab"
     @AppStorage(SettingsView.tabKey) private var tab = Tab.general
 
@@ -143,9 +144,18 @@ struct SettingsView: View {
                 }
             }
         }
-        SettingsSection(icon: "text.bubble", title: "Chat", line: "How the assistant answers you.") {
+        SettingsSection(icon: "globe", title: "Language", line: "The app's own texts, and the chat's replies.") {
             SettingsGroup {
-                SettingsRow("Reply language", icon: "globe", info: "Auto answers in the language you write in. Tickers, amounts and addresses stay as they are.") {
+                SettingsRow("App language", icon: "character.book.closed", info: "Menus, buttons and the app's texts. It takes effect when ihatecrypto opens again. Many texts are still English only; more are translated with updates.") {
+                    Picker("App language", selection: Binding(get: { appLanguage }, set: { appLanguage = $0; AppLanguage.apply() })) {
+                        ForEach(AppLanguage.allCases, id: \.self) { Text($0.title).tag($0.rawValue) }
+                    }
+                    .labelsHidden().fixedSize()
+                }
+                if appLanguage != AppLanguage.atLaunch {
+                    SettingsRow("Restart to switch the language", icon: "arrow.clockwise") { Button("Restart now") { AppLanguage.restart() } }
+                }
+                SettingsRow("Reply language", icon: "text.bubble", info: "Auto answers in the language you write in. Tickers, amounts and addresses stay as they are.") {
                     Picker("Reply language", selection: $language) {
                         Text("Auto — your language").tag(ChatLanguage.auto.rawValue)
                         Text("English").tag(ChatLanguage.en.rawValue)
@@ -569,6 +579,38 @@ enum AppTheme: String, CaseIterable {
         case .light: NSAppearance(named: .aqua)
         case .dark: NSAppearance(named: .darkAqua)
         }
+    }
+}
+
+/// The language of the app's own texts: System follows the Mac. macOS reads it from `AppleLanguages` at launch, so
+/// a change takes effect after a restart; Info.plist lists en and ru, so the system's menus and buttons follow too.
+enum AppLanguage: String, CaseIterable {
+    case system, en, ru
+    static let key = "appLanguage"
+    /// What this launch runs in, to offer a restart once the choice differs.
+    static let atLaunch = UserDefaults.standard.string(forKey: key) ?? system.rawValue
+
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .en: "English"
+        case .ru: "Русский"
+        }
+    }
+
+    static func apply() {
+        let chosen = AppLanguage(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .system
+        if chosen == .system { UserDefaults.standard.removeObject(forKey: "AppleLanguages") }
+        else { UserDefaults.standard.set([chosen.rawValue], forKey: "AppleLanguages") }
+    }
+
+    /// Quits, and opens again once this copy is gone: a second copy started while one runs exits at launch.
+    @MainActor static func restart() {
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/bin/sh")
+        p.arguments = ["-c", "while /bin/kill -0 \(getpid()) 2>/dev/null; do sleep 0.2; done; /usr/bin/open \"$0\"", Bundle.main.bundleURL.path]
+        try? p.run()
+        NSApp.terminate(nil)
     }
 }
 
