@@ -56,7 +56,14 @@ final class VoiceInput {
 
         let input = engine.inputNode
         input.removeTap(onBus: 0)
-        input.installTap(onBus: 0, bufferSize: 1024, format: input.outputFormat(forBus: 0), block: Self.tap(request) { [weak self] level in
+        // A Mac with no input (a Mac mini without a mic, AirPods switching profile) gives a 0 Hz format, and a tap with it
+        // throws an Objective-C exception that ends the app.
+        let format = input.outputFormat(forBus: 0)
+        guard format.sampleRate > 0, format.channelCount > 0 else {
+            state = .failed("No microphone: connect one, or choose it in System Settings › Sound › Input, and try again.")
+            return
+        }
+        input.installTap(onBus: 0, bufferSize: 1024, format: format, block: Self.tap(request) { [weak self] level in
             Task { @MainActor in self?.push(level) }
         })
         engine.prepare()
