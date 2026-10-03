@@ -782,10 +782,12 @@ final class Workspace {
         if pendingAllocation == nil { allocationPreview = nil; rebalancePlan = nil }
         if TakeStyle.asksForChoice(text) {
             if intent == TradeIntent() {
-                reply("Describe the trade first — then I’ll show the ways to take profit on it.")
+                reply(say("Describe the trade first — then I’ll show the ways to take profit on it.",
+                          "Сначала опиши сделку — потом покажу, как на ней взять прибыль."))
             } else {
                 takeChoices = TakeStyle.allCases
-                reply("Three ways to take profit are on the canvas. The stop stays the same; pick one or say your own, e.g. “take 3R”.")
+                reply(say("Three ways to take profit are on the canvas. The stop stays the same; pick one or say your own, e.g. “take 3R”.",
+                          "На холсте три способа взять прибыль. Стоп остаётся прежним; выбери один или скажи свой, например «тейк 3R»."))
             }
             return
         }
@@ -833,7 +835,8 @@ final class Workspace {
         // «переключись на кошелёк Main»: the wallet by its name; the signer asks for Touch ID.
         if let target = walletSwitch(text) {
             if let target { await switchWallet(target) } else {
-                reply("No wallet has that name. Yours: \(wallets.map { "«\($0.label)»" }.joined(separator: ", ")).")
+                let yours = wallets.map { "«\($0.label)»" }.joined(separator: ", ")
+                reply(say("No wallet has that name. Yours: \(yours).", "Кошелька с таким именем нет. Твои: \(yours)."))
             }
             return
         }
@@ -915,7 +918,7 @@ final class Workspace {
             intent = next
             let changes = next.changes(from: before)
             await refreshQuote()
-            reply((changes.isEmpty ? "That’s already in the plan." : "Plan updated: " + changes.joined(separator: ", ") + ".") + outcomeLine)
+            reply(planUpdated(changes) + outcomeLine)
         } else if let client {
             // No plan and nothing about trading: the plan editor would only invent one.
             guard startsPlan || IntentParser.hasTradeWords(text) else {
@@ -925,7 +928,8 @@ final class Workspace {
             await editPlanWithModel(text, client: client, before: before)
             return
         } else {
-            reply("I didn’t get that. Without a model I understand: long/short, a ticker ($ETH), “risk $10”, “stop 3%”, “take 6%”, “leverage 2x”, “100 USDC” — in English or Russian. For other languages and free wording like “take closer”, connect a model in Settings (⌘,): a ChatGPT subscription, Claude Code, OpenRouter or an API key.")
+            reply(say("I didn’t get that. Without a model I understand: long/short, a ticker ($ETH), “risk $10”, “stop 3%”, “take 6%”, “leverage 2x”, “100 USDC” — in English or Russian. For other languages and free wording like “take closer”, connect a model in Settings (⌘,): a ChatGPT subscription, Claude Code, OpenRouter or an API key.",
+                      "Не понял. Без модели я понимаю: лонг/шорт, тикер ($ETH), «риск $10», «стоп 3%», «тейк 6%», «плечо 2x», «100 USDC» — по-русски и по-английски. Для других языков и свободных формулировок вроде «тейк поближе» подключи модель в настройках (⌘,): подписку ChatGPT, Claude Code, OpenRouter или API-ключ."))
         }
         await refreshQuote()
         startPlanReview()
@@ -945,10 +949,11 @@ final class Workspace {
                 addressBook.append(entry)
                 // Its card stays on the canvas, as Done.
                 finishedAction = ("Save “\(entry.name)” to Addresses", CanvasOutcome(at: Date(), ok: true), [bubble])
-                reply("Saved “\(entry.name)” in Addresses (\(entry.network.title)), confirmed with Touch ID. Star it there or say “add \(entry.name) to favorites”.")
+                reply(say("Saved “\(entry.name)” in Addresses (\(entry.network.title)), confirmed with Touch ID. Star it there or say “add \(entry.name) to favorites”.",
+                          "«\(entry.name)» сохранён в адресной книге (\(entry.network.title)), подтверждено Touch ID. Отметь его звёздочкой там или скажи «добавь \(entry.name) в избранное»."))
             } catch {
                 finishedAction = ("Save “\(entry.name)” to Addresses", CanvasOutcome(at: Date(), ok: false), [bubble])
-                reply("Not saved: \(error.localizedDescription)")
+                reply(say("Not saved: ", "Не сохранено: ") + error.localizedDescription)
             }
         }
     }
@@ -970,7 +975,7 @@ final class Workspace {
         takeChoices = nil
         let changes = intent.changes(from: before)
         await refreshQuote()
-        reply("Take: \(style.title.lowercased())" + (changes.isEmpty ? "." : " — " + changes.joined(separator: ", ") + ".") + outcomeLine)
+        reply(say("Take: ", "Тейк: ") + style.title.lowercased() + (changes.isEmpty ? "." : " — " + changes.joined(separator: ", ") + ".") + outcomeLine)
         startPlanReview()
     }
 
@@ -1222,12 +1227,12 @@ final class Workspace {
             if let next, await editExecuted(from: before, to: next) { return }
             if let next { intent = next }
             let changes = next?.changes(from: before) ?? []
-            let fallback = changes.isEmpty ? "The model changed nothing." : "Plan updated: " + changes.joined(separator: ", ") + "."
+            let fallback = changes.isEmpty ? say("The model changed nothing.", "Модель ничего не изменила.") : planUpdated(changes)
             await refreshQuote()
             reply((answer.isEmpty ? fallback : answer) + outcomeLine, note: note)
         } catch {
             busy = false
-            reply("The model is unavailable: \(error.localizedDescription)", note: note)
+            reply(say("The model is unavailable: ", "Модель недоступна: ") + error.localizedDescription, note: note)
         }
         await refreshQuote()
         startPlanReview()
@@ -1281,7 +1286,8 @@ final class Workspace {
         if let command = PnLCommand.parse(canonical, markets: pnlNames) { await showPnL(command, note: note); return true }
         if TakeStyle.asksForChoice(canonical), intent != TradeIntent() {
             takeChoices = TakeStyle.allCases
-            reply("Three ways to take profit are on the canvas. The stop stays the same; pick one.", note: note)
+            reply(say("Three ways to take profit are on the canvas. The stop stays the same; pick one.",
+                      "На холсте три способа взять прибыль. Стоп остаётся прежним; выбери один."), note: note)
             return true
         }
         if let command = AlertCommand.parse(canonical, markets: Set(markets.keys)) {
@@ -1338,7 +1344,7 @@ final class Workspace {
     /// making as cards. The chat stays open meanwhile; the word is dropped when anything was said or changed since.
     private func replyPlan(_ changes: [String], command: String, userText: String, note: String) {
         let list = outcomeLine
-        reply((changes.isEmpty ? "That’s already in the plan." : "Plan updated: " + changes.joined(separator: ", ") + ".") + list, note: note)
+        reply(planUpdated(changes) + list, note: note)
         guard let client = llmClient(), !list.isEmpty, let sent = messages.last, !sent.fromUser else { return }
         let plan = intent, context = routerContext(), model = model
         Task {
@@ -1349,6 +1355,12 @@ final class Workspace {
             saveCanvas()
             offer(reading, userText: userText)
         }
+    }
+
+    /// «Plan updated: leverage 3x.» in the user's language; the changes are the plan's own words.
+    private func planUpdated(_ changes: [String]) -> String {
+        changes.isEmpty ? say("That’s already in the plan.", "Это уже есть в плане.")
+                        : say("Plan updated: ", "План обновлён: ") + changes.joined(separator: ", ") + "."
     }
 
     static func started(_ next: TradeIntent) -> TradeIntent { next.started }
