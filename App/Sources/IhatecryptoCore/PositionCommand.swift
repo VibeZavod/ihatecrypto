@@ -14,6 +14,11 @@ public enum PositionCommand: Equatable, Sendable {
 
     public static func parse(_ text: String) -> PositionCommand? {
         let q = IntentParser.plainNumbers(text.lowercased())
+        // «should I close ETH?», «закрыть?», «не закрывай позицию», «don't close it»: a question or a «don't» is answered,
+        // never carried out (without a model a close runs at once).
+        if IntentParser.isQuestion(text) || q.contains(/(?:^|[^\p{L}'’])(?:не|нельзя|don['’]?t|dont|do\s+not|never|not)(?![\p{L}'’])|should\s+(?:i|we)\b|стоит\s+ли|(?:а|что)\s+если/) {
+            return nil
+        }
         if q.contains(/отмени\w*\s+(?:лимит|ордер|заявк)|сними\w*\s+(?:лимит|ордер|заявк)|cancel\s+(?:the\s+|my\s+)?(?:limit|order)|remove\s+(?:the\s+)?(?:limit|order)/) { return .cancelOrders }
         if q.contains(/безубыт|стоп\w*\s+(?:в|на)\s+(?:ноль|бу\b|вход)|break\s*-?\s*even|stop\s+(?:to|at)\s+entry/) { return .stopToBreakeven }
         if let m = q.firstMatch(of: /(?:(?:перенес\w*|передвин\w*|подвин\w*|постав\w*)?\s*стоп\w*\s+(?:на|в)|(?:move|set|put)?\s*(?:the\s+)?stop(?:[- ]?loss)?\s+(?:to|at))\s+\$?(\d+(?:[.,]\d+)?)(?!\s*%|[\d.,])/),

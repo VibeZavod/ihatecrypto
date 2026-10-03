@@ -54,6 +54,16 @@ private let sol = SpotAsset.all[0]
     #expect(IntentParser.apply("short ETH risk $5", to: TradeIntent(), markets: m)?.side == .short)
 }
 
+@Test func aQuestionOrADontNeverClosesThePosition() {   // C5
+    for text in ["не закрывай позицию", "don't close it", "should I close ETH?", "закрыть?", "what if I close half?", "do not move the stop to 2500"] {
+        #expect(PositionCommand.parse(text) == nil, "\(text)")
+    }
+    #expect(PositionCommand.parse("закрой половину") == .close(d("0.5")))
+    #expect(PositionCommand.parse("close ETH") == .close(1))
+    #expect(PositionCommand.parse("стоп в безубыток") == .stopToBreakeven)
+    #expect(PositionCommand.parse("отмени ордер") == .cancelOrders)
+}
+
 @Test func theNetworkAfterFromIsWhereMoneyLeaves() {   // C13
     #expect(WalletCommand.parse("переведи 5 USDC с базы на солану") == .baseToSolana(5))
     #expect(WalletCommand.parse("переведи 5 USDC с бейза на солану") == .baseToSolana(5))
