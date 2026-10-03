@@ -109,6 +109,8 @@ public enum ChatRouter {
       take profit options   (how pros take profit)
     OPEN POSITION (add the asset when there are several, e.g. "close ETH"):
       move stop to breakeven | stop at <PRICE> | take at <PRICE> | trail N% | close | close half | close N% | cancel orders
+      («cancel orders» = «cancel the limit»: only limit entries still waiting on the book go; an open position, its stop and its
+      take stay as they are. Nothing else removes a stop.)
     SPOT ON SOLANA (Jupiter): buy <SOL|BTC|ETH|JUP|JitoSOL> for N USDC | sell [N] <SOL|BTC|ETH|JUP>
       any other Jupiter-verified token by its ticker: buy <TICKER> on solana for N USDC | sell [N] <TICKER> on solana   (BONK, WIF, USDT, JTO, PYTH, POPCAT, RENDER…)
       buy <SOL|BTC|ETH|JUP> for N USDC every <day|week|N days> | stop recurring buys
