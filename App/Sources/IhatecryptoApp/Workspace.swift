@@ -1594,7 +1594,9 @@ final class Workspace {
         if atr[intent.asset] == nil, let v = try? await Hyperliquid.atrPct(coin: intent.asset) { atr[intent.asset] = v }
         // The resolved plan's: «5 USDC» that sizes the trade is its margin, and the bridge brings what that needs.
         let amount: Bridge.Amount? = if let a = resolved.intent.amountUSDC { .send(a) }
-            else if let need = Plan.bridgeNeed(resolved.intent, evaluation, hlWithdrawable: hl.map { $0.withdrawable + (market?.dex.flatMap { dexBalances[$0]?.withdrawable } ?? 0) }, mark: market?.markPx) { .arrive(need) }
+            else if let need = Plan.bridgeNeed(resolved.intent, evaluation, hlWithdrawable: hl.map { $0.withdrawable + (market?.dex.flatMap { dexBalances[$0]?.withdrawable } ?? 0) }, mark: market?.markPx) {
+                .arrive(Executor.bridgeArrive(need: need, margin: evaluation.sizing?.margin ?? 0, solanaUSDC: solana?.usdc))
+            }
             else { nil }
         // A new Hyperliquid account pays a one-time opening fee on its first deposit; the plan shows it up front.
         let newAccount = if amount != nil, let evm = previewWallet?.evm { (try? await Hyperliquid.isNewAccount(evm)) ?? false } else { false }

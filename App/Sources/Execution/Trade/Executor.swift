@@ -81,6 +81,18 @@ public actor Executor {
     /// Worst price accepted for a market entry or exit, from the mark.
     /// Smallest bridge worth its fee (Relay ≈ $0.02 flat).
     static let minBridgeUSDC: Decimal = 2
+
+    /// What a plan brings to Hyperliquid. A little over its need: the entry may fill up to 1% worse than the mark the
+    /// plan used. A tiny top-up would pay about as much in bridge fees as it moves (and the guard refuses that), so at
+    /// least `minBridgeUSDC` when Solana has it; the rest stays free on Hyperliquid. The plan's card quotes the same
+    /// number: it once showed 0.05 USDC while 2 were signed, and the second check flagged the difference.
+    public static func bridgeArrive(need: Decimal, margin: Decimal, solanaUSDC: Decimal?) -> Decimal {
+        var arrive = (need + margin * slippage).rounded(2, .up)
+        if arrive < minBridgeUSDC, let onSolana = solanaUSDC {
+            arrive = max(arrive, min(minBridgeUSDC, (onSolana - Decimal(string: "0.05")!).rounded(2, .down)))
+        }
+        return arrive
+    }
     static let slippage = Decimal(string: "0.01")!
     /// Market stop and take fill up to this far past the trigger, as Hyperliquid's own interface does.
     static let triggerSlippage = Decimal(string: "0.1")!
@@ -193,13 +205,10 @@ public actor Executor {
         if let usdc = intent.amountUSDC {
             amount = .send(usdc)
         } else if let need = Plan.bridgeNeed(intent, evaluation, hlWithdrawable: hl.withdrawable + dexFree, mark: market.markPx) {
-            // A little over the plan: the entry may fill up to 1% worse than the mark the plan used. A tiny top-up
-            // would pay about as much in bridge fees as it moves (and the guard refuses that), so bring at least
-            // `minBridgeUSDC` when Solana has it; the rest stays free on Hyperliquid.
-            var arrive = (need + sizing.margin * Self.slippage).rounded(2, .up)
+            var arrive = Self.bridgeArrive(need: need, margin: sizing.margin, solanaUSDC: nil)
             if arrive < Self.minBridgeUSDC {
                 let onSolana = Decimal(try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
-                arrive = max(arrive, min(Self.minBridgeUSDC, (onSolana - Decimal(string: "0.05")!).rounded(2, .down)))
+                arrive = Self.bridgeArrive(need: need, margin: sizing.margin, solanaUSDC: onSolana)
             }
             amount = .arrive(arrive)
         }
