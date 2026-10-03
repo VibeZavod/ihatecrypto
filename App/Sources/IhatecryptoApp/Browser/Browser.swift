@@ -400,15 +400,18 @@ final class Browser {
             if case .transaction = kind {} else { return true }
         }
         #endif
+        // One request at a time: a page can't swap the one the user is reading for another. A second one is declined.
+        guard pending == nil else { return false }
         return await withCheckedContinuation { continuation in
             pending = SiteRequest(origin: origin, site: site, kind: kind, answer: continuation)
         }
     }
 
-    func answer(_ yes: Bool) {
-        let request = pending
+    /// The user's answer to the request with this id, the one the sheet showed; any other is left alone.
+    func answer(_ yes: Bool, to id: UUID) {
+        guard let request = pending, request.id == id else { return }
         pending = nil
-        request?.answer.resume(returning: yes)
+        request.answer.resume(returning: yes)
     }
 
     // MARK: Transaction review
@@ -581,8 +584,8 @@ struct BrowserView: View {
             typed = browser.address
         }
         .onChange(of: browser.address) { typed = browser.address }
-        .sheet(item: Binding(get: { browser.pending }, set: { if $0 == nil, browser.pending != nil { browser.answer(false) } })) { request in
-            ApprovalSheet(request: request) { browser.answer($0) }
+        .sheet(item: Binding(get: { browser.pending }, set: { if $0 == nil, let shown = browser.pending { browser.answer(false, to: shown.id) } })) { request in
+            ApprovalSheet(request: request) { browser.answer($0, to: request.id) }
         }
     }
 
