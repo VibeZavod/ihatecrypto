@@ -52,6 +52,11 @@ final class DebugAPI {
     private var freshCanvas = false
     /// Folders a scenario made («write to folder …»): /restore removes them with the test canvases.
     private var testFolders: Set<String> = []
+    /// Scheduled tasks a test message made («every month on the 1st: …»): /reset and /restore cancel them, or they'd
+    /// run for real on their day. Kept across launches, like the canvases.
+    private var testTasks = Set((UserDefaults.standard.stringArray(forKey: "debugTestTasks") ?? []).compactMap(UUID.init(uuidString:))) {
+        didSet { UserDefaults.standard.set(testTasks.map(\.uuidString), forKey: "debugTestTasks") }
+    }
 
     func start(_ ws: Workspace) {
         guard listener == nil, let port = NWEndpoint.Port(rawValue: Self.port) else { return }
@@ -115,8 +120,9 @@ final class DebugAPI {
             guard !text.isEmpty else { return (400, "text/plain", Data("no text\n".utf8)) }
             guard !ws.busy else { return (409, "text/plain", Data("busy\n".utf8)) }
             let before = ws.messages.count
-            let knownCanvases = Set(ws.canvases.map(\.id)), knownFolders = Set(ws.folders)
+            let knownCanvases = Set(ws.canvases.map(\.id)), knownFolders = Set(ws.folders), knownTasks = Set(ws.tasks.map(\.id))
             await SignerClient.$untrusted.withValue(true) { await ws.send(text) }
+            testTasks.formUnion(ws.tasks.map(\.id).filter { !knownTasks.contains($0) })
             if freshCanvas, let id = ws.canvasID { testCanvases.insert(id); freshCanvas = false }
             // A note canvas or a folder the message made goes too, so a scenario leaves nothing in the sidebar.
             testCanvases.formUnion(ws.canvases.map(\.id).filter { !knownCanvases.contains($0) })
@@ -131,13 +137,15 @@ final class DebugAPI {
             }
             if let id = ws.canvasID, testCanvases.contains(id) { ws.deleteCanvas(id) } else { ws.newCanvas() }
             freshCanvas = true
+            dropTestTasks(ws)
             return (200, "application/json", json(state(ws, since: ws.messages.count)))
         case ("POST", "/pick"):
             let index = (((try? JSONSerialization.jsonObject(with: r.body)) as? [String: Any])?["index"] as? Int) ?? 0
             guard !ws.busy else { return (409, "text/plain", Data("busy\n".utf8)) }
             guard let options = ws.nextSteps?.options, options.indices.contains(index) else { return (404, "text/plain", Data("no such card\n".utf8)) }
-            let before = ws.messages.count
+            let before = ws.messages.count, knownTasks = Set(ws.tasks.map(\.id))
             await SignerClient.$untrusted.withValue(true) { await ws.pick(options[index]) }
+            testTasks.formUnion(ws.tasks.map(\.id).filter { !knownTasks.contains($0) })
             return (200, "application/json", json(state(ws, since: before)))
         case ("POST", "/cancel"):
             guard !ws.busy else { return (409, "text/plain", Data("busy\n".utf8)) }
@@ -154,6 +162,7 @@ final class DebugAPI {
             testCanvases = []
             for f in testFolders { ws.deleteFolder(f) }
             testFolders = []
+            dropTestTasks(ws)
             freshCanvas = false
             if let back, let canvas = ws.canvases.first(where: { $0.id == back }) { ws.openCanvas(canvas) }
             return (200, "application/json", json(state(ws, since: ws.messages.count)))
@@ -195,6 +204,12 @@ final class DebugAPI {
         default:
             return (404, "text/plain", Data("GET /state · POST /send {\"text\":…} · GET /screenshot · GET /crashes · POST /reset · POST /cancel · POST /restore {\"canvas\":…}\n".utf8))
         }
+    }
+
+    private func dropTestTasks(_ ws: Workspace) {
+        guard !testTasks.isEmpty else { return }
+        ws.tasks.removeAll { testTasks.contains($0.id) }
+        testTasks = []
     }
 
     private func state(_ ws: Workspace, since: Int) -> [String: Any] {

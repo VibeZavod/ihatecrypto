@@ -22,13 +22,20 @@ extension Workspace {
                       "Запланировать могу, но «\(unknown)» ihatecrypto пока не умеет — ничего не запланировано."), note: note)
             return
         }
+        let what = task.steps.joined(separator: say(", then ", ", потом "))
+        // The same steps at the same times again (a repeated message, a test run twice) would run them twice.
+        if let same = tasks.first(where: { $0.steps == task.steps && $0.every == task.every && abs($0.next.timeIntervalSince(task.next)) < 60 }) {
+            scheduleItem = "task:\(same.id)"
+            showSchedule = true
+            reply(say("That’s already scheduled: \(what) — \(same.when). It’s on the canvas.", "Это уже запланировано: \(what) — \(same.when). Это на канвасе."), note: note)
+            return
+        }
         var task = task
         if SignerClient.untrusted { task.untrusted = true }
         tasks.append(task)
         // The Schedule canvas shows it in detail: the chat keeps one line.
         scheduleItem = "task:\(task.id)"
         showSchedule = true
-        let what = task.steps.joined(separator: say(", then ", ", потом "))
         let how = wallets.contains(where: \.isAutomation) && task.untrusted != true
             ? say(" Its moves run by themselves from the automation wallet, no Touch ID.", " Движения пойдут сами с кошелька автоматизации, без Touch ID.")
             : say(" Its moves will wait for your Confirm; to run them by themselves, say «create an automation wallet».",
