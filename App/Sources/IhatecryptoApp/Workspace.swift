@@ -973,12 +973,16 @@ final class Workspace {
             return try? await JevReviewer.reading(message: text, recent: recent, command: command, apiKey: key)
         }
         // Both at once. The model's reading decides and says what differs; the OpenRouter classifier raised false alarms
-        // on right commands (no reason given), so it counts only when the model couldn't answer.
+        // on right commands (no reason given), so it counts only when the model couldn't answer. Neither answering is
+        // no agreement: the command or the «yes» waits for the user.
+        let unchecked = say("it couldn't run this time (no answer to it).", "в этот раз она не прошла — ответа не было.")
         @Sendable func secondReading(_ command: String) async -> String? {
             async let byModel = modelReading(command)
             async let other = classifierReading(command)
             let (m, review) = await (byModel, other)
-            return m.answered ? m.why : (review?.concern == true ? review?.text : nil)
+            if m.answered { return m.why }
+            guard let review else { return unchecked }
+            return review.concern ? review.text : nil
         }
         var check: (@Sendable (String) async -> String?)?
         if jevScreening { check = secondReading }
@@ -1006,13 +1010,13 @@ final class Workspace {
         if let reading { await show(reading, userText: text) }
         defer { if let reading { offer(reading, userText: text) } }
         var note = reading.map { $0.lookups.isEmpty ? model : "\(model) · looked at \(Set($0.lookups.map(\.tool)).sorted().joined(separator: ", "))" } ?? model
-        if reading?.corrected != nil { note += " · corrected after a second reading" }
-        // The second reader still disagrees after the model tried again: nothing runs, the user decides.
+        if let why = reading?.corrected, why != unchecked { note += " · corrected after a second reading" }
+        // The second reader still disagrees after the model tried again, or couldn't be read: nothing runs, the user decides.
         if var r = reading, case .command(let c) = r.route, let doubt = r.doubt {
             r.options = [ChatRouter.Option(title: c, comment: doubt, command: c, recommended: true)]
             reading = r
-            reply(say("I read that as “\(c)”, but a second reading disagrees: \(doubt) Nothing ran. If that’s what you meant, pick the card; otherwise say it another way.",
-                      "Я понял это как «\(c)», но вторая проверка не согласна: \(doubt) Я ничего не запускал. Если ты это и имел в виду — выбери карточку, иначе скажи по-другому."), note: note)
+            reply(say("I read that as “\(c)”, but a second reading doesn't confirm it: \(doubt) Nothing ran. If that’s what you meant, pick the card; otherwise say it another way.",
+                      "Я понял это как «\(c)», но вторая проверка этого не подтверждает: \(doubt) Я ничего не запускал. Если ты это и имел в виду — выбери карточку, иначе скажи по-другому."), note: note)
             return
         }
         // The model read an approval, but the second reading isn't sure: nothing is signed, the card keeps waiting.
