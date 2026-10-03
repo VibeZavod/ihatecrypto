@@ -11,7 +11,7 @@ import WalletCore
 /// A wallet saved before then sits unsealed under «default» until it is replaced.
 /// After each signature the opened seed and the key derived from it are overwritten (`wipe`, see `Signer.withKey`).
 /// ponytail: copies made inside the derivation and the secp256k1 library aren't reachable from here, so the guard
-/// against reading them is still that no debugger can attach to a Release signer (no get-task-allow).
+/// against reading them is still that no debugger can attach to the signer, Release or Debug (no get-task-allow).
 enum SeedStore {
     /// Overwrites key bytes in place before they're released; memset_s is never optimized away. Call it on the last
     /// reference: a Data shared with another copy is duplicated first, and only the duplicate would be cleared.

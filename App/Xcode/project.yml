@@ -82,3 +82,6 @@ targets:
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
         CODE_SIGN_ENTITLEMENTS: Signer.entitlements
         ENABLE_APP_SANDBOX: YES
+        # No get-task-allow in any configuration: a Debug signer shares the Release Keychain group, so a debugger attached
+        # to it could read the address book, approved addresses and opened keys. Only the app stays debuggable.
+        CODE_SIGN_INJECT_BASE_ENTITLEMENTS: NO
