@@ -13,20 +13,27 @@ public enum ChatLanguage: String, CaseIterable, Sendable {
         case .ru: return true
         case .en: return false
         case .auto:
-            let own = recentUserMessages.last { m in
-                m.contains(where: \.isLetter) && !Self.appWords.contains(m.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
-            }
-            return own?.unicodeScalars.contains { (0x0400...0x04FF).contains($0.value) } ?? false
+            return Self.own(recentUserMessages)?.unicodeScalars.contains { (0x0400...0x04FF).contains($0.value) } ?? false
         }
     }
+
+    /// The last message that tells the user's language: not the app's own button words, and not a bare amount
+    /// («1 sol», «10 usdc», «0.5 BONK»), which reads the same in any language (a Russian chat answered «1 sol» went English).
+    static func own(_ messages: [String]) -> String? {
+        messages.last { m in
+            m.contains(where: \.isLetter) && !appWords.contains(m.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
+                && !(m.contains(where: \.isNumber) && m.split { !$0.isLetter }.allSatisfy { w in
+                    units.contains(w.lowercased()) || (w.count <= 6 && w.allSatisfy { $0.isASCII && $0.isUppercase })
+                })
+        }
+    }
+    static let units: Set<String> = ["usdc", "usdt", "usdg", "usd", "sol", "eth", "btc", "jup", "near", "jitosol", "dollar", "dollars", "bucks", "k", "x"]
 
     /// For the model's instructions: «Russian», «Spanish» or «English». Spanish only on «auto»: the app's own lines stay
     /// English, the model's replies follow the user.
     public func name(recentUserMessages: [String]) -> String {
         if isRussian(recentUserMessages: recentUserMessages) { return "Russian" }
-        guard self == .auto, let own = recentUserMessages.last(where: { m in
-            m.contains(where: \.isLetter) && !Self.appWords.contains(m.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
-        }) else { return "English" }
+        guard self == .auto, let own = Self.own(recentUserMessages) else { return "English" }
         return Self.looksSpanish(own) ? "Spanish" : "English"
     }
 

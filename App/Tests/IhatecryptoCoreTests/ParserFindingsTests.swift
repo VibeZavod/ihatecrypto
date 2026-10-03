@@ -138,3 +138,12 @@ private let sol = SpotAsset.all[0]
     s.advance(now: start)
     #expect(s.next == start.addingTimeInterval(86_400))
 }
+
+@Test func aBareAmountDoesNotSwitchTheLanguage() {   // R9
+    #expect(ChatLanguage.auto.isRussian(recentUserMessages: ["положи USDC в jupiter", "1 sol"]))
+    #expect(ChatLanguage.auto.isRussian(recentUserMessages: ["положи USDC в jupiter", "10 usdc"]))
+    #expect(ChatLanguage.auto.isRussian(recentUserMessages: ["купи BONK", "0.5 BONK"]))
+    #expect(ChatLanguage.auto.name(recentUserMessages: ["застейкай сол", "$5"]) == "Russian")
+    #expect(!ChatLanguage.auto.isRussian(recentUserMessages: ["deposit USDC to jupiter", "1 sol"]))
+    #expect(!ChatLanguage.auto.isRussian(recentUserMessages: ["положи USDC в jupiter", "buy 5 SOL"]))
+}
