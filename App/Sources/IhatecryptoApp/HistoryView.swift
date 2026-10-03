@@ -116,9 +116,11 @@ struct HistoryView: View {
             if let q = a.request { rows.append(Row(id: "q\(a.id)", at: a.at, icon: "person.fill", tint: Brand.accent, text: "You: “\(q)”", detail: a.lines.first)) }
             else if let t = a.title { rows.append(Row(id: "a\(a.id)", at: a.at, icon: a.kind == .execution ? "signature" : "gearshape.2", tint: Brand.accent, text: t, detail: a.lines.last)) }
         }
-        for f in fills {
+        // One order can fill against several others in the same millisecond: same time, coin and side, so the place in
+        // the list keeps each row its own.
+        for (n, f) in fills.enumerated() {
             let pnl = f.closedPnl != 0 ? " · \(signed(f.closedPnl))" : ""
-            rows.append(Row(id: "f\(f.time.timeIntervalSince1970)\(f.coin)\(f.dir)", at: f.time, icon: f.dir.hasPrefix("Open") ? "arrow.up.right.circle" : "arrow.down.left.circle",
+            rows.append(Row(id: "f\(n)·\(f.time.timeIntervalSince1970)\(f.coin)\(f.dir)", at: f.time, icon: f.dir.hasPrefix("Open") ? "arrow.up.right.circle" : "arrow.down.left.circle",
                             tint: f.closedPnl < 0 ? Brand.loss : Brand.profit,
                             text: "\(f.dir) \(IntentParser.pretty(f.coin)) \(Fmt.num(f.sz, maxFraction: 6)) at \(Fmt.price(f.px))\(pnl)",
                             detail: "fee \(Fmt.usd(f.fee))",
