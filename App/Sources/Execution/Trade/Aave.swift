@@ -356,8 +356,7 @@ extension Executor {
         let me = wallet.evm, rpc = net.rpc
         let before = try await rpc.balance(me)
         let price = try await Relay.nativePrice(chainId: rpc.chainId) ?? 0
-        // Most of what's bought: the wait below ends when 80% of it is there.
-        let expected = price > 0 ? NSDecimalNumber(decimal: usd / price * 1e18 * Decimal(string: "0.8")!).uint64Value : 1
+        let expected = Self.gasExpected(usd: usd, price: price)
         let solanaUSDC = Decimal(try await self.rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
         if solanaUSDC >= usd + 1 {
             try await ensureEVM(net, usdc: 0, gas: (floor: before + expected, topupUSD: usd))
@@ -366,6 +365,12 @@ extension Executor {
         }
         let after = try await rpc.balance(me)
         return "Topped up gas on \(net.name): \(Fmt.num(Decimal(before) / 1e18, maxFraction: 8)) → \(Fmt.num(Decimal(after) / 1e18, maxFraction: 8)) \(net.gasCoin) (≈ \(Fmt.usd(usd)))."
+    }
+
+    /// Most of the wei `usd` buys at `price`: a top-up's wait ends when 80% of it is there. Rounded first: a quotient's
+    /// 38 digits read as uint64 gave 0 (price 3000), and the top-up did nothing.
+    static func gasExpected(usd: Decimal, price: Decimal) -> UInt64 {
+        price > 0 ? NSDecimalNumber(decimal: (usd / price * 1e18 * Decimal(string: "0.8")!).rounded(0, .down)).uint64Value : 1
     }
 
     /// Gas bought with the network's own USDC by Relay's swap on the chain: an exact approve to the approval proxy Relay

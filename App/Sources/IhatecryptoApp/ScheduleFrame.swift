@@ -212,7 +212,8 @@ struct ScheduleFrame: View {
         } else {
             let total = ws.automationBudget?.total
             let spend = ws.weeklyBudgetSpend
-            let weeks = total.flatMap { t in spend > 0 ? NSDecimalNumber(decimal: t / spend).intValue : nil }
+            // Whole weeks: 20 / 3 unrounded read as 0 («not enough for the next run»).
+            let weeks = total.flatMap { t in spend > 0 ? NSDecimalNumber(decimal: (t / spend).rounded(0, .down)).intValue : nil }
             VStack(alignment: .leading, spacing: 6) {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     Text(total.map { "\(Fmt.num($0)) USDC" } ?? "…").font(.ui(24, .heavy)).monospacedDigit()
