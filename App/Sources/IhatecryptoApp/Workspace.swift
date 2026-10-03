@@ -662,7 +662,10 @@ final class Workspace {
         // goes to «main wallet». Only a saved (confirmed) address: any other still never becomes a recipient.
         text = savedNames(in: text)
         let pasted = text.contains(/0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|https?:\/\/|www\./)
-        let classifier: (any TextClassifier)? = jevScreening && pasted ? openRouterKey.map { JevClassifier(apiKey: $0) } : nil
+        // Saving an address the user typed is their own command: the address is the one in this message and the signer
+        // shows it whole on Touch ID before it's kept. The classifier read «save 0x… as test wallet for ai agent» as steering.
+        let saving: Bool = if case .save? = AddressBookCommand.parse(text) { true } else { false }
+        let classifier: (any TextClassifier)? = jevScreening && pasted && !saving ? openRouterKey.map { JevClassifier(apiKey: $0) } : nil
         busy = true
         // «купи токен 0x2E8c… на 1 доллар» read as a redirect: from the chat an address never becomes a recipient (sends go
         // to address-book names), so only the classifier's «steers the assistant» stops a chat message.
