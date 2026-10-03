@@ -575,7 +575,9 @@ private struct CheckStep: View {
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 8), count: 4), spacing: 8) {
                 ForEach(choices, id: \.self) { w in
-                    let used = asked.prefix(filled).contains { words[$0] == w }
+                    // A word the phrase repeats stays until it has been picked as many times as it's asked.
+                    let asks = asked.filter { words[$0] == w }.count
+                    let used = asks > 0 && asked.prefix(filled).filter { words[$0] == w }.count == asks
                     Button { pick(w) } label: {
                         Text(w).font(.system(size: 13.5, weight: .semibold, design: .monospaced)).frame(maxWidth: .infinity).frame(height: 36)
                             .background(RoundedRectangle(cornerRadius: 10).fill(Brand.card))
