@@ -71,7 +71,7 @@ public struct TradeIntent: Codable, Equatable, Sendable {
         if let v = leverage { parts.append("leverage \(n(v))x") }
         if let v = amountUSDC { parts.append("\(n(v)) USDC") }
         if autoRules == true { parts.append("by the book") }
-        // «pullback N%», not «on a N% pullback»: after the word the parser takes the next percent, a trailing one too.
+        // «pullback N%»: the form the parser reads first.
         if let v = pullbackPct { parts.append("pullback \(n(v))%") } else if let v = entryPx { parts.append("limit \(n(v))") }
         if let v = trailingPct { parts.append("trailing \(n(v))%") }
         if partialTake == true { parts.append("take in parts") }
@@ -151,7 +151,9 @@ public enum IntentParser {
         // «риск $10», «риск на сделку — не больше 10$». A percent after the number is not dollars.
         if let v = number(q, /(?:риск|risk)[^\d%]{0,30}?(\d+(?:[.,]\d+)?)(?!\d|[.,]\d|\s*%)/) { next.riskUSD = v; hit = true }
         if let v = number(q, /(?:стоп|stop|\bsl\b)[^\d]{0,15}?(\d+(?:[.,]\d+)?)\s*%/) { next.stopPct = v; hit = true }
-        if let v = number(q, /(?:тейк|take|\btp\b)[^\d]{0,15}?(\d+(?:[.,]\d+)?)\s*%/) { next.takePct = v; hit = true }
+        // Between the word and the number at most one short word («тейк на 6%», «take profit at 6%»): «take in parts on
+        // a 2% pullback» has no take percent.
+        if let v = number(q, /(?:тейк|take|\btp\b)(?:[- ]?(?:profit|профит)\w*)?[^\d\p{L}]*(?:\p{L}{1,3}[^\d\p{L}]+)?(\d+(?:[.,]\d+)?)\s*%/) { next.takePct = v; hit = true }
         // «плечо 2», «2x», «3х» (Cyrillic х), «2×»
         if let v = number(q, /(?:плеч|leverage|\blev\b)[^\d]{0,10}?(\d+(?:[.,]\d+)?)/)
             ?? number(q, /(\d+(?:[.,]\d+)?)\s*[xх×](?!\p{L})/) { next.leverage = v; hit = true }
@@ -163,8 +165,9 @@ public enum IntentParser {
         if q.contains(/как\s+учат|как\s+советуют|по\s+правилам|как\s+(?:лучше|правильно|положено)|по\s+уму|грамотн|риск[- ]?менеджмент|by\s+the\s+(?:book|rules)|best\s+practice|properly|risk[- ]?management|like\s+(?:the\s+)?pros/) {
             next.autoRules = true; hit = true
         }
-        // «вход на откате 2%», «подожди откат 2%»; «лимит 2650», «вход 2650»; «по рынку» clears both.
-        if let v = number(q, /(?:откат\w*|pullback|dip|retrace\w*)[^\d]{0,12}?(\d+(?:[.,]\d+)?)\s*%/)
+        // «вход на откате 2%», «подожди откат 2%»; «лимит 2650», «вход 2650»; «по рынку» clears both. After the word at
+        // most one short word, so «on a 2% pullback trailing 3%» is a 2% pullback and «stop 2% pullback 3%» a 3% one.
+        if let v = number(q, /(?:откат\w*|pullback|dip|retrace\w*)[^\d\p{L}]*(?:\p{L}{1,3}[^\d\p{L}]+)?(\d+(?:[.,]\d+)?)\s*%/)
             ?? number(q, /(\d+(?:[.,]\d+)?)\s*%\s*(?:pullback|dip|retrace\w*)/) {
             next.pullbackPct = v; next.entryPx = nil; hit = true
         } else if let v = number(q, /(?:лимит\w*|вход\w*|limit|entry|enter)\s*(?:по|на|at)?\s*\$?(\d+(?:[.,]\d+)?)(?!\s*%|[\d.,])/) {

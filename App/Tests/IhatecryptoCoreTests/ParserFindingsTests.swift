@@ -88,6 +88,24 @@ private let sol = SpotAsset.all[0]
     #expect(WalletCommand.amountAnswer(".5") == d("0.5"))
 }
 
+@Test func eachPercentGoesToItsOwnWord() {   // C12
+    let a = IntentParser.apply("long ETH by the book on a 2% pullback trailing 3%", to: TradeIntent())
+    #expect(a?.pullbackPct == 2 && a?.trailingPct == 3)
+    let b = IntentParser.apply("long ETH take in parts on a 2% pullback", to: TradeIntent())
+    #expect(b?.takePct == nil && b?.pullbackPct == 2 && b?.partialTake == true)
+    let c = IntentParser.apply("long ETH risk $1 stop 2% pullback 3%", to: TradeIntent())
+    #expect(c?.stopPct == 2 && c?.pullbackPct == 3)
+    #expect(IntentParser.apply("тейк на 6%", to: TradeIntent())?.takePct == 6)
+    #expect(IntentParser.apply("take profit 6%", to: TradeIntent())?.takePct == 6)
+    #expect(IntentParser.apply("тейк-профит 4%", to: TradeIntent())?.takePct == 4)
+    #expect(IntentParser.apply("вход на откате 2%", to: TradeIntent())?.pullbackPct == 2)
+    #expect(IntentParser.apply("pullback of 1.5%", to: TradeIntent())?.pullbackPct == d("1.5"))
+    // The router form reads back to the same plan.
+    var i = TradeIntent()
+    i.asset = "SOL"; i.riskUSD = 1; i.stopPct = 2; i.pullbackPct = 3; i.trailingPct = 1; i.partialTake = true
+    #expect(IntentParser.apply(i.command, to: TradeIntent(), markets: ["SOL"]) == i)
+}
+
 @Test func theNetworkAfterFromIsWhereMoneyLeaves() {   // C13
     #expect(WalletCommand.parse("переведи 5 USDC с базы на солану") == .baseToSolana(5))
     #expect(WalletCommand.parse("переведи 5 USDC с бейза на солану") == .baseToSolana(5))
