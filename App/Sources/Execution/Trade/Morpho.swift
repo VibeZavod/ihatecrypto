@@ -53,13 +53,7 @@ extension Executor {
             try await ensureEVM(net, usdc: 0, gas: Self.morphoGas)
             let before = try await rpc.tokenBalance(usdc, owner: me)
             _ = try await sendEVM(rpc, to: vault, data: data, note: "Morpho withdraw \(requested.map { Fmt.num($0) } ?? "all") USDC on \(v.chainName)")
-            var there = try await rpc.tokenBalance(usdc, owner: me)
-            for _ in 0..<10 where there <= before {
-                try await Task.sleep(for: .seconds(1))
-                there = try await rpc.tokenBalance(usdc, owner: me)
-            }
-            // Back where the money lives: Solana.
-            return try await evmToSolana(net, usdc: nil)
+            return try await bridgeBack(net, since: before, expected: requested.map(units).map { min($0, inside) } ?? inside)
         }
 
         guard let requested, requested > 0 else { throw ExecutionError("Say how much, e.g. “deposit 2 USDC into Morpho”.") }

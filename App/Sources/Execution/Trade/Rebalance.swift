@@ -92,8 +92,19 @@ extension Executor {
         case "Jupiter Lend": _ = try await lend("USDC", amount: asked, deposit: false)
         case "Kamino Lend": _ = try await kamino("USDC", amount: asked, deposit: false)
         case "HLP (Hyperliquid)":
+            // Only what left HLP goes on to Solana: free trading margin and a HIP-3 exchange's stay where they are.
+            let before = try await Hyperliquid.balance(user: wallet.evm).withdrawable
+            let out = min(asked ?? .greatestFiniteMagnitude, try await HyperliquidAccount.vaultEquity(user: wallet.evm, vault: HLGuard.hlpVault).withdrawable)
             _ = try await hlp(deposit: false, amount: asked)
-            _ = try await withdrawToSolana(usdc: nil)
+            var free = before
+            for _ in 0..<10 {
+                free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
+                if free > before { break }
+                try await Task.sleep(for: .seconds(1))
+            }
+            let usdc = min(out, free - before).rounded(2, .down)
+            guard usdc > 0 else { throw ExecutionError("HLP's withdrawal isn't on the Hyperliquid balance yet, so nothing was bridged; «withdraw to Solana» brings it once it shows.") }
+            _ = try await withdrawToSolana(usdc: usdc)
         default:
             if let m = AaveV3.market(place: place) { _ = try await aave(deposit: false, usdc: asked, market: m) }
             else if let v = MorphoVault.vault(place: place) { _ = try await morpho(deposit: false, usdc: asked, vault: v) }

@@ -98,13 +98,7 @@ extension Executor {
             let before = try await rpc.tokenBalance(usdc, owner: me)
             _ = try await sendEVM(rpc, to: pool, data: try AaveV3.withdraw(asset: usdc, amount: amount, to: me),
                                   note: "Aave withdraw \(amount.map(show) ?? "all") USDC on \(m.chainName)")
-            var there = try await rpc.tokenBalance(usdc, owner: me)
-            for _ in 0..<10 where there <= before {
-                try await Task.sleep(for: .seconds(1))
-                there = try await rpc.tokenBalance(usdc, owner: me)
-            }
-            // Back where the money lives: Solana.
-            return try await evmToSolana(net, usdc: nil)
+            return try await bridgeBack(net, since: before, expected: amount ?? supplied)
         }
 
         guard let requested, requested > 0 else { throw ExecutionError("Say how much, e.g. “lend 2 USDC on Aave”.") }
@@ -122,6 +116,21 @@ extension Executor {
         }
         guard after > before else { throw ExecutionError("The supply went through but aUSDC didn't grow. \(net.explorer)/tx/\(hash)") }
         return "Supplied \(show(want)) USDC to Aave on \(m.chainName) at ≈ \(Fmt.num(apy.rounded(2, .plain)))% a year: \(show(after)) USDC there now. \(net.explorer)/tx/\(hash)"
+    }
+
+    /// After a withdrawal on `net`: back where the money lives, Solana — only the USDC the withdrawal brought, never what
+    /// already lay there (a card that says 10 bridged all 2,970). `expected`: what it was for, while a node is a block behind.
+    func bridgeBack(_ net: EVMNetwork, since before: UInt64, expected: UInt64) async throws -> String {
+        var there = try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)
+        for _ in 0..<10 where there <= before {
+            try await Task.sleep(for: .seconds(1))
+            there = try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)
+        }
+        let got = there > before ? there - before : expected
+        guard got >= 500_000 else {
+            return "\(Fmt.num(Decimal(got) / 1_000_000, maxFraction: 6)) USDC stays on \(net.name): under the half-dollar a bridge to Solana is worth."
+        }
+        return try await evmToSolana(net, usdc: Decimal(got) / 1_000_000)
     }
 
     func ensureBase(usdc want: UInt64) async throws { try await ensureEVM(.base, usdc: want) }
