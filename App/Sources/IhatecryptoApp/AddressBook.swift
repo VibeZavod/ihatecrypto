@@ -861,8 +861,10 @@ extension Workspace {
         pendingText = "send \(Fmt.num(amount)) USDC to \(entry.name)"
         let ends = AddressCheck.ends(entry.address)
         if quiet { return }
-        reply(say("The transfer is on the canvas: \(Fmt.num(amount)) USDC to “\(entry.name)” on \(entry.network.title), \(ends.start) … \(ends.end). Sign it, or say anything else to cancel.",
-                  "Перевод на холсте: \(Fmt.num(amount)) USDC на «\(entry.name)» в \(entry.network.title), \(ends.start) … \(ends.end). Подпиши или напиши что-нибудь другое, чтобы отменить."), note: note)
+        reply(say("The transfer is on the canvas: \(Fmt.num(amount)) USDC to “\(entry.name)” on \(entry.network.title), \(ends.start) … \(ends.end). Sign it",
+                  "Перевод на холсте: \(Fmt.num(amount)) USDC на «\(entry.name)» в \(entry.network.title), \(ends.start) … \(ends.end). Подпиши",
+                  "La transferencia está en el lienzo: \(Fmt.num(amount)) USDC a «\(entry.name)» en \(entry.network.title), \(ends.start) … \(ends.end). Fírmala")
+              + orCancel(say(", or say anything else to cancel.", " или напиши что-нибудь другое, чтобы отменить.", ", o di otra cosa para cancelar.")), note: note)
     }
 
     func transfer(_ amount: Decimal, to entry: SavedAddress) async {

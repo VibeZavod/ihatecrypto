@@ -1102,9 +1102,9 @@ extension Workspace {
         case .claimRewards, .sweepRewards: claimRoute()
         default: ends(command).map { from, to in
             let footer = if case .sellStock = command {
-                "Two Robinhood Chain transactions: an exact approve and the Uniswap swap, which may only pay this wallet. Say “do it” or press Confirm; anything else cancels."
+                "Two Robinhood Chain transactions: an exact approve and the Uniswap swap, which may only pay this wallet. Say “do it” or press Confirm; Cancel or “cancel” drops it."
             } else {
-                "One Solana signature, checked and simulated before it’s signed. Say “do it” or press Confirm; anything else cancels."
+                "One Solana signature, checked and simulated before it’s signed. Say “do it” or press Confirm; Cancel or “cancel” drops it."
             }
             return MoveRoute(title: readable(command.summary.prefix(1).uppercased() + command.summary.dropFirst()), footer: footer, steps: around(command, [from, to]))
         }
@@ -1138,7 +1138,7 @@ extension Workspace {
     /// Any wallet command without a drawn route still gets its card with Confirm: a pending move is never invisible.
     func fallbackRoute(_ command: WalletCommand) -> MoveRoute {
         MoveRoute(title: readable(Self.canvasTitle(command)),
-                  footer: "Checked and simulated before it’s signed. Say “do it” or press Confirm; anything else cancels.", steps: [])
+                  footer: "Checked and simulated before it’s signed. Say “do it” or press Confirm; Cancel or “cancel” drops it.", steps: [])
     }
 
     /// Native NEAR → USDC on Solana through NEAR Intents (1Click); «all» keeps ≈ 0.09 NEAR: storage, and prepaid gas
@@ -1206,7 +1206,7 @@ extension Workspace {
         let free = hl?.withdrawable
         let amount = asked ?? free
         return MoveRoute(title: "Withdraw · \(amount.map { Fmt.num($0) } ?? "all") USDC to Solana",
-                         footer: "Signed with the main key — the trading key can’t withdraw. Say “do it” or press Confirm; anything else cancels.", steps: [
+                         footer: "Signed with the main key — the trading key can’t withdraw. Say “do it” or press Confirm; Cancel or “cancel” drops it.", steps: [
             step("hype", "FROM · HYPERLIQUID", free.map { f in amount.map { "\(Fmt.usd(f)) → \(Fmt.usd(max(0, f - $0)))" } ?? Fmt.usd(f) } ?? "—",
                  "position margin isn’t touched", .hyperliquid),
             step("relay", "BRIDGE · RELAY", amount.map { "\(Fmt.num($0)) USDC" } ?? "—", "≈ 4 s · small Relay fee", .relay),
@@ -1975,10 +1975,18 @@ extension Workspace {
             pendingAction = .wallet(command)
             pendingText = readable(command.summary)
             if quiet { return }
-            reply(say("Understood: \(readable(command.summary)). It’s on the canvas — Sign it, or say anything else to cancel.",
-                      "Понял: \(readable(command.summary)). Карточка на холсте — нажми Confirm или напиши что-нибудь другое, чтобы отменить.",
-                      "Entendido: \(readable(command.summary)). Está en el lienzo: confírmalo, o di otra cosa para cancelar."), note: note)
+            reply(say("Understood: \(readable(command.summary)). It’s on the canvas — Sign it",
+                      "Понял: \(readable(command.summary)). Карточка на холсте — нажми Confirm",
+                      "Entendido: \(readable(command.summary)). Está en el lienzo: confírmalo")
+                  + orCancel(say(", or say anything else to cancel.", " или напиши что-нибудь другое, чтобы отменить.", ", o di otra cosa para cancelar.")), note: note)
         }
+    }
+
+    /// How a card waiting for Confirm is dropped, after the line that lays it out. With a model a question about the
+    /// card keeps it (send()): only Cancel or «cancel» drops it. Without one, `withoutModel`: anything else said does.
+    func orCancel(_ withoutModel: String) -> String {
+        llmClient() == nil ? withoutModel
+            : say(". To cancel, press Cancel or say “cancel”.", ". Чтобы отменить, нажми Cancel или скажи «отмена».", ". Para cancelar, pulsa Cancel o di «cancelar».")
     }
 
     /// What there is to use, so the answer to «How much?» is easy.

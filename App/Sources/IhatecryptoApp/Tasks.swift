@@ -148,9 +148,10 @@ extension Workspace {
                 if let p = pendingText, !rest.isEmpty { pendingText = ([p] + rest).joined(separator: " → ") }
                 // The step's card said nothing of its own (runCanonical inChain): one line for the chain.
                 if pendingAction != nil {
-                    reply(say("It’s on the canvas, every step in a row — one Confirm covers them all, or say anything else to cancel.",
-                              "Все шаги на холсте — один Confirm на всю цепочку, или напиши что-нибудь другое, чтобы отменить.",
-                              "Todos los pasos están en el lienzo: un Confirm para toda la cadena, o di otra cosa para cancelar."))
+                    reply(say("It’s on the canvas, every step in a row — one Confirm covers them all",
+                              "Все шаги на холсте — один Confirm на всю цепочку",
+                              "Todos los pasos están en el lienzo: un Confirm para toda la cadena")
+                          + orCancel(say(", or say anything else to cancel.", ", или напиши что-нибудь другое, чтобы отменить.", ", o di otra cosa para cancelar.")))
                 }
                 break
             }
