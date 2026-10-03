@@ -49,8 +49,8 @@ struct EVMReview {
     let lines: [String]
     /// Simulated change of each of our balances: «USDC (0xaf88…5831): +5».
     let changes: [String]
-    /// A foreign address money goes to, which the user must confirm; nil when none.
-    let recipient: String?
+    /// Foreign addresses money, or the right to spend it, goes to (EVMCall.payees), which the user must confirm.
+    let recipients: [String]
     let gas: UInt64
     let problems: [String]
     var jev: JevReview?
@@ -265,7 +265,7 @@ final class Browser {
             let fees = try await rpc.fees()
             let reply = try await SignerClient().send(.signEVMTransaction(chainId: chain, nonce: nonce, maxPriorityFee: fees.maxPriority, maxFee: fees.maxFee,
                                                                          gasLimit: review.gas, to: to, value: value, data: data,
-                                                                         recipients: review.recipient.map { [$0] } ?? []))
+                                                                         recipients: review.recipients))
             guard reply.ok, let raw = reply.signedRaw else { throw SiteError("4001|" + XPCTradeSigner.reason(reply)) }
             do {
                 let hash = try await rpc.send(raw)
@@ -302,7 +302,8 @@ final class Browser {
         let call = EVMCall.decode(data)
         var problems = call.refusal(sender: from).map { [$0] } ?? []
         var lines: [String] = []
-        var recipient: String?
+        // The same payees the signer checks: each foreign one needs the tick here and Touch ID there.
+        let recipients = Array(Set(call.payees(to: to, value: value, chainId: rpc.chainId).map { $0.lowercased() }.filter { $0 != from.lowercased() })).sorted()
         let native = rpc.chainId == 42161 || rpc.chainId == 1 || rpc.chainId == 8453 ? "ETH" : "coins"
         func token(_ to: String) async -> (symbol: String, decimals: Int) {
             let symbol = (try? await rpc.call("eth_call", [["to": to, "data": "0x95d89b41"], "latest"]) as? String).flatMap { hex -> String? in
@@ -320,14 +321,16 @@ final class Browser {
         switch call {
         case .plain:
             lines.append("Transfer \(Fmt.num(Decimal(value) / 1_000_000_000_000_000_000, maxFraction: 8)) \(native) to \(to).")
-            if to.lowercased() != from.lowercased() { recipient = to }
         case .approve(let spender, let a), .increaseAllowance(let spender, let a):
             let t = await token(to)
             lines.append("Allow \(spender) to spend up to \(amount(a, t.decimals)) \(t.symbol).")
         case .transfer(let r, let a):
             let t = await token(to)
             lines.append("Transfer \(amount(a, t.decimals)) \(t.symbol) to \(r).")
-            if r.lowercased() != from.lowercased() { recipient = r }
+        case .nftTransfer(let f, let r):
+            lines.append("Move NFTs of \(to) from \(f.lowercased() == from.lowercased() ? "this wallet" : f) to \(r).")
+        case .delegation(let d, let on):
+            lines.append(on ? "Let \(d) borrow against or manage your lending positions." : "Revoke \(d)'s rights over your lending positions.")
         case .transferFrom(let f, let r, let a):
             let t = await token(to)
             lines.append("Move \(amount(a, t.decimals)) \(t.symbol) from \(f) to \(r).")
@@ -384,7 +387,7 @@ final class Browser {
                 problems.append("Couldn't estimate gas: \(error.localizedDescription)")
             }
         }
-        return EVMReview(chain: rpc.chainId, to: to, value: value, data: data, lines: lines, changes: changes, recipient: recipient, gas: gas, problems: problems)
+        return EVMReview(chain: rpc.chainId, to: to, value: value, data: data, lines: lines, changes: changes, recipients: recipients, gas: gas, problems: problems)
     }
 
     private func ask(_ kind: SiteRequest.Kind, origin: String, site: SiteCheck.Verdict) async -> Bool {
@@ -642,8 +645,9 @@ struct ApprovalSheet: View {
                 secondCheck(r.jev, nil)
                 if !r.problems.isEmpty {
                     refused(r.problems)
-                } else if let to = r.recipient {
-                    ask("Money goes to an address that isn't yours", "\(to.prefix(10))…\(to.suffix(6)) — check it on the site.",
+                } else if !r.recipients.isEmpty {
+                    ask("Money, or the right to spend it, goes to an address that isn't yours",
+                        r.recipients.map { "\($0.prefix(10))…\($0.suffix(6))" }.joined(separator: ", ") + " — check it on the site. The signer asks for Touch ID for a new one.",
                         toggle: "Send to this address", isOn: $allowUnknown)
                 }
                 note("Simulated on the latest block, before the network fee. A token names itself — check its address. The signer decodes the call again.")
@@ -930,7 +934,7 @@ struct ApprovalSheet: View {
             return r.problems.isEmpty && (r.unknownPrograms.isEmpty || allowUnknown) && (r.jev?.concern != true || acknowledgeJev)
         }
         if case .evmTransaction(let r) = request.kind {
-            return r.problems.isEmpty && (r.recipient == nil || allowUnknown) && (r.jev?.concern != true || acknowledgeJev)
+            return r.problems.isEmpty && (r.recipients.isEmpty || allowUnknown) && (r.jev?.concern != true || acknowledgeJev)
         }
         return true
     }

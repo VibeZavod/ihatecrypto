@@ -289,7 +289,69 @@ import WalletCore
             == "let 0x4cd0…bc31 spend exactly 2 USDC on Arbitrum")
     #expect(EVMCall.decode(try Tempo.setUserToken(EVMRPC.tempoUSDC)).summary(chainId: 4217, to: Tempo.feeManager, value: 0) == "pay Tempo's fees in USDC from now on")
     #expect(EVMCall.decode(Data()).summary(chainId: 8453, to: payee, value: 1_000_000_000_000_000) == "send 0.001 ETH to 0x060b…9ff0 on Base")
-    #expect(pay.summary(chainId: 4217, to: payee, value: 0) == "send tokens of 0x060b…9ff0 to 0x060b…9ff0 on Tempo")
+    #expect(pay.summary(chainId: 4217, to: payee, value: 0) == "send 185357 units of the token 0x060b…9ff0 to 0x060b…9ff0 on Tempo")
+    // An unknown token's approval shows its raw amount; coins sent with any call show too.
+    #expect(EVMCall.decode(try ERC20.approve(spender: relay, amount: 7)).summary(chainId: 8453, to: payee, value: 0)
+            == "let 0x4cd0…bc31 spend exactly 7 units of the token 0x060b…9ff0 on Base")
+    #expect(EVMCall.decode(Data([0xde, 0xad, 0xbe, 0xef])).summary(chainId: 1, to: payee, value: 2_000_000_000_000_000_000)
+            == "call the contract 0x060b…9ff0 on Ethereum, paying 2 ETH")
+}
+
+// S2–S4: who gets money or spending rights from a call. Each payee must be ours or approved in person; a spender may also
+// be a contract the app itself uses, so its own Uniswap, Aave, Morpho, Permit2 and Relay approvals keep working.
+@Test func signerNamesEveryPayeeOfACall() throws {
+    func word(_ hex: String) -> String { String(repeating: "0", count: 64 - hex.count) + hex }
+    let me = "0x14dc79964da2c08b23698b3d3cc7ca32193d9955", stranger = "0x" + String(repeating: "5c", count: 20)
+    // 4 bytes of calldata don't turn coins to an EOA into an unchecked contract call.
+    #expect(EVMCall.decode(Data([0xde, 0xad, 0xbe, 0xef])).payees(to: stranger, value: 1, chainId: 1) == [stranger])
+    #expect(EVMCall.decode(Data([0xde, 0xad, 0xbe, 0xef])).payees(to: stranger, value: 0, chainId: 1).isEmpty)
+    #expect(EVMCall.plain.payees(to: stranger, value: 5, chainId: 8453) == [stranger])
+    #expect(EVMCall.decode(try ERC20.transfer(to: stranger, amount: 1)).payees(to: EVMRPC.baseUSDC, value: 0, chainId: 8453) == [stranger])
+    // A stranger as spender needs approving; the app's own spenders don't.
+    #expect(EVMCall.decode(try ERC20.approve(spender: stranger, amount: 1)).payees(to: EVMRPC.baseUSDC, value: 0, chainId: 8453) == [stranger])
+    let own: [(UInt64, String)] = [(8453, AaveV3.basePool), (42161, AaveV3.arbitrum.pool), (8453, MorphoVault.base.address),
+                                   (8453, UniswapV3.on(8453)!.router), (4663, UniswapV3.robinhoodRouter), (4663, UniswapV4.permit2),
+                                   (137, "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be"), (4217, "0x4cd00e387622c35bddb9b4c962c136462338bc31")]
+    for (chain, spender) in own {
+        #expect(EVMCall.decode(try ERC20.approve(spender: spender, amount: 1)).payees(to: EVMRPC.baseUSDC, value: 0, chainId: chain).isEmpty, "\(spender)")
+    }
+    #expect(EVMCall.decode(try ERC20.approve(spender: UniswapV3.robinhoodRouter, amount: 1)).payees(to: EVMRPC.baseUSDC, value: 0, chainId: 1) == [UniswapV3.robinhoodRouter])
+    let permit2 = try UniswapV4.permit2Approve(token: EVMRPC.robinhoodUSDG, spender: UniswapV4.robinhoodRouter, amount: 1, expiration: 1)
+    #expect(EVMCall.decode(permit2).payees(to: UniswapV4.permit2, value: 0, chainId: 4663).isEmpty)
+    #expect(EVMCall.decode(Data(hex: "39509351" + word(String(stranger.dropFirst(2))) + word("1"))!).payees(to: EVMRPC.baseUSDC, value: 0, chainId: 8453) == [stranger])
+
+    // «Exact» means below 2⁹⁶ now: 2¹²⁸ − 1 and 10³⁰ are unlimited too.
+    let max128 = String(repeating: "0", count: 32) + String(repeating: "f", count: 32)
+    #expect(EVMCall.decode(Data(hex: "095ea7b3" + word(String(stranger.dropFirst(2))) + max128)!).refusal(sender: me) != nil)
+    #expect(EVMCall.decode(try ERC20.approve(spender: stranger, units: Decimal(string: "1000000000000000000000000000000")!)).refusal(sender: me) != nil)
+    #expect(EVMCall.decode(Data(hex: "095ea7b3" + word(String(stranger.dropFirst(2))) + word(String(repeating: "f", count: 24)))!).refusal(sender: me) == nil)
+
+    // NFTs out of the wallet are transfers; credit delegation and Morpho authorization are refused, revoking them is fine.
+    func selector(_ signature: String) -> String { Keccak.hash256(Data(signature.utf8)).prefix(4).hex }
+    #expect(["safeTransferFrom(address,address,uint256)", "safeTransferFrom(address,address,uint256,bytes)",
+             "safeTransferFrom(address,address,uint256,uint256,bytes)", "safeBatchTransferFrom(address,address,uint256[],uint256[],bytes)",
+             "approveDelegation(address,uint256)", "setAuthorization(address,bool)"].map(selector)
+            == ["42842e0e", "b88d4fde", "f242432a", "2eb2c2d6", "c04a8a10", "eecea000"])
+    let nft = EVMCall.decode(Data(hex: "42842e0e" + word(String(me.dropFirst(2))) + word(String(stranger.dropFirst(2))) + word("7"))!)
+    #expect(nft == .nftTransfer(from: me, to: stranger))
+    #expect(nft.payees(to: "0x" + String(repeating: "aa", count: 20), value: 0, chainId: 1) == [stranger])
+    #expect(EVMCall.decode(Data(hex: "c04a8a10" + word(String(stranger.dropFirst(2))) + word("ffff"))!).refusal(sender: me) != nil)
+    #expect(EVMCall.decode(Data(hex: "c04a8a10" + word(String(stranger.dropFirst(2))) + word("0"))!).refusal(sender: me) == nil)
+    #expect(EVMCall.decode(Data(hex: "eecea000" + word(String(stranger.dropFirst(2))) + word("1"))!).refusal(sender: me) != nil)
+    #expect(EVMCall.decode(Data(hex: "eecea000" + word(String(stranger.dropFirst(2))) + word("0"))!).refusal(sender: me) == nil)
+}
+
+// S11: a fee past the network's cap is refused, and gas × price past 64 bits doesn't trap.
+@Test func signerCapsTheNetworkFee() {
+    func tx(_ chain: UInt64, _ gas: UInt64, _ price: UInt64) -> EVMTransaction {
+        EVMTransaction(chainId: chain, nonce: 0, maxPriorityFeePerGas: 0, maxFeePerGas: price, gasLimit: gas, to: "0x" + String(repeating: "11", count: 20), value: 0, data: Data())
+    }
+    #expect(tx(8453, 300_000, 20_000_000).feeProblem == nil)                   // a Base call at 0.02 gwei
+    #expect(tx(1, 570_000, 80_000_000_000).feeProblem == nil)                  // Ethereum's Morpho deposit at 80 gwei
+    #expect(tx(1, 570_000, 80_000_000_000).feeText == "up to 0.0456 ETH")
+    #expect(tx(42161, 10_000_000, 1_000_000_000_000).feeProblem != nil)        // 10 ETH of fees
+    #expect(tx(137, UInt64.max, 2).feeProblem != nil)                          // overflows
+    #expect(tx(999, 21_000, 1).feeProblem != nil)                              // not a network ihatecrypto signs for
 }
 
 // S10: offsets a page sets can't crash the app or the signer.

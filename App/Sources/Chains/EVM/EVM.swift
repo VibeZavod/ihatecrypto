@@ -90,6 +90,28 @@ public struct EVMTransaction: Sendable {
 
     /// Most this transaction can cost in fees, wei.
     public var maxFee: UInt64 { gasLimit * maxFeePerGas }
+
+    /// The most gas × max fee per gas may come to, per network, in its smallest unit: far above a real fee, so only a
+    /// broken or hostile request reaches it. Ethereum 0.05 ETH (≈ $150; a 570k-gas Morpho deposit at a 43 gwei base fee),
+    /// Arbitrum, Base and Robinhood Chain 0.01 ETH (≈ $30; their calls cost cents), Polygon 10 POL (≈ $3, ten times a call
+    /// at 1000 gwei; 64 bits of wei hold 18 POL at most), Tempo $10 (its fees are counted in attodollars).
+    public static let feeCap: [UInt64: UInt64] = [1: 50_000_000_000_000_000, 42161: 10_000_000_000_000_000, 8453: 10_000_000_000_000_000,
+                                                  4663: 10_000_000_000_000_000, 137: 10_000_000_000_000_000_000, 4217: 10_000_000_000_000_000_000]
+
+    /// Why the signer won't sign this fee, or nil: past the network's cap, or past 64 bits.
+    public var feeProblem: String? {
+        let (fee, overflow) = gasLimit.multipliedReportingOverflow(by: maxFeePerGas)
+        guard let cap = Self.feeCap[chainId], !overflow, fee <= cap else {
+            return "A network fee of \(feeText) is more than ihatecrypto signs on \(EVMRPC.names[chainId] ?? "network \(chainId)")."
+        }
+        return nil
+    }
+
+    /// «up to 0.000042 ETH»: the fee ceiling, for the Touch ID prompt.
+    public var feeText: String {
+        let (fee, overflow) = gasLimit.multipliedReportingOverflow(by: maxFeePerGas)
+        return overflow ? "over 18 \(EVMRPC.coin(chainId))" : "up to \(NSDecimalNumber(decimal: Decimal(fee) / pow(10, 18)).stringValue) \(EVMRPC.coin(chainId))"
+    }
 }
 
 public enum ERC20 {
@@ -244,6 +266,8 @@ public struct EVMRPC: Sendable {
 
     /// The networks by name, for what the signer says it signs.
     public static let names: [UInt64: String] = [1: "Ethereum", 137: "Polygon", 42161: "Arbitrum", 8453: "Base", 4663: "Robinhood Chain", 4217: "Tempo"]
+    /// What a network's fees and `value` are counted in: Polygon's POL, Tempo's dollars (it has no coin), else ETH.
+    public static func coin(_ chainId: UInt64) -> String { chainId == 137 ? "POL" : chainId == 4217 ? "USD" : "ETH" }
     /// The dollars ihatecrypto moves, by contract: their symbol for the Touch ID prompt; all have 6 decimals.
     public static let dollars: [String: String] = [baseUSDC: "USDC", arbitrumUSDC: "USDC", polygonUSDC: "USDC", ethereumUSDC: "USDC",
                                                    tempoUSDC: "USDC", robinhoodUSDG: "USDG"]
@@ -414,6 +438,10 @@ public enum EVMCall: Equatable, Sendable {
     case permit2Approve(token: String, spender: String, amount: Data, expiration: UInt64)
     /// The Universal Router's v4 swap in exactly this app's shape (UniswapV4.decodeExecute): it pays the caller.
     case v4Swap(UniswapV4.Swap)
+    /// ERC-721 or ERC-1155 safeTransferFrom / safeBatchTransferFrom: NFTs (or game items) from `from` to `to`.
+    case nftTransfer(from: String, to: String)
+    /// Aave's approveDelegation or Morpho Blue's setAuthorization: `to` may borrow against, or manage, this wallet's positions.
+    case delegation(to: String, granted: Bool)
     case contract(selector: String)
 
     public static func decode(_ data: Data) -> EVMCall {
@@ -441,6 +469,9 @@ public enum EVMCall: Equatable, Sendable {
         case "87517c45": if let t = address(0), let s = address(1), let a = word(2), let e = ABI.uint(in: Data(args), word: 3) { return .permit2Approve(token: t, spender: s, amount: a, expiration: e) }
         // Any other Universal Router call stays a plain contract call (a site's own swap), read as before.
         case "3593564c": if let swap = UniswapV4.decodeExecute(data) { return .v4Swap(swap) }
+        case "42842e0e", "b88d4fde", "f242432a", "2eb2c2d6": if let f = address(0), let t = address(1) { return .nftTransfer(from: f, to: t) }
+        case "c04a8a10": if let d = address(0), let a = word(1) { return .delegation(to: d, granted: a.contains { $0 != 0 }) }
+        case "eecea000": if let d = address(0), let b = word(1) { return .delegation(to: d, granted: b.contains { $0 != 0 }) }
         default: break
         }
         return .contract(selector: "0x" + selector)
@@ -456,28 +487,56 @@ public enum EVMCall: Equatable, Sendable {
             let whole = word.reduce(Decimal(0)) { $0 * 256 + Decimal($1) }
             return NSDecimalNumber(decimal: whole / pow(10, Int(decimals))).stringValue
         }
-        let dollar = EVMRPC.dollars[to.lowercased()]
-        switch self {
-        case .transfer(let recipient, let amount):
-            return dollar.map { "send \(units(amount, 6)) \($0) to \(short(recipient)) \(net)" } ?? "send tokens of \(short(to)) to \(short(recipient)) \(net)"
-        case .approve(let spender, let amount):
-            return dollar.map { "let \(short(spender)) spend exactly \(units(amount, 6)) \($0) \(net)" } ?? "let \(short(spender)) spend tokens of \(short(to)) \(net)"
-        case .plain:
-            return "send \(units(ABI.uint(value), 18)) \(chainId == 137 ? "POL" : "ETH") to \(short(to)) \(net)"
-        case .swap: return "swap on Uniswap \(net), paying this wallet"
-        case .v4Swap: return "swap on Uniswap v4 \(net), paying this wallet"
-        case .permit2Approve(let token, let spender, let amount, _):
-            return EVMRPC.dollars[token.lowercased()].map { "let \(short(spender)) spend exactly \(units(amount, 6)) \($0) through Permit2 \(net)" }
-                ?? "let \(short(spender)) spend tokens of \(short(token)) through Permit2 \(net)"
-        case .vault(_, let owner): return "\(owner == nil ? "deposit into" : "withdraw from") the vault \(short(to)) \(net)"
-        case .lending: return "use the lending pool \(short(to)) \(net), for this wallet"
-        case .contract where to.lowercased() == Tempo.feeManager: return "pay Tempo's fees in USDC from now on"
-        default: return "call the contract \(short(to)) \(net)"
+        let coins = "\(units(ABI.uint(value), 18)) \(EVMRPC.coin(chainId))"
+        if case .plain = self { return "send \(coins) to \(short(to)) \(net)" }
+        // A token the signer can't name shows its raw units: an amount on the prompt, never none.
+        func amount(_ word: Data, of token: String) -> String {
+            EVMRPC.dollars[token.lowercased()].map { "\(units(word, 6)) \($0)" } ?? "\(units(word, 0)) units of the token \(short(token))"
         }
+        let what = switch self {
+        case .transfer(let recipient, let a): "send \(amount(a, of: to)) to \(short(recipient)) \(net)"
+        case .approve(let spender, let a): "let \(short(spender)) spend exactly \(amount(a, of: to)) \(net)"
+        case .increaseAllowance(let spender, let a): "let \(short(spender)) spend \(amount(a, of: to)) more \(net)"
+        case .swap: "swap on Uniswap \(net), paying this wallet"
+        case .v4Swap: "swap on Uniswap v4 \(net), paying this wallet"
+        case .permit2Approve(let token, let spender, let a, _): "let \(short(spender)) spend exactly \(amount(a, of: token)) through Permit2 \(net)"
+        case .vault(_, let owner): "\(owner == nil ? "deposit into" : "withdraw from") the vault \(short(to)) \(net)"
+        case .lending: "use the lending pool \(short(to)) \(net), for this wallet"
+        case .nftTransfer(_, let recipient): "send NFTs of \(short(to)) to \(short(recipient)) \(net)"
+        case .contract where to.lowercased() == Tempo.feeManager: "pay Tempo's fees in USDC from now on"
+        default: "call the contract \(short(to)) \(net)"
+        }
+        return value > 0 ? what + ", paying \(coins)" : what
     }
 
-    /// An amount no real balance reaches: the «unlimited» allowance (≥ 2¹²⁸).
-    static func unlimited(_ amount: Data) -> Bool { amount.prefix(16).contains { $0 != 0 } }
+    /// An allowance none of ihatecrypto's own approvals reaches: ≥ 2⁹⁶ units (79 billion tokens of 18 decimals). Drainers
+    /// ask for the maximum, 2¹²⁸ − 1 or 10³⁰ — past any balance; the old ≥ 2¹²⁸ line let the last two through.
+    /// ponytail: more than 79 billion of an 18-decimal token can't be approved in one go; compare with the balance if that matters.
+    static func unlimited(_ amount: Data) -> Bool { amount.prefix(20).contains { $0 != 0 } }
+
+    /// Contracts ihatecrypto itself lets spend its tokens on a network: Uniswap's routers (and Permit2 on Robinhood Chain),
+    /// Aave's pools, Morpho's vaults, Relay's depository and approval proxy (one address on every network, api.relay.link/chains
+    /// 2026-10-03). An approve to any other spender needs it approved in person, like a recipient.
+    public static func knownSpenders(chainId: UInt64) -> Set<String> {
+        var s = ["0x4cd00e387622c35bddb9b4c962c136462338bc31", "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be"]
+        s += AaveV3.markets.filter { $0.rpc.chainId == chainId }.map(\.pool) + MorphoVault.vaults.filter { $0.rpc.chainId == chainId }.map(\.address)
+        if let uni = UniswapV3.on(chainId) { s.append(uni.router) }
+        if chainId == EVMRPC.robinhood.chainId { s += [UniswapV3.robinhoodRouter, UniswapV4.robinhoodRouter, UniswapV4.permit2] }
+        return Set(s.map { $0.lowercased() })
+    }
+
+    /// Who gets money, or the right to spend it, from this call: `to` when it carries coins, a token's or NFT's recipient, and
+    /// a spender that isn't one of `knownSpenders`. The signer signs only when each is the wallet's own or approved in person.
+    public func payees(to: String, value: UInt64, chainId: UInt64) -> [String] {
+        var out = value > 0 ? [to] : []
+        switch self {
+        case .transfer(let r, _), .nftTransfer(_, let r): out.append(r)
+        case .approve(let s, _), .increaseAllowance(let s, _), .permit2Approve(_, let s, _, _):
+            if !Self.knownSpenders(chainId: chainId).contains(s.lowercased()) { out.append(s) }
+        default: break
+        }
+        return out
+    }
 
     /// Why this must not be signed, or nil. `sender` is the user's own address.
     public func refusal(sender: String) -> String? {
@@ -504,6 +563,8 @@ public enum EVMCall: Equatable, Sendable {
             "Unlimited token spending approval — the drainers' main trick. ihatecrypto only approves exact amounts."
         case .setApprovalForAll(_, true):
             "Rights to all your NFTs in this contract (setApprovalForAll) — an NFT drainer trick. Refused."
+        case .delegation(let to, true):
+            "Lets \(to) borrow against or manage your lending positions (Aave credit delegation, Morpho authorization). Refused."
         case .permit:
             "A permit call grants approval to spend your tokens. Refused."
         case .transferFrom(let from, _, _) where from.lowercased() == sender.lowercased():

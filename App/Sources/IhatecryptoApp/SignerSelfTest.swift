@@ -96,12 +96,15 @@ enum SignerSelfTest {
             let permitReply = try await signer.send(.signTypedData(json: permit))
             check(!permitReply.ok && permitReply.signature == nil, "Permit (permission to spend tokens) not signed")
 
-            // EVM transactions from sites: an exact approve signs exactly like our own builder; an unlimited one does not.
+            // EVM transactions from sites: an exact approve to an approved spender signs exactly like our own builder; to a
+            // spender nobody approved, or unlimited, it does not.
             let arbitrumUSDC = "0xaf88d065e77c8cC2239327C5EDb3A432268e5831"
             let word = { (hex: String) in Data(hex: String(repeating: "0", count: 64 - hex.count) + hex)! }
             let exact = Data(hex: "095ea7b3")! + word(String(repeating: "5c", count: 20)) + word("f4240")
+            check(try await signer.send(.signEVMTransaction(chainId: 42161, nonce: 0, maxPriorityFee: 1, maxFee: 20_000_000, gasLimit: 60_000,
+                                                            to: arbitrumUSDC, value: 0, data: exact, recipients: [])).ok == false, "approve to an unapproved spender not signed")
             let evmTx = try await signer.send(.signEVMTransaction(chainId: 42161, nonce: 0, maxPriorityFee: 1, maxFee: 20_000_000, gasLimit: 60_000,
-                                                                  to: arbitrumUSDC, value: 0, data: exact, recipients: []))
+                                                                  to: arbitrumUSDC, value: 0, data: exact, recipients: [scamEVM]))
             let referenceTx = try EVMTransaction(chainId: 42161, nonce: 0, maxPriorityFeePerGas: 1, maxFeePerGas: 20_000_000, gasLimit: 60_000,
                                                to: arbitrumUSDC, value: 0, data: exact).signed(privateKey: evmKey).raw
             check(evmTx.signedRaw == referenceTx, "exact-amount approve: transaction matches the reference")

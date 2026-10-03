@@ -96,8 +96,8 @@ public struct LedgerSigner: TradeSigner {
         guard EVMRPC.signable.contains(chainId) else { throw ExecutionError("ihatecrypto doesn't sign for network \(chainId).") }
         let call = EVMCall.decode(data)
         if let refusal = call.refusal(sender: wallet.evm) { throw ExecutionError(refusal) }
-        if case .transfer(let recipient, _) = call, !(recipients + [wallet.evm]).contains(where: { $0.lowercased() == recipient.lowercased() }) {
-            throw ExecutionError("Tokens would go to an unapproved address \(recipient).")
+        if let payee = call.payees(to: to, value: 0, chainId: chainId).first(where: { p in !(recipients + [wallet.evm]).contains { $0.lowercased() == p.lowercased() } }) {
+            throw ExecutionError("Tokens or the right to spend them would go to an unapproved address \(payee).")
         }
         let tx = EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee,
                                 gasLimit: gasLimit, to: to, value: 0, data: data)

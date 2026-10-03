@@ -53,8 +53,8 @@ struct LocalSigner: TradeSigner {
         guard EVMRPC.signable.contains(chainId) else { throw ExecutionError("Not signing for network \(chainId).") }
         let call = EVMCall.decode(data)
         if let refusal = call.refusal(sender: wallet.evm) { throw ExecutionError(refusal) }
-        if case .transfer(let recipient, _) = call, !(recipients + [wallet.evm]).contains(where: { $0.lowercased() == recipient.lowercased() }) {
-            throw ExecutionError("Tokens would go to \(recipient).")
+        if let payee = call.payees(to: to, value: 0, chainId: chainId).first(where: { p in !(recipients + [wallet.evm]).contains { $0.lowercased() == p.lowercased() } }) {
+            throw ExecutionError("Tokens or the right to spend them would go to \(payee).")
         }
         return try EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee,
                                   gasLimit: gasLimit, to: to, value: 0, data: data).signed(privateKey: keys.evm).raw
@@ -293,7 +293,8 @@ func writeBrowserTestPage(_ path: String) async throws {
       const USDC = '0xaf88d065e77c8cC2239327C5EDb3A432268e5831';
       const spender = '0x' + '5c'.repeat(20);
       try { await req('eth_sendTransaction', [{ from: addr, to: USDC, data: '0x095ea7b3' + pad(spender) + pad((1000000).toString(16)) }]); log('FAIL: exact approve sent'); }
-      catch (e) { log('exact approve 1 USDC: ' + (e.message.toLowerCase().includes(addr.toLowerCase()) ? 'signed, node recovered our address' : 'not signed') + ' — ' + e.message.slice(0, 120)); }
+      // A stranger as spender is a new address: signed only after the tick and Touch ID for it.
+      catch (e) { log('exact approve 1 USDC to a stranger: ' + (e.message.toLowerCase().includes(addr.toLowerCase()) ? 'signed, node recovered our address' : 'not signed') + ' — ' + e.message.slice(0, 120)); }
       await refused('unlimited approve', 'eth_sendTransaction', [{ from: addr, to: USDC, data: '0x095ea7b3' + pad(spender) + 'f'.repeat(64) }]);
       await refused('setApprovalForAll', 'eth_sendTransaction', [{ from: addr, to: USDC, data: '0xa22cb465' + pad(spender) + pad('1') }]);
       try { await req('eth_sendTransaction', [{ from: addr, to: USDC, data: '0xa9059cbb' + pad(spender) + pad((1000000).toString(16)) }]); log('FAIL: transfer sent'); }

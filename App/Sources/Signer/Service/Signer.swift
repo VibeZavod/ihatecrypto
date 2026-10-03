@@ -355,22 +355,22 @@ enum Signer {
             var v = Verdict()
             let call = EVMCall.decode(data)
             let approved = Set(recipients.map { $0.lowercased() } + [owner.lowercased()])
+            let tx = EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee,
+                                    gasLimit: gasLimit, to: to, value: value, data: data)
             if !EVMRPC.signable.contains(chainId) { v.problems.append("ihatecrypto doesn't sign for network \(chainId).") }
             if let refusal = call.refusal(sender: owner) { v.problems.append(refusal) }
-            switch call {
-            case .transfer(let recipient, _) where !approved.contains(recipient.lowercased()):
-                v.problems.append("Tokens go to an unapproved address \(recipient).")
-            case .plain where value > 0 && !approved.contains(to.lowercased()):
-                v.problems.append("Coins go to an unapproved address \(to).")
-            default: break
+            if let fee = tx.feeProblem { v.problems.append(fee) }
+            // Coins (calldata or not), tokens, NFTs and spending rights go only to this wallet or an address approved in person.
+            for payee in call.payees(to: to, value: value, chainId: chainId) where !approved.contains(payee.lowercased()) {
+                v.problems.append("Money or the right to spend it goes to an unapproved address \(payee).")
             }
             guard v.ok else { return refused(v) }
             try approve(recipients)
-            let tx = EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee,
-                                    gasLimit: gasLimit, to: to, value: value, data: data)
             var r = SignerReply(ok: true)
-            r.signedRaw = try withKey("evm", reason: call.summary(chainId: chainId, to: to, value: value)) { try tx.signed(privateKey: $0).raw }
-            r.checks = ["Calldata parsed by the signer: no unlimited approvals and no spending by others."]
+            r.signedRaw = try withKey("evm", reason: call.summary(chainId: chainId, to: to, value: value) + "\nnetwork fee " + tx.feeText) {
+                try tx.signed(privateKey: $0).raw
+            }
+            r.checks = ["Calldata parsed by the signer: no unlimited approvals, no spending by others, money only to approved addresses."]
             return r
 
         case .signSolana(let wire, let accounts, let recipients, let tokenOwners, let extraPrograms):

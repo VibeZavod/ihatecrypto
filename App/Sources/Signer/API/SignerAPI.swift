@@ -42,11 +42,12 @@ public enum SignerRequest: Codable, Sendable {
     case signSolanaMessage(message: Data)
     /// EVM personal_sign (EIP-191) with the main EVM key; a bare 32-byte hash is refused.
     case signPersonal(message: Data)
-    /// EVM eth_signTypedData_v4: the signer parses the JSON and hashes it itself. Token spending
-    /// permissions (Permit, Permit2…) and nested types are refused.
+    /// EVM eth_signTypedData_v4: the signer parses the JSON and hashes it itself. Token spending permissions (Permit,
+    /// Permit2…), Hyperliquid's own actions, payments by signature (EIP-3009 and the like) and nested types are refused.
     case signTypedData(json: Data)
     /// An EIP-1559 transaction from a site. The signer decodes the calldata itself and refuses unlimited approvals,
-    /// setApprovalForAll, permit and transferFrom out of the user; a transfer goes only to an address in `recipients`.
+    /// setApprovalForAll, credit delegation, permit and transferFrom out of the user, and a fee past the network's cap;
+    /// coins, tokens, NFTs and a spender that isn't a contract ihatecrypto uses go only to an address in `recipients`.
     case signEVMTransaction(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                             to: String, value: UInt64, data: Data, recipients: [String])
     /// Hyperliquid order/cancel (L1). The signer hashes the action itself.
