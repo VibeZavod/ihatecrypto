@@ -1383,8 +1383,12 @@ final class Workspace {
     // MARK: Live data
 
     func refresh() async {
+        // The wallet this read is for. Switched meanwhile, the new one gets its own read: this one's equity point and
+        // «money arrived» (the old wallet's balances against the new one's) are dropped, not written into it.
+        let wallet = (activeWalletID, solanaAddress, hlAddress)
+        func same() -> Bool { wallet == (activeWalletID, solanaAddress, hlAddress) }
         let before = (solana?.usdc, solana?.sol, base?.usdc)
-        defer { if updatedAt != nil { announceIncoming(before: (before.0, before.1, before.2)) } }
+        defer { if updatedAt != nil, same() { announceIncoming(before: (before.0, before.1, before.2)) } }
         async let m: Void = loadMarkets()
         async let s: Void = loadSolana()
         async let h: Void = loadHL()
@@ -1395,6 +1399,7 @@ final class Workspace {
         // Not waited for: a spammed address takes many pages, and the balances above shouldn't sit behind it.
         if !holdingsLoading { Task { await loadHoldings() } }
         await refreshQuote()
+        guard same() else { return }
         updatedAt = Date()
         recordEquity()
     }
@@ -1423,6 +1428,7 @@ final class Workspace {
                                                            ("polygon", await polygon), ("robinhood", await robinhood), ("tempo", await tempo), ("hyperliquid", await spot),
                                                            ("near", await near)]
         _ = await (lending, protocols)
+        guard me == hlAddress, nearAccount == nearAddress else { return }   // another wallet since: its own read follows
         let found = read.flatMap { r in r.tokens ?? otherTokens.filter { $0.chain == r.chain } }
         if found != otherTokens { otherTokens = found }
     }
@@ -1441,6 +1447,7 @@ final class Workspace {
         async let rates: (aave: Decimal?, morpho: Decimal?) = stale ? (try? await AaveV3.verify(AaveV3.base), await MorphoRates.netAPY(MorphoVault.base)) : (nil, nil)
         // Awaited first, assigned together: every assignment after an await is one more redraw of the window.
         let u = try? await usdc, a = try? await supplied, m = try? await vault, e = try? await eth, arbitrum = try? await arb, r = await rates
+        guard me == hlAddress else { return }   // another wallet since: its own read follows
         if let u, let a, let e {
             let b = (usdc: Decimal(u) / 1_000_000, aave: Decimal(a) / 1_000_000, morpho: Decimal(m ?? 0) / 1_000_000,
                      eth: Decimal(e) / Decimal(sign: .plus, exponent: 18, significand: 1))
@@ -1481,11 +1488,14 @@ final class Workspace {
             guard let nearAccount else { return nil }
             return try? await Near.balance(account: nearAccount)
         }()
+        // Another wallet since the read began: its results aren't this one's, and its own read follows.
+        func current() -> Bool { owner == solanaAddress && nearAccount == nearAddress }
         do {
             let s = try await balance
             let l: [(vault: String, usdc: Decimal)] = ((await lendPositions) ?? []).filter { $0.assets > 0 }
                 .map { ($0.vault, Decimal($0.assets) / 1_000_000) }
             let k = await kaminoPositions, n = await nearBalance
+            guard current() else { return }
             solana = s
             solanaError = nil
             // Tuples aren't Equatable: without this check @Observable redraws on every refresh.
@@ -1494,7 +1504,7 @@ final class Workspace {
             if let n { near = n.near + n.wrapped }
         } catch {
             // A failed read keeps the last balances: set to nil, the rail and the canvas's cards went blank until the next one.
-            solanaError = error.localizedDescription
+            if current() { solanaError = error.localizedDescription }
         }
     }
 
@@ -1521,6 +1531,9 @@ final class Workspace {
             // looked closed by its stop («closed by the exchange» notice) until the next refresh brought it back.
             let p = (await openPositions)?.filter { $0.size != 0 } ?? positions
             let o = (await openOrders) ?? orders, v = await vault, d = await dexes
+            // Another wallet since the read began: its positions would read as this one's closed («closed by the
+            // exchange», exit rules cleared). Dropped; the new wallet's own read follows.
+            guard user == hlAddress else { return }
             // The week's closes are read again when the open positions changed: after the positions and their
             // notices, so a stop-out never waits on the fills request (one more redraw, only then).
             let readFills = recentlyClosed == nil || Set(positions.map(\.coin)) != Set(p.map(\.coin))
@@ -1535,7 +1548,7 @@ final class Workspace {
             if let v, hlp != (v.equity, v.lockedUntil) { hlp = (v.equity, v.lockedUntil) }
             // A position that vanished while we were not closing it was closed by its stop or take.
             if !executing {
-                for coin in before.subtracting(positions.map(\.coin)) { await closedByExchange(coin) }
+                for coin in before.subtracting(positions.map(\.coin)) where user == hlAddress { await closedByExchange(coin) }
                 // A limit entry that became a position while nobody watched: it filled.
                 for p in positions where !before.contains(p.coin) && waitingEntries.contains(p.coin) {
                     notify(.orders, say("Limit filled: \(IntentParser.pretty(p.coin))", "Лимитка исполнилась: \(IntentParser.pretty(p.coin))"),
@@ -1551,13 +1564,13 @@ final class Workspace {
                 notify(.hlp, say("HLP unlocked", "HLP разблокирован"),
                        say("\(Fmt.usd(hlp.equity)) in the HLP vault can be withdrawn now.", "\(Fmt.usd(hlp.equity)) в хранилище HLP теперь можно вывести."))
             }
-            if readFills, let fills = try? await TradeHistory.fills(user: user) {
+            if readFills, let fills = try? await TradeHistory.fills(user: user), user == hlAddress {
                 let week = Date().addingTimeInterval(-7 * 86400)
                 recentlyClosed = TradeHistory.stories(fills).filter { ($0.closed ?? .distantPast) > week }
             }
         } catch {
             // As on Solana: the last balance stays through a failed read.
-            hlError = error.localizedDescription
+            if user == hlAddress { hlError = error.localizedDescription }
         }
     }
 
@@ -1612,20 +1625,8 @@ final class Workspace {
         wallets = (status.wallets ?? []) + (ledger.map { [$0.wallet] } ?? [])
         let active = onLedger ? LedgerAccount.id : status.activeWallet
         if active != activeWalletID { walletChanged(to: active) }
-        // A phrase wallet imported before NEAR: the signer derives the address once (one unlock), then keeps it.
-        // A key wallet has no NEAR account at all. The rest is assigned together after it: every assignment after an
-        // await is one more redraw of the window.
-        let phrase = activeWallet?.kind ?? "phrase" == "phrase"
-        let near = onLedger ? nil : status.hasWallet == true && status.nearAddress == nil && phrase ? try? await SignerClient().send(.nearAddress).nearAddress : status.nearAddress
-        let nearChanged = nearAddress != near
-        nearAddress = near
-        // On a Ledger, the trading key it approved for its own Hyperliquid account; otherwise the signer wallet's.
-        var agent: SignerReply?
-        if onLedger, let evm = ledger?.evm { agent = try? await SignerClient().send(.ledgerAgent(owner: evm, create: false)) }
-        agentAddress = onLedger ? agent?.agentAddress : status.agentAddress
-        agentActive = onLedger ? agent?.agentActive ?? false : status.agentActive ?? false
-        sessionLength = status.sessionLength ?? SignerSession.standard
-        confirmedAddresses = (try? await SignerClient().send(.addressBook))?.addresses ?? confirmedAddresses
+        // The addresses with the switch, before anything waits: a balance read started meanwhile would read the old
+        // wallet's addresses into the new one.
         if let ledger, onLedger {
             let solana = ledger.solana ?? "", evm = ledger.evm ?? ""
             signerWallet = TradeWallet(solana: solana, evm: evm)
@@ -1641,6 +1642,20 @@ final class Workspace {
         } else {
             signerWallet = nil
         }
+        // A phrase wallet imported before NEAR: the signer derives the address once (one unlock), then keeps it.
+        // A key wallet has no NEAR account at all. The rest is assigned together after it: every assignment after an
+        // await is one more redraw of the window.
+        let phrase = activeWallet?.kind ?? "phrase" == "phrase"
+        let near = onLedger ? nil : status.hasWallet == true && status.nearAddress == nil && phrase ? try? await SignerClient().send(.nearAddress).nearAddress : status.nearAddress
+        let nearChanged = nearAddress != near
+        nearAddress = near
+        // On a Ledger, the trading key it approved for its own Hyperliquid account; otherwise the signer wallet's.
+        var agent: SignerReply?
+        if onLedger, let evm = ledger?.evm { agent = try? await SignerClient().send(.ledgerAgent(owner: evm, create: false)) }
+        agentAddress = onLedger ? agent?.agentAddress : status.agentAddress
+        agentActive = onLedger ? agent?.agentActive ?? false : status.agentActive ?? false
+        sessionLength = status.sessionLength ?? SignerSession.standard
+        confirmedAddresses = (try? await SignerClient().send(.addressBook))?.addresses ?? confirmedAddresses
         // NEAR's balance is read with Solana's.
         if nearChanged { await loadSolana() }
     }
