@@ -286,8 +286,21 @@ public actor Executor {
         if let limit = p.intent.entryPx { return try await placeLimit(p, market: market, limit: limit) }
 
         let entryPx = HLAction.price(market.markPx * (long ? 1 + Self.slippage : 1 - Self.slippage), szDecimals: market.szDecimals)
-        let entry = try await post(try HLAction.order([HLOrder(asset: market.index, isBuy: long, price: entryPx, size: p.sizing.size,
+        let entry: HLReply
+        do {
+            entry = try await post(try HLAction.order([HLOrder(asset: market.index, isBuy: long, price: entryPx, size: p.sizing.size,
                                                                reduceOnly: false, kind: .limit(tif: "Ioc"))]), label: "entry")
+        } catch {
+            // The reply was lost, not necessarily the order: an entry that filled is a position, and it gets its stop as usual.
+            guard let positions = try? await HyperliquidAccount.positions(wallet.evm) else {
+                throw ExecutionError("The entry's reply didn't come (\(error.localizedDescription)) and the positions can't be read now. Check \(market.name) on Hyperliquid: if it opened, it has no stop yet.")
+            }
+            guard let open = positions.first(where: { $0.coin == market.name && $0.size != 0 }) else {
+                throw ExecutionError("The entry's reply didn't come (\(error.localizedDescription)); no \(market.name) position is open, the money is on your Hyperliquid balance.")
+            }
+            report("The entry's reply didn't come, but the \(market.name) position is open: placing its stop.")
+            entry = .filled(size: abs(open.size), avgPx: open.entry)
+        }
         guard case .filled(let size, let avgPx) = entry else {
             throw ExecutionError("The entry didn't fill (\(entry)). No position; the money is on your Hyperliquid balance.")
         }
@@ -303,13 +316,34 @@ public actor Executor {
             try await verifyProtection(coin: market.name, stop: stop, take: take)
         } catch {
             report("The stop didn't go through: \(error.localizedDescription). Closing the position so it isn't left unprotected.")
-            _ = try? await close(asset: market.name)
-            throw ExecutionError("Position closed: the exchange didn't confirm the stop.")
+            let closed: String
+            do { closed = try await close(asset: market.name) } catch let failed {
+                let left = await restoreStop(market, stop: stop)
+                throw ExecutionError("The stop didn't go through and the emergency close failed too (\(failed.localizedDescription)). \(left)")
+            }
+            throw ExecutionError("Position closed: the exchange didn't confirm the stop. \(closed)")
         }
         report("On the exchange: stop \(Fmt.price(stop))\(take.map { " and take-profit \(Fmt.price($0))" } ?? ""). The position is protected.")
         var opened = Opened(asset: market.name, size: size, entry: avgPx, stop: stop, take: take)
         if p.intent.partialTake == true { opened.partialTake = try? await placePartialTake(market: market, long: long, size: size, entry: avgPx, stop: stop) }
         return opened
+    }
+
+    /// After an emergency close that failed: close() cancelled every order first, so what is still open gets its stop back.
+    private func restoreStop(_ market: Market, stop: Decimal) async -> String {
+        guard let positions = try? await HyperliquidAccount.positions(wallet.evm) else {
+            return "The positions can't be read now: check \(market.name) on Hyperliquid, it may be open without a stop."
+        }
+        guard let p = positions.first(where: { $0.coin == market.name && $0.size != 0 }) else { return "No \(market.name) position is open." }
+        do {
+            let placed = try await post(try Self.protectionAction(asset: market.index, long: p.size > 0, size: abs(p.size), stop: stop, take: nil,
+                                                                  szDecimals: market.szDecimals), label: "stop back on")
+            if case .error(let e) = placed { throw ExecutionError(e) }
+            try await verifyProtection(coin: market.name, stop: stop, take: nil)
+            return "The \(market.name) position is still open, with its stop at \(Fmt.price(stop)) back on the exchange."
+        } catch {
+            return "The \(market.name) position is still open WITHOUT a stop (\(error.localizedDescription)): set one or close it on Hyperliquid now."
+        }
     }
 
     /// For a limit entry that has filled: half at 1R from the actual entry and stop on the exchange.
@@ -422,15 +456,34 @@ public actor Executor {
     // MARK: Manage
 
     /// Carries out a command about an open position. Returns a line for the user.
-    public func manage(_ command: PositionCommand, asset: String) async throws -> String {
+    /// `policy` and `equity`: a stop moved wider than the per-trade rule is refused (nil equity: not checked).
+    public func manage(_ command: PositionCommand, asset: String, policy: RiskPolicy = RiskPolicy(), equity: Decimal? = nil) async throws -> String {
         switch command {
-        case .cancelOrders, .close(1): return try await close(asset: asset)
+        case .cancelOrders: return try await cancelEntries(asset: asset)
+        case .close(1): return try await close(asset: asset)
         case .close(let fraction): return try await closePart(asset: asset, fraction: fraction)
-        case .stopToBreakeven: return try await moveStop(asset: asset, to: nil)
-        case .stopTo(let price): return try await moveStop(asset: asset, to: price)
+        case .stopToBreakeven: return try await moveStop(asset: asset, to: nil, policy: policy, equity: equity)
+        case .stopTo(let price): return try await moveStop(asset: asset, to: price, policy: policy, equity: equity)
         case .takeTo(let price): return try await moveTake(asset: asset, to: price)
         case .trail: throw ExecutionError("A trailing stop is kept by the ihatecrypto app, not placed on the exchange.")
         }
+    }
+
+    /// «cancel the limit»: only the entries waiting on the book go. A position, its stop and its take stay as they are.
+    private func cancelEntries(asset: String) async throws -> String {
+        let market = try await market(asset)
+        let entries = try await HyperliquidAccount.openOrders(wallet.evm).filter { $0.coin == asset && !$0.isTrigger && !$0.reduceOnly }
+        guard !entries.isEmpty else {
+            let line = "No \(asset) limit is waiting on the book; nothing was cancelled."
+            report(line)
+            return line
+        }
+        let reply = try await post(HLAction.cancel(entries.map { (market.index, $0.oid) }), label: "cancel limit")
+        guard !reply.isError else { throw ExecutionError("Hyperliquid didn't cancel the \(asset) limit: \(reply).") }
+        let open = try? await HyperliquidAccount.positions(wallet.evm).contains { $0.coin == asset && $0.size != 0 }
+        let line = "\(asset) limit cancelled (\(entries.count))." + (open == true ? " The open position keeps its stop and take-profit." : "")
+        report(line)
+        return line
     }
 
     /// New take first, then the old one is cancelled.
@@ -477,7 +530,7 @@ public actor Executor {
 
     /// New stop first, then the old one is cancelled: the position is never without a stop.
     /// `to: nil` = breakeven: the entry plus both taker fees, so a stop-out costs nothing.
-    private func moveStop(asset: String, to target: Decimal?) async throws -> String {
+    private func moveStop(asset: String, to target: Decimal?, policy: RiskPolicy, equity: Decimal?) async throws -> String {
         let market = try await market(asset)
         guard let position = try await HyperliquidAccount.positions(wallet.evm).first(where: { $0.coin == asset && $0.size != 0 }) else {
             return "No open \(asset) position."
@@ -489,6 +542,11 @@ public actor Executor {
             throw ExecutionError("Stop \(Fmt.price(stop)) is \(long ? "above" : "below") the current price \(Fmt.price(market.markPx)): it would trigger at once. To exit, type «close».")
         }
         let old = try await HyperliquidAccount.openOrders(wallet.evm).filter { $0.coin == asset && $0.isTrigger && ($0.orderType ?? "").contains("Stop") }
+        let current = long ? old.compactMap(\.triggerPx).max() : old.compactMap(\.triggerPx).min()
+        if let loss = Self.stopBreaksRule(long: long, entry: position.entry, size: abs(position.size), stop: stop, current: current, equity: equity, policy: policy),
+           let equity {
+            throw ExecutionError("A stop at \(Fmt.price(stop)) means −\(Fmt.usd(loss)), \(Fmt.pct((loss / equity * 100).rounded(1, .plain))) of capital. The rule: at most \(Fmt.pct(policy.maxRiskPct)). Stop not moved.")
+        }
         let orders = Self.protectionOrders(asset: market.index, long: long, size: abs(position.size), stop: stop, take: nil, szDecimals: market.szDecimals)
         let placed = try await post(try HLAction.order(orders, grouping: "positionTpsl"), label: "new stop")
         if case .error(let e) = placed { throw ExecutionError("New stop rejected: \(e). The old one stays.") }
@@ -500,6 +558,16 @@ public actor Executor {
             : "Stop moved to \(Fmt.price(stop))."
         report(line)
         return line
+    }
+
+    /// The loss at a new stop when it is wider than the per-trade rule allows; nil when it's within the rule, when it
+    /// tightens the current stop (or there is none), or when the capital is unknown — the same rule as «stop N%».
+    static func stopBreaksRule(long: Bool, entry: Decimal, size: Decimal, stop: Decimal, current: Decimal?, equity: Decimal?,
+                               policy: RiskPolicy) -> Decimal? {
+        if let current, long ? stop >= current : stop <= current { return nil }
+        guard current != nil, let equity, equity > 0 else { return nil }
+        let loss = max(0, long ? entry - stop : stop - entry) * size + size * (entry + stop) * RiskCalc.takerFee
+        return loss / equity * 100 > policy.maxRiskPct ? loss : nil
     }
 
     private func market(_ asset: String) async throws -> Market {
@@ -731,8 +799,12 @@ public enum HyperliquidAccount {
         public let side: String?
         /// "Limit", "Stop Market", "Take Profit Market"…
         public let orderType: String?
+        /// Only shrinks a position (a stop, a take, a close), never opens one.
+        public let reduceOnly: Bool
+        /// A resting entry's own stop and take (normalTpsl): armed when it fills.
+        public let children: [Order]
 
-        enum CodingKeys: String, CodingKey { case coin, oid, isTrigger, triggerPx, limitPx, sz, side, orderType }
+        enum CodingKeys: String, CodingKey { case coin, oid, isTrigger, triggerPx, limitPx, sz, side, orderType, reduceOnly, children }
         public init(from decoder: Decoder) throws {
             let c = try decoder.container(keyedBy: CodingKeys.self)
             coin = try c.decode(String.self, forKey: .coin)
@@ -743,6 +815,9 @@ public enum HyperliquidAccount {
             size = try c.decodeIfPresent(String.self, forKey: .sz).flatMap { Decimal(string: $0) }
             side = try c.decodeIfPresent(String.self, forKey: .side)
             orderType = try c.decodeIfPresent(String.self, forKey: .orderType)
+            reduceOnly = try c.decodeIfPresent(Bool.self, forKey: .reduceOnly) ?? false
+            // Read for the risk sum only: a child in an unexpected shape must not hide the open orders.
+            children = (try? c.decodeIfPresent([Order].self, forKey: .children)) ?? []
         }
     }
 
@@ -755,14 +830,23 @@ public enum HyperliquidAccount {
         public let liquidation: Decimal?
     }
 
-    /// What the open positions lose if every stop fills; nil when some position has no stop.
+    /// What the open positions and the resting limit entries lose if every stop fills; nil when one of them has no stop.
     public static func riskAtStops(positions: [Position], orders: [Order]) -> Decimal? {
+        func stops(_ coin: String, _ own: [Order] = []) -> [Decimal] {
+            (own + orders.filter { $0.coin == coin }).filter { $0.isTrigger && ($0.orderType ?? "").contains("Stop") }.compactMap(\.triggerPx)
+        }
         var total: Decimal = 0
         for p in positions where p.size != 0 {
-            let stops = orders.filter { $0.coin == p.coin && $0.isTrigger && ($0.orderType ?? "").contains("Stop") }.compactMap(\.triggerPx)
             // The stop that fills first is the one nearest the entry on the losing side.
-            guard let stop = p.size > 0 ? stops.max() : stops.min() else { return nil }
+            guard let stop = p.size > 0 ? stops(p.coin).max() : stops(p.coin).min() else { return nil }
             total += max(0, (p.size > 0 ? p.entry - stop : stop - p.entry) * abs(p.size))
+        }
+        // A limit entry still waiting loses as much once it fills: at its own stop (armed with it) or the coin's.
+        for o in orders where !o.isTrigger && !o.reduceOnly {
+            guard let px = o.limitPx, let size = o.size, size > 0 else { continue }
+            let buy = o.side == "B"
+            guard let stop = buy ? stops(o.coin, o.children).max() : stops(o.coin, o.children).min() else { return nil }
+            total += max(0, (buy ? px - stop : stop - px) * size)
         }
         return total
     }

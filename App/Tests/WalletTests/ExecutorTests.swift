@@ -1,5 +1,6 @@
 import Foundation
 import HyperliquidSigning
+import IhatecryptoCore
 @testable import TradeExecution
 import Testing
 import WalletCore
@@ -39,6 +40,39 @@ import WalletCore
     #expect(HyperliquidAccount.riskAtStops(positions: [long], orders: orders) == 20)   // (2000 − 1960) × 0.5
     let naked = HyperliquidAccount.Position(coin: "BTC", size: -1, entry: 80000, unrealizedPnl: 0, liquidation: nil)
     #expect(HyperliquidAccount.riskAtStops(positions: [long, naked], orders: orders) == nil)
+}
+
+@Test func restingEntriesCountAtTheirStops() throws {
+    // Four limit entries at 2% each counted for nothing before: filled, they'd be 8% at the stops against the 6% rule.
+    let orders = try JSONDecoder().decode([HyperliquidAccount.Order].self, from: Data(#"""
+    [{"coin":"ETH","oid":1,"isTrigger":false,"limitPx":"2000","sz":"0.5","side":"B","orderType":"Limit","reduceOnly":false,
+      "children":[{"coin":"ETH","oid":2,"isTrigger":true,"triggerPx":"1960","orderType":"Stop Market","reduceOnly":true},
+                  {"coin":"ETH","oid":3,"isTrigger":true,"triggerPx":"2100","orderType":"Take Profit Market","reduceOnly":true}]},
+     {"coin":"SOL","oid":4,"isTrigger":false,"limitPx":"100","sz":"2","side":"A","orderType":"Limit","reduceOnly":false,"children":[]},
+     {"coin":"SOL","oid":5,"isTrigger":true,"triggerPx":"105","orderType":"Stop Market","reduceOnly":true},
+     {"coin":"BTC","oid":6,"isTrigger":false,"limitPx":"90000","sz":"0.01","side":"A","orderType":"Limit","reduceOnly":true}]
+    """#.utf8))
+    // ETH (2000 − 1960) × 0.5 = 20, SOL short (105 − 100) × 2 = 10; BTC is a reduce-only close, not an entry.
+    #expect(HyperliquidAccount.riskAtStops(positions: [], orders: orders) == 30)
+    let naked = try JSONDecoder().decode([HyperliquidAccount.Order].self, from: Data(#"""
+    [{"coin":"ETH","oid":1,"isTrigger":false,"limitPx":"2000","sz":"0.5","side":"B","orderType":"Limit"}]
+    """#.utf8))
+    #expect(HyperliquidAccount.riskAtStops(positions: [], orders: naked) == nil)
+}
+
+@Test func aWiderStopIsHeldToThePerTradeRule() {
+    let policy = RiskPolicy()   // 2% per trade
+    // Long 0.01 BTC at 120000 with the stop at 118000; capital $1000. To 90000: −$300 and fees, 30%: refused.
+    let wide = Executor.stopBreaksRule(long: true, entry: 120_000, size: Decimal(string: "0.01")!, stop: 90_000, current: 118_000, equity: 1000, policy: policy)
+    #expect(wide.map { $0 > 300 } == true)
+    // Tightening, a stop in profit, a first stop, unknown capital: never refused.
+    #expect(Executor.stopBreaksRule(long: true, entry: 120_000, size: Decimal(string: "0.01")!, stop: 119_000, current: 118_000, equity: 1000, policy: policy) == nil)
+    #expect(Executor.stopBreaksRule(long: false, entry: 120_000, size: Decimal(string: "0.01")!, stop: 121_000, current: 122_000, equity: 1000, policy: policy) == nil)
+    #expect(Executor.stopBreaksRule(long: true, entry: 120_000, size: Decimal(string: "0.01")!, stop: 90_000, current: nil, equity: 1000, policy: policy) == nil)
+    #expect(Executor.stopBreaksRule(long: true, entry: 120_000, size: Decimal(string: "0.01")!, stop: 90_000, current: 118_000, equity: nil, policy: policy) == nil)
+    // 117000 is −$31.07 with fees: 3.1% of $1000 is refused, 1.6% of $2000 is within the rule.
+    #expect(Executor.stopBreaksRule(long: true, entry: 120_000, size: Decimal(string: "0.01")!, stop: 117_000, current: 118_000, equity: 1000, policy: policy) != nil)
+    #expect(Executor.stopBreaksRule(long: true, entry: 120_000, size: Decimal(string: "0.01")!, stop: 117_000, current: 118_000, equity: 2000, policy: policy) == nil)
 }
 
 @Test func rentIsReadFromTheSimulationLines() {
