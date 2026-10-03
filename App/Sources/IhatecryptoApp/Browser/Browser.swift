@@ -468,11 +468,16 @@ final class Browser {
         return "token \(mint.prefix(6))…"
     }
 
-    /// Our SPL token accounts: address → mint, raw amount, decimals.
+    /// Our token accounts, classic SPL and Token-2022 alike (the guard lets both run, so a drain through either shows):
+    /// address → mint, raw amount, decimals.
     private func tokenAccounts(_ owner: String) async throws -> [String: (mint: String, amount: UInt64, decimals: Int)] {
-        let r = try await rpc.call("getTokenAccountsByOwner", [owner, ["programId": SPL.tokenProgram], ["encoding": "jsonParsed", "commitment": "confirmed"]]) as? [String: Any]
+        var items: [[String: Any]] = []
+        for program in [SPL.tokenProgram, SPL.token2022Program] {
+            let r = try await rpc.call("getTokenAccountsByOwner", [owner, ["programId": program], ["encoding": "jsonParsed", "commitment": "confirmed"]]) as? [String: Any]
+            items += r?["value"] as? [[String: Any]] ?? []
+        }
         var out: [String: (String, UInt64, Int)] = [:]
-        for item in r?["value"] as? [[String: Any]] ?? [] {
+        for item in items {
             guard let address = item["pubkey"] as? String,
                   let info = ((((item["account"] as? [String: Any])?["data"] as? [String: Any])?["parsed"] as? [String: Any])?["info"] as? [String: Any]),
                   let mint = info["mint"] as? String, let amount = info["tokenAmount"] as? [String: Any] else { continue }

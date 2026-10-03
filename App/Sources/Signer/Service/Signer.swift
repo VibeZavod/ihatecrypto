@@ -381,7 +381,12 @@ enum Signer {
             guard verdict.ok else { return refused(verdict) }
             try approve(recipients)
             var r = SignerReply(ok: true)
-            r.signedWire = try withKey("solana", reason: prompt("sign a Solana transaction", verdict)) { try SolanaTransaction.sign(wire, privateKey: $0).wire }
+            // The programs the user allowed for this one transaction are named in full: they run with the wallet's authority.
+            let extra = extraPrograms.filter { SolanaGuard.knownPrograms[$0] == nil && (try? Base58.decode($0))?.count == 32 }
+                .map { "runs \($0), not on ihatecrypto's list" }
+            r.signedWire = try withKey("solana", reason: ([prompt("sign a Solana transaction", verdict)] + extra).joined(separator: "\n")) {
+                try SolanaTransaction.sign(wire, privateKey: $0).wire
+            }
             r.checks = verdict.checks
             return r
 
