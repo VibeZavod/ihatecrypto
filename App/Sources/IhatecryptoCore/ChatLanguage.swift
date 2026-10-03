@@ -96,4 +96,13 @@ public enum ChatWords {
         "не", "надо", "нужно", "ну", "всё", "все", "это", "его", "её", "ее", "пожалуйста", "я", "давай", "лучше", "пока", "так",
         "it", "that", "this", "please", "mind", "i", "changed", "my", "actually", "lo", "mejor", "no",
     ]
+
+    /// A message that may change the card waiting for Confirm rather than approve it as it is: a number in digits or
+    /// words, «half», «double», «добавь ещё», «поменьше». A model read «add another 300» as a yes once; whatever a model
+    /// reads, such a message never signs. «сделай» and «make it» alone are a yes («сделай это»); with a change they
+    /// carry its number or word.
+    public static func mayChange(_ text: String) -> Bool {
+        text.contains(where: \.isNumber) || text.lowercased().contains(
+            /(?:^|[^\p{L}])(?:добав|ещё|еще|удво|вдвое|половин|полтин|четверт|треть|сотн|сотк|сотен|тысяч|косар|двест|трист|четырест|пятьсот|шестьсот|семьсот|восемьсот|девятьсот|миллион|побольше|поменьше|больше|меньше|увелич|уменьш|один|одну|два|две|три|четыре|пять|шесть|семь|восемь|девять|десять|двадцат|тридцат|сорок|пятьдесят|шестьдесят|семьдесят|восемьдесят|девяност|сто(?!\p{L})|(?:add|another|double|twice|triple|half|halve|quarter|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|twenty|thirty|forty|fifty|sixty|seventy|eighty|ninety|hundred|thousand|grand|million|increase|decrease|bigger|smaller)(?!\p{L}))/)
+    }
 }

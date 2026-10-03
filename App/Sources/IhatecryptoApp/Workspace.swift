@@ -1023,12 +1023,13 @@ final class Workspace {
         }
         switch reading?.route {
         case .confirm?:
-            // A safety rule, not a reading: a number in the message is a change, whatever the model says. Apple's model
-            // read «add another 300» as a confirm once (its second reading too), which would have signed the 500 waiting.
+            // A safety rule, not a reading: a number in the message, in digits or words, or «half», «добавь ещё», is a
+            // change, whatever the model says. Apple's model read «add another 300» as a confirm once (its second reading
+            // too), which would have signed the 500 waiting.
             let said = aboutStep ? String(text[(text.range(of: "»: ")?.upperBound ?? text.startIndex)...]) : text
-            if said.contains(where: \.isNumber) {
-                reply(say("That reads like a yes, but it has a number in it, so nothing was signed and the card keeps waiting. If the number is a change, say it as one («make it 800»); if not, press Confirm on the card.",
-                          "Похоже на «да», но в сообщении есть число — я ничего не подписывал, карточка ждёт. Если число — это изменение, скажи его так («сделай 800»); если нет — нажми Confirm на карточке."), note: note)
+            if ChatWords.mayChange(said) {
+                reply(say("That reads like a yes, but it has a number or a change in it, so nothing was signed and the card keeps waiting. If it's a change, say it as one («make it 800»); if not, press Confirm on the card.",
+                          "Похоже на «да», но в сообщении есть число или изменение — я ничего не подписывал, карточка ждёт. Если это изменение, скажи его так («сделай 800»); если нет — нажми Confirm на карточке."), note: note)
             } else {
                 await confirmWaiting(note: note)
             }
