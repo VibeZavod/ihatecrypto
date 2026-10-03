@@ -12,17 +12,20 @@ struct SettingsView: View {
     @State private var confirmForget = false
     @State private var alwaysRunning = KeepRunning.isOn
     @State private var alwaysRunningError: String?
+    @AppStorage("chatLanguage") private var language = ChatLanguage.auto.rawValue
+    @AppStorage(AppTheme.key) private var theme = AppTheme.system.rawValue
     static let tabKey = "settingsTab"
     @AppStorage(SettingsView.tabKey) private var tab = Tab.general
 
     /// Raw values also serve links from the chat and the networks menu.
     enum Tab: String, CaseIterable {
-        case general, signIns = "signins", wallet, modules, debugging
+        case general, agent, signIns = "signins", wallet, modules, debugging
 
         var title: String {
             switch self {
             case .general: "General"
-            case .signIns: "Sign-ins"
+            case .agent: "Trading agent"
+            case .signIns: "AI model"
             case .wallet: "Wallet"
             case .modules: "Modules"
             case .debugging: "Debugging"
@@ -32,7 +35,8 @@ struct SettingsView: View {
         var icon: String {
             switch self {
             case .general: "gearshape"
-            case .signIns: "key"
+            case .agent: "chart.line.uptrend.xyaxis"
+            case .signIns: "sparkles"
             case .wallet: "creditcard"
             case .modules: "square.grid.2x2"
             case .debugging: "terminal"
@@ -108,17 +112,74 @@ struct SettingsView: View {
     @ViewBuilder private var page: some View {
         switch tab {
         case .modules: ModulesSettings()
-        case .general: SettingsPage(title: "General", line: "How the assistant trades, talks and stays running.") { general }
-        case .signIns: SettingsPage(title: "Sign-ins", line: "Choose what reads your chat. A model is optional.") { ModelSection() }
-        case .wallet: SettingsPage(title: "Wallet", line: "Your signing key, addresses and Touch ID.") { wallet }
+        case .general: SettingsPage(title: "General", line: "How the app talks to you and keeps running.") { general }
+        case .agent: SettingsPage(title: "Trading agent", line: "How the assistant trades for you. Code checks every plan against these rules.") { agent }
+        case .signIns: SettingsPage(title: "AI model", line: "What reads your chat. Optional: typed commands work without it.") { ModelSection() }
+        case .wallet: SettingsPage(title: "Wallet", line: "Your wallets, the key that signs and Touch ID.") { wallet }
         case .debugging: SettingsPage(title: "Debugging", line: "Developer tools on this Mac.") { debugging }
         }
     }
 
     @ViewBuilder private var general: some View {
+        SettingsSection(icon: "circle.lefthalf.filled", title: "Appearance", line: "Light, dark, or as your Mac is set.") {
+            SettingsGroup {
+                SettingsRow("Theme", icon: "paintpalette") {
+                    // Drawn segments, like Touch ID's: the accent instead of the system blue.
+                    HStack(spacing: 2) {
+                        ForEach(AppTheme.allCases, id: \.self) { t in
+                            let on = t.rawValue == theme
+                            Button { theme = t.rawValue; AppTheme.apply() } label: {
+                                Label(t.title, systemImage: t.icon).font(.ui(11.5, .semibold))
+                                    .foregroundStyle(on ? Brand.onAccent : Color.primary)
+                                    .frame(maxWidth: .infinity).padding(.vertical, 6)
+                                    .background(RoundedRectangle(cornerRadius: 6).fill(on ? Brand.accent : .clear))
+                                    .contentShape(Rectangle())
+                            }
+                            .buttonStyle(.plain).accessibilityAddTraits(on ? [.isSelected] : [])
+                        }
+                    }
+                    .padding(2).frame(width: 290)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
+                }
+            }
+        }
+        SettingsSection(icon: "text.bubble", title: "Chat", line: "How the assistant answers you.") {
+            SettingsGroup {
+                SettingsRow("Reply language", icon: "globe", info: "Auto answers in the language you write in. Tickers, amounts and addresses stay as they are.") {
+                    Picker("Reply language", selection: $language) {
+                        Text("Auto — your language").tag(ChatLanguage.auto.rawValue)
+                        Text("English").tag(ChatLanguage.en.rawValue)
+                        Text("Русский").tag(ChatLanguage.ru.rawValue)
+                    }
+                    .labelsHidden().fixedSize()
+                }
+            }
+        }
+        NoticeSettings()
+        keepRunning
+        about
+    }
+
+    private var about: some View {
+        let info = Bundle.main.infoDictionary
+        return SettingsSection(icon: "info.circle", title: "About", line: "Updates come by themselves once a day.") {
+            SettingsGroup {
+                SettingsRow("ihatecrypto \(info?["CFBundleShortVersionString"] as? String ?? "")", icon: "app.badge",
+                            info: "Build \(info?["CFBundleVersion"] as? String ?? "?"). A new version downloads in the background and goes in at «Restart to update»; the wallet, settings and canvases stay.") {
+                    if Updater.shared.available { Button("Check for updates") { Updater.shared.check() } }
+                }
+            }
+        }
+    }
+
+    // MARK: Trading agent
+
+    @ViewBuilder private var agent: some View {
         @Bindable var ws = ws
-        risk
-        SettingsSection(icon: "checkmark.seal", title: "Tokens", line: "What can be bought on Solana.") {
+        style
+        limits
+        byTheBook
+        SettingsSection(icon: "checkmark.seal", title: "What it may buy", line: "Tokens on Solana.") {
             SettingsGroup {
                 SettingsRow("Safe search", icon: "checkmark.seal", info: ws.safeSearch
                             ? "Only verified coins on Solana: SOL, BTC, ETH, JUP and JitoSOL. Look-alikes of famous tokens cannot slip in."
@@ -127,54 +188,116 @@ struct SettingsView: View {
                 }
             }
         }
-        ChatAndNoticeSettings()
-        keepRunning
-        SettingsSection(icon: "checkmark.shield", title: "Second check", line: "A second reader. It can only stop, never approve.") {
-            SettingsGroup {
-                SettingsRow("Check commands and plans twice", icon: "checkmark.shield", info: ws.openRouterKey == nil
-                            ? "OpenRouter adds a separate model; the chat keeps its own. Without OpenRouter, the chat's model reads each command and plan a second time. Local rules also check incoming text. This check can stop a move, never approve a signature."
-                            : "The chat's model and a separate model on OpenRouter check your commands and plans against your words. Pasted text is checked for instructions aimed at the assistant. The texts go to OpenRouter. This check can stop a move, never approve a signature.") {
-                    Toggle("Second check", isOn: $ws.jevScreening).toggleStyle(AccentSwitch())
-                }
-                SettingsRow("OpenRouter", icon: "network", logo: "llm-openrouter") {
-                    SettingsPill(text: ws.openRouterKey == nil ? "Not connected" : "Connected", good: ws.openRouterKey != nil)
-                    if ws.openRouterKey == nil { Button("Connect") { Task { await ws.signInJev() } } }
-                }
-                if let status = ws.jevStatus { SettingsRow(status, icon: "info.circle") { EmptyView() } }
+    }
+
+    /// A style sets every rule at once; a number changed after it makes the policy «Custom».
+    private var style: some View {
+        let current = AgentStyle.allCases.first { $0.policy == ws.policy }
+        return SettingsSection(icon: "dial.medium", title: "Style",
+                               line: current == nil ? "Custom: your own numbers below. A style resets them." : "Sets every rule below at once. Change any number after.") {
+            HStack(spacing: 10) {
+                ForEach(AgentStyle.allCases) { styleCard($0, selected: $0 == current) }
             }
         }
     }
 
-    /// Only risk per trade is editable; the other numbers are limits enforced by code.
-    private var risk: some View {
+    private func styleCard(_ s: AgentStyle, selected: Bool) -> some View {
+        Button { ws.policy = s.policy } label: {
+            VStack(alignment: .leading, spacing: 10) {
+                HStack(alignment: .top) {
+                    SettingsIcon(icon: s.icon, size: 34)
+                    Spacer(minLength: 4)
+                    Image(systemName: selected ? "checkmark.circle.fill" : "circle").font(.system(size: 15))
+                        .foregroundStyle(selected ? Brand.accent : Color.secondary.opacity(0.5))
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(s.name).font(.ui(15, .bold))
+                    Text(s.line).font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                HStack(spacing: 14) {
+                    figure("Risk", Fmt.pct(s.policy.maxRiskPct))
+                    figure("Leverage", "\(Fmt.num(s.policy.maxLeverage))×")
+                    figure("Take", "\(Fmt.num(s.policy.defaultRewardRisk))R")
+                }
+            }
+            .padding(14).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+            .background(RoundedRectangle(cornerRadius: 12).fill(Brand.card))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(selected ? Brand.accent : Brand.cardBorder, lineWidth: selected ? 1.5 : 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).accessibilityAddTraits(selected ? [.isSelected] : [])
+        .help(selected ? "\(s.name) — in use" : "Use \(s.name): sets all the rules below")
+    }
+
+    private func figure(_ label: String, _ value: String) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(label).font(.ui(10)).foregroundStyle(.secondary)
+            Text(value).font(.ui(13, .semibold)).monospacedDigit()
+        }
+    }
+
+    private var limits: some View {
         let p = ws.policy
-        return SettingsSection(icon: "scalemass", title: "Risk", line: "Limits checked before every trade. Crypto only.") {
+        return SettingsSection(icon: "shield.lefthalf.filled", title: "Limits", line: "A plan that breaks one is not executed. Crypto only.") {
             SettingsGroup {
-                SettingsRow("Risk per trade", icon: "chart.bar", info: "The most a trade may lose at its stop, as a share of your capital. The usual starting point is \(Fmt.pct(p.defaultRiskPct)), with a \(Fmt.num(p.defaultRewardRisk))R take-profit and a stop at \(Fmt.num(p.atrStopMultiple)) times recent price movement (4-hour ATR). Trades above the limit are blocked.") {
-                    HStack(spacing: 10) {
-                        GeometryReader { g in
-                            Capsule().fill(Color.primary.opacity(0.1))
-                                .overlay(alignment: .leading) {
-                                    Capsule().fill(Brand.accent).frame(width: g.size.width * min(max(CGFloat(NSDecimalNumber(decimal: p.maxRiskPct).doubleValue / 10), 0), 1))
-                                }
-                        }
-                        .frame(width: 70, height: 6).accessibilityHidden(true)
-                        step("minus", "Less risk per trade", enabled: p.maxRiskPct > 0.5) { ws.policy.maxRiskPct -= 0.5 }
-                        Text(Fmt.pct(p.maxRiskPct)).font(.ui(16, .bold)).monospacedDigit().frame(minWidth: 46)
-                        step("plus", "More risk per trade", enabled: p.maxRiskPct < 10) { ws.policy.maxRiskPct += 0.5 }
+                SettingsRow("Risk per trade", icon: "chart.bar", info: "The most one trade may lose at its stop, as a share of your capital.") {
+                    GeometryReader { g in
+                        Capsule().fill(Color.primary.opacity(0.1))
+                            .overlay(alignment: .leading) {
+                                Capsule().fill(Brand.accent).frame(width: g.size.width * min(max(CGFloat(NSDecimalNumber(decimal: p.maxRiskPct).doubleValue / 10), 0), 1))
+                            }
                     }
+                    .frame(width: 70, height: 6).accessibilityHidden(true)
+                    stepper(Fmt.pct(p.maxRiskPct), "risk per trade", down: p.maxRiskPct > 0.5, up: p.maxRiskPct < 10) { $0.maxRiskPct += $1 * Self.half }
                 }
-                SettingsRow("All open positions together", icon: "square.stack.3d.up", info: "Their combined loss at the stops cannot exceed this share of capital. This limit is fixed.") {
-                    Text("at most \(Fmt.pct(p.maxOpenRiskPct))").monospacedDigit()
+                SettingsRow("All open positions together", icon: "square.stack.3d.up", info: "Their combined loss at the stops can't go over this share of capital. It's never below the risk per trade.") {
+                    stepper(Fmt.pct(p.maxOpenRiskPct), "for all positions", down: p.maxOpenRiskPct > p.maxRiskPct, up: p.maxOpenRiskPct < 30) { $0.maxOpenRiskPct += $1 }
                 }
-                SettingsRow("Reward / risk", icon: "arrow.up.right", info: "The planned profit must be at least this many times the planned loss. This limit is fixed.") {
-                    Text("at least \(Fmt.num(p.minRewardRisk))").monospacedDigit()
+                SettingsRow("Reward / risk at least", icon: "arrow.up.right", info: "The planned profit must be at least this many times the planned loss.") {
+                    stepper(Fmt.num(p.minRewardRisk), "reward per risk", down: p.minRewardRisk > 1, up: p.minRewardRisk < 5) { $0.minRewardRisk += $1 * Self.tenth }
                 }
-                SettingsRow("Leverage", icon: "multiply", info: "Borrowed exposure makes gains and losses larger. The assistant cannot trade above this fixed limit.") {
-                    Text("up to \(Fmt.num(p.maxLeverage))×").monospacedDigit()
+                SettingsRow("Leverage up to", icon: "multiply", info: "Borrowed exposure makes gains and losses larger. The assistant never trades above this.") {
+                    stepper("\(Fmt.num(p.maxLeverage))×", "leverage", down: p.maxLeverage > 1, up: p.maxLeverage < 20) { $0.maxLeverage += $1 }
                 }
             }
         }
+    }
+
+    private var byTheBook: some View {
+        let p = ws.policy
+        return SettingsSection(icon: "book.closed", title: "By the book", line: "What «by the book» uses when you name no numbers.") {
+            SettingsGroup {
+                SettingsRow("Risk", icon: "chart.bar", info: "The share of capital a trade risks at its stop when you don't say how much. Never above the risk per trade.") {
+                    stepper(Fmt.pct(p.defaultRiskPct), "default risk", down: p.defaultRiskPct > Self.quarter, up: p.defaultRiskPct < p.maxRiskPct) { $0.defaultRiskPct += $1 * Self.quarter }
+                }
+                SettingsRow("Take-profit", icon: "flag.checkered", info: "How far the take is, as a multiple of the stop's distance: 2R takes twice what the stop would lose. Never below the reward / risk limit.") {
+                    stepper("\(Fmt.num(p.defaultRewardRisk))R", "take-profit", down: p.defaultRewardRisk > p.minRewardRisk, up: p.defaultRewardRisk < 10) { $0.defaultRewardRisk += $1 * Self.half }
+                }
+                SettingsRow("Stop", icon: "hand.raised", info: "How far the stop is, in 4-hour ATRs — the coin's usual move over four hours. Wider stops are hit less often but lose more when they are.") {
+                    stepper("\(Fmt.num(p.atrStopMultiple)) ATR", "stop distance", down: p.atrStopMultiple > Self.half, up: p.atrStopMultiple < 5) { $0.atrStopMultiple += $1 * Self.half }
+                }
+            }
+        }
+    }
+
+    private static let tenth = Decimal(string: "0.1")!, quarter = Decimal(string: "0.25")!, half = Decimal(string: "0.5")!
+
+    /// − value +: `change` gets −1 or +1; the rules that depend on each other are kept in line after it.
+    private func stepper(_ value: String, _ what: String, down: Bool, up: Bool, change: @escaping (inout RiskPolicy, Decimal) -> Void) -> some View {
+        HStack(spacing: 8) {
+            step("minus", "Less \(what)", enabled: down) { update { change(&$0, -1) } }
+            Text(value).font(.ui(15, .bold)).monospacedDigit().frame(minWidth: 58)
+            step("plus", "More \(what)", enabled: up) { update { change(&$0, 1) } }
+        }
+    }
+
+    private func update(_ change: (inout RiskPolicy) -> Void) {
+        var p = ws.policy
+        change(&p)
+        p.defaultRiskPct = min(p.defaultRiskPct, p.maxRiskPct)
+        p.maxOpenRiskPct = max(p.maxOpenRiskPct, p.maxRiskPct)
+        p.defaultRewardRisk = max(p.defaultRewardRisk, p.minRewardRisk)
+        ws.policy = p
     }
 
     private func step(_ symbol: String, _ help: String, enabled: Bool, action: @escaping () -> Void) -> some View {
@@ -208,6 +331,7 @@ struct SettingsView: View {
 
     @ViewBuilder private var wallet: some View {
         signer
+        WalletManagement()
         touchID
         tradingKey
         addresses
@@ -215,7 +339,7 @@ struct SettingsView: View {
     }
 
     private var signer: some View {
-        SettingsSection(icon: "creditcard", title: "Wallet that signs", line: "The active wallet. Switching asks for Touch ID.") {
+        SettingsSection(icon: "creditcard", title: "Wallet that signs", line: ws.signerWallet == nil ? "No key on this Mac yet: add a wallet below." : "The active wallet. Switch in «Your wallets» below.") {
             SettingsGroup {
                 if let w = ws.activeWallet {
                     HStack(spacing: 12) {
@@ -226,15 +350,6 @@ struct SettingsView: View {
                             Text(Workspace.kindName(w)).font(.ui(12)).foregroundStyle(.secondary)
                         }
                         Spacer(minLength: 8)
-                        if ws.wallets.count > 1 {
-                            Menu("Switch") {
-                                ForEach(ws.wallets) { wallet in
-                                    Button("\(wallet.label) — \(Workspace.describe(wallet))") { Task { await ws.switchWallet(wallet) } }
-                                        .disabled(wallet.id == ws.activeWalletID)
-                                }
-                            }
-                            .fixedSize()
-                        }
                     }
                     .padding(14)
                     Divider().padding(.leading, 54)
@@ -249,8 +364,11 @@ struct SettingsView: View {
                 SettingsRow("Signing key", icon: "lock.shield", info: "The key stays in secure storage. A separate process without network access signs approved moves.") {
                     SettingsPill(text: ws.signerWallet == nil ? "No key on this Mac" : "Secure storage", good: ws.signerWallet != nil)
                 }
-                if ws.signerWallet == nil {
-                    SettingsRow("Import a wallet to add a signing key", icon: "square.and.arrow.down") { EmptyView() }
+                // The signer keeps only the seed made from the words (one-way), so there is nothing to show again.
+                if ws.activeWallet?.kind == "phrase" {
+                    SettingsRow("Recovery phrase", icon: "text.word.spacing", info: "ihatecrypto keeps only the key made from your words, sealed with Touch ID in a separate process — never the words themselves, so they can't be shown again. Lost them? Create a new wallet below, write its words down and move the money there.") {
+                        Text("Not kept on this Mac").foregroundStyle(.secondary)
+                    }
                 }
             }
         }
@@ -403,6 +521,102 @@ struct SettingsIcon: View {
     }
 }
 
+/// Provider marks (Claude, ChatGPT, OpenRouter) are drawn for light backgrounds; the black ones vanished on dark.
+/// A white tile in both themes keeps them all legible; `symbol` draws a matching tile for a choice without a logo.
+struct LogoTile: View {
+    var logo: String?
+    var symbol: String?
+    var size: CGFloat = 28
+
+    var body: some View {
+        Group {
+            if let logo { TokenLogo(name: logo, size: size * 0.68) }
+            else if let symbol { Image(systemName: symbol).font(.system(size: size * 0.42, weight: .semibold)).foregroundStyle(Brand.onAccent) }
+        }
+        .frame(width: size, height: size)
+        .background(RoundedRectangle(cornerRadius: size * 0.28).fill(.white))
+        .overlay(RoundedRectangle(cornerRadius: size * 0.28).strokeBorder(Color.black.opacity(0.08)))
+        .accessibilityHidden(true)
+    }
+}
+
+/// The app's look for every window: System follows the Mac (the default), Light and Dark fix it. NSApp.appearance
+/// carries it to Brand's dynamic colors and SwiftUI's colorScheme alike.
+enum AppTheme: String, CaseIterable {
+    case system, light, dark
+    static let key = "appTheme"
+
+    var title: String {
+        switch self {
+        case .system: "System"
+        case .light: "Light"
+        case .dark: "Dark"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .system: "circle.lefthalf.filled"
+        case .light: "sun.max"
+        case .dark: "moon"
+        }
+    }
+
+    @MainActor static func apply() {
+        let theme = AppTheme(rawValue: UserDefaults.standard.string(forKey: key) ?? "") ?? .system
+        NSApp.appearance = switch theme {
+        case .system: nil
+        case .light: NSAppearance(named: .aqua)
+        case .dark: NSAppearance(named: .darkAqua)
+        }
+    }
+}
+
+/// Three ready sets of the trading rules (RiskPolicy). Balanced is the app's default.
+enum AgentStyle: CaseIterable, Identifiable {
+    case careful, balanced, bold
+    var id: Self { self }
+
+    var name: String {
+        switch self {
+        case .careful: "Careful"
+        case .balanced: "Balanced"
+        case .bold: "Bold"
+        }
+    }
+
+    var line: String {
+        switch self {
+        case .careful: "Small bets, little leverage, wide stops."
+        case .balanced: "The book: 1% risk, a 2R take."
+        case .bold: "Bigger bets and more leverage."
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .careful: "gauge.with.dots.needle.0percent"
+        case .balanced: "gauge.with.dots.needle.50percent"
+        case .bold: "gauge.with.dots.needle.100percent"
+        }
+    }
+
+    var policy: RiskPolicy {
+        var p = RiskPolicy()
+        func d(_ s: String) -> Decimal { Decimal(string: s)! }
+        switch self {
+        case .careful:
+            (p.maxRiskPct, p.defaultRiskPct, p.maxOpenRiskPct) = (1, d("0.5"), 3)
+            (p.minRewardRisk, p.defaultRewardRisk, p.maxLeverage, p.atrStopMultiple) = (2, d("2.5"), 2, 2)
+        case .balanced: break
+        case .bold:
+            (p.maxRiskPct, p.defaultRiskPct, p.maxOpenRiskPct) = (3, 2, 10)
+            (p.minRewardRisk, p.defaultRewardRisk, p.maxLeverage, p.atrStopMultiple) = (d("1.2"), d("1.5"), 10, 1)
+        }
+        return p
+    }
+}
+
 struct SettingsSection<Content: View>: View {
     let icon: String
     let title: String
@@ -450,7 +664,8 @@ struct SettingsRow<Control: View>: View {
 
     var body: some View {
         HStack(spacing: 10) {
-            if let logo { TokenLogo(name: logo, size: 26).clipShape(RoundedRectangle(cornerRadius: 7)).accessibilityHidden(true) }
+            if let logo, logo.hasPrefix("llm-") { LogoTile(logo: logo, size: 26) }
+            else if let logo { TokenLogo(name: logo, size: 26).clipShape(RoundedRectangle(cornerRadius: 7)).accessibilityHidden(true) }
             else { SettingsIcon(icon: icon) }
             Text(label).font(.ui(13)).fixedSize(horizontal: false, vertical: true)
             if let info { SettingsInfo(text: info, label: label) }
@@ -504,6 +719,7 @@ struct ModelSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 26) {
             model
+            secondCheck
             SettingsSection(icon: "text.bubble", title: "Without a model", line: "Typed commands still work, with no subscription.") {
                 SettingsGroup {
                     HStack(alignment: .top, spacing: 10) {
@@ -527,6 +743,24 @@ struct ModelSection: View {
         .onChange(of: ws.providerID) { key = "" }
     }
 
+    /// A second model (Jev on OpenRouter) reads each command and plan again; it can stop a move, never approve one.
+    private var secondCheck: some View {
+        SettingsSection(icon: "checkmark.shield", title: "Second check", line: "A second reader. It can only stop, never approve.") {
+            SettingsGroup {
+                SettingsRow("Check commands and plans twice", icon: "checkmark.shield", info: ws.openRouterKey == nil
+                            ? "OpenRouter adds a separate model; the chat keeps its own. Without OpenRouter, the chat's model reads each command and plan a second time. Local rules also check incoming text. This check can stop a move, never approve a signature."
+                            : "The chat's model and a separate model on OpenRouter check your commands and plans against your words. Pasted text is checked for instructions aimed at the assistant. The texts go to OpenRouter. This check can stop a move, never approve a signature.") {
+                    Toggle("Second check", isOn: Binding(get: { ws.jevScreening }, set: { ws.jevScreening = $0 })).toggleStyle(AccentSwitch())
+                }
+                SettingsRow("OpenRouter", icon: "network", logo: "llm-openrouter") {
+                    SettingsPill(text: ws.openRouterKey == nil ? "Not connected" : "Connected", good: ws.openRouterKey != nil)
+                    if ws.openRouterKey == nil { Button("Connect") { Task { await ws.signInJev() } } }
+                }
+                if let status = ws.jevStatus { SettingsRow(status, icon: "info.circle") { EmptyView() } }
+            }
+        }
+    }
+
     private var commandChips: some View {
         ForEach(Self.commands, id: \.self) { command in
             Button { ws.draft = command; ws.settingsOpen = false } label: {
@@ -541,7 +775,7 @@ struct ModelSection: View {
 
     private var model: some View {
         let info = ws.provider.info
-        return SettingsSection(icon: "sparkles", title: "Chat model", line: "Write freely, in any language. Choose a way to connect.") {
+        return SettingsSection(icon: "sparkles", title: "Chat model", line: "Lets you write freely, in any language. Choose a way to connect.") {
             SettingsGroup {
                 way("claude-code", "Claude subscription", "Uses Claude Code on this Mac", logo: "llm-claude")
                 way("chatgpt", "ChatGPT subscription", "Plus or Pro · sign in in the browser", logo: "llm-openai")
@@ -568,7 +802,7 @@ struct ModelSection: View {
         return Button { ws.providerID = id } label: {
             HStack(spacing: 10) {
                 radio(selected)
-                TokenLogo(name: logo, size: 28).clipShape(RoundedRectangle(cornerRadius: 8)).accessibilityHidden(true)
+                LogoTile(logo: logo)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.ui(13, .semibold))
                     Text(line).font(.ui(11.5)).foregroundStyle(.secondary)
@@ -588,7 +822,7 @@ struct ModelSection: View {
         let selected = !Self.ways.contains(ws.providerID)
         return HStack(spacing: 10) {
             radio(selected)
-            SettingsIcon(icon: "key.fill", size: 28)
+            LogoTile(symbol: "key.fill")
             VStack(alignment: .leading, spacing: 2) {
                 Text("API key or a model on this Mac").font(.ui(13, .semibold))
                 Text(selected ? ws.provider.info.name : "Choose a provider or local model").font(.ui(11.5)).foregroundStyle(.secondary)

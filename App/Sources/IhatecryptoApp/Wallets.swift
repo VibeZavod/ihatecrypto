@@ -139,7 +139,6 @@ extension Workspace {
 /// (no Touch ID). A click lists the wallets: switch (Touch ID), rename, a new test wallet, the key window.
 struct WalletChip: View {
     @Environment(Workspace.self) private var ws
-    @Environment(\.openWindow) private var openWindow
     var compact = false
     @State private var open = false
 
@@ -167,7 +166,6 @@ struct WalletChip: View {
 
 private struct WalletMenu: View {
     @Environment(Workspace.self) private var ws
-    @Environment(\.openWindow) private var openWindow
     let close: () -> Void
     @State private var renaming: String?
     @State private var name = ""
@@ -189,10 +187,10 @@ private struct WalletMenu: View {
             if !ws.wallets.contains(where: \.isTest) {
                 MenuRow(title: "New test wallet…", detail: "signs without Touch ID · for a few dollars", icon: "flask") {
                     UserDefaults.standard.set(true, forKey: "newWalletTest")
-                    close(); openWindow(id: "import")
+                    close(); ws.openSettings(.wallet)
                 }
             }
-            MenuRow(title: "Manage wallets…", detail: "create, import, remove", icon: "key") { close(); openWindow(id: "import") }
+            MenuRow(title: "Manage wallets…", detail: "create, import, remove", icon: "key") { close(); ws.openSettings(.wallet) }
             Text("Switching asks for Touch ID. A test wallet signs its moves without it — Claude can test with it; keep only a few dollars there.")
                 .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 10).padding(.top, 4)
         }

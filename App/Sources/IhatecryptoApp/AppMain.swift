@@ -264,6 +264,7 @@ struct ContentView: View {
             .frame(minWidth: 960, minHeight: 650)
             .toolbar(removing: .title)
             .task {
+            AppTheme.apply()
             StatusItem.shared.openWindow = openWindow
             StatusItem.shared.install(ws)
             if UserDefaults.standard.bool(forKey: "debugAPI") { DebugAPI.shared.start(ws) }

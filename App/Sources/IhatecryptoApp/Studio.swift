@@ -101,6 +101,9 @@ struct TokenLogo: View {
         if name == "hype" {
             (round ? AnyShape(Circle()) : AnyShape(RoundedRectangle(cornerRadius: size * 0.3))).fill(Brand.hl).frame(width: size, height: size)
                 .overlay(logo(size: size * 0.72, round: false))
+        } else if name == "uni" {
+            // Uniswap's pink unicorn has no background of its own: on the dark theme it floated; a white disc holds it.
+            Circle().fill(.white).frame(width: size, height: size).overlay(logo(size: size * 0.74, round: false))
         } else {
             logo(size: size, round: round)
         }
@@ -913,7 +916,6 @@ struct ClosedTrades: View {
 /// Who is signed in and where settings are: the rail's bottom corner. Opens ihatecrypto's own menu (S14).
 struct ProfileMenu: View {
     @Environment(Workspace.self) private var ws
-    @Environment(\.openWindow) private var openWindow
     @State private var open = false
     @State private var confirmSignOut = false
     let compact: Bool
@@ -966,9 +968,6 @@ struct ProfileMenu: View {
             .padding(10)
             Divider().padding(.vertical, 4)
             MenuRow(title: "Settings", icon: "gearshape", shortcut: "⌘,") { go { ws.openSettings() } }
-            MenuRow(title: "Models and sign-ins", detail: "\(ws.provider.info.name) · \(ws.model)", icon: "sparkles") { go { ws.openSettings(.signIns) } }
-            MenuRow(title: "Key and signing", detail: ws.signerWallet == nil ? "import a wallet" : "Touch ID, key in a separate process", icon: "key") { go { openWindow(id: "import") } }
-            MenuRow(title: "Risk rules", detail: "at most \(Fmt.pct(ws.policy.maxRiskPct)) per trade", icon: "shield.lefthalf.filled") { go { ws.openSettings(.general) } }
             MenuRow(title: "dApp browser", icon: "globe") { go { ws.openSite(ws.browser.address) } }
             // The versions and their stories; «new» until this version's are seen.
             if let latest = WhatsNew.shared.releases.first {

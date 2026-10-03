@@ -253,7 +253,7 @@ struct NextStepsBoard: View {
                 button(ChatRouter.Option(title: ws.say("Raise the limit", "Поднять лимит"),
                                          comment: ws.say("Now at most \(Fmt.pct(ws.policy.maxRiskPct)) per trade, in Settings — at your own risk.",
                                                          "Сейчас не больше \(Fmt.pct(ws.policy.maxRiskPct)) на сделку, в настройках — на свой риск."), command: ""),
-                       icon: "slider.horizontal.3", help: "Settings › General") { ws.openSettings(.general) }
+                       icon: "slider.horizontal.3", help: "Settings › Trading agent") { ws.openSettings(.agent) }
             }
             Text(ws.say("Or write your own in the chat.", "Или напиши свой вариант в чат.")).font(.ui(10)).foregroundStyle(.secondary)
         }

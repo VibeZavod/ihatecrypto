@@ -64,23 +64,14 @@ enum Notice: String, CaseIterable {
     }
 }
 
-/// Settings → Chat and notifications.
-struct ChatAndNoticeSettings: View {
-    @AppStorage("chatLanguage") private var language = ChatLanguage.auto.rawValue
+/// Settings › General › Notifications.
+struct NoticeSettings: View {
     @State private var showingEvents = false
     @State private var enabledCount = Notice.allCases.filter(\.isOn).count
 
     var body: some View {
-        SettingsSection(icon: "bell", title: "Chat and notifications", line: "How the assistant answers and when it taps you.") {
+        SettingsSection(icon: "bell", title: "Notifications", line: "When the assistant taps you, even with the window closed.") {
             SettingsGroup {
-                SettingsRow("Reply language", icon: "text.bubble", info: "Auto answers in the language you write in. Tickers, amounts and addresses stay as they are.") {
-                    Picker("Reply language", selection: $language) {
-                        Text("Auto — your language").tag(ChatLanguage.auto.rawValue)
-                        Text("English").tag(ChatLanguage.en.rawValue)
-                        Text("Русский").tag(ChatLanguage.ru.rawValue)
-                    }
-                    .labelsHidden().fixedSize()
-                }
                 NoticePermission()
                 SettingsRow("Which events", icon: "list.bullet") {
                     Button { showingEvents.toggle() } label: {
