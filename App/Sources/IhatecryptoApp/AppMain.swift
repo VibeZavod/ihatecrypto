@@ -664,7 +664,12 @@ struct SettingsView: View {
                 Button("Forget the key on this Mac…", role: .destructive) { confirmForget = true }
                     .confirmationDialog("Forget the wallet key on this Mac?", isPresented: $confirmForget) {
                         Button("Forget the key", role: .destructive) {
-                            Task { _ = try? await SignerClient().send(.forget); await ws.loadSigner() }
+                            Task {
+                                // The signer's own wallet goes (not a Ledger in front of it), and what this Mac kept for it.
+                                let id = (try? await SignerClient().send(.status))?.activeWallet
+                                if (try? await SignerClient().send(.forget))?.ok == true, let id { ws.walletRemoved(id) }
+                                await ws.loadSigner()
+                            }
                         }
                     } message: {
                         Text("Only if the recovery phrase is written down: without it the money on this wallet can't be reached again. Positions, stops and balances stay where they are.")

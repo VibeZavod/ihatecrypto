@@ -56,6 +56,22 @@ extension Workspace {
         costBasis = LocalStore.load(Self.scoped("costbasis", id) + ".json") ?? [:]
     }
 
+    /// A wallet removed from the signer: what this Mac kept under its id goes too. The next wallet made into an empty
+    /// list gets id «1» again, and would run the old one's recurring buys and tasks with its own money and show its P/L.
+    /// (flows.json is kept by address: another wallet never reads it.)
+    func walletRemoved(_ id: String) {
+        if id == activeWalletID {
+            schedules = []
+            tasks = []
+            taskQueue = nil
+            exitRules = [:]
+            equityHistory = []
+            costBasis = [:]
+        }
+        for key in ["schedules", "tasks", "exitRules"] { UserDefaults.standard.removeObject(forKey: Self.scoped(key, id)) }
+        for file in ["equity", "costbasis"] { LocalStore.remove(Self.scoped(file, id) + ".json") }
+    }
+
     /// Asks the signer to sign with `wallet` (Touch ID there), then reads everything for it.
     func switchWallet(_ wallet: SignerWallet, note: String? = nil) async {
         guard wallet.id != activeWalletID else {

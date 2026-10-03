@@ -184,6 +184,7 @@ struct ImportWalletView: View {
                     do {
                         let reply = try await SignerClient().send(.removeWallet(id: w.id))
                         guard reply.ok else { throw WalletError(reply.error ?? "The signer refused.") }
+                        ws.walletRemoved(w.id)
                         await ws.loadSigner()
                         await ws.refresh()
                     } catch { self.error = error.localizedDescription }

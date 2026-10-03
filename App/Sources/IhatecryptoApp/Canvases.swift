@@ -43,6 +43,13 @@ enum LocalStore {
         }
     }
 
+    /// A file gone for good (a removed wallet's): what still waits to be written goes first, so it can't come back.
+    static func remove(_ name: String) {
+        flush()
+        written[name] = nil
+        try? FileManager.default.removeItem(at: url(name))
+    }
+
     static func save<T: Encodable>(_ value: T, _ name: String) {
         if pending.isEmpty { Task { encodePending() } }
         pending[name] = {
