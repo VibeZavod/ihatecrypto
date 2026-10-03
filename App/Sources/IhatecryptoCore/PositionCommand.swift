@@ -294,6 +294,8 @@ public enum WalletCommand: Equatable, Sendable {
             }
             if q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bget\s+me\b|вложи\w*\s+в/) { return .buyStock(symbol: symbol, usdc: amount) }
         }
+        // Money leaving Solana («move 5 USDC to Base from Solana»): never a move back to it, whatever network is named.
+        let fromSolana = q.contains(/(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан)/)
         // Out of the Solana wallet: «move 3 USDC from Solana to Robinhood», «переведи 3 USDC из соланы в робингуд».
         // «из соланы в aave на арбитрум» is a deposit into Aave there, not an idle transfer: it's read further down.
         if !q.contains(/\baave\b|ааве|morpho|морфо/),
@@ -307,7 +309,7 @@ public enum WalletCommand: Equatable, Sendable {
            let from = Self.network(String(m.1)), let to = Self.network(String(m.2)), from != to {
             return .bridge(from: from, to: to, amount)
         }
-        if q.contains(/robinhood|робин[гх]уд/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
+        if !fromSolana, q.contains(/robinhood|робин[гх]уд/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .robinhoodToSolana(amount)
         }
         // Topping ihatecrypto up from outside: a deposit with no place to put it, or asking for our address.
@@ -369,8 +371,9 @@ public enum WalletCommand: Equatable, Sendable {
                 return .sendToken(name: name, token: token, amount: amount, network: network)
             }
         }
-        // «отправь 0.001 SOL на Old wallet», «send 0.01 SOL to Bybit»: native SOL to a saved Solana address.
-        if let m = text.firstMatch(of: /(?i)(?:send|transfer|отправь\w*|переведи|перевести|скинь|кинь)\s+(\d+(?:[.,]\d+)?)\s*(?:sol|сол\w*)\s+(?:to|на|для)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/),
+        // «отправь 0.001 SOL на Old wallet», «send 0.01 SOL to Bybit», «send 0.5 SOL on solana to Bybit»: native SOL to a
+        // saved Solana address.
+        if let m = text.firstMatch(of: /(?i)(?:send|transfer|отправь\w*|переведи|перевести|скинь|кинь)\s+(\d+(?:[.,]\d+)?)\s*(?:sol|сол\w*)(?:\s+(?:on|in|в|на|по)\s+(?:the\s+)?(?:сети\s+)?(?:solana|солан\w*)(?:\s+(?:network|chain|сети))?)?\s+(?:to|на|для)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/),
            let value = Decimal(string: String(m.1).replacingOccurrences(of: ",", with: ".")) {
             let name = String(m.2).trimmingCharacters(in: .whitespaces)
             // «send 1 SOL to Jupiter / the vault» is a deposit, not a transfer to someone.
@@ -424,19 +427,24 @@ public enum WalletCommand: Equatable, Sendable {
                 return .sendTo(name: name, amount: value, network: network)
             }
         }
-        if q.contains(/arbitrum|арбитрум/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
+        if !fromSolana, q.contains(/arbitrum|арбитрум/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .arbitrumToSolana(amount)
         }
-        if let net = Self.network(in: q), net == "polygon" || net == "ethereum" || net == "tempo",
+        if !fromSolana, let net = Self.network(in: q), net == "polygon" || net == "ethereum" || net == "tempo",
            q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .evmToSolana(net, amount)
         }
-        if q.contains(/\bbase\b|бейс/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
+        if !fromSolana, q.contains(/\bbase\b|бейс|бейз|\bбаз[аеуы]\b/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .baseToSolana(amount)
         }
-        // «…to Solana» from Hyperliquid; «из соланы» is the other direction and never lands here.
-        if !vault, !q.contains(/(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан)/),
-           q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|withdraw\w*|move|send|bring)(?:[^.]|\.(?=\d))*(?:solana|солан)/) { return .withdrawToSolana(amount) }
+        // «…to Solana» from Hyperliquid, with a word for taking it out («withdraw», «выведи», «верни», «from Hyperliquid»)
+        // or Solana as where it goes («send 3 USDC to Solana»). «send 0.5 SOL on solana to Bybit» names Solana as the
+        // place, not as where it goes; «из соланы» is the other direction.
+        if !vault, !fromSolana,
+           q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|withdraw\w*|move|send|bring)(?:[^.]|\.(?=\d))*(?:solana|солан)/),
+           q.contains(/выв[её]д\w*|верн\w*|withdraw\w*|hyperliquid|хайпер\w*|гипер\w*|\bhl\b|(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+|my\s+)?(?:solana|солан[уа]?)\b(?!\s+(?:to|на|для)\b)/) {
+            return .withdrawToSolana(amount)
+        }
         return nil
     }
 
