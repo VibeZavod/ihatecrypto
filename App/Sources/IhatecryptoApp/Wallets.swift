@@ -22,6 +22,9 @@ extension Workspace {
         activeWalletID = id
         pendingAction = nil
         pendingText = nil
+        // Cards parked on other canvases too: back on one, it would come back and sign from this wallet.
+        parkedPending = [:]
+        chainAhead = nil
         pendingAllocation = nil
         allocationPreview = nil
         awaitingAmount = nil
