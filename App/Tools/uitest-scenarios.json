@@ -197,13 +197,15 @@
     }
   },
   {
-    "name": "P/L on one market → the board for oil, all time",
+    "name": "P/L on one market never traded → oil, said plainly, no board of zeros (the test wallet has no oil trades)",
     "send": [
       "сколько я заработал на нефти"
     ],
     "expect": {
-      "pnl_period": "all",
-      "reply_contains": "$",
+      "reply_contains": "считать нечего",
+      "no_boards": [
+        "pnl"
+      ],
       "no_pending": true
     }
   },
