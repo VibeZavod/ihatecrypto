@@ -5,7 +5,7 @@
     "stories": [
       {
         "title": "New Settings",
-        "text": "Every tab now looks like Modules: cards, orange switches, risk as big numbers with − and +, addresses you can copy, and «Forget the key» set apart.",
+        "text": "One calm column per tab with an icon on every row: risk as a bar with − and +, the nine notifications behind «Which events», details behind «i», the wallet with copyable addresses, and «Forget the key» set apart at the bottom.",
         "symbol": "gearshape.fill",
         "color": "FF7A2F"
       },

@@ -37,6 +37,20 @@ enum Notice: String, CaseIterable {
         }
     }
 
+    var icon: String {
+        switch self {
+        case .incoming: "tray.and.arrow.down"
+        case .positions: "chart.line.uptrend.xyaxis"
+        case .orders: "checkmark.circle"
+        case .alerts: "bell.badge"
+        case .moves: "arrow.left.arrow.right"
+        case .hlp: "lock.open"
+        case .signature: "touchid"
+        case .confirm: "hand.raised"
+        case .update: "arrow.down.app"
+        }
+    }
+
     /// `log show --predicate 'subsystem == "app.ihatecrypto.mac"'`: what macOS answered about notifications.
     nonisolated static let log = Logger(subsystem: "app.ihatecrypto.mac", category: "notifications")
 
@@ -53,21 +67,49 @@ enum Notice: String, CaseIterable {
 /// Settings → Chat and notifications.
 struct ChatAndNoticeSettings: View {
     @AppStorage("chatLanguage") private var language = ChatLanguage.auto.rawValue
+    @State private var showingEvents = false
+    @State private var enabledCount = Notice.allCases.filter(\.isOn).count
 
     var body: some View {
-        SettingsCard(icon: "bell", title: "Chat and notifications", line: "Notifications show while ihatecrypto is in the background or in the menu bar; a click brings its window back.") {
-            NoticePermission()
-            LazyVGrid(columns: [GridItem(.flexible(), spacing: 18, alignment: .top), GridItem(.flexible(), alignment: .top)], spacing: 0) {
-                ForEach(Notice.allCases, id: \.self) { NoticeToggle(kind: $0) }
-            }
-            SettingsRow("Reply language") {
-                Picker("Reply language", selection: $language) {
-                    Text("Auto — the language you write in").tag(ChatLanguage.auto.rawValue)
-                    Text("English").tag(ChatLanguage.en.rawValue)
-                    Text("Русский").tag(ChatLanguage.ru.rawValue)
+        SettingsSection(icon: "bell", title: "Chat and notifications", line: "How the assistant answers and when it taps you.") {
+            SettingsGroup {
+                SettingsRow("Reply language", icon: "text.bubble", info: "Auto answers in the language you write in. Tickers, amounts and addresses stay as they are.") {
+                    Picker("Reply language", selection: $language) {
+                        Text("Auto — your language").tag(ChatLanguage.auto.rawValue)
+                        Text("English").tag(ChatLanguage.en.rawValue)
+                        Text("Русский").tag(ChatLanguage.ru.rawValue)
+                    }
+                    .labelsHidden().fixedSize()
                 }
-                .labelsHidden().fixedSize()
+                NoticePermission()
+                SettingsRow("Which events", icon: "list.bullet") {
+                    Button { showingEvents.toggle() } label: {
+                        HStack(spacing: 8) {
+                            Text("\(enabledCount) of \(Notice.allCases.count)").monospacedDigit()
+                            Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                        }
+                        .padding(.vertical, 4).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).accessibilityLabel("Which events, \(enabledCount) of \(Notice.allCases.count) enabled")
+                    .popover(isPresented: $showingEvents) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            HStack {
+                                SettingsIcon(icon: "bell", size: 30)
+                                Text("Which events").font(.ui(17, .bold))
+                                Spacer()
+                                Button("Done") { showingEvents = false }
+                            }
+                            SettingsGroup {
+                                ForEach(Notice.allCases, id: \.self) { NoticeToggle(kind: $0) }
+                            }
+                        }
+                        .padding(18).frame(width: 540)
+                    }
+                }
             }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: UserDefaults.didChangeNotification)) { _ in
+            enabledCount = Notice.allCases.filter(\.isOn).count
         }
     }
 }
@@ -80,16 +122,14 @@ private struct NoticePermission: View {
     @State private var sent = false
 
     var body: some View {
-        HStack(spacing: 10) {
-            Label(label, systemImage: on ? "bell.badge.fill" : "bell.slash")
-                .foregroundStyle(on ? Brand.profit : Brand.jevInk).fixedSize(horizontal: false, vertical: true)
-            Spacer(minLength: 8)
+        SettingsRow("Notifications", icon: "bell", info: "\(label). Notifications appear while the app is in the background or menu bar. Click one to return to the window. macOS controls whether they can appear.") {
+            SettingsPill(text: status == nil ? "Checking…" : on ? "On" : "Off", good: on)
             if status == .notDetermined {
-                Button("Allow notifications") { Task { await ask() } }.buttonStyle(.borderedProminent).tint(Brand.accent)
+                Button("Allow…") { Task { await ask() } }
             } else if on {
                 Button(sent ? "Sent" : "Send a test") { Task { await test() } }.disabled(sent)
             }
-            Button("Notification Settings…") { Self.openSystemSettings() }
+            Button("System Settings…") { Self.openSystemSettings() }
         }
         .task { await read() }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in Task { await read() } }
@@ -143,7 +183,7 @@ private struct NoticeToggle: View {
     }
 
     var body: some View {
-        SettingsRow(kind.title) { Toggle(kind.title, isOn: $on).toggleStyle(AccentSwitch()) }.padding(.bottom, 8)
+        SettingsRow(kind.title, icon: kind.icon) { Toggle(kind.title, isOn: $on).toggleStyle(AccentSwitch()) }
     }
 }
 

@@ -198,10 +198,7 @@ struct ModulesSettings: View {
         let on = m.isOn(k)
         return VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: Self.icon(k)).font(.system(size: 15, weight: .semibold))
-                    .foregroundStyle(on ? Brand.accentInk : Color.secondary)
-                    .frame(width: 34, height: 34)
-                    .background(RoundedRectangle(cornerRadius: 10).fill(on ? Brand.accent.opacity(0.16) : Color.primary.opacity(0.06)))
+                SettingsIcon(icon: Self.icon(k), size: 34, active: on)
                 VStack(alignment: .leading, spacing: 1) {
                     Text(k.name).font(.ui(15, .semibold))
                     Text(k.line).font(.ui(10)).foregroundStyle(.secondary)
@@ -236,8 +233,7 @@ struct ModulesSettings: View {
     private var soonCard: some View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 10) {
-                Image(systemName: "questionmark.circle").font(.system(size: 15, weight: .semibold)).foregroundStyle(.secondary)
-                    .frame(width: 34, height: 34).background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.06)))
+                SettingsIcon(icon: "questionmark.circle", size: 34, active: false)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("Predictions").font(.ui(15, .semibold))
                     Text("Yes / no markets on real events").font(.ui(10)).foregroundStyle(.secondary)
