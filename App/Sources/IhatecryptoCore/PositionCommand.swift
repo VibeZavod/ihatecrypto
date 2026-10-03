@@ -13,7 +13,7 @@ public enum PositionCommand: Equatable, Sendable {
     case trail(Decimal)
 
     public static func parse(_ text: String) -> PositionCommand? {
-        let q = text.lowercased()
+        let q = IntentParser.plainNumbers(text.lowercased())
         if q.contains(/отмени\w*\s+(?:лимит|ордер|заявк)|сними\w*\s+(?:лимит|ордер|заявк)|cancel\s+(?:the\s+|my\s+)?(?:limit|order)|remove\s+(?:the\s+)?(?:limit|order)/) { return .cancelOrders }
         if q.contains(/безубыт|стоп\w*\s+(?:в|на)\s+(?:ноль|бу\b|вход)|break\s*-?\s*even|stop\s+(?:to|at)\s+entry/) { return .stopToBreakeven }
         if let m = q.firstMatch(of: /(?:(?:перенес\w*|передвин\w*|подвин\w*|постав\w*)?\s*стоп\w*\s+(?:на|в)|(?:move|set|put)?\s*(?:the\s+)?stop(?:[- ]?loss)?\s+(?:to|at))\s+\$?(\d+(?:[.,]\d+)?)(?!\s*%|[\d.,])/),
@@ -189,6 +189,7 @@ public enum WalletCommand: Equatable, Sendable {
             let body = m.3.map(String.init)
             return .pay(method: m.1.map { $0.uppercased() } ?? (body == nil ? "GET" : "POST"), url: String(m.2), body: body)
         }
+        let text = IntentParser.plainNumbers(text)
         let q = text.lowercased()
         // «add gas on robinhood for 3 USDC», «добавь газа на робингуд на 3 бакса», «докинь газ в полигон».
         if q.contains(/\bgas\b|\bгаз\w*/), q.contains(/\badd\b|top\s*up|\bbring\b|\bget\b|\bbuy\b|добав\w*|доки\w*|пополн\w*|закин\w*|подкин\w*|купи\w*|нуж\w*/),

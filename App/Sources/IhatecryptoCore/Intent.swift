@@ -108,7 +108,7 @@ public enum IntentParser {
 
     /// Returns the updated intent, or nil when nothing in `text` was recognised.
     public static func apply(_ text: String, to intent: TradeIntent, markets: Set<String> = []) -> TradeIntent? {
-        let q = text.lowercased()
+        let q = plainNumbers(text.lowercased())
         var next = intent
         var hit = false
 
@@ -198,6 +198,13 @@ public enum IntentParser {
     /// («compra SOL por 1 USDC») are too weak to trust: the message may be another language asking for something else.
     public static func hasTradeWords(_ text: String) -> Bool {
         text.lowercased().contains(/лонг|шорт|\blong\b|\bshort\b|риск|\brisk\b|стоп|\bstop|тейк|\btake\b|\btp\b|\bsl\b|плеч|leverage|\d\s*[xх×]\b|откат|pullback|лимит|limit|по\s+рынку|market|как\s+учат|by\s+the\s+(?:book|rules)|трейл|trail|частям|in\s+parts|scale\s*out|\d\s*r\b|\b1\s*[:к]\s*\d/)
+    }
+
+    /// Numbers as the parsers read them: «2,500» and «1,234.56» lose their thousands commas and «.5» becomes «0.5»; a
+    /// decimal comma («1,5», «0,500», «33,333%») stays for the parsers to read as a point, as AlertCommand.level does.
+    static func plainNumbers(_ text: String) -> String {
+        text.replacing(/(^|[^\d.,])([1-9]\d{0,2}(?:,\d{3})+)(?!,?\d|\s*%)/) { $0.1 + $0.2.replacingOccurrences(of: ",", with: "") }
+            .replacing(/(^|[^\w.,])\.(?=\d)/) { $0.1 + "0." }
     }
 
     static func number(_ q: String, _ regex: Regex<(Substring, Substring)>) -> Decimal? {
