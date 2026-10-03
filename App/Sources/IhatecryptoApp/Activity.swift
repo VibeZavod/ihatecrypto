@@ -24,6 +24,8 @@ struct Activity: Codable, Identifiable, Sendable {
     var canvas: UUID?
     /// A run that failed (its notice went out as failed): a red mark on the Schedule's history.
     var failed: Bool?
+    /// A message the guard stopped: it stays in the history, and never reaches a model through the portfolio's facts.
+    var stopped: Bool?
 }
 
 /// A canvas bubble frozen in time: enough to draw it again the same way in the history.
@@ -247,7 +249,7 @@ extension Workspace {
             } ?? ""
             facts.append("Plan on the canvas (not executed): \(intent.side == .long ? "long" : "short") \(IntentParser.pretty(intent.asset))\(sizing).")
         }
-        for a in activities.suffix(10) where a.request != nil || a.title != nil {
+        for a in activities.suffix(10) where (a.request != nil || a.title != nil) && a.stopped != true {
             facts.append("Activity \(Fmt.date(a.at)): \(a.request.map { "user said “\($0)”" } ?? a.title ?? "") → \(a.lines.first ?? "")")
         }
         // Names only: a model never sees or writes an address.

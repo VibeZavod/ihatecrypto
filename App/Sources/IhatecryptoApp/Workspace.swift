@@ -683,6 +683,7 @@ final class Workspace {
                 return
             }
             let pastedAddress = text.contains(/0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/)
+            updateActivity { $0.stopped = true }
             reply(say("This looks like an attempt to steer the assistant or swap an address. ", "Похоже на попытку управлять ассистентом или подменить адрес. ")
                   + screen.problems.joined(separator: " ")
                   + say(" The message was not passed to the model and changed nothing.", " Сообщение не ушло модели и ничего не изменило.")
