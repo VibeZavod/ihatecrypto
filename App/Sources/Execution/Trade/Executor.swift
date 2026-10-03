@@ -192,7 +192,7 @@ public actor Executor {
         var amount: Bridge.Amount?
         if let usdc = intent.amountUSDC {
             amount = .send(usdc)
-        } else if let need = Plan.bridgeNeed(intent, evaluation, hlWithdrawable: hl.withdrawable + dexFree) {
+        } else if let need = Plan.bridgeNeed(intent, evaluation, hlWithdrawable: hl.withdrawable + dexFree, mark: market.markPx) {
             // A little over the plan: the entry may fill up to 1% worse than the mark the plan used. A tiny top-up
             // would pay about as much in bridge fees as it moves (and the guard refuses that), so bring at least
             // `minBridgeUSDC` when Solana has it; the rest stays free on Hyperliquid.

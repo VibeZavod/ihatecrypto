@@ -195,14 +195,18 @@ public enum Plan {
 
     /// USDC that must arrive on HyperCore, or nil when the trading balance already covers margin and fees
     /// or the position has not passed the checks yet.
-    public static func bridgeNeed(_ i: TradeIntent, _ e: Evaluation, hlWithdrawable: Decimal?) -> Decimal? {
+    /// `mark`: Hyperliquid holds an order's margin at the current price when that's above the limit — a long on a
+    /// pullback. 0.09 SOL at a 115.98 limit is $2.09 at 5×, yet $2.15 is held while SOL trades at 119.6, and an order
+    /// funded to the limit's margin was refused with «Insufficient margin» (test wallet, 2026-10-03).
+    public static func bridgeNeed(_ i: TradeIntent, _ e: Evaluation, hlWithdrawable: Decimal?, mark: Decimal? = nil) -> Decimal? {
         guard i.amountUSDC == nil, e.problem == nil, let s = e.sizing else { return nil }
-        let need = s.margin + s.feesUSD - (hlWithdrawable ?? 0)
+        let held = s.entry > 0 ? s.margin * max(1, (mark ?? s.entry) / s.entry) : s.margin
+        let need = held + s.feesUSD - (hlWithdrawable ?? 0)
         return need > 0 ? need.rounded(2, .up) : nil
     }
 
     public static func blocks(_ i: TradeIntent, _ e: Evaluation, _ live: Live) -> [Block] {
-        let need = bridgeNeed(i, e, hlWithdrawable: live.hlWithdrawable)
+        let need = bridgeNeed(i, e, hlWithdrawable: live.hlWithdrawable, mark: live.market?.markPx)
         let bridging = i.amountUSDC != nil || need != nil
         let send = live.quote?.amountIn ?? i.amountUSDC ?? need
         return [

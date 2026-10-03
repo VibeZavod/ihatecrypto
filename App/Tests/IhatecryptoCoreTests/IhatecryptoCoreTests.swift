@@ -120,6 +120,15 @@ private func intent(risk: String = "10", stop: String = "3", lev: String? = nil)
     #expect(Plan.bridgeNeed(intent(lev: "2"), e, hlWithdrawable: 100) == d("62.09")) // 161.8 margin + 0.28… fees − 100, rounded up
 }
 
+@Test func aLimitBelowThePriceIsFundedForTheMarginHeldAtThePrice() {
+    // Hyperliquid holds a buy limit's margin at the current price when that's higher: 5% above the entry, 5% more margin.
+    let e = Plan.evaluate(intent(lev: "2"), market: eth), s = e.sizing!
+    let atEntry = Plan.bridgeNeed(intent(lev: "2"), e, hlWithdrawable: 0)!
+    let atMark = Plan.bridgeNeed(intent(lev: "2"), e, hlWithdrawable: 0, mark: s.entry * d("1.05"))!
+    #expect(atMark - atEntry >= s.margin * d("0.05") - d("0.01"))
+    #expect(Plan.bridgeNeed(intent(lev: "2"), e, hlWithdrawable: 0, mark: s.entry * d("0.95")) == atEntry) // a price below the entry adds nothing
+}
+
 @Test func blockedPositionDoesNotQuoteTheBridge() {
     let e = Plan.evaluate(intent(lev: "25"), market: eth)
     #expect(Plan.bridgeNeed(intent(lev: "25"), e, hlWithdrawable: nil) == nil)
