@@ -28,8 +28,9 @@ struct NextSteps {
 
 extension Workspace {
     /// A command that only opens something (a chart, a token's card, the rates) or watches a token: it may use an
-    /// address a lookup found. Anything that moves money needs the address in the user's own words.
-    static func displays(_ command: String) -> Bool {
+    /// address a lookup found. Anything that moves money needs the address in the user's own words. One line: a chain,
+    /// a task or an alert is checked step by step (ChatRouter.addressesAllowed with `found`).
+    nonisolated static func displays(_ command: String) -> Bool {
         switch TokenCommand.parse(command) {
         case .show?, .favorite?: return true
         default: break
@@ -190,7 +191,8 @@ extension Workspace {
         let markets = Set(markets.keys)
         let options = reading.options.filter { o in
             o.command != reading.show && ChatRouter.parses(o.command, markets: markets)
-                && ChatRouter.addressesAllowed(o.command, userText: userText, known: favoriteTokens.map(\.address) + (Self.displays(o.command) ? reading.found : []))
+                && ChatRouter.addressesAllowed(o.command, userText: userText, known: favoriteTokens.map(\.address), found: reading.found,
+                                               displays: Self.displays, markets: markets)
         }
         guard !options.isEmpty else { return }
         withAnimation(StudioView.spring) { nextSteps = NextSteps(options: options, userText: userText, found: reading.found, canvas: canvasID) }

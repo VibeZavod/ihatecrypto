@@ -690,4 +690,20 @@ public enum ChatRouter {
         let knownSet = Set(known.map { $0.lowercased() })
         return found.allSatisfy { userText.contains($0) || knownSet.contains($0.lowercased()) }
     }
+
+    /// The same, step by step: an address a lookup returned (`found`) only in a step that just shows something
+    /// (`displays`), so «chart token 0x… then buy token 0x…», or a scheduled task or a price alert with such a buy among
+    /// its steps, can't buy at a contract the user never wrote.
+    public static func addressesAllowed(_ command: String, userText: String, known: [String], found: [String],
+                                        displays: (String) -> Bool, markets: Set<String>) -> Bool {
+        lines(command, markets: markets).allSatisfy { addressesAllowed($0, userText: userText, known: known + (displays($0) ? found : [])) }
+    }
+
+    /// What a command runs, line by line: a scheduled task's or a price alert's steps, a chain's steps, or itself.
+    /// (A task's or an alert's head before «:» is a time or a price: no address there is ever used.)
+    static func lines(_ command: String, markets: Set<String>) -> [String] {
+        if let task = ScheduledTask.parse(command) { return task.steps }
+        if case .set(_, _, _, let steps)? = AlertCommand.parse(command, markets: markets), !steps.isEmpty { return steps }
+        return steps(command) ?? [command]
+    }
 }

@@ -1061,7 +1061,8 @@ final class Workspace {
         case .command(let canonical)?:
             // A new command takes the place of the card that waited; a chart or the rates beside it don't.
             if !Self.displays(canonical) { dropWaiting(keepAction: aboutStep) }
-            guard ChatRouter.addressesAllowed(canonical, userText: text, known: favoriteTokens.map(\.address) + (Self.displays(canonical) ? reading?.found ?? [] : [])) else {
+            guard ChatRouter.addressesAllowed(canonical, userText: text, known: favoriteTokens.map(\.address), found: reading?.found ?? [],
+                                              displays: Self.displays, markets: Set(markets.keys)) else {
                 reply(say("I read that as “\(canonical)”, but its address is neither in your message nor among your favorites, so I won’t use it. Paste the address itself.",
                           "Я понял это как «\(canonical)», но этого адреса нет ни в твоём сообщении, ни в избранном, поэтому я его не использую. Вставь сам адрес."), note: model)
                 return
