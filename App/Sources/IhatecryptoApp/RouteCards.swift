@@ -1249,8 +1249,8 @@ struct StepDetails: View {
         guard let pending else { close(); return }
         var changed: WalletCommand?
         if let old = pending.editableAmount {
-            guard let value = Decimal(string: amount.replacingOccurrences(of: ",", with: ".").trimmingCharacters(in: .whitespaces)), value > 0 else {
-                problem = "Type the amount as a number, for example 2."
+            guard let value = Self.amount(amount), value > 0 else {
+                problem = "Type the amount as one number, for example 2.5 or 1000."
                 return
             }
             if value != old { changed = pending.with(amount: value) }
@@ -1259,6 +1259,20 @@ struct StepDetails: View {
         close()
         // A new amount is a new plan: the same checks, Jev and the same Confirm, as if typed.
         if let changed { Task { await ws.handleWallet(changed) } }
+    }
+
+    /// The field as one amount: «2», «0,5», «1 000», «1,000.50», «1.000,50». Anything else is nil, never the number it
+    /// starts with («5abc» isn't 5), and so is «1,000» alone: a thousand, or one with three decimals.
+    static func amount(_ text: String) -> Decimal? {
+        var s = text.trimmingCharacters(in: .whitespaces)
+        // Thousands apart by spaces: «1 000», «12 500,5».
+        if s.wholeMatch(of: /\d{1,3}(?:\s\d{3})+(?:[.,]\d+)?/) != nil { s.removeAll { $0.isWhitespace } }
+        // Thousands apart by the other mark: with a decimal mark after them, or more than one of them.
+        if s.wholeMatch(of: /\d{1,3}(?:,\d{3})+(?:\.\d+)?/) != nil, s.contains(/\.|,.*,/) { s.removeAll { $0 == "," } }
+        else if s.wholeMatch(of: /\d{1,3}(?:\.\d{3})+(?:,\d+)?/) != nil, s.contains(/,|\..*\./) { s.removeAll { $0 == "." } }
+        guard let m = s.wholeMatch(of: /(\d+)(?:([.,])(\d+))?/) else { return nil }
+        if m.2 == ",", m.3?.count == 3, m.1.contains(where: { $0 != "0" }) { return nil }
+        return Decimal(string: s.replacingOccurrences(of: ",", with: "."))
     }
 }
 
