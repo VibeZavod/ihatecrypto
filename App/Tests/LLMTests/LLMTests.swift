@@ -99,6 +99,20 @@ private func jwt(_ claims: [String: Any]) -> String {
     #expect(ClaudeCodeClient.arguments(LLMRequest(model: "m", messages: [LLMMessage(.user, "x")])).contains("--system-prompt"))
 }
 
+/// A hung `claude -p` is stopped after its timeout, or when the chat's task is cancelled; it never keeps the chat busy.
+@Test func claudeCodeRunStopsAHungProcess() async throws {
+    let start = ContinuousClock.now
+    await #expect(throws: LLMError.self) { _ = try await ClaudeCodeClient.run("/bin/sleep", ["30"], input: "x", timeout: .milliseconds(300)) }
+    let run = Task { try await ClaudeCodeClient.run("/bin/sleep", ["30"], input: "x") }
+    try await Task.sleep(for: .milliseconds(200))
+    run.cancel()
+    await #expect(throws: (any Error).self) { _ = try await run.value }
+    #expect(ContinuousClock.now - start < .seconds(10))
+    // A normal run still returns its output; a failed one says what it printed.
+    #expect(try await ClaudeCodeClient.run("/bin/cat", [], input: "hello") == Data("hello".utf8))
+    await #expect(throws: LLMError.self) { _ = try await ClaudeCodeClient.run("/bin/ls", ["/nonexistent-path"], input: "") }
+}
+
 @Test func jsonModeOnlyWhereTheAPISupportsIt() {
     let request = LLMRequest(model: "m", messages: [LLMMessage(.user, "x")], wantsJSON: true)
     #expect(OpenAIChatClient(baseURL: "https://api.deepseek.com/", key: "k", jsonMode: true).body(request)["response_format"] != nil)

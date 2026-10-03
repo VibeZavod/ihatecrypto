@@ -54,8 +54,9 @@ struct ClaudeCodeClient: LLMClient {
         return result.result ?? ""
     }
 
-    // ponytail: no timeout; `-p` exits on its own, add one if a hung login prompt ever shows up.
-    static func run(_ path: String, _ arguments: [String], input: String) async throws -> Data {
+    /// A `claude -p` that hangs (a login prompt, a stalled network) would keep the chat busy for good: it is stopped after
+    /// two minutes, the ChatGPT client's limit, or as soon as the task waiting for it is cancelled.
+    static func run(_ path: String, _ arguments: [String], input: String, timeout: Duration = .seconds(120)) async throws -> Data {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
@@ -64,15 +65,37 @@ struct ClaudeCodeClient: LLMClient {
         env["CLAUDECODE"] = nil
         env["CLAUDE_CODE_ENTRYPOINT"] = nil
         process.environment = env
-        let stdin = Pipe(), stdout = Pipe()
+        let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
         process.standardInput = stdin
         process.standardOutput = stdout
-        process.standardError = FileHandle.nullDevice
+        process.standardError = stderr
         try process.run()
-        stdin.fileHandleForWriting.write(Data(input.utf8))
-        try stdin.fileHandleForWriting.close()
-        let data = try await Task.detached { try stdout.fileHandleForReading.readToEnd() ?? Data() }.value
+        let pid = process.processIdentifier
+        let watchdog = Task { () -> Bool in
+            do { try await Task.sleep(for: timeout) } catch { return false }
+            kill(pid, SIGTERM)
+            return true
+        }
+        defer { watchdog.cancel() }
+        // The prompt and stderr on threads of their own, so a run that stops reading or fills stderr can't block the wait;
+        // a stopped run gives the write EPIPE, not the app a SIGPIPE.
+        let writer = stdin.fileHandleForWriting
+        _ = fcntl(writer.fileDescriptor, F_SETNOSIGPIPE, 1)
+        Task.detached { try? writer.write(contentsOf: Data(input.utf8)); try? writer.close() }
+        let errors = Task.detached { (try? stderr.fileHandleForReading.readToEnd()) ?? Data() }
+        let data = try await withTaskCancellationHandler {
+            try await Task.detached { try stdout.fileHandleForReading.readToEnd() ?? Data() }.value
+        } onCancel: { kill(pid, SIGTERM) }
         process.waitUntilExit()
+        watchdog.cancel()
+        if await watchdog.value {
+            throw LLMError("Claude Code didn't answer in \(timeout.components.seconds) s, so it was stopped. Send it again, or pick another model.")
+        }
+        try Task.checkCancellation()
+        if data.isEmpty, process.terminationStatus != 0 {
+            let said = String(decoding: (await errors.value).suffix(300), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+            throw LLMError("Claude Code stopped with code \(process.terminationStatus)" + (said.isEmpty ? "." : ": \(said)"))
+        }
         return data
     }
 }
