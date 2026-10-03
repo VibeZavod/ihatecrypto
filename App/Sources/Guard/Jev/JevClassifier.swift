@@ -106,7 +106,7 @@ public enum JevReviewer {
     public static func transactions(plan: [String], signatures: [String], changes: [String], apiKey: String) async throws -> JevReview {
         let (label, confidence) = try await JevClassifier.decide(
             apiKey: apiKey, state: ["plan": plan, "signatures": signatures, "balance_changes": changes],
-            instructions: "An app is about to sign state.signatures to carry out state.plan. Compare each signature and each balance change with the plan: amounts, assets and where funds go.",
+            instructions: "An app is about to sign state.signatures to carry out state.plan. Compare each signature and each balance change with the plan: amounts, assets and where funds go. The bridge is quoted again just before signing, so what it sends, delivers and charges may differ from the plan by a few percent (cents on small amounts): that alone is consistent. A different asset, a different destination, or an amount off by more than about 5% is not.",
             criteria: transactionLabels)
         return review(label, confidence, good: "consistent", texts: [
             "consistent": "signatures and balance changes match the plan", "inconsistent": "signatures or balances don't match the plan",
