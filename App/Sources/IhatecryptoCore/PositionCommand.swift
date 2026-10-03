@@ -560,11 +560,39 @@ extension WalletCommand {
         q.firstMatch(of: /\b(base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|tempo|темпо\w*)\b/).flatMap { network(String($0.1)) }
     }
 
-    /// «1», «1 USDC», «$1.5», «да, 2», «ok 3» — a short reply that is only an amount.
-    public static func amountAnswer(_ text: String) -> Decimal? {
-        let q = text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let m = q.wholeMatch(of: /(?:(?:да|yes|ok|окей|давай|го|sure|yep|угу)[,!\s]*)?(?:на\s+|for\s+)?\$?\s*(\d+(?:[.,]\d+)?)\s*(?:usdc|\$|долл\w*|dollars?|bucks|sol|сол|юсдс)?\s*[.!]?/) else { return nil }
-        return Decimal(string: String(m.1).replacingOccurrences(of: ",", with: ".")).flatMap { $0 > 0 ? $0 : nil }
+    /// «1», «1 USDC», «$1.5», «да, 2», «ok 3», «1,000» — a short reply that is only an amount, with the unit it names:
+    /// "$", "USDC", "USDT" or "SOL" (nil: none).
+    static func amountReply(_ text: String) -> (value: Decimal, unit: String?)? {
+        let q = IntentParser.plainNumbers(text.lowercased().trimmingCharacters(in: .whitespacesAndNewlines))
+        guard let m = q.wholeMatch(of: /(?:(?:да|yes|ok|окей|давай|го|sure|yep|угу)[,!\s]*)?(?:на\s+|for\s+)?(\$)?\s*(\d+(?:[.,]\d+)?)\s*(usdc|юсдс|юсдц|usdt|usd|\$|долл\w*|dollars?|bucks|бакс\w*|sol|сол)?\s*[.!]?/),
+              let value = Decimal(string: String(m.2).replacingOccurrences(of: ",", with: ".")), value > 0 else { return nil }
+        let unit = m.3.map { w in w.hasPrefix("usdc") || w.hasPrefix("юсд") ? "USDC" : w == "usdt" ? "USDT" : w == "sol" || w == "сол" ? "SOL" : "$" }
+        // «$5 sol» says both.
+        if m.1 != nil, unit == "SOL" { return nil }
+        return (value, unit ?? m.1.map { _ in "$" })
+    }
+
+    /// The amount alone, whatever its unit. Use `amountAnswer(_:for:)`, which checks the unit against the question.
+    public static func amountAnswer(_ text: String) -> Decimal? { amountReply(text)?.value }
+
+    /// The answer to `waiting`'s «How much?»: nil when its unit isn't what was asked for («$5» or «на 5 долларов» to a SOL
+    /// stake, «1 sol» to a USDC deposit) or it's under the asset's smallest unit (0.000001 USDC, 0.000000001 SOL), which
+    /// would build a «Deposit 0 USDC» card.
+    public static func amountAnswer(_ text: String, for waiting: WalletCommand) -> Decimal? {
+        guard let (value, unit) = amountReply(text) else { return nil }
+        let asset = waiting.amountAsset
+        let fits = unit == nil || unit == asset || (unit == "$" && asset != "SOL")
+        return fits && value >= (asset == "SOL" ? Decimal(string: "0.000000001")! : Decimal(string: "0.000001")!) ? value : nil
+    }
+
+    /// What the amount of a command waiting for one counts: SOL for a stake, the deposited coin for Jupiter Lend and Kamino,
+    /// else USDC (buys are paid in it).
+    var amountAsset: String {
+        switch self {
+        case .lendDeposit(let s, _), .kamino(_, let s, _): s
+        case .stake: "SOL"
+        default: "USDC"
+        }
     }
 
     /// In words, for the confirm button and the reply: «deposit 1 USDC into Jupiter Lend».

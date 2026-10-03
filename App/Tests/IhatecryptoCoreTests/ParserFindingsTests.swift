@@ -64,6 +64,30 @@ private let sol = SpotAsset.all[0]
     #expect(PositionCommand.parse("отмени ордер") == .cancelOrders)
 }
 
+@Test func anAnswerInAnotherUnitDoesNotFillTheQuestion() {   // C8, R1, R2, R3
+    #expect(WalletCommand.amountAnswer("$5", for: .stake(nil)) == nil)
+    #expect(WalletCommand.amountAnswer("на 5 долларов", for: .stake(nil)) == nil)
+    #expect(WalletCommand.amountAnswer("$0.05", for: .stake(nil)) == nil)
+    #expect(WalletCommand.amountAnswer("5 usdc", for: .kamino(deposit: true, symbol: "SOL", amount: nil)) == nil)
+    #expect(WalletCommand.amountAnswer("1 sol", for: .lendDeposit("USDC", nil)) == nil)
+    #expect(WalletCommand.amountAnswer("$5 sol", for: .stake(nil)) == nil)
+    #expect(WalletCommand.amountAnswer("0.0000001", for: .lendDeposit("USDC", nil)) == nil)
+    #expect(WalletCommand.amountAnswer("0.0000000001", for: .stake(nil)) == nil)
+    #expect(WalletCommand.amountAnswer("1,000", for: .lendDeposit("USDC", nil)) == 1000)
+    #expect(WalletCommand.amountAnswer("5", for: .stake(nil)) == 5)
+    #expect(WalletCommand.amountAnswer("0.5 SOL", for: .stake(nil)) == d("0.5"))
+    #expect(WalletCommand.amountAnswer("0.000000001", for: .stake(nil)) == d("0.000000001"))
+    #expect(WalletCommand.amountAnswer("0.5 сол", for: .lendDeposit("SOL", nil)) == d("0.5"))
+    #expect(WalletCommand.amountAnswer("$5", for: .buy(sol, usdc: nil)) == 5)
+    #expect(WalletCommand.amountAnswer("да, 2", for: .aave(deposit: true, amount: nil)) == 2)
+    #expect(WalletCommand.amountAnswer("10 usdc", for: .solanaTo("base", nil)) == 10)
+    #expect(WalletCommand.amountAnswer("5 баксов", for: .hlp(deposit: true, amount: nil)) == 5)
+    // The old reader, which the app still calls, reads numbers the same way.
+    #expect(WalletCommand.amountAnswer("1,5 USDC") == d("1.5"))
+    #expect(WalletCommand.amountAnswer("1,000") == 1000)
+    #expect(WalletCommand.amountAnswer(".5") == d("0.5"))
+}
+
 @Test func theNetworkAfterFromIsWhereMoneyLeaves() {   // C13
     #expect(WalletCommand.parse("переведи 5 USDC с базы на солану") == .baseToSolana(5))
     #expect(WalletCommand.parse("переведи 5 USDC с бейза на солану") == .baseToSolana(5))
