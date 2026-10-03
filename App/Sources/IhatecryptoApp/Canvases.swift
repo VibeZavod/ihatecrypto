@@ -28,10 +28,19 @@ enum LocalStore {
     static func load<T: Decodable>(_ name: String) -> T? {
         // A save still on its way would be read stale (flows.json is read, added to and saved).
         flush()
-        guard let data = try? Data(contentsOf: url(name)) else { return nil }
+        let file = url(name)
+        guard let data = try? Data(contentsOf: file) else { return nil }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(T.self, from: data)
+        do { return try decoder.decode(T.self, from: data) } catch {
+            // Written by a newer build or damaged: put aside, or the next save writes an empty list over the user's
+            // canvases, history or addresses. «canvases.json.unreadable-2026-10-03T104809» can be read back by hand.
+            let aside = URL(fileURLWithPath: file.path + ".unreadable-"
+                + Date().formatted(.iso8601.year().month().day().dateSeparator(.dash).time(includingFractionalSeconds: false).timeSeparator(.omitted)))
+            try? FileManager.default.moveItem(at: file, to: aside)
+            FileHandle.standardError.write(Data("ihatecrypto: \(name) couldn't be read (\(error)); kept as \(aside.lastPathComponent)\n".utf8))
+            return nil
+        }
     }
 
     static func save<T: Encodable>(_ value: T, _ name: String) {
@@ -1029,6 +1038,11 @@ enum RouteFill: String, Codable, Hashable, Sendable {
     case solana, relay, hyperliquid, hlp, jupiter, kamino, jito, aave, morpho, base, arbitrum, robinhood, near, tempo
     /// A plan's checks and its result: no place of their own, a grey card.
     case check
+
+    /// A place a newer build added reads as a grey card: one unknown card would leave the whole file unreadable.
+    init(from decoder: Decoder) throws {
+        self = RouteFill(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .check
+    }
 
     var color: Color {
         switch self {
