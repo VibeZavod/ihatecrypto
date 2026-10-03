@@ -39,9 +39,13 @@ extension Workspace {
             await openChart(coin, range: range)
             let name = IntentParser.pretty(coin)
             if let c = chart?.candles, let first = c.first, let last = c.last, first.close > 0 {
-                reply("\(name) on the canvas: \(Fmt.price(last.close)), \(signedPct((last.close - first.close) / first.close * 100)) over \(range.title).", note: note)
+                let change = signedPct((last.close - first.close) / first.close * 100)
+                let days = switch range { case .day: "24 ч"; case .week: "7 дней"; case .month: "30 дней" }
+                reply(say("\(name) on the canvas: \(Fmt.price(last.close)), \(change) over \(range.title).",
+                          "\(name) на холсте: \(Fmt.price(last.close)), \(change) за \(days)."), note: note)
             } else {
-                reply("The \(name) chart didn’t load\(chart?.error.map { ": \($0)" } ?? ".")", note: note)
+                let why = chart?.error.map { ": \($0)" } ?? "."
+                reply(say("The \(name) chart didn’t load\(why)", "График \(name) не загрузился\(why)"), note: note)
             }
         case .movers:
             withAnimation(StudioView.spring) { showMovers = true }
@@ -49,7 +53,8 @@ extension Workspace {
             let list = moverList()
             let up = list.first.map { "\(IntentParser.pretty($0.coin)) \(signedPct($0.change))" } ?? "—"
             let down = list.last.map { "\(IntentParser.pretty($0.coin)) \(signedPct($0.change))" } ?? "—"
-            reply("Today’s movers are on the canvas: up the most \(up), down the most \(down). Tap one for its chart.", note: note)
+            reply(say("Today’s movers are on the canvas: up the most \(up), down the most \(down). Tap one for its chart.",
+                      "Лидеры дня на холсте: сильнее всех вырос \(up), сильнее всех упал \(down). Нажми на любой — откроется график."), note: note)
         }
     }
 
