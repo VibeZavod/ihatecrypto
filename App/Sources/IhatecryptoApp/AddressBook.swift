@@ -800,16 +800,8 @@ extension Workspace {
     /// else where the entry is saved. A 0x address saved on one EVM network is the same address on another; Solana's
     /// and the EVM networks' don't mix, and NEAR or Hyperliquid have their own forms.
     func tokenRecipient(_ name: String, network: String?) throws -> (entry: SavedAddress, network: String) {
-        let key = name.lowercased()
         let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo"]
-        // One name can be saved on several networks («Automation» on Solana and on Base): the entry that can receive
-        // on the network named comes first.
-        func fits(_ e: SavedAddress) -> Bool {
-            guard let network else { return true }
-            return e.network.rawValue == network || (evm.contains(network) && (evm.contains(e.network.rawValue) || e.network == .hyperliquid))
-        }
-        let named = addressBook.filter { $0.name.lowercased() == key }, near = addressBook.filter { $0.name.lowercased().contains(key) }
-        guard let entry = named.first(where: fits) ?? named.first ?? ownWallet(key) ?? near.first(where: fits) ?? near.first else {
+        guard let entry = savedEntry(name, network: network) else {
             throw ExecutionError("There’s no “\(name)” in Addresses. Save it there first, then send by its name.")
         }
         let saved = entry.network.rawValue, net = network ?? saved
@@ -828,10 +820,24 @@ extension Workspace {
         return (entry, net)
     }
 
+    /// The entry a name means. One name can be saved on several networks («Automation» on Solana and on Base): the one
+    /// that can receive on the network named comes first; a 0x address on one EVM network is the same on another.
+    func savedEntry(_ name: String, network: String?) -> SavedAddress? {
+        let key = name.lowercased()
+        let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo"]
+        func fits(_ e: SavedAddress) -> Bool {
+            guard let network else { return true }
+            return e.network.rawValue == network || (evm.contains(network) && (evm.contains(e.network.rawValue) || e.network == .hyperliquid))
+        }
+        let named = addressBook.filter { $0.name.lowercased() == key }, near = addressBook.filter { $0.name.lowercased().contains(key) }
+        return named.first(where: fits) ?? named.first ?? ownWallet(key) ?? near.first(where: fits) ?? near.first
+    }
+
     /// `quiet`: a step of a chain — its card shows, and a confirmed chain signs it at once: no «Sign it» line.
     func prepareTransfer(_ amount: Decimal, to name: String, network: String? = nil, note: String? = nil, quiet: Bool = false) {
         let key = name.lowercased()
-        guard var entry = addressBook.first(where: { $0.name.lowercased() == key }) ?? ownWallet(key) ?? addressBook.first(where: { $0.name.lowercased().contains(key) }) else {
+        // «test wallet» saved on Base and on Solana, «send 3 USDC to test wallet on Solana»: the Solana entry, not the first.
+        guard var entry = savedEntry(name, network: network) else {
             reply("There’s no “\(name)” in Addresses. Add it there first (the book button in the rail), then send by its name."
                   + (key.contains("solana") || key.contains("солан") ? " To bring money to your own Solana wallet, say “withdraw \(Fmt.num(amount)) USDC to Solana”." : ""), note: note)
             return

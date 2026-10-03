@@ -1394,8 +1394,7 @@ extension Workspace {
             // ending in it («move 20 from Base to Solana, then send 20 to Automation») doesn't look like a bare bridge.
             case .sendTo(let name, let amount, let net):
                 // The same entry and network prepareTransfer will use when the step runs.
-                let key = name.lowercased()
-                let entry = addressBook.first { $0.name.lowercased() == key } ?? ownWallet(key) ?? addressBook.first { $0.name.lowercased().contains(key) }
+                let entry = savedEntry(name, network: net)
                 let network = net.flatMap(AddressCheck.Network.init(rawValue:)) ?? entry?.network ?? .solana
                 let ends = entry.map { AddressCheck.ends($0.address) }
                 return [ActivityBubble(kind: "step", label: "SEND · \(network.title.uppercased())",
