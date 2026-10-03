@@ -53,6 +53,19 @@ public enum AddressCheck {
         }
     }
 
+    /// Why a name or memo can't go on the Touch ID prompt beside its address, or nil: at most 64 characters, none that
+    /// break the line, reorder the text (bidi marks) or don't show — else a name could draw a fake address line.
+    public static func labelProblem(_ text: String) -> String? {
+        if text.count > 64 { return "A name or memo is at most 64 characters." }
+        if text.unicodeScalars.contains(where: hidden) { return "A name or memo can't hold line breaks or invisible characters." }
+        return nil
+    }
+
+    /// Line breaks, control characters and invisible formatting (bidi overrides, zero-width marks).
+    public static func hidden(_ c: Unicode.Scalar) -> Bool {
+        [.control, .format, .lineSeparator, .paragraphSeparator].contains(c.properties.generalCategory)
+    }
+
     /// «7xKX 9fQm … 3kPq 2Wd1»: the start and the end in groups of four, the way to compare an address by eye.
     public static func ends(_ address: String) -> (start: String, end: String) {
         func groups(_ s: Substring) -> String { stride(from: 0, to: s.count, by: 4).map { i in String(s.dropFirst(i).prefix(4)) }.joined(separator: " ") }

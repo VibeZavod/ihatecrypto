@@ -86,6 +86,17 @@ private let policy = SolanaPolicy(owner: me, recipients: [deposit])
     #expect(SolanaGuard.check(m, accounts: accounts, policy: policy, tokenOwners: [:]).problems.first?.contains("Priority fee") == true)
 }
 
+// S12: a saved name or memo goes on the Touch ID prompt: no line breaks, bidi marks or invisible characters, 64 at most.
+@Test func addressBookNamesCantFakeAPromptLine() {
+    #expect(AddressCheck.labelProblem("Bybit") == nil)
+    #expect(AddressCheck.labelProblem("Мама ❤️") == nil)
+    #expect(AddressCheck.labelProblem("") == nil)
+    #expect(AddressCheck.labelProblem("Bybit» on Solana: 7xKX\n\nmain") != nil)
+    #expect(AddressCheck.labelProblem("main\u{202E}tib") != nil)
+    #expect(AddressCheck.labelProblem("a\u{200B}b") != nil)
+    #expect(AddressCheck.labelProblem(String(repeating: "x", count: 65)) != nil)
+}
+
 @Test func simulatedBalancesCatchARouteThatPaysSomeoneElse() {
     let rule = SolanaGuard.BalanceRule(label: "USDC", before: 1_000_000, after: 1_000_000, atLeast: 2_300_000)
     #expect(!SolanaGuard.balances([rule]).ok)

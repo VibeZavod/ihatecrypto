@@ -56,6 +56,7 @@ enum Signer {
             // Resuming a paused trading key is the user's decision: it asks for Touch ID like a signature.
             if on, !defaults.bool(forKey: agentActiveKey), AgentStore.load() != nil {
                 try withKey("evm", reason: "turn the Hyperliquid trading key back on") { _ in }
+                SeedStore.endSession() // a confirmation, not a move: it leaves no session for an unrelated signature
             }
             defaults.set(on && AgentStore.load() != nil, forKey: agentActiveKey)
             var r = SignerReply(ok: true)
@@ -107,12 +108,15 @@ enum Signer {
                     throw WalletError("An address needs a name and a network.")
                 }
                 if let problem = AddressCheck.problem(e.address, network: net) { throw WalletError(problem) }
+                if let problem = AddressCheck.labelProblem(e.name) ?? AddressCheck.labelProblem(e.memo) { throw WalletError("\(e.address): \(problem)") }
             }
-            // The whole address on the prompt, not its ends: a look-alike differs in the middle.
+            // The whole address on the prompt, not its ends: a look-alike differs in the middle. It starts the line, before
+            // the name, so no name can stand where an address should be.
             let lines = entries.map { e in
-                "«\(e.name)» on \(AddressCheck.Network(rawValue: e.network)?.title ?? e.network): \(e.address)" + (e.memo.isEmpty ? "" : ", memo \(e.memo)")
+                "\(e.address) on \(AddressCheck.Network(rawValue: e.network)?.title ?? e.network) as «\(e.name)»" + (e.memo.isEmpty ? "" : ", memo \(e.memo)")
             }
             try SeedStore.confirm("save to your address book (check every character):\n" + lines.joined(separator: "\n"))
+            defer { SeedStore.endSession() } // a confirmation, not a move: it leaves no session for an unrelated signature
             var book = AddressBookStore.all()
             for e in entries {
                 book.removeAll { $0.name.lowercased() == e.name.lowercased() && $0.network == e.network }
@@ -143,7 +147,10 @@ enum Signer {
         case .setActiveWallet(let id):
             guard let wallet = Wallets.all.first(where: { $0.id == id }) else { throw WalletError("No such wallet.") }
             // Which wallet signs, and whose addresses ihatecrypto shows for deposits, is the user's call in person.
-            if wallet.id != Wallets.active?.id { try confirmInPerson("sign with the wallet «\(wallet.label)» from now on:\n\(addresses(wallet))") }
+            if wallet.id != Wallets.active?.id {
+                try confirmInPerson("sign with the wallet «\(wallet.label)» from now on:\n\(addresses(wallet))")
+                SeedStore.endSession() // a confirmation, not a move: it leaves no session for an unrelated signature
+            }
             Wallets.activate(wallet)
             var r = SignerReply(ok: true)
             r.wallets = Wallets.all
@@ -203,6 +210,7 @@ enum Signer {
             // Back on after a lock is the user's decision, as for a wallet's own key.
             if on, defaults.string(forKey: "agentActive-" + id) == "paused" {
                 try SeedStore.confirm("turn the Hyperliquid trading key of your Ledger \(owner) back on")
+                SeedStore.endSession() // a confirmation, not a move: it leaves no session for an unrelated signature
             }
             defaults.set(on ? "on" : "paused", forKey: "agentActive-" + id)
             var r = SignerReply(ok: true)
