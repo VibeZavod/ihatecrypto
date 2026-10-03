@@ -277,7 +277,8 @@ struct PlaceDetailBoard: View {
     let place: String
 
     var body: some View {
-        if let token = TokenBoard.parse(place) { TokenBoard(chain: token.chain, address: token.address) } else { board }
+        // A board per token: another token opened here starts clean, without the last one's badge, market or chart.
+        if let token = TokenBoard.parse(place) { TokenBoard(chain: token.chain, address: token.address).id(place) } else { board }
     }
 
     private var board: some View {
