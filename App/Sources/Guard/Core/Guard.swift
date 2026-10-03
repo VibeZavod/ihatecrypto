@@ -165,8 +165,10 @@ public enum SolanaGuard {
                 v.checks.append("Calls \(programName). The balance simulation checks the result.")
             }
         }
-        let fee = unitLimit * unitPrice / 1_000_000
-        if fee > policy.maxPriorityFee { v.problems.append("Priority fee up to \(Double(fee) / 1e9) SOL is too high.") }
+        // Both numbers are the transaction's: a product past 64 bits is refused, not trapped on.
+        let (product, overflow) = unitLimit.multipliedReportingOverflow(by: unitPrice)
+        let fee = product / 1_000_000
+        if overflow || fee > policy.maxPriorityFee { v.problems.append(overflow ? "Priority fee out of range." : "Priority fee up to \(Double(fee) / 1e9) SOL is too high.") }
         return v
     }
 

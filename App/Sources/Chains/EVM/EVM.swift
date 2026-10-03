@@ -175,7 +175,7 @@ public enum ABI {
     /// ERC-20 `string` return value (symbol(), name()).
     public static func string(_ data: Data) -> String? {
         let data = Data(data)
-        guard data.count >= 64, let length = uint(in: data, word: 1), data.count >= 64 + Int(length) else { return nil }
+        guard data.count >= 64, let length = uint(in: data, word: 1), length <= UInt64(data.count), data.count >= 64 + Int(length) else { return nil }
         return String(data: data.subdata(in: 64..<(64 + Int(length))), encoding: .utf8)
     }
 

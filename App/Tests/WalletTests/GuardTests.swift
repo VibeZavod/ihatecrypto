@@ -78,6 +78,14 @@ private let policy = SolanaPolicy(owner: me, recipients: [deposit])
     #expect(SolanaGuard.check(m, accounts: accounts, policy: policy, tokenOwners: [:]).problems.first?.contains("Priority fee") == true)
 }
 
+// S10: a unit price of 2⁶³ times a limit of 2 passes 64 bits: refused, not a crash of the app or the signer.
+@Test func guardRefusesAnOverflowingPriorityFee() throws {
+    let limit: [UInt8] = [2] + withUnsafeBytes(of: UInt32(2).littleEndian, Array.init)
+    let price: [UInt8] = [3] + withUnsafeBytes(of: (UInt64(1) << 63).littleEndian, Array.init)
+    let (m, accounts) = try message([me, SolanaGuard.computeBudget], [(1, [], limit), (1, [], price)])
+    #expect(SolanaGuard.check(m, accounts: accounts, policy: policy, tokenOwners: [:]).problems.first?.contains("Priority fee") == true)
+}
+
 @Test func simulatedBalancesCatchARouteThatPaysSomeoneElse() {
     let rule = SolanaGuard.BalanceRule(label: "USDC", before: 1_000_000, after: 1_000_000, atLeast: 2_300_000)
     #expect(!SolanaGuard.balances([rule]).ok)

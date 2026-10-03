@@ -111,7 +111,9 @@ public enum Merkl {
     public static func recipients(_ data: Data) -> [String]? {
         guard data.count >= 4 + 32, data.prefix(4).hex == "71ee95c0" else { return nil }
         let args = Data(data.dropFirst(4))
-        guard let at = ABI.uint(in: args, word: 0), at % 32 == 0, let n = ABI.uint(in: args, word: Int(at / 32)), n <= 256 else { return nil }
+        // A page's offset is held to the data's size before it becomes a word index (a huge one would trap).
+        guard let at = ABI.uint(in: args, word: 0), at % 32 == 0, at < UInt64(args.count),
+              let n = ABI.uint(in: args, word: Int(at / 32)), n <= 256 else { return nil }
         let first = Int(at / 32) + 1
         let users = (0..<Int(n)).compactMap { ABI.address(in: args, word: first + $0) }
         return users.count == Int(n) ? users : nil

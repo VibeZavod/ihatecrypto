@@ -291,6 +291,16 @@ import WalletCore
     #expect(pay.summary(chainId: 4217, to: payee, value: 0) == "send tokens of 0x060b…9ff0 to 0x060b…9ff0 on Tempo")
 }
 
+// S10: offsets a page sets can't crash the app or the signer.
+@Test func hugeCalldataOffsetsAreRefusedNotTrapped() {
+    let huge = String(repeating: "f", count: 62) + "e0"
+    let universal = Data(hex: "3593564c" + huge + String(repeating: "0", count: 128))!
+    #expect(EVMCall.decode(universal) == .contract(selector: "0x3593564c"))
+    let merkl = Data(hex: "71ee95c0" + huge + String(repeating: "0", count: 64))!
+    #expect(Merkl.recipients(merkl) == nil)
+    #expect(ABI.string(Data(hex: String(repeating: "0", count: 64 + 48) + String(repeating: "f", count: 16))!) == nil)   // length 2⁶⁴ − 1
+}
+
 // 54.56 AI of 18 decimals is past 64 bits: the quote and the swap carry it as a whole 256-bit word.
 @Test func uniswapAmountsPast64Bits() throws {
     let big = Decimal(string: "54560000000000000000")!

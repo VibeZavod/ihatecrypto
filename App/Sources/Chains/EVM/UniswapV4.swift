@@ -156,16 +156,18 @@ public enum UniswapV4 {
         ABI.uint(0x40) + ABI.uint(UInt64(0x40 + bytesValue(a).count)) + bytesValue(a) + dynamicArray(b)
     }
 
-    /// The `bytes` whose offset is head word `i` of `d`.
+    /// The `bytes` whose offset is head word `i` of `d`. Offsets and lengths are the caller's numbers: each is held to the
+    /// data's size before it becomes an Int, so 2⁶⁴ − 1 is refused instead of trapping.
     static func bytesAt(_ d: Data, headWord i: Int) -> Data? {
-        guard let at = ABI.uint(in: d, word: i), at % 32 == 0, Int(at) + 32 <= d.count,
-              let length = ABI.uint(in: d.subdata(in: Int(at)..<d.count), word: 0), Int(at) + 32 + Int(length) <= d.count else { return nil }
+        guard let at = ABI.uint(in: d, word: i), at % 32 == 0, at < UInt64(d.count), Int(at) + 32 <= d.count,
+              let length = ABI.uint(in: d.subdata(in: Int(at)..<d.count), word: 0), length <= UInt64(d.count),
+              Int(at) + 32 + Int(length) <= d.count else { return nil }
         return d.subdata(in: (Int(at) + 32)..<(Int(at) + 32 + Int(length)))
     }
 
     /// The `bytes[]` whose offset is head word `i` of `d`.
     static func arrayAt(_ d: Data, headWord i: Int) -> [Data]? {
-        guard let at = ABI.uint(in: d, word: i), at % 32 == 0, Int(at) + 32 <= d.count else { return nil }
+        guard let at = ABI.uint(in: d, word: i), at % 32 == 0, at < UInt64(d.count), Int(at) + 32 <= d.count else { return nil }
         let array = d.subdata(in: Int(at)..<d.count)
         guard let count = ABI.uint(in: array, word: 0), count <= 16 else { return nil }
         let body = array.dropFirst(32)
