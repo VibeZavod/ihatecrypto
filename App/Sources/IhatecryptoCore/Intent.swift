@@ -109,6 +109,10 @@ public enum IntentParser {
     /// Returns the updated intent, or nil when nothing in `text` was recognised.
     public static func apply(_ text: String, to intent: TradeIntent, markets: Set<String> = []) -> TradeIntent? {
         let q = plainNumbers(text.lowercased())
+        // «sell SOL for 10 USDC», «продай сол на 10 баксов» (a sale in dollars the wallet parser had no coin count for),
+        // «buy SOL for 5 USDC every 0 days» (a recurring buy it refused): never a long of that many USDC.
+        if q.contains(/\bsell\b|прода[йтв]/) || (q.contains(/\bbuy\b|куп|покупа/) && q.contains(/\bevery\b|кажд/)),
+           !q.contains(/\b(?:лонг|шорт|long|short)/), q.contains(/\$\s*\d|\d\s*(?:usdc|usdg|\$|долл|dollars?|bucks|бакс)/) { return nil }
         var next = intent
         var hit = false
 

@@ -36,6 +36,24 @@ private let sol = SpotAsset.all[0]
     #expect(WalletCommand.parse("move 2 USDC from Hyperliquid to Solana") == .withdrawToSolana(2))
 }
 
+@Test func aSaleInDollarsIsNeverSellAll() {   // C3
+    let m: Set<String> = ["BTC", "ETH", "SOL"]
+    for text in ["продай сол на 10 баксов", "sell SOL for 10 USDC", "sell BONK on solana for 10 USDC", "sell DEGEN on base for 10 USDC",
+                 "sell TSLA stock for 10 USDC", "sell NEAR for 10 USDC", "sell 0x742d35Cc6634C0532925a3b844Bc454e4438f44e for $5"] {
+        #expect(WalletCommand.parse(text) == nil, "\(text)")
+    }
+    // Unparsed all the way: the model is asked again, and no long of 10 USDC is drawn.
+    #expect(IntentParser.apply("sell SOL for 10 USDC", to: TradeIntent(), markets: m) == nil)
+    #expect(!ChatRouter.parses("sell SOL for 10 USDC", markets: m))
+    #expect(WalletCommand.parse("sell 2 TSLA stock for 10 USDC") == .sellStock(symbol: "TSLA", amount: 2))
+    #expect(WalletCommand.parse("sell TSLA stock") == .sellStock(symbol: "TSLA", amount: nil))
+    #expect(WalletCommand.parse("sell SOL") == .sell(sol, amount: nil))
+    #expect(WalletCommand.parse("sell 0.1 SOL") == .sell(sol, amount: d("0.1")))
+    #expect(WalletCommand.parse("sell all DEGEN on base") == .sellOn("base", token: "DEGEN", amount: nil))
+    #expect(WalletCommand.parse("sell 1000 BONK on solana") == .sell(.bySymbol("BONK"), amount: 1000))
+    #expect(IntentParser.apply("short ETH risk $5", to: TradeIntent(), markets: m)?.side == .short)
+}
+
 @Test func theNetworkAfterFromIsWhereMoneyLeaves() {   // C13
     #expect(WalletCommand.parse("переведи 5 USDC с базы на солану") == .baseToSolana(5))
     #expect(WalletCommand.parse("переведи 5 USDC с бейза на солану") == .baseToSolana(5))
@@ -46,4 +64,16 @@ private let sol = SpotAsset.all[0]
     #expect(WalletCommand.parse("move 5 USDC to Solana from Base") == .baseToSolana(5))
     #expect(WalletCommand.parse("move 5 USDC from Solana to Base") == .solanaTo("base", 5))
     #expect(WalletCommand.parse("верни USDG с робингуда на солану") == .robinhoodToSolana(nil))
+}
+
+@Test func everyZeroDaysIsNoSchedule() {   // M4
+    #expect(WalletCommand.parse("buy SOL for 5 USDC every 0 days") == nil)
+    #expect(WalletCommand.parse("покупай SOL на 5 USDC каждые 0 дней") == nil)
+    #expect(!ChatRouter.parses("buy SOL for 5 USDC every 0 days", markets: ["SOL"]))
+    #expect(WalletCommand.parse("buy SOL for 5 USDC every 3 days") == .schedule(sol, usdc: 5, days: 3))
+    // One stored before the parser refused it moves a day at a time instead of spinning forever.
+    let start = Date(timeIntervalSince1970: 1_800_000_000)
+    var s = Schedule(symbol: "SOL", usdc: 5, days: 0, next: start)
+    s.advance(now: start)
+    #expect(s.next == start.addingTimeInterval(86_400))
 }

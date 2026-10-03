@@ -257,6 +257,8 @@ public enum WalletCommand: Equatable, Sendable {
             let chain = place.hasPrefix("sol") || place.hasPrefix("сол") ? "solana" : Self.network(place) ?? "base"
             let count = m.2.flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
             let sell = String(m.1).lowercased().hasPrefix("s") || String(m.1).lowercased().hasPrefix("прод")
+            // «sell BONK on solana for 10 USDC» names no count of coins: never «all of it».
+            if sell, m.2 == nil, amount != nil { return nil }
             if chain == "solana", !token.hasPrefix("0x") {
                 return sell ? .sell(.bySymbol(token), amount: count) : .buy(.bySymbol(token), usdc: amount)
             }
@@ -273,7 +275,9 @@ public enum WalletCommand: Equatable, Sendable {
         if let contract = text.firstMatch(of: /0x[0-9a-fA-F]{40}(?![0-9a-fA-F])/).map({ String($0.0) }) {
             if q.contains(/\bsell\b|прода\w*|\bdump\b/) {
                 let tokens = q.firstMatch(of: /(?:^|\s)(\d+(?:[.,]\d+)?)\s*(?:tokens?|токен\w*|шт)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
-                return .sellStock(symbol: contract, amount: amount == nil ? tokens : nil)
+                // A sale in dollars has no count of tokens to sell: not «all of it».
+                if tokens == nil, amount != nil { return nil }
+                return .sellStock(symbol: contract, amount: tokens)
             }
             if q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bget\s+me\b|вложи\w*\s+в/) { return .buyStock(symbol: contract, usdc: amount) }
         }
@@ -282,6 +286,7 @@ public enum WalletCommand: Equatable, Sendable {
            SpotAsset.all.allSatisfy({ $0.mint != mint }) {
             if q.contains(/\bsell\b|прода\w*|\bdump\b/) {
                 let tokens = q.firstMatch(of: /(?:^|\s)(\d+(?:[.,]\d+)?)\s*(?:tokens?|токен\w*|шт)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
+                if tokens == nil, amount != nil { return nil }
                 return .sell(.byMint(mint), amount: tokens)
             }
             if q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bget\s+me\b|вложи\w*\s+в/) { return .buy(.byMint(mint), usdc: amount) }
@@ -289,8 +294,10 @@ public enum WalletCommand: Equatable, Sendable {
         // Robinhood Stock Tokens: a stock word or a company ihatecrypto knows, with buy or sell.
         if let symbol = StockNames.symbol(in: text), q.contains(/\bstocks?\b|\bshares?\b|акци\w*|токен\w*|robinhood|робинхуд|спейс|spacex|\btesla\b|тесл|нвид|nvidia/) {
             if q.contains(/\bsell\b|прода\w*|\bdump\b/) {
-                let shares = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:shares?|акци\w*|tokens?|токен\w*|[a-z]{2,5}\b)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
-                return .sellStock(symbol: symbol, amount: amount == nil ? shares : nil)
+                // «sell 2 TSLA stock for 10 USDC» sells 2; «sell TSLA stock for 10 USDC» names no count: not «all of it».
+                let shares = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:shares?|акци\w*|tokens?|токен\w*|(?!usd|bucks)[a-z]{2,5}\b)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
+                if shares == nil, amount != nil { return nil }
+                return .sellStock(symbol: symbol, amount: shares)
             }
             if q.contains(/\bbuy\b|куп\w*|purchase|приобрет\w*|\bget\s+me\b|вложи\w*\s+в/) { return .buyStock(symbol: symbol, usdc: amount) }
         }
@@ -342,7 +349,11 @@ public enum WalletCommand: Equatable, Sendable {
         if q.contains(/покупай|каждый|каждую|каждые|раз\s+в\s+|регулярн|\bdca\b|\bevery\b|\beach\b|weekly|daily|monthly|recurring/), q.contains(/куп|dca|\bbuy/), let asset = SpotAsset.find(q), let amount {
             let days: Int
             if q.contains(/день|сутки|ежедневн|daily|every\s+day|each\s+day/) && !q.contains(/каждые\s+\d|every\s+\d/) { days = 1 }
-            else if let m = q.firstMatch(of: /(?:каждые|every)\s+(\d+)\s*(?:дн|день|сут|days?)/), let n = Int(m.1) { days = n }
+            else if let m = q.firstMatch(of: /(?:каждые|every)\s+(\d+)\s*(?:дн|день|сут|days?)/), let n = Int(m.1) {
+                // «every 0 days» never gets past now and buys without end; ScheduledTask.parse refuses it too.
+                guard n > 0 else { return nil }
+                days = n
+            }
             else if q.contains(/месяц|monthly/) { days = 30 }
             else { days = 7 }
             return .schedule(asset, usdc: amount, days: days)
@@ -398,11 +409,14 @@ public enum WalletCommand: Equatable, Sendable {
         if q.contains(/продай\w*|продать|\bsell\b/), q.contains(/\bnear\b|\bнеар\w*|\bниар\w*|\bнир\b/), SpotAsset.find(q) == nil,
            !q.contains(/\b(?:long|short|лонг\w*|шорт\w*|perp\w*)\b/) {
             let coins = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:near|неар\w*|ниар\w*)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
+            if coins == nil, amount != nil { return nil }
             return .sellNear(amount: coins)
         }
         if q.contains(/\bкуп\w*|\bbuy\b/), let asset = SpotAsset.find(q) { return .buy(asset, usdc: amount) }
         if q.contains(/продай\w*|продать|\bsell\b/), let asset = SpotAsset.find(q) {
             let coins = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:sol|btc|eth|jup|сол|битк|эфир)/).flatMap { Decimal(string: $0.1.replacingOccurrences(of: ",", with: ".")) }
+            // «продай сол на 10 баксов» names dollars, not coins: no amount to sell, never «all of it».
+            if coins == nil, amount != nil { return nil }
             return .sell(asset, amount: coins)
         }
         if vault, outOf || q.contains(/достан\w*/) { return .lendWithdraw(symbol, coins ?? amount ?? bare) }
@@ -471,8 +485,9 @@ public struct Schedule: Codable, Equatable, Sendable {
     public var asset: SpotAsset? { SpotAsset.all.first { $0.symbol == symbol } }
 
     /// After a run: the next date strictly in the future, so a long pause does not buy several times at once.
+    /// A stored «every 0 days» counts as daily: it would otherwise never get past now.
     public mutating func advance(now: Date = Date()) {
-        repeat { next = next.addingTimeInterval(TimeInterval(days) * 86_400) } while next <= now
+        repeat { next = next.addingTimeInterval(TimeInterval(max(days, 1)) * 86_400) } while next <= now
     }
 }
 
