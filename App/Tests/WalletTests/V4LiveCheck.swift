@@ -25,3 +25,22 @@ func v4PrintsCalldataForAForkRun() throws {
     print("P2=0x" + (try UniswapV4.permit2Approve(token: EVMRPC.robinhoodUSDG, spender: UniswapV4.robinhoodRouter, amount: 299_850_000, expiration: now + 1800)).hex)
     print("EX=0x" + (try UniswapV4.execute(key, zeroForOne: false, amountIn: 299_850_000, amountOutMinimum: minOut, deadline: now + 600)).hex)
 }
+
+/// Each network's fallback node alone serves what the executor asks (IHATECRYPTO_NET=1): the primary is a dead port, so
+/// every call goes to the fallbacks — the chain id, fees, a nonce, an estimate with the 7702 state override, a balance.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func everyFallbackNodeServesTheExecutor() async throws {
+    // An empty address: 0x…dEaD holds more ETH than balance()'s 64 bits.
+    let me = "0x00000000000000000000000000000000000f0a11"
+    for rpc in [EVMRPC.base, .arbitrum, .robinhood, .polygon, .ethereum] {
+        #expect(!rpc.fallbacks.isEmpty, "\(rpc.chainId) has no fallback")
+        let alone = EVMRPC(url: URL(string: "http://127.0.0.1:9")!, chainId: rpc.chainId, fallbacks: rpc.fallbacks)
+        #expect(try await alone.quantity("eth_chainId", []) == rpc.chainId)
+        let fees = try await alone.fees()
+        #expect(fees.maxFee > 0)
+        _ = try await alone.nonce(me)
+        _ = try await alone.balance(me)
+        // The batch account's code runs under the override: a plain transfer to itself costs more than 21,000.
+        #expect(try await alone.estimateGas(from: me, to: me, value: 0, data: Data(), runningCodeOf: Batch7702.delegate) >= 21_000)
+    }
+}

@@ -168,4 +168,8 @@ import WalletCore
         try await RPCRetry.run(delays: [.zero, .zero], { asked += 1; return (Data("error: over rate limit".utf8), ok) }, answer: reader)
     }
     #expect(asked == 3)
+    // A node out of its quota (1rpc's «You've reached the usage limit…» with HTTP 200) is asked again — on the next node.
+    #expect(RPCRetry.transient("You've reached the usage limit for your current plan. To continue … upgrade here: https://www.1rpc.io/#pricing"))
+    #expect(RPCRetry.transient("daily request quota exceeded"))
+    #expect(!RPCRetry.transient("execution reverted: ERC20: transfer amount exceeds allowance"))
 }

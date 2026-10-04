@@ -40,6 +40,8 @@ public enum RPCRetry {
         let m = message.lowercased()
         guard !m.contains("revert") else { return false }
         return ["rate limit", "too many requests", "timeout", "timed out", "temporarily", "try again", "header not found",
-                "node is behind", "service unavailable", "internal error", "overloaded"].contains { m.contains($0) }
+                "node is behind", "service unavailable", "internal error", "overloaded",
+                // A node's quota, not the request's fault: the retry goes to the next node.
+                "usage limit", "quota"].contains { m.contains($0) }
     }
 }

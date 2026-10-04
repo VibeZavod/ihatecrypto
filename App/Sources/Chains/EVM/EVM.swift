@@ -258,23 +258,31 @@ public struct EVMRPC: Sendable {
         self.fallbacks = fallbacks
     }
 
-    public static let arbitrum = EVMRPC(url: URL(string: "https://arb1.arbitrum.io/rpc")!, chainId: 42161)
+    /// Fallbacks (2026-10-05): each served calls, estimates with a state override, fees, nonces, receipts and
+    /// eth_simulateV1, and 30 calls at once — a node without one of them would turn a retry into a failure. Not used:
+    /// 1rpc (a daily cap: «You've reached the usage limit» after an hour of checks), publicnode on Arbitrum and Base
+    /// (refuses receipts) and Polygon (timeouts). Solana has no free node that serves token accounts too: it keeps its one.
+    public static let arbitrum = EVMRPC(url: URL(string: "https://arb1.arbitrum.io/rpc")!, chainId: 42161,
+                                        fallbacks: [URL(string: "https://arbitrum.drpc.org")!])
     public static let arbitrumUSDC = "0xaf88d065e77c8cc2239327c5edb3a432268e5831"
-    public static let robinhood = EVMRPC(url: URL(string: "https://rpc.mainnet.chain.robinhood.com")!, chainId: 4663)
+    public static let robinhood = EVMRPC(url: URL(string: "https://rpc.mainnet.chain.robinhood.com")!, chainId: 4663,
+                                         fallbacks: [URL(string: "https://robinhood.drpc.org")!])
     /// USDG (Global Dollar), Robinhood Chain's dollar, 6 decimals — docs.robinhood.com/chain/contracts.
     public static let robinhoodUSDG = "0x5fc5360d0400a0fd4f2af552add042d716f1d168"
     /// mainnet.base.org rate-limits after a few calls and publicnode refuses receipts without a token;
     /// drpc served calls, estimates and receipts in a burst test (2026-09-26).
     /// Coinbase's own node takes over while drpc throttles (it limits too, so it isn't the first).
-    public static let base = EVMRPC(url: URL(string: "https://base.drpc.org")!, chainId: 8453, fallbacks: [URL(string: "https://mainnet.base.org")!])
+    public static let base = EVMRPC(url: URL(string: "https://base.drpc.org")!, chainId: 8453,
+                                    fallbacks: [URL(string: "https://mainnet.base.org")!, URL(string: "https://base.gateway.tenderly.co")!])
     /// Circle's native USDC on Base (6 decimals).
     public static let baseUSDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
     /// Polygon PoS, gas in POL; drpc serves calls, estimates and receipts (checked 2026-09-29).
-    public static let polygon = EVMRPC(url: URL(string: "https://polygon.drpc.org")!, chainId: 137)
+    public static let polygon = EVMRPC(url: URL(string: "https://polygon.drpc.org")!, chainId: 137, fallbacks: [URL(string: "https://polygon.gateway.tenderly.co")!])
     /// Circle's native USDC on Polygon, not the bridged USDC.e.
     public static let polygonUSDC = "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359"
     /// Ethereum mainnet: a supply costs dollars of gas here, so the planners weigh it before choosing it.
-    public static let ethereum = EVMRPC(url: URL(string: "https://eth.drpc.org")!, chainId: 1)
+    public static let ethereum = EVMRPC(url: URL(string: "https://eth.drpc.org")!, chainId: 1,
+                                        fallbacks: [URL(string: "https://ethereum-rpc.publicnode.com")!])
     public static let ethereumUSDC = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
     /// Tempo, Stripe's payments chain: no coin of its own, fees come out of a USD stablecoin (Tempo.feeManager), and
     /// eth_getBalance answers a placeholder (4242…42) for every address, so it's never read there (checked 2026-09-30).
@@ -326,8 +334,9 @@ public struct EVMRPC: Sendable {
     }
 
     public func quantity(_ method: String, _ params: [Any]) async throws -> UInt64 {
-        guard let hex = try await call(method, params) as? String, let n = UInt64(hex.dropFirst(2), radix: 16) else {
-            throw WalletError("EVM RPC \(method): not a number")
+        let answer = try await call(method, params)
+        guard let hex = answer as? String, let n = UInt64(hex.dropFirst(2), radix: 16) else {
+            throw WalletError("EVM RPC \(method): not a number (\(String(String(describing: answer).prefix(60))))")
         }
         return n
     }
