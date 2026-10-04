@@ -82,6 +82,7 @@ public enum TokenMarket {
     public struct Point: Equatable, Sendable {
         public let time: Date
         public let close: Decimal
+        public init(time: Date, close: Decimal) { self.time = time; self.close = close }
     }
 
     public static func info(_ address: String, chain: String) async throws -> Info? {

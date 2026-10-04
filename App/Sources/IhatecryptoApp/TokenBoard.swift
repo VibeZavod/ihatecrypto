@@ -143,6 +143,7 @@ struct TokenBoard: View {
             if market == nil { error = "No pool trades this token on \(chainTitle)." }
             if chain == "solana" { verified = await TokenResearch.solanaToken(address).map { ("Jupiter", $0.verified) } }
             else if holding != nil || isStock { verified = ("Robinhood's registry", true) }
+            tell()
         }
         .task(id: "\(market?.pool ?? "")·\(range)") {
             guard let pool = market?.pool else { return }
@@ -154,7 +155,18 @@ struct TokenBoard: View {
             } catch {
                 self.error = error.localizedDescription
             }
+            tell()
         }
+    }
+
+    /// What the card shows, for the chat's model: its numbers, the chart in the range picked, what the wallet holds.
+    private func tell() {
+        let held = holding.map { ($0.amount, $0.usd) } ?? heldToken.map { ($0.amount, $0.usd) }
+        let lines = ["\(fullName) (\(symbol)), contract \(address) on \(chainTitle)" + (verified.map { $0.ok ? ", verified by \($0.by)" : ", not verified by \($0.by)" } ?? "") + "."]
+            + (market.map { TokenResearch.poolFacts($0) } ?? [error ?? "Its market is loading."])
+            + [TokenResearch.chartFacts(points, range: range, of: "Its chart (shown now)")].compactMap { $0 }
+            + (held.map { ["The wallet holds \(Fmt.num($0.0, maxFraction: 6))" + ($0.1.map { " ≈ \(Fmt.usd($0))" } ?? "") + "."] } ?? [])
+        ws.tokenCard = (TokenBoard.place(chain: chain, address: address), lines.joined(separator: " "))
     }
 
     // MARK: Parts

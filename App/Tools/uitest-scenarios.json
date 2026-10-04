@@ -551,5 +551,31 @@
       "pending_name": "Tester",
       "reply_contains": "Tempo"
     }
+  },
+  {
+    "name": "a question about a token's card is answered from its chart: no paid history offered",
+    "send": [
+      "покажи чарт spx 6900",
+      "где стоит покупать, в каком диапазоне за месяц"
+    ],
+    "expect": {
+      "detail_contains": "token:ethereum",
+      "no_pending": true,
+      "reply_contains": "$0.",
+      "reply_lacks": "allium"
+    }
+  },
+  {
+    "name": "a question about the chart on the canvas is answered from its candles",
+    "send": [
+      "chart SOL for a week",
+      "какой минимум за неделю на этом графике?"
+    ],
+    "expect": {
+      "chart": "SOL",
+      "no_pending": true,
+      "reply_contains": "$",
+      "reply_cyrillic": true
+    }
   }
 ]

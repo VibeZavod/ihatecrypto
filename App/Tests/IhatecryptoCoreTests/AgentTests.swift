@@ -129,6 +129,25 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(TokenResearch.jupiterFacts(Data(json.utf8), mint: "other", now: now) == nil)
 }
 
+@Test func theTokenLookupCarriesTheMonthTheCardDraws() throws {
+    // 180 four-hour closes from Sep 4 00:00 UTC: 0.60 falling to 0.40 by the middle, back up to 0.44.
+    let start = 1_788_480_000.0
+    let points = (0..<180).map { (i: Int) -> TokenMarket.Point in
+        let close: Double = i < 90 ? 0.60 - Double(i) * 0.2 / 89 : 0.40 + Double(i - 90) * 0.04 / 89
+        return TokenMarket.Point(time: Date(timeIntervalSince1970: start + Double(i) * 14_400), close: Decimal(close))
+    }
+    let utc = TimeZone(identifier: "UTC")!
+    let facts = try #require(TokenResearch.chartFacts(points, range: .month, of: "The pool", timeZone: utc) as String?)
+    #expect(facts.hasPrefix("The pool over 30 days: $0.6 → $0.44 (-26.7%)"))
+    #expect(facts.contains("low $0.4 on Sep 18"))
+    #expect(facts.contains("high $0.6 on Sep 4"))
+    // A close a day, the last one the price now.
+    let closes = facts.components(separatedBy: "Closes: ")[1].components(separatedBy: ", ")
+    #expect(closes.count == 30 && closes.last == "Oct 3 $0.44.")
+    #expect(TokenResearch.chartFacts(Array(points.prefix(96)), range: .day, of: "It", timeZone: utc)?.contains("low $0.4 on 20:00") == true)
+    #expect(TokenResearch.chartFacts([], range: .month, of: "The pool") == nil)
+}
+
 @Test func aSearchPutsTheDeepestPoolFirst() throws {
     let json = """
     {"pairs": [

@@ -104,10 +104,7 @@ extension Workspace {
             return (lines.isEmpty ? ["No EVM network by «\(l.arg)»."] : lines).joined(separator: "\n")
                 + "\nRelay's own fee for a bridge is apart: it is on the move's card. Tempo has no gas coin: its fees come out of the USDC."
         case "movers":
-            let list = moverList()
-            func line(_ m: (coin: String, price: Decimal, change: Decimal)) -> String { "\(IntentParser.pretty(m.coin)) \(Fmt.price(m.price)) \(signedPct(m.change))" }
-            return list.isEmpty ? "Markets aren't loaded yet."
-                : "Up the most today: " + list.prefix(6).map(line).joined(separator: ", ") + ".\nDown the most: " + list.suffix(6).reversed().map(line).joined(separator: ", ") + "."
+            return moversFacts()
         case "services":
             agentStep = say("Looking for a service that takes payment", "Ищу сервис с оплатой")
             return await MPP.search(l.arg) + "\nUSDC on Tempo now: \(tempoUSDC.map { Fmt.num($0) } ?? "unknown"); what's short comes from Solana (\(solana.map { Fmt.num($0.usdc) } ?? "?") USDC)."
@@ -117,6 +114,51 @@ extension Workspace {
         default:
             return "There is no «\(l.tool)» lookup. Lookups: portfolio, market <ASSET>, token <ADDRESS or NAME>, rates <USDC|SOL>, gas [<NETWORK>], movers, services <WORDS>, service <ID>."
         }
+    }
+
+    func moversFacts() -> String {
+        let list = moverList()
+        func line(_ m: (coin: String, price: Decimal, change: Decimal)) -> String { "\(IntentParser.pretty(m.coin)) \(Fmt.price(m.price)) \(signedPct(m.change))" }
+        return list.isEmpty ? "Markets aren't loaded yet."
+            : "Up the most today: " + list.prefix(6).map(line).joined(separator: ", ") + ".\nDown the most: " + list.suffix(6).reversed().map(line).joined(separator: ", ") + "."
+    }
+
+    /// The canvas's other blocks with what each shows (the plan, the waiting card, notes, rates and alerts are told
+    /// apart): «как тебе этот чарт?» or «где покупать?» is answered from the numbers the user sees, not a lookup's.
+    func canvasBlocks() -> [String] {
+        var out: [String] = []
+        if let place = detail {
+            if let card = tokenCard, card.place == place { out.append("token card: " + card.text) }
+            else if TokenBoard.parse(place) == nil { out.append("details of \(WalletCommand.placeName(place)) (its balances are below)") }
+        }
+        func entry(_ e: ScheduleEntry) -> String { "\(e.title), \(e.when)" + (e.paused ? ", paused" : "") }
+        if let key = currentScheduleKey {
+            out.append("this canvas is a scheduled item's own, a message here changes it: " + (scheduleEntries.first { $0.id == key }.map(entry) ?? "no longer scheduled"))
+        } else if showSchedule {
+            let all = scheduleEntries
+            out.append("schedule: " + (all.isEmpty ? "nothing scheduled" : all.map(entry).joined(separator: "; ")))
+        }
+        let pnl = PnLBoardState.shared
+        if pnl.command != nil, pnl.canvas == canvasID, let r = pnl.reports[pnl.period] {
+            out.append("P/L board (\(r.period.title)): " + (PnL.facts(r, pretty: IntentParser.pretty) + pnl.held.map(\.english)).joined(separator: " "))
+        }
+        if showMovers { out.append("movers board: " + moversFacts()) }
+        if let a = serviceAnswer {
+            out.append("\(a.service)'s answer" + (a.usdc.map { " (paid \(Fmt.num($0, maxFraction: 6)) USDC)" } ?? "") + ": " + a.raw.prefix(2000))
+        }
+        if let takes = takeChoices ?? heldAnswer?.takes { out.append("take-profit choices: " + takes.map { "\($0.title) — \($0.detail)" }.joined(separator: "; ")) }
+        if let r = runningAction { out.append("running now: \(readable(r.title))" + (r.lines.isEmpty ? "" : " (\(r.lines.joined(separator: "; ")))")) }
+        func outcome(_ o: CanvasOutcome) -> String { o.ok ? "done" : o.unknown == true ? "sent, no outcome back" : "failed" }
+        if let f = finishedAction { out.append("just finished: \(readable(f.title)) — \(outcome(f.outcome))") }
+        let here = canvases.first { $0.id == canvasID }
+        out += (here?.earlier ?? []).map { "done earlier on this canvas: \(readable($0.title)) — \(outcome($0.outcome))" }
+        if finishedAction == nil, let b = savedBoard ?? finishedCanvas, let o = b.outcome { out.append("this canvas's move: \(readable(b.title)) — \(outcome(o))") }
+        if showHistory {
+            let latest = activities.reversed().compactMap { a in (a.title ?? a.understood ?? a.request).map { "\(Fmt.date(a.at)) \(readable($0))" + (a.failed == true ? " (failed)" : "") } }
+            out.append("history board, latest first: " + latest.prefix(5).joined(separator: "; "))
+        }
+        if showReceive { out.append("top-up board: the user's own deposit addresses (not given here)") }
+        return out
     }
 
     /// The rates for the bubbles and the model: the vaults' own, and every Aave market and Morpho vault, read from the

@@ -217,6 +217,8 @@ final class Workspace {
     var assembly: (shown: Int, total: Int)?
     /// A place opened from the rail or the portfolio: «solana», «hyperliquid», «jupiter», «aave».
     var detail: String?
+    /// What the token card in `detail` shows, written by the card as its numbers load: the chat's model reads it.
+    @ObservationIgnored var tokenCard: (place: String, text: String)?
     /// When ihatecrypto last finished moving money itself; incoming money right after it is its own, not a top-up.
     var lastOwnMove = Date.distantPast
     /// Everything ihatecrypto did, with the canvas bubbles of each moment; saved on every change.
@@ -1154,12 +1156,16 @@ final class Workspace {
         c.recent = Array(recentChat().dropLast())   // the last line is the message itself
         c.offered = offered.map { "\($0.title) → \($0.command)\($0.recommended ? " (recommended)" : "")" }
         if intent != TradeIntent(), let json = try? JSONEncoder().encode(intent) { c.plan = String(decoding: json, as: UTF8.self) }
-        if let ch = chart { c.canvas.append("chart \(ch.coin) (\(ch.range.title))") }
+        if let ch = chart {
+            let points = ch.candles.map { TokenMarket.Point(time: $0.time, close: $0.close) }
+            c.canvas.append(TokenResearch.chartFacts(points, range: ch.range, of: "chart \(ch.coin)") ?? "chart \(ch.coin) (\(ch.range.title))")
+        }
         // Notes: «добавь заметку …» there goes to their folder without asking which.
         if let n = noteCard, let folder = n.folder {
             c.canvas.append("\(n.canvas == canvasID ? "this canvas is" : "a card opens") \(n.texts.count == 1 ? "a note" : "\(n.texts.count) notes") in folder «\(folder)»: "
-                            + n.texts.map { "«\($0.prefix(80))»" }.joined(separator: ", "))
+                            + n.texts.map { "«\($0.prefix(400))»" }.joined(separator: ", "))
         }
+        c.canvas += canvasBlocks()
         // The rates board, best first: «ок, положи туда 500» after «где лучше держать доллары?» is its top place.
         if let y = yieldOptions ?? heldAnswer?.yields, !y.isEmpty {
             c.canvas.append("rates board, best first: " + y.prefix(8).map { "\($0.place) \($0.asset) \(Fmt.num($0.apy.rounded(2, .plain)))%" }.joined(separator: ", "))
@@ -1187,7 +1193,8 @@ final class Workspace {
         c.canvas += alerts.map { a in
             "price alert: \(a.coin) \(a.above ? "above" : "below") \(Fmt.price(a.price))" + (a.steps.map { ", then " + $0.joined(separator: " then ") } ?? "")
         }
-        c.positions = positions.map { "\($0.size > 0 ? "long" : "short") \(IntentParser.pretty($0.coin))" }
+        // As its board shows it: size, entry, stop, take and the P/L now.
+        c.positions = positions.map { "\($0.size > 0 ? "long" : "short") \(IntentParser.pretty($0.coin)) \(positionSummary($0)), unrealized \(signed($0.unrealizedPnl))" }
         c.favorites = favoriteTokens.map { "\($0.symbol) (\($0.name)) = \($0.address) on \($0.chainTitle)" }
         // With its network, so «по эфир сети» to a Base entry is answered with Base, not a guess.
         c.addressBook = addressBook.map { "\($0.name) (\($0.network.title))" }

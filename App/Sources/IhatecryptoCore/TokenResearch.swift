@@ -140,24 +140,50 @@ public enum TokenResearch {
         return lines.joined(separator: "\n")
     }
 
-    /// DexScreener: where it trades and its deepest pool.
+    /// DexScreener: where it trades and its deepest pool, with that pool's last 30 days (the chart on the token's card).
     static func dex(_ address: String) async -> String? {
-        guard let data = try? await get("https://api.dexscreener.com/latest/dex/tokens/\(address)") else { return nil }
-        return dexFacts(data, address: address)
+        guard let data = try? await get("https://api.dexscreener.com/latest/dex/tokens/\(address)"),
+              let facts = dexFacts(data, address: address) else { return nil }
+        guard let top = TokenLookup.parse(data, address: address).first, let m = TokenMarket.parse(data, address: address, chain: top.chain),
+              let points = try? await TokenMarket.history(chain: top.chain, pool: m.pool, range: .month),
+              let month = chartFacts(points, range: .month, of: "The deepest pool (GeckoTerminal, as the token's card draws it)") else { return facts }
+        return facts + "\n" + month
+    }
+
+    /// A chart as the canvas draws it: the move over the range, its low and high, and about thirty closes, so levels
+    /// and a buy range come from the line the user sees.
+    public static func chartFacts(_ points: [TokenMarket.Point], range: ChartCommand.Range, of what: String, timeZone: TimeZone = .current) -> String? {
+        guard let first = points.first, let last = points.last, first.close > 0,
+              let low = points.min(by: { $0.close < $1.close }), let high = points.max(by: { $0.close < $1.close }) else { return nil }
+        let f = DateFormatter()
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = timeZone
+        f.dateFormat = switch range { case .day: "HH:mm"; case .week: "MMM d HH:mm"; case .month: "MMM d" }
+        // From the newest back, so the last close is always in: a day's close each on a month of 4-hour bars.
+        let step = max(1, points.count / 30)
+        let closes = stride(from: points.count - 1, through: 0, by: -step).map { points[$0] }.reversed()
+        return "\(what) over \(range.title): \(price(first.close)) → \(price(last.close)) (\(pct((last.close - first.close) / first.close * 100))), "
+            + "low \(price(low.close)) on \(f.string(from: low.time)), high \(price(high.close)) on \(f.string(from: high.time)).\nCloses: "
+            + closes.map { "\(f.string(from: $0.time)) \(price($0.close))" }.joined(separator: ", ") + "."
     }
 
     static func dexFacts(_ data: Data, address: String, now: Date = Date()) -> String? {
         let chains = TokenLookup.parse(data, address: address)
         guard let top = chains.first, let m = TokenMarket.parse(data, address: address, chain: top.chain) else { return nil }
-        var lines = ["DexScreener: \(m.name) (\(m.symbol)), contract \(top.address), chain id \(top.chain)"
-                     + (chains.count > 1 ? "; also trades on " + chains.dropFirst().map(\.chain).joined(separator: ", ") : "") + "."]
-        lines.append("Deepest pool: \(m.dex) \(m.symbol)/\(m.quote), liquidity \(usd(m.liquidityUSD))" + (m.created.map { ", opened \(age($0, now: now)) ago" } ?? "")
+        return (["DexScreener: \(m.name) (\(m.symbol)), contract \(top.address), chain id \(top.chain)"
+                 + (chains.count > 1 ? "; also trades on " + chains.dropFirst().map(\.chain).joined(separator: ", ") : "") + "."]
+                + poolFacts(m, now: now)).joined(separator: "\n")
+    }
+
+    /// The deepest pool as lines: what the token's card shows under its chart.
+    public static func poolFacts(_ m: TokenMarket.Info, now: Date = Date()) -> [String] {
+        var lines = ["Deepest pool: \(m.dex) \(m.symbol)/\(m.quote), liquidity \(usd(m.liquidityUSD))" + (m.created.map { ", opened \(age($0, now: now)) ago" } ?? "")
                      + "; price \(price(m.priceUSD)), market cap \(usd(m.marketCap ?? m.fdv)), volume 24h \(usd(m.volume24h))"
-                     + (m.buys24h.map { ", \($0) buys" } ?? "") + (m.sells24h.map { " and \($0) sells in 24h" } ?? "") + ".")
+                     + (m.buys24h.map { ", \($0) buys" } ?? "") + (m.sells24h.map { " and \($0) sells in 24h" } ?? "") + "."]
         let changes = [("m5", "5m"), ("h1", "1h"), ("h6", "6h"), ("h24", "24h")].compactMap { key, title in m.changes[key].map { "\(title) \(pct($0))" } }
         if !changes.isEmpty { lines.append("Price change: " + changes.joined(separator: ", ") + ".") }
         if !m.links.isEmpty { lines.append("Links: " + m.links.map { "\($0.label) \($0.url.absoluteString)" }.joined(separator: ", ") + ".") }
-        return lines.joined(separator: "\n")
+        return lines
     }
 
     /// A name or ticker: the tokens called so, deepest pool first, and the deepest one in full (saves the model a round).
