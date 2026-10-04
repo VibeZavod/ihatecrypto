@@ -583,6 +583,16 @@ final class Workspace {
         if liveModels[id] != Array(list.prefix(4)) { liveModels[id] = Array(list.prefix(4)) }
     }
 
+    /// The chat models downloaded in Ollama and LM Studio, for the menu: a listed one that isn't downloaded answers 404.
+    /// A server that isn't running leaves its list as it was; embedding models can't chat and stay out.
+    func refreshLocalModels() async {
+        for p in LLMCatalog.all where p.info.kind == .local && p.info.unavailable == nil && p.info.id != "apple" {
+            guard let list = try? await p.models(nil) else { continue }
+            let chat = list.filter { !$0.lowercased().contains("embed") }
+            if liveModels[p.info.id] != chat { liveModels[p.info.id] = chat }
+        }
+    }
+
     func loadModels() async {
         do {
             availableModels = try await provider.models(credential)
@@ -998,6 +1008,21 @@ final class Workspace {
 
     nonisolated static let routerLog = Logger(subsystem: "app.ihatecrypto.mac", category: "router")
 
+    /// The model can't be reached: what reads the same without it still shows — a token, a chart, P/L. Anything that could
+    /// move money waits for a model: a keyword guess about money is worse than a question.
+    private func readWithoutModel(_ text: String) async -> Bool {
+        if let command = TokenCommand.parse(text) { await tokenCommand(command); return true }
+        if let command = ChartCommand.parse(text, markets: Set(markets.keys)) { await chartCommand(command); return true }
+        if let command = PnLCommand.parse(text, markets: pnlNames) { await showPnL(command); return true }
+        // «покажи чарт spx6900»: a Solana token by its ticker or name, Jupiter-verified only.
+        if let word = text.lowercased().firstMatch(of: /(?:charts?|график\w*|чарт\w*|show|покажи)\s+(?:(?:the|token|токен\w*|чарт\w*|график\w*)\s+)*\$?([a-z][a-z0-9]{1,15})\b/)?.1,
+           let mint = await TokenResearch.solanaMint(symbol: String(word)) {
+            await tokenCommand(.show(address: mint, chain: "solana"))
+            return true
+        }
+        return false
+    }
+
     /// The model's reading of the message (ChatRouter) — the only reading while a model is connected: keywords guess,
     /// and a wrong guess about money is worse than a question. The model is asked twice; if it still can't be reached,
     /// nothing is done and the chat says so.
@@ -1094,8 +1119,20 @@ final class Workspace {
         case nil where LLMCatalog.chatRefusal(model: model) != nil:
             reply((LLMCatalog.chatRefusal(model: model) ?? "") + say(" Nothing ran. Pick another model above.", " Ничего не запускал. Выбери другую модель сверху."), note: model)
         case nil:
-            reply(say("I couldn’t reach \(model) (\(failure.prefix(140))), so I didn’t act on this — nothing moved. Send it again, or pick another model above.",
-                      "Не достучался до \(model) (\(failure.prefix(140))), поэтому ничего не сделал — ничего не ушло. Отправь ещё раз или выбери другую модель сверху."), note: model)
+            // A model on this Mac that isn't downloaded answers 404 «model … not found»: say how to get it.
+            let missing = provider.info.kind == .local && failure.lowercased().contains("not found")
+            let why = missing
+                ? (provider.info.id == "ollama" ? say("it isn't downloaded — run «ollama pull \(model)» in Terminal", "она не скачана — выполни в Терминале «ollama pull \(model)»")
+                                                 : say("it isn't downloaded in \(provider.info.name)", "она не скачана в \(provider.info.name)"))
+                : String(failure.prefix(140))
+            // What reads the same without a model — a chart, a token, P/L — still shows; nothing that could move money.
+            if !aboutStep, await readWithoutModel(text) {
+                reply(say("\(model) isn't answering (\(why)), so I read this one myself. Pick another model above for the rest.",
+                          "\(model) не отвечает (\(why)), поэтому это я прочитал сам. Для остального выбери другую модель сверху."), note: model)
+            } else {
+                reply(say("I couldn’t reach \(model) (\(why)), so I didn’t act on this — nothing moved. Send it again, or pick another model above.",
+                          "Не достучался до \(model) (\(why)), поэтому ничего не сделал — ничего не ушло. Отправь ещё раз или выбери другую модель сверху."), note: model)
+            }
         case .question?: await answer(text)
         case .plan?:
             dropWaiting()

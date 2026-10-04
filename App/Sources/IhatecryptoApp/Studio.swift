@@ -2627,6 +2627,8 @@ struct ChatModelMenu: View {
             .padding(.horizontal, 10).padding(.bottom, 4)
         }
         .padding(8)
+        // What Ollama and LM Studio have downloaded, read as the menu opens.
+        .task { await ws.refreshLocalModels() }
     }
 
     private func caption(_ text: String) -> some View {
@@ -2677,13 +2679,14 @@ struct ChatModelMenu: View {
             .help(info.note)
             ForEach(list, id: \.self) { id in
                 // A model too small for the chat's brief stays listed, faded, with the reason.
-                let off = LLMCatalog.chatRefusal(model: id)
-                MenuRow(title: LLMCatalog.displayName(model: id), detail: off != nil ? "too small for the chat" : id == info.defaultModel ? "recommended" : nil,
+                let off = LLMCatalog.chatRefusal(model: id), absent = missing(info, id)
+                MenuRow(title: LLMCatalog.displayName(model: id),
+                        detail: absent ? "not downloaded" : off != nil ? "too small for the chat" : id == info.defaultModel ? "recommended" : nil,
                         checked: info.id == ws.providerID && id == chosen(info)) { pick(info, model: id) }
                     .padding(.leading, 28)
-                    .disabled(off != nil)
-                    .opacity(off != nil ? 0.5 : 1)
-                    .help(off ?? id)
+                    .disabled(off != nil || absent)
+                    .opacity(off != nil || absent ? 0.5 : 1)
+                    .help(absent ? (info.id == "ollama" ? "Not downloaded: run «ollama pull \(id)» in Terminal, then open this menu again." : "Not downloaded in \(info.name) yet.") : off ?? id)
             }
         }
     }
@@ -2691,8 +2694,16 @@ struct ChatModelMenu: View {
     /// A way's models: the live list for a subscription, else the checked one. A model typed in Settings goes last,
     /// so the listed ones keep their places.
     private func models(_ info: ProviderInfo) -> [String] {
-        let chosen = chosen(info), listed = ws.liveModels[info.id] ?? info.models
+        let chosen = chosen(info)
+        var listed = ws.liveModels[info.id] ?? info.models
+        // On this Mac the downloaded models come first; the suggested ones not downloaded stay, marked (`missing`).
+        if info.kind == .local, ws.liveModels[info.id] != nil { listed += info.models.filter { !listed.contains($0) } }
         return listed.contains(chosen) || chosen.isEmpty ? listed : listed + [chosen]
+    }
+
+    /// Listed for a server on this Mac that answered, but not downloaded there.
+    private func missing(_ info: ProviderInfo, _ id: String) -> Bool {
+        info.kind == .local && ws.liveModels[info.id].map { !$0.contains(id) } == true
     }
 
     private func chosen(_ info: ProviderInfo) -> String { ws.modelChoices[info.id] ?? info.defaultModel }

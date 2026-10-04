@@ -66,8 +66,8 @@ public enum TokenResearch {
         }
     }
 
-    /// The Jupiter-verified token trading under a ticker («BONK»; «WIF» finds «$WIF»), the most liquid when several do:
-    /// its mint. Unverified namesakes — the usual fakes — are never picked by name.
+    /// The Jupiter-verified token trading under a ticker («BONK»; «WIF» finds «$WIF») or named so («SPX6900», whose
+    /// ticker is SPX), the most liquid when several do: its mint. Unverified namesakes — the usual fakes — are never picked.
     public static func solanaMint(symbol: String) async -> String? {
         let query = symbol.trimmingCharacters(in: CharacterSet(charactersIn: "$")).addingPercentEncoding(withAllowedCharacters: .alphanumerics) ?? symbol
         guard let data = try? await get("https://lite-api.jup.ag/tokens/v2/search?query=\(query)") else { return nil }
@@ -76,9 +76,12 @@ public enum TokenResearch {
 
     static func solanaMint(_ data: Data, symbol: String) -> String? {
         func plain(_ s: String) -> String { s.uppercased().trimmingCharacters(in: CharacterSet(charactersIn: "$")) }
+        // «SPX6900 (Wormhole)»: the bridge in brackets isn't part of the name people say.
+        func name(_ s: String) -> String { plain(s.replacing(/\s*\([^)]*\)\s*$/, with: "")) }
         let tokens = (try? JSONSerialization.jsonObject(with: data) as? [[String: Any]]) ?? []
         return tokens.filter { t in
-            (t["isVerified"] as? Bool == true || (t["tags"] as? [String] ?? []).contains("verified")) && plain(t["symbol"] as? String ?? "") == plain(symbol)
+            (t["isVerified"] as? Bool == true || (t["tags"] as? [String] ?? []).contains("verified"))
+                && (plain(t["symbol"] as? String ?? "") == plain(symbol) || name(t["name"] as? String ?? "") == plain(symbol))
         }.max { (dec($0["liquidity"]) ?? 0) < (dec($1["liquidity"]) ?? 0) }?["id"] as? String
     }
 

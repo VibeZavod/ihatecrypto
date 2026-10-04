@@ -424,3 +424,13 @@ private final class Script: LLMClient, @unchecked Sendable {
         try await ChatRouter.route("?", context: .init(), client: Script(Array(repeating: "no json", count: ChatRouter.rounds + 1)), model: "m")
     }
 }
+
+@Test func aVerifiedTokenIsFoundByItsNameAndAFakeTickerIsNot() throws {
+    let data = Data("""
+    [{"id": "SPXmint", "symbol": "SPX", "name": "SPX6900 (Wormhole)", "isVerified": true, "liquidity": 3000000},
+     {"id": "FAKEmint", "symbol": "SPX6900", "name": "SPX6900 real", "isVerified": false, "liquidity": 50000000}]
+    """.utf8)
+    #expect(TokenResearch.solanaMint(data, symbol: "spx6900") == "SPXmint")
+    #expect(TokenResearch.solanaMint(data, symbol: "$SPX") == "SPXmint")
+    #expect(TokenResearch.solanaMint(data, symbol: "spx6900 real") == nil)
+}
