@@ -2672,21 +2672,48 @@ struct ChatModelMenu: View {
                 Image(systemName: icon).frame(width: 18).foregroundStyle(iconTint ?? .secondary)
                 Text(info.name).font(.ui(11, .semibold))
                 Spacer(minLength: 8)
-                Text(info.kind == .local ? "on this Mac" : "connected").font(.ui(10))
+                Text(info.kind == .local ? "this Mac · \(Int(OllamaModels.memoryGB.rounded())) GB memory" : "connected").font(.ui(10))
             }
             .foregroundStyle(.secondary)
             .padding(.horizontal, 10).padding(.top, 8).padding(.bottom, 2)
             .help(info.note)
+            // Ollama that didn't answer: open it, or get it — models on this Mac need it running.
+            if info.id == "ollama", ws.localServers["ollama"] == false {
+                if OllamaModels.installed {
+                    MenuRow(title: "Ollama isn't running", detail: FileManager.default.fileExists(atPath: "/Applications/Ollama.app") ? "open it, then this menu again" : "run «ollama serve» in Terminal",
+                            icon: "exclamationmark.triangle") {
+                        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/Applications/Ollama.app"), configuration: .init())
+                    }
+                    .padding(.leading, 28)
+                } else {
+                    MenuRow(title: "Get Ollama", detail: "free · runs models on this Mac, no internet", icon: "arrow.down.circle") {
+                        NSWorkspace.shared.open(URL(string: "https://ollama.com/download")!)
+                    }
+                    .padding(.leading, 28)
+                }
+            }
             ForEach(list, id: \.self) { id in
                 // A model too small for the chat's brief stays listed, faded, with the reason.
                 let off = LLMCatalog.chatRefusal(model: id), absent = missing(info, id)
+                // Not downloaded in Ollama: a click downloads it here, with its progress; one too big for this Mac stays faded.
+                let loading = ws.modelDownloads[id], size = ws.modelSizes[id]
+                let pullable = absent && info.id == "ollama" && ws.localServers["ollama"] == true
+                let tooBig = pullable && size.map { !OllamaModels.fits(sizeGB: $0) } == true
                 MenuRow(title: LLMCatalog.displayName(model: id),
-                        detail: absent ? "not downloaded" : off != nil ? "too small for the chat" : id == info.defaultModel ? "recommended" : nil,
-                        checked: info.id == ws.providerID && id == chosen(info)) { pick(info, model: id) }
+                        detail: loading.map { "downloading · \(Int($0 * 100))%" }
+                            ?? (tooBig ? "≈ \(Fmt.num(Decimal(size ?? 0), maxFraction: 1)) GB · too big for this Mac"
+                                : pullable ? "Download · \(size.map { "≈ \(Fmt.num(Decimal($0), maxFraction: 1)) GB" } ?? "not on this Mac yet")"
+                                : absent ? "not downloaded" : off != nil ? "too small for the chat" : id == info.defaultModel ? "recommended" : nil),
+                        icon: pullable && loading == nil && !tooBig ? "arrow.down.circle" : nil, iconTint: Brand.accentInk,
+                        // Not on this Mac: greyed like a disabled row — it can't be picked, only downloaded.
+                        checked: info.id == ws.providerID && id == chosen(info), tint: absent ? .secondary : .primary) {
+                    if pullable { Task { await ws.downloadModel(id) } } else { pick(info, model: id) }
+                }
                     .padding(.leading, 28)
-                    .disabled(off != nil || absent)
-                    .opacity(off != nil || absent ? 0.5 : 1)
-                    .help(absent ? (info.id == "ollama" ? "Not downloaded: run «ollama pull \(id)» in Terminal, then open this menu again." : "Not downloaded in \(info.name) yet.") : off ?? id)
+                    .disabled(off != nil || (absent && (!pullable || tooBig || loading != nil)))
+                    .opacity(off != nil || (absent && (!pullable || tooBig)) ? 0.5 : 1)
+                    .help(tooBig ? "Needs about \(Fmt.num(Decimal((size ?? 0) * 1.2), maxFraction: 0)) GB of memory; this Mac has \(Int(OllamaModels.memoryGB.rounded())) GB."
+                          : pullable ? "Downloads \(id) into Ollama on this Mac; then pick it here." : absent ? "Not downloaded in \(info.name) yet." : off ?? id)
             }
         }
     }

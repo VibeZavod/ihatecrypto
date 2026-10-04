@@ -343,6 +343,12 @@ final class Workspace {
     /// The running Jupiter DCA orders as last read, drawn on the canvas once asked for («show Jupiter DCA») or after one
     /// is placed or cancelled; nil = not shown.
     var jupiterDCAs: [JupiterRecurring.Order]?
+    /// Models being downloaded into Ollama from the model menu: name → 0…1.
+    var modelDownloads: [String: Double] = [:]
+    /// Whether Ollama and LM Studio answered when the menu last asked (provider id → up), and the download sizes, GB,
+    /// of the suggested models they haven't got.
+    var localServers: [String: Bool] = [:]
+    var modelSizes: [String: Double] = [:]
     /// The recurring buy the two ways were offered for: picking «in the app» brings it back and it goes ahead.
     @ObservationIgnored var dcaChoice: WalletCommand?
     /// Commands scheduled for later or on repeat («in 1 week: rebalance USDC»), per wallet; `watch` runs them (Tasks.swift).
@@ -587,9 +593,14 @@ final class Workspace {
     /// A server that isn't running leaves its list as it was; embedding models can't chat and stay out.
     func refreshLocalModels() async {
         for p in LLMCatalog.all where p.info.kind == .local && p.info.unavailable == nil && p.info.id != "apple" {
-            guard let list = try? await p.models(nil) else { continue }
+            guard let list = try? await p.models(nil) else { localServers[p.info.id] = false; continue }
+            localServers[p.info.id] = true
             let chat = list.filter { !$0.lowercased().contains("embed") }
             if liveModels[p.info.id] != chat { liveModels[p.info.id] = chat }
+            // What a download would take, for the suggested Ollama models not there yet.
+            if p.info.id == "ollama" {
+                for m in p.info.models where !chat.contains(m) && modelSizes[m] == nil { modelSizes[m] = await OllamaModels.sizeGB(m) }
+            }
         }
     }
 
