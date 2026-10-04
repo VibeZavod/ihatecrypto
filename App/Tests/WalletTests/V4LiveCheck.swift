@@ -1,14 +1,20 @@
 import EVMChain
+import ExecutionCore
 import Foundation
+import HyperliquidSigning
 import Testing
 @testable import TradeExecution
+import WalletCore
 
 /// Reads Robinhood Chain (no signing): run with IHATECRYPTO_NET=1.
 @Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
 func v4FindsTheAIPoolAndQuotesIt() async throws {
     let ai = "0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18", usdg = EVMRPC.robinhoodUSDG
-    let key = try #require(await Executor.v4Pool(usdg, ai))
-    #expect(key.id == "0x7aebd80541bfaaf23dbb6e99ce13d4d31c1a84c91414f971eadbff7db5f85995" && key.fee == 2300 && key.tickSpacing == 23)
+    // Among AI/USDG's hookless pools, the one checked on-chain on 2026-10-01 (fee 2300, spacing 23).
+    let keys = await Executor.v4Pools(usdg, ai)
+    #expect(keys.allSatisfy { !$0.hasHooks } && !keys.isEmpty)
+    let key = try #require(keys.first { $0.id == "0x7aebd80541bfaaf23dbb6e99ce13d4d31c1a84c91414f971eadbff7db5f85995" })
+    #expect(key.fee == 2300 && key.tickSpacing == 23)
     let answer = try await EVMRPC.robinhood.read(UniswapV4.robinhoodQuoter, try UniswapV4.quoteExactInputSingle(key, zeroForOne: false, amount: 299_850_000))
     let out = try #require(ABI.decimal(in: answer, word: 0))
     print("v4 quote: 299.85 USDG →", out / Decimal(sign: .plus, exponent: 18, significand: 1), "AI")
@@ -57,4 +63,31 @@ func ethereumTransactionsGoThroughMEVBlocker() async throws {
     } catch {
         #expect("\(error)".contains("Request of eth_sendRawTransaction failed"), "\(error)")
     }
+}
+
+/// Uniswap v4 found and quoted beyond Robinhood (IHATECRYPTO_NET=1, reads only): cbBTC/USDC on Base and WBTC/USDC on
+/// Ethereum through their PoolManager's log and V4Quoter, and the better of v3 and v4 picked for each.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func v4FindsAndQuotesPoolsOnBaseAndEthereum() async throws {
+    let e = Executor(wallet: TradeWallet(solana: "", evm: "0x00000000000000000000000000000000000f0a11"), signer: NoSigner(),
+                     journal: Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("v4live-\(UUID().uuidString).jsonl"))) { _ in }
+    for (net, token) in [(EVMNetwork.base, "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"), (.ethereum, "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599")] {
+        let route = try #require(await e.v4Route(net.usdc, token, amountIn: 100_000_000, rpc: net.rpc), "no v4 pool on \(net.name)")
+        #expect(!route.key.hasHooks && route.out > 0)
+        let uni = try #require(UniswapV3.on(net.rpc.chainId))
+        // The two are quoted again inside: the better of that moment's v3 and v4 (a block apart, they may differ a little).
+        let best = try #require(await e.bestUniswap(on: net, uni, from: net.usdc, to: token, amountIn: 100_000_000))
+        print("\(net.name): 100 USDC → v4 \(route.out) · best \(best.title) \(best.out)")
+        #expect(best.out > route.out * Decimal(string: "0.99")!)
+    }
+}
+
+private struct NoSigner: TradeSigner {
+    func signSolana(_ wire: Data, accounts: [String], recipients: [String], tokenOwners: [String: String]) async throws -> Data { throw ExecutionError("no") }
+    func signHyperliquid(_ action: MsgPack, nonce: UInt64) async throws -> EVMSignature { throw ExecutionError("no") }
+    func signHyperliquidUser(_ action: MsgPack, recipients: [String]) async throws -> EVMSignature { throw ExecutionError("no") }
+    func signRelayMapping(wallet: String, depositor: String, id: Data, nonce: UInt64) async throws -> EVMSignature { throw ExecutionError("no") }
+    func signEVM(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64, to: String, data: Data,
+                 recipients: [String]) async throws -> Data { throw ExecutionError("no") }
+    func signNearIntentDeposit(amount: UInt128, depositAddress: String, nonce: UInt64, blockHash: Data) async throws -> Data { throw ExecutionError("no") }
 }

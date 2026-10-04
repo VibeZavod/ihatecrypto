@@ -54,6 +54,29 @@ private let calls = [Batch7702.Call(to: baseUSDC, data: approve), Batch7702.Call
     #expect(Batch7702.selfCall(to: router, data: swap, owner: owner) == nil)
 }
 
+/// Uniswap v4 off Robinhood: on each network its Universal Router 2.1.2 and Permit2 are spenders ihatecrypto knows, and the
+/// three calls of a v4 buy (approve to Permit2, Permit2's approve to the router, the swap paying this wallet) pass the
+/// signer's batch rules with no payee to approve; a swap that pays someone else doesn't.
+@Test func v4BuyOnEveryNetworkPassesTheSignersRules() throws {
+    let key = UniswapV4.PoolKey(currency0: baseUSDC, currency1: "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf", fee: 500, tickSpacing: 10,
+                                hooks: "0x0000000000000000000000000000000000000000")
+    for chain: UInt64 in [8453, 42161, 1, 137, 4663] {
+        let v4 = try #require(UniswapV4.on(chain))
+        #expect(EVMCall.knownSpenders(chainId: chain).isSuperset(of: [v4.router, UniswapV4.permit2]))
+        let calls = [Batch7702.Call(to: baseUSDC, data: try ERC20.approve(spender: UniswapV4.permit2, units: 4_000_000)),
+                     .init(to: UniswapV4.permit2, data: try UniswapV4.permit2Approve(token: baseUSDC, spender: v4.router, amount: 4_000_000,
+                                                                                    expiration: UInt64(Date().timeIntervalSince1970) + 1800)),
+                     .init(to: v4.router, data: try UniswapV4.execute(key, zeroForOne: true, amountIn: 4_000_000, amountOutMinimum: 4_000,
+                                                                     deadline: UInt64(Date().timeIntervalSince1970) + 600))]
+        #expect(Batch7702.problems(calls, owner: owner, chainId: chain).isEmpty)
+        #expect(calls.flatMap { EVMCall.decode($0.data).payees(to: $0.to, value: 0, chainId: chain) }.isEmpty, "chain \(chain)")
+    }
+    // Permit2's approve to a router ihatecrypto doesn't use names that spender as a payee: approved in person or refused.
+    let stranger = "0x1111111111111111111111111111111111111111"
+    let loose = try UniswapV4.permit2Approve(token: baseUSDC, spender: stranger, amount: 1, expiration: UInt64(Date().timeIntervalSince1970) + 60)
+    #expect(EVMCall.decode(loose).payees(to: UniswapV4.permit2, value: 0, chainId: 8453) == [stranger])
+}
+
 /// A user operation for ERC-4337's EntryPoint: once delegated, the account runs whatever it says, so it's never signed,
 /// whatever the site names its domain or type.
 @Test func userOperationsAreNeverSigned() throws {
@@ -237,7 +260,7 @@ func forkDepositsGoAsOneTransaction() async throws {
     let supplied = try await e.approveAndSend(rpc, token: baseUSDC, spender: aave.pool, units: 3_000_000, approveNote: "Approve exactly 3 USDC to Aave",
                                               to: aave.pool, data: try AaveV3.supply(asset: baseUSDC, amount: 3_000_000, onBehalfOf: me), note: "Aave supply 3 USDC")
     #expect(try await receiptType(supplied) == "0x4")
-    #expect(try await held(aave.aUSDC) - a0 >= 2_999_999)
+    #expect(try await held(aave.aUSDC) - a0 >= 2_999_990)   // aTokens round on the liquidity index: a unit or two less
     #expect(try await rpc.tokenBalance(baseUSDC, owner: me) == u0 - 3_000_000)
     #expect(try await allowance(aave.pool) == 0)
 
@@ -269,4 +292,29 @@ func forkDepositsGoAsOneTransaction() async throws {
     #expect(try await receiptType(bridged) == "0x4")
     #expect(try await rpc.tokenBalance(baseUSDC, owner: me) == u1 - 2_000_000)
     #expect(try await allowance(to) == 0)
+}
+
+/// Uniswap v4 on Base (UniswapV4.on: Universal Router 2.1.2) on an anvil fork: cbBTC for USDC through the hookless pool the
+/// executor finds (DexScreener + Blockscout, live) and quotes on the fork — the approve to Permit2, Permit2's approve to the
+/// router and the swap as one type-4 transaction on the fork, the cbBTC at this wallet.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_ANVIL_CHAIN"] == "8453"))
+func forkBaseV4BuyIsOneTransaction() async throws {
+    let env = ProcessInfo.processInfo.environment
+    let rpc = EVMRPC(url: URL(string: env["IHATECRYPTO_ANVIL"]!)!, chainId: 8453)
+    let key = Data(hex: env["IHATECRYPTO_ANVIL_KEY"]!)!
+    let me = try EVMAccount.address(privateKey: key)
+    let cbBTC = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
+    let journal = Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("fork7702-\(UUID().uuidString).jsonl"))
+    let e = Executor(wallet: TradeWallet(solana: "", evm: me), signer: ForkSigner(key: key, address: me), journal: journal) { print("·", $0) }
+    // Found and quoted on Base itself: a cold fork fetches the pool's state lazily, past the quote's timeout.
+    let route = try #require(await e.v4Route(baseUSDC, cbBTC, amountIn: 4_000_000, rpc: .base), "no hookless cbBTC/USDC v4 pool found")
+    print("v4 pool fee \(route.key.fee) spacing \(route.key.tickSpacing): 4 USDC → \(route.out) sats")
+    let usdc0 = try await rpc.tokenBalance(baseUSDC, owner: me), btc0 = try await e.balance(cbBTC, on: rpc)
+    let hash = try await e.v4Swap(route, tokenIn: baseUSDC, units: 4_000_000, minOut: (route.out * Decimal(string: "0.99")!).whole, what: "4 USDC",
+                                  note: "Buy cbBTC on Uniswap v4", rpc: rpc)
+    let receipt = (try await rpc.call("eth_getTransactionReceipt", [hash])) as? [String: Any]
+    #expect(receipt?["type"] as? String == "0x4")
+    #expect(try await rpc.tokenBalance(baseUSDC, owner: me) == usdc0 - 4_000_000)
+    #expect(try await e.balance(cbBTC, on: rpc) - btc0 >= route.out * Decimal(string: "0.99")!)
+    #expect(ABI.decimal(in: try await rpc.read(baseUSDC, try ERC20.allowance(owner: me, spender: UniswapV4.permit2)), word: 0) == 0)
 }

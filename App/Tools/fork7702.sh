@@ -10,7 +10,7 @@ NET=${NET:-base}
 case $NET in
   base)      FORK=${FORK_URL:-https://mainnet.base.org}; USDC=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
              QUOTER=0x3d4e44eb1374240ce5f1b871ab261cd16335b76a; WETH=0x4200000000000000000000000000000000000006
-             TEST="forkApproveAndSwapGoAsOneTransaction forkDepositsGoAsOneTransaction" ;;
+             TEST="forkApproveAndSwapGoAsOneTransaction forkDepositsGoAsOneTransaction forkBaseV4BuyIsOneTransaction" ;;
   arbitrum)  FORK=${FORK_URL:-https://arb1.arbitrum.io/rpc}; USDC=0xaf88d065e77c8cc2239327c5edb3a432268e5831
              QUOTER=0x61ffe014ba17989e743c5f6cb21bf9697530b21e; WETH=0x82af49447d8a07e3bd95bd0d56f35241523fbab1; TEST=forkApproveAndSwapGoAsOneTransaction ;;
   ethereum)  FORK=${FORK_URL:-https://ethereum-rpc.publicnode.com}; USDC=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
@@ -49,7 +49,10 @@ else
   fi
 fi
 echo "$NET fork $(cast block-number --rpc-url $RPC) · $ME · $(cast call $USDC 'balanceOf(address)(uint256)' "$ME" --rpc-url $RPC) units"
-# One test at a time: they share the key, and parallel ones would race for its nonce.
+# One test at a time: they share the key, and parallel ones would race for its nonce. Each runs even when one before
+# it failed; the exit code says whether all passed.
+FAILED=0
 for T in $TEST; do
-  IHATECRYPTO_ANVIL=$RPC IHATECRYPTO_ANVIL_CHAIN=$(cast chain-id --rpc-url $RPC) IHATECRYPTO_ANVIL_KEY=${KEY#0x} swift test ${1:-} --filter "$T"
+  IHATECRYPTO_ANVIL=$RPC IHATECRYPTO_ANVIL_CHAIN=$(cast chain-id --rpc-url $RPC) IHATECRYPTO_ANVIL_KEY=${KEY#0x} swift test ${1:-} --filter "$T" || FAILED=1
 done
+exit $FAILED

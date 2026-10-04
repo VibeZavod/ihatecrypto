@@ -556,14 +556,15 @@ public enum EVMCall: Equatable, Sendable {
     /// ponytail: more than 79 billion of an 18-decimal token can't be approved in one go; compare with the balance if that matters.
     static func unlimited(_ amount: Data) -> Bool { amount.prefix(20).contains { $0 != 0 } }
 
-    /// Contracts ihatecrypto itself lets spend its tokens on a network: Uniswap's routers (and Permit2 on Robinhood Chain),
+    /// Contracts ihatecrypto itself lets spend its tokens on a network: Uniswap's routers (v3, and v4's with Permit2),
     /// Aave's pools, Morpho's vaults, Relay's depository and approval proxy (one address on every network, api.relay.link/chains
     /// 2026-10-03). An approve to any other spender needs it approved in person, like a recipient.
     public static func knownSpenders(chainId: UInt64) -> Set<String> {
         var s = ["0x4cd00e387622c35bddb9b4c962c136462338bc31", "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be"]
         s += AaveV3.markets.filter { $0.rpc.chainId == chainId }.map(\.pool) + MorphoVault.vaults.filter { $0.rpc.chainId == chainId }.map(\.address)
         if let uni = UniswapV3.on(chainId) { s.append(uni.router) }
-        if chainId == EVMRPC.robinhood.chainId { s += [UniswapV3.robinhoodRouter, UniswapV4.robinhoodRouter, UniswapV4.permit2] }
+        if chainId == EVMRPC.robinhood.chainId { s.append(UniswapV3.robinhoodRouter) }
+        if let v4 = UniswapV4.on(chainId) { s += [v4.router, UniswapV4.permit2] }
         return Set(s.map { $0.lowercased() })
     }
 

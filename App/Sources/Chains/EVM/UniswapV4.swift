@@ -1,15 +1,47 @@
 import Foundation
 import WalletCore
 
-/// Uniswap v4 on Robinhood Chain (developers.uniswap.org v4 deployments, checked 2026-10-01): one PoolManager holds every
-/// pool; a swap goes through the Universal Router's V4_SWAP command, which pulls the input through Permit2. The formats are
-/// the deployed router's own (its verified source on Blockscout): ExactInputSingleParams carries `minHopPriceX36`, which
-/// older docs don't have.
+/// Uniswap v4 (developers.uniswap.org v4 deployments): one PoolManager a network holds every pool; a swap goes through
+/// the Universal Router's V4_SWAP command, which pulls the input through Permit2. The formats are the deployed router's own
+/// (its verified source on Blockscout): ExactInputSingleParams carries `minHopPriceX36`, which older docs and the first
+/// Universal Router don't have — so on Base, Arbitrum, Ethereum and Polygon it's their Universal Router 2.1.2, whose
+/// verified source has the same struct and the same SWAP_EXACT_IN_SINGLE 0x06, SETTLE_ALL 0x0c, TAKE_ALL 0x0f as
+/// Robinhood Chain's (checked 2026-10-05).
 public enum UniswapV4 {
     public static let robinhoodPoolManager = "0x8366a39cc670b4001a1121b8f6a443a643e40951"
     public static let robinhoodQuoter = "0x8dc178efb8111bb0973dd9d722ebeff267c98f94"
     public static let robinhoodRouter = "0x8876789976decbfcbbbe364623c63652db8c0904"
     public static let permit2 = "0x000000000022d473030f116ddee9f6b43ac78ba3"
+
+    /// A network's PoolManager, V4Quoter, Universal Router and PositionManager (whose poolKeys names a pool's key), and the
+    /// Blockscout that reads the PoolManager's whole log.
+    public struct Deployment: Sendable {
+        public let poolManager: String
+        public let quoter: String
+        public let router: String
+        public let positionManager: String
+        public let blockscout: String
+    }
+
+    public static func on(_ chainId: UInt64) -> Deployment? {
+        switch chainId {
+        case 4663: Deployment(poolManager: robinhoodPoolManager, quoter: robinhoodQuoter, router: robinhoodRouter,
+                              positionManager: "0x58daec3116aae6d93017baaea7749052e8a04fa7", blockscout: "robinhoodchain.blockscout.com")
+        case 8453: Deployment(poolManager: "0x498581ff718922c3f8e6a244956af099b2652b2b", quoter: "0x0d5e0f971ed27fbff6c2837bf31316121532048d",
+                              router: "0xd6145b2d3f379919e8cdeda7b97e37c4b2ca9c40", positionManager: "0x7c5f5a4bbd8fd63184577525326123b519429bdc",
+                              blockscout: "base.blockscout.com")
+        case 42161: Deployment(poolManager: "0x360e68faccca8ca495c1b759fd9eee466db9fb32", quoter: "0x3972c00f7ed4885e145823eb7c655375d275a1c5",
+                               router: "0x2d01411773c8c24805306e89a41f7855c3c4fe65", positionManager: "0xd88f38f930b7952f2db2432cb002e7abbf3dd869",
+                               blockscout: "arbitrum.blockscout.com")
+        case 1: Deployment(poolManager: "0x000000000004444c5dc75cb358380d2e3de08a90", quoter: "0x52f0e24d1c21c8a0cb1e5a5dd6198556bd9e1203",
+                           router: "0x23617e59a5925b2a4bf75d73ff6711cd0b29de85", positionManager: "0xbd216513d74c8cf14cf4747e6aaa6420ff64ee9e",
+                           blockscout: "eth.blockscout.com")
+        case 137: Deployment(poolManager: "0x67366782805870060151383f4bbff9dab53e5cd6", quoter: "0xb3d5c3dfc3a7aebff71895a7191796bffc2c81b9",
+                             router: "0xdc264714f68d84cf29bc605589405e78bdbe7c9f", positionManager: "0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9",
+                             blockscout: "polygon.blockscout.com")
+        default: nil
+        }
+    }
     /// keccak256("Initialize(bytes32,address,address,uint24,int24,address,uint160,int24)"): the PoolManager's event that
     /// names a pool's key once, when it is made.
     public static let initializeTopic = "0xdd466e674ea557f56295e2d0218a125ea4b4f0f6f3307b95f85e6110838d6438"

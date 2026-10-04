@@ -59,29 +59,42 @@ extension Executor {
         ways.ranked.map { "\(StockWays.title($0.name)) ≈ \(unit($0.out))" }.joined(separator: " · ")
     }
 
-    /// The v4 pool for tokenIn → tokenOut and what it gives for `amountIn`; nil when there's none without hooks.
-    func v4Route(_ tokenIn: String, _ tokenOut: String, amountIn: Decimal) async -> V4Route? {
-        guard let key = await Self.v4Pool(tokenIn, tokenOut) else { return nil }
-        let zeroForOne = tokenIn.lowercased() == key.currency0
-        guard let out = await v4Quote(key, zeroForOne: zeroForOne, amount: amountIn), out > 0 else { return nil }
-        return (key, zeroForOne, out)
+    /// The v4 pool for tokenIn → tokenOut on `rpc`'s network and what it gives for `amountIn`; nil when there's none
+    /// without hooks.
+    /// Every hookless pool of the pair is quoted for this amount and the one that gives most is taken: the deepest isn't
+    /// always the best price (AI/USDG on Robinhood has five).
+    func v4Route(_ tokenIn: String, _ tokenOut: String, amountIn: Decimal, rpc: EVMRPC = .robinhood) async -> V4Route? {
+        var best: V4Route?
+        for key in await Self.v4Pools(tokenIn, tokenOut, chainId: rpc.chainId) {
+            let zeroForOne = tokenIn.lowercased() == key.currency0
+            if let out = await v4Quote(key, zeroForOne: zeroForOne, amount: amountIn, rpc: rpc), out > (best?.out ?? 0) { best = (key, zeroForOne, out) }
+        }
+        return best
     }
 
     /// V4Quoter on the chain itself.
-    func v4Quote(_ key: UniswapV4.PoolKey, zeroForOne: Bool, amount: Decimal) async -> Decimal? {
-        guard let call = try? UniswapV4.quoteExactInputSingle(key, zeroForOne: zeroForOne, amount: amount),
-              let answer = try? await EVMRPC.robinhood.read(UniswapV4.robinhoodQuoter, call) else { return nil }
+    func v4Quote(_ key: UniswapV4.PoolKey, zeroForOne: Bool, amount: Decimal, rpc: EVMRPC = .robinhood) async -> Decimal? {
+        guard let quoter = UniswapV4.on(rpc.chainId)?.quoter, let call = try? UniswapV4.quoteExactInputSingle(key, zeroForOne: zeroForOne, amount: amount),
+              let answer = try? await rpc.read(quoter, call) else { return nil }
         return ABI.decimal(in: answer, word: 0)
     }
 
     /// The pair's v4 pools from DexScreener (a v4 pair's address is its pool id), the deepest first; the first whose key
-    /// the PoolManager's Initialize event gives, hashes back to that id and has no hooks.
-    static func v4Pool(_ a: String, _ b: String) async -> UniswapV4.PoolKey? {
+    /// the PoolManager's Initialize event gives, hashes back to that id and has no hooks. One side is the network's dollar.
+    /// token-pairs lists a token's pools (30 at most); tokens/v1 gave only its one biggest pair, so a v4 pool showed only
+    /// when it was that (AI on Robinhood: 1 of 5 AI/USDG pools; Base's cbBTC/USDC v4 pools: none).
+    static func v4Pool(_ a: String, _ b: String, chainId: UInt64 = 4663) async -> UniswapV4.PoolKey? {
+        await v4Pools(a, b, chainId: chainId).first
+    }
+
+    /// The pair's hookless v4 pools among its five deepest, the deepest first.
+    static func v4Pools(_ a: String, _ b: String, chainId: UInt64 = 4663) async -> [UniswapV4.PoolKey] {
+        guard let net = EVMNetwork.of(chainId: chainId), UniswapV4.on(chainId) != nil else { return [] }
         let pair = Set([a.lowercased(), b.lowercased()])
-        let token = a.lowercased() == EVMRPC.robinhoodUSDG ? b : a
-        guard let url = URL(string: "https://api.dexscreener.com/tokens/v1/robinhood/\(token)"),
+        let token = a.lowercased() == net.usdc.lowercased() ? b : a
+        guard let url = URL(string: "https://api.dexscreener.com/token-pairs/v1/\(net.key)/\(token)"),
               let (data, _) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 15)),
-              let pairs = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return nil }
+              let pairs = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return [] }
         func side(_ p: [String: Any], _ k: String) -> String? { ((p[k] as? [String: Any])?["address"] as? String)?.lowercased() }
         func depth(_ p: [String: Any]) -> Double { ((p["liquidity"] as? [String: Any])?["usd"] as? NSNumber)?.doubleValue ?? 0 }
         let ids = pairs.filter { p in
@@ -89,24 +102,47 @@ extension Executor {
                 && Set([side(p, "baseToken"), side(p, "quoteToken")].compactMap { $0 }) == pair
         }
         .sorted { depth($0) > depth($1) }.compactMap { ($0["pairAddress"] as? String)?.lowercased() }
-        for id in ids.prefix(3) {
-            if let key = await v4Key(id), key.id == id, !key.hasHooks { return key }
+        var keys: [UniswapV4.PoolKey] = []
+        for id in ids.prefix(5) {
+            if let key = await v4Key(id, chainId: chainId), key.id == id, !key.hasHooks { keys.append(key) }
         }
-        return nil
+        return keys
     }
 
-    /// A v4 pool's key from the PoolManager's Initialize event (Robinhood Chain's Blockscout, which reads the whole history;
-    /// the chain's node allows 10 million blocks a query).
-    static func v4Key(_ id: String) async -> UniswapV4.PoolKey? {
-        var url = URLComponents(string: "https://robinhoodchain.blockscout.com/api")
+    /// A v4 pool's key: the PositionManager's poolKeys(bytes25 id) on the network's own node first (every pool that took
+    /// liquidity through it is there), else the PoolManager's Initialize event on the network's Blockscout (it reads the
+    /// whole history; public nodes cap a log query at a range of blocks), its 429 waited out twice, 2 s apart — Blockscout
+    /// turned away every lookup for minutes after a few dozen. The caller checks the key hashes back to the id. A key
+    /// never changes, so each is asked once a launch (V4Keys).
+    static func v4Key(_ id: String, chainId: UInt64 = 4663) async -> UniswapV4.PoolKey? {
+        if let known = await V4Keys.shared.key(chainId, id) { return known }
+        guard let v4 = UniswapV4.on(chainId) else { return nil }
+        if let rpc = EVMNetwork.of(chainId: chainId)?.rpc, let raw = Data(hex: String(id.dropFirst(2))), raw.count == 32,
+           let answer = try? await rpc.read(v4.positionManager, Data([0x86, 0xb6, 0xbe, 0x7d]) + raw.prefix(25) + Data(count: 7)),
+           let c0 = ABI.address(in: answer, word: 0), let c1 = ABI.address(in: answer, word: 1), c1 != "0x" + String(repeating: "0", count: 40),
+           let fee = ABI.uint(in: answer, word: 2), fee < 1 << 24, let hooks = ABI.address(in: answer, word: 4) {
+            let spacing = Int32(truncatingIfNeeded: answer.subdata(in: 120..<128).reduce(Int64(0)) { $0 << 8 | Int64($1) })
+            let key = UniswapV4.PoolKey(currency0: c0, currency1: c1, fee: UInt32(fee), tickSpacing: spacing, hooks: hooks)
+            if key.id == id.lowercased() {
+                await V4Keys.shared.keep(chainId, id, key)
+                return key
+            }
+        }
+        var url = URLComponents(string: "https://\(v4.blockscout)/api")
         url?.queryItems = [("module", "logs"), ("action", "getLogs"), ("fromBlock", "0"), ("toBlock", "latest"),
-                           ("address", UniswapV4.robinhoodPoolManager), ("topic0", UniswapV4.initializeTopic), ("topic1", id),
+                           ("address", v4.poolManager), ("topic0", UniswapV4.initializeTopic), ("topic1", id),
                            ("topic0_1_opr", "and")].map { URLQueryItem(name: $0.0, value: $0.1) }
         guard let link = url?.url else { return nil }
         var request = URLRequest(url: link, timeoutInterval: 20)
         // Blockscout turns away clients that don't look like a browser.
         request.setValue("Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15", forHTTPHeaderField: "User-Agent")
-        guard let (data, _) = try? await URLSession.shared.data(for: request),
+        var answer: Data?
+        for attempt in 0..<3 {
+            guard let (data, response) = try? await URLSession.shared.data(for: request) else { return nil }
+            if (response as? HTTPURLResponse)?.statusCode != 429 { answer = data; break }
+            if attempt < 2 { try? await Task.sleep(for: .seconds(2)) }
+        }
+        guard let data = answer,
               let log = (((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["result"] as? [[String: Any]])?.first,
               let topics = log["topics"] as? [String], topics.count == 4, let hex = log["data"] as? String,
               let words = Data(hex: String(hex.dropFirst(2))), words.count >= 96,
@@ -114,13 +150,16 @@ extension Executor {
               let c1 = Data(hex: String(topics[3].dropFirst(2))).flatMap({ ABI.address(in: $0, word: 0) }),
               let fee = ABI.uint(in: words, word: 0), fee < 1 << 24, let hooks = ABI.address(in: words, word: 2) else { return nil }
         let spacing = Int32(truncatingIfNeeded: words.subdata(in: 56..<64).reduce(Int64(0)) { $0 << 8 | Int64($1) })
-        return UniswapV4.PoolKey(currency0: c0, currency1: c1, fee: UInt32(fee), tickSpacing: spacing, hooks: hooks)
+        let key = UniswapV4.PoolKey(currency0: c0, currency1: c1, fee: UInt32(fee), tickSpacing: spacing, hooks: hooks)
+        await V4Keys.shared.keep(chainId, id, key)
+        return key
     }
 
-    /// The swap itself; returns its transaction. `rpc`: Robinhood Chain's node, or a fork of it in a test.
+    /// The swap itself; returns its transaction. `rpc`: the network's node (Robinhood Chain's by default), or a fork in a test.
     func v4Swap(_ route: V4Route, tokenIn: String, units: Decimal, minOut: Decimal, what: String, note: String,
                 rpc: EVMRPC = .robinhood) async throws -> String {
-        let me = wallet.evm, router = UniswapV4.robinhoodRouter
+        guard let router = UniswapV4.on(rpc.chainId)?.router else { throw ExecutionError("No Uniswap v4 on network \(rpc.chainId). Nothing was signed.") }
+        let me = wallet.evm
         // Permit2's own allowance for the router: exactly this much, for half an hour, unless one that covers it is still on.
         func allowed() async throws -> (amount: Decimal, until: UInt64) {
             let answer = try await rpc.read(UniswapV4.permit2, try UniswapV4.permit2Allowance(owner: me, token: tokenIn, spender: router))
@@ -156,4 +195,12 @@ extension Executor {
         }
         return try await sendEVM(rpc, to: router, data: swap, note: note)
     }
+}
+
+/// Pool keys read from Blockscout this launch, by network and pool id: a key never changes.
+actor V4Keys {
+    static let shared = V4Keys()
+    private var known: [String: UniswapV4.PoolKey] = [:]
+    func key(_ chainId: UInt64, _ id: String) -> UniswapV4.PoolKey? { known["\(chainId):\(id.lowercased())"] }
+    func keep(_ chainId: UInt64, _ id: String, _ key: UniswapV4.PoolKey) { known["\(chainId):\(id.lowercased())"] = key }
 }

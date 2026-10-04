@@ -89,6 +89,30 @@ extension Executor {
         }
     }
 
+    /// The better of Uniswap's v3 path (one pool or two through WETH) and its v4 pool without hooks (UniswapV4.on), for
+    /// `amountIn` of `a` into `b` on the network: both quoted at once, the one that gives more taken.
+    func bestUniswap(on net: EVMNetwork, _ uni: UniswapV3.Deployment, from a: String, to b: String, amountIn: Decimal) async -> UniRoute? {
+        async let v3 = bestPath(on: net.rpc, uni, from: a, to: b, amountIn: amountIn)
+        async let v4 = UniswapV4.on(net.rpc.chainId) == nil ? nil : v4Route(a, b, amountIn: amountIn, rpc: net.rpc)
+        let (p3, p4) = await (v3, v4)
+        if let p4, p4.out > (p3?.out ?? 0) { return UniRoute(v3: nil, v4: p4, out: p4.out) }
+        return p3.map { UniRoute(v3: ($0.path, $0.hops), v4: nil, out: $0.out) }
+    }
+
+    /// The swap by `route` for `units` of `tokenIn`, for at least 99% of what it quoted, paying only this wallet: v3's
+    /// exactInput with its exact approve, or v4's swap through Permit2 (v4Swap); batched where the wallet can (EIP-7702).
+    func swapUniswap(_ route: UniRoute, on net: EVMNetwork, _ uni: UniswapV3.Deployment, tokenIn: String, units: Decimal, what: String,
+                     note: String) async throws -> String {
+        let minOut = (route.out * Decimal(string: "0.99")!).whole
+        if let v4 = route.v4 {
+            return try await v4Swap(v4, tokenIn: tokenIn, units: units, minOut: minOut, what: what, note: note + " on Uniswap v4", rpc: net.rpc)
+        }
+        guard let v3 = route.v3 else { throw ExecutionError("Uniswap's route went away. Nothing was signed.") }
+        return try await approveAndSend(net.rpc, token: tokenIn, spender: uni.router, units: units, approveNote: "Approve exactly \(what) to Uniswap",
+                                        to: uni.router, data: try UniswapV3.exactInput(path: v3.path, recipient: wallet.evm, amountIn: units, amountOutMinimum: minOut),
+                                        note: note + " on Uniswap")
+    }
+
     /// What `gas` units cost on the chain now, in USD (ETH priced through Uniswap's WETH/USDC pool).
     func gasUSD(_ gas: UInt64, on net: EVMNetwork, _ uni: UniswapV3.Deployment) async throws -> Decimal {
         let price = try await net.rpc.quantity("eth_gasPrice", [])
@@ -128,7 +152,7 @@ extension Executor {
         if let usdc {
             let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
             if let here = try await buyHere(net, token, units: units, from: from, uni) {
-                return [("here", "\(Fmt.num(here.out / scale, maxFraction: 6)) \(token.symbol)", usdc)]
+                return [("here", "\(Fmt.num(here.route.out / scale, maxFraction: 6)) \(token.symbol)", usdc)]
             }
             return try await buyWays(net, token, units: units, uni).ways.sorted { $0.worth > $1.worth }
                 .map { ($0.name, "\(Fmt.num($0.out / scale, maxFraction: 6)) \(token.symbol)", $0.worth) }
@@ -137,7 +161,7 @@ extension Executor {
         let units = (sell.map { min($0 * scale, held) } ?? held).whole
         guard units > 0 else { return [] }
         if keep {
-            guard let best = await bestPath(on: net.rpc, uni, from: token.address, to: net.usdc, amountIn: units) else { return [] }
+            guard let best = await bestUniswap(on: net, uni, from: token.address, to: net.usdc, amountIn: units) else { return [] }
             return [("here", "\(Fmt.num(best.out / 1_000_000)) USDC", best.out / 1_000_000)]
         }
         return try await sellWays(net, token, units: units, uni).ways.sorted { $0.worth > $1.worth }
@@ -191,13 +215,12 @@ extension Executor {
             let there = try await net.rpc.tokenBalance(net.usdc, owner: me)
             try await ensureEVM(net, usdc: there + plan.arrive)
             // Quote again with the money there: the price may have moved while the bridge ran.
-            guard let fresh = await bestPath(on: net.rpc, uni, from: net.usdc, to: token.address, amountIn: Decimal(plan.arrive)) else {
+            guard let fresh = await bestUniswap(on: net, uni, from: net.usdc, to: token.address, amountIn: Decimal(plan.arrive)) else {
                 throw ExecutionError("Uniswap no longer quotes \(token.symbol); the USDC waits on \(net.name).")
             }
-            hash = try await approveAndSend(net.rpc, token: net.usdc, spender: uni.router, units: Decimal(plan.arrive),
-                                            approveNote: "Approve exactly \(Fmt.num(Decimal(plan.arrive) / 1_000_000)) USDC to Uniswap", to: uni.router,
-                                            data: try UniswapV3.exactInput(path: fresh.path, recipient: me, amountIn: Decimal(plan.arrive), amountOutMinimum: (fresh.out * Decimal(string: "0.99")!).whole),
-                                            note: "Buy \(token.symbol) for \(Fmt.num(Decimal(plan.arrive) / 1_000_000)) USDC on Uniswap")
+            hash = try await swapUniswap(fresh, on: net, uni, tokenIn: net.usdc, units: Decimal(plan.arrive),
+                                         what: "\(Fmt.num(Decimal(plan.arrive) / 1_000_000)) USDC",
+                                         note: "Buy \(token.symbol) for \(Fmt.num(Decimal(plan.arrive) / 1_000_000)) USDC")
         }
         var after = try await balance(token.address, on: net.rpc)
         let started = Date()
@@ -215,14 +238,14 @@ extension Executor {
     /// USDC and Uniswap has a pool (else nil: Solana's ways); «solana» = never; the network's key = it must; another EVM
     /// network's key = its USDC comes over first (`src`). A named place that can't pay is refused, never swapped for another.
     func buyHere(_ net: EVMNetwork, _ token: EVMTokens.Token, units: UInt64, from: String?, _ uni: UniswapV3.Deployment) async throws
-        -> (path: Data, out: Decimal, src: EVMNetwork?)? {
+        -> (route: UniRoute, src: EVMNetwork?)? {
         guard from != "solana" else { return nil }
         let me = wallet.evm, want = Fmt.num(Decimal(units) / 1_000_000)
         let src = from.flatMap(EVMNetwork.named).flatMap { $0.key == net.key ? nil : $0 }
         if from != nil, from != net.key, src == nil { throw ExecutionError("ihatecrypto doesn't pay for a buy on \(net.name) from \(from ?? "there"). Nothing was signed.") }
         let there = try await (src ?? net).rpc.tokenBalance((src ?? net).usdc, owner: me)
-        let best = allowedWays(net).uniswap ? await bestPath(on: net.rpc, uni, from: net.usdc, to: token.address, amountIn: Decimal(units)) : nil
-        if let best, there >= units { return (best.path, best.out, src) }
+        let best = allowedWays(net).uniswap ? await bestUniswap(on: net, uni, from: net.usdc, to: token.address, amountIn: Decimal(units)) : nil
+        if let best, there >= units { return (best, src) }
         guard from != nil else { return nil }
         throw ExecutionError(there < units
             ? "\(Fmt.num(Decimal(there) / 1_000_000)) USDC on \((src ?? net).name); the buy needs \(want). Nothing was signed."
@@ -236,15 +259,13 @@ extension Executor {
         func amount(_ raw: Decimal) -> String { "\(Fmt.num(raw / scale, maxFraction: 6)) \(token.symbol)" }
         // Gas only: the USDC is there.
         try await ensureEVM(net, usdc: units)
-        guard units > 0, let best = await bestPath(on: net.rpc, uni, from: net.usdc, to: token.address, amountIn: Decimal(units)) else {
+        guard units > 0, let best = await bestUniswap(on: net, uni, from: net.usdc, to: token.address, amountIn: Decimal(units)) else {
             throw ExecutionError("Uniswap doesn't quote \(token.symbol) on \(net.name) now; the USDC stays there. Nothing was swapped.")
         }
-        report("\(usdc) USDC on \(net.name) → \(token.symbol) on Uniswap: ≈ \(amount(best.out)), no bridge.")
+        report("\(usdc) USDC on \(net.name) → \(token.symbol) on \(best.title): ≈ \(amount(best.out)), no bridge.")
         let before = try await balance(token.address, on: net.rpc)
-        let hash = try await approveAndSend(net.rpc, token: net.usdc, spender: uni.router, units: Decimal(units), approveNote: "Approve exactly \(usdc) USDC to Uniswap",
-                                            to: uni.router,
-                                            data: try UniswapV3.exactInput(path: best.path, recipient: me, amountIn: Decimal(units), amountOutMinimum: (best.out * Decimal(string: "0.99")!).whole),
-                                            note: "Buy \(token.symbol) for \(usdc) USDC on Uniswap")
+        let hash = try await swapUniswap(best, on: net, uni, tokenIn: net.usdc, units: Decimal(units), what: "\(usdc) USDC",
+                                         note: "Buy \(token.symbol) for \(usdc) USDC")
         var after = try await balance(token.address, on: net.rpc)
         for _ in 0..<10 where after <= before {
             try await Task.sleep(for: .seconds(1))
@@ -252,7 +273,7 @@ extension Executor {
         }
         // ponytail: the USDC swapped here is the cost; a bridge that brought it first adds its few cents of fee nowhere.
         if after > before { traded?("\(net.key):\(token.address.lowercased())", (after - before) / scale, Decimal(units) / 1_000_000) }
-        return "Bought \(amount(after > before ? after - before : 0)) on \(net.name) for \(usdc) USDC that was there, on Uniswap. You hold \(amount(after)) there. \(net.explorer)/tx/\(hash)"
+        return "Bought \(amount(after > before ? after - before : 0)) on \(net.name) for \(usdc) USDC that was there, on \(best.title). You hold \(amount(after)) there. \(net.explorer)/tx/\(hash)"
     }
 
     /// Both ways to buy for `units` of USDC from Solana, quoted and valued (nothing is signed): Relay's swap, and Relay's
@@ -282,12 +303,12 @@ extension Executor {
                                                    originCurrency: Relay.Currency.solanaUSDC, destinationCurrency: net.usdc, amount: units,
                                                    topupGasUSD: topup ? net.topupUSD : nil),
                let arrive = UInt64(bridge.amountOut), arrive > 0,
-               let best = await bestPath(on: net.rpc, uni, from: net.usdc, to: token.address, amountIn: Decimal(arrive)) {
+               let best = await bestUniswap(on: net, uni, from: net.usdc, to: token.address, amountIn: Decimal(arrive)) {
                 if price == 0 { price = Decimal(arrive) / 1_000_000 / (best.out / scale) }
-                let gas = try await gasUSD(50_000 + (best.hops == 1 ? 160_000 : 240_000), on: net, uni)
+                let gas = try await gasUSD(best.gas, on: net, uni)
                 let worth = best.out / scale * price - gas + (topup ? net.topupUSD : 0)
                 ways.append(SwapWay(name: "uniswap", out: best.out, worth: worth,
-                                    line: "Relay bridge + Uniswap: \(amount(best.out)) ≈ \(Fmt.usd(worth)) after \(Fmt.usd(gas)) of gas\(topup ? " (\(net.gasCoin) for gas rides along)" : "")"))
+                                    line: "Relay bridge + \(best.title): \(amount(best.out)) ≈ \(Fmt.usd(worth)) after \(Fmt.usd(gas)) of gas\(topup ? " (\(net.gasCoin) for gas rides along)" : "")"))
                 uniswap = (arrive, topup)
             }
         }
@@ -305,13 +326,13 @@ extension Executor {
         guard units > 0 else { throw ExecutionError("No \(token.symbol) on \(net.name).") }
         func tokens(_ raw: Decimal) -> String { "\(Fmt.num(raw / scale, maxFraction: 6)) \(token.symbol)" }
         if keep {
-            guard allowedWays(net).uniswap, let best = await bestPath(on: net.rpc, uni, from: token.address, to: net.usdc, amountIn: units) else {
+            guard allowedWays(net).uniswap, let best = await bestUniswap(on: net, uni, from: token.address, to: net.usdc, amountIn: units) else {
                 throw ExecutionError("Uniswap has no pool to sell \(token.symbol) for USDC on \(net.name)\(allowedWays(net).uniswap ? "" : " (Uniswap is off in Settings › Modules)"); "
                                      + "without «keep», Relay's swap sells it for USDC on Solana. Nothing was signed.")
             }
-            report("\(tokens(units)) on \(net.name) → ≈ \(Fmt.num(best.out / 1_000_000)) USDC there, on Uniswap.")
+            report("\(tokens(units)) on \(net.name) → ≈ \(Fmt.num(best.out / 1_000_000)) USDC there, on \(best.title).")
             try await ensureEVM(net, usdc: 0)
-            let sold = try await sellThere(net, token, units: units, path: best.path, out: best.out, uni)
+            let sold = try await sellThere(net, token, units: units, route: best, uni)
             traded?("\(net.key):\(token.address.lowercased())", -units / scale, sold.got)
             return sold.text
         }
@@ -326,8 +347,8 @@ extension Executor {
 
         guard way.name == "relay" else {
             guard let plan = uniswap else { throw ExecutionError("Uniswap's route went away. Nothing was signed.") }
-            let fresh = await bestPath(on: net.rpc, uni, from: token.address, to: net.usdc, amountIn: units)
-            let sold = try await sellThere(net, token, units: units, path: fresh?.path ?? plan.path, out: fresh?.out ?? plan.out, uni)
+            let fresh = await bestUniswap(on: net, uni, from: token.address, to: net.usdc, amountIn: units)
+            let sold = try await sellThere(net, token, units: units, route: fresh ?? plan, uni)
             report(sold.text)
             traded?("\(net.key):\(token.address.lowercased())", -units / scale, sold.got)
             return try await evmToSolana(net, usdc: sold.got)
@@ -338,28 +359,25 @@ extension Executor {
     }
 
     /// The Uniswap sale on the network: an exact approve of the tokens, then the swap to USDC at this wallet.
-    private func sellThere(_ net: EVMNetwork, _ token: EVMTokens.Token, units: Decimal, path: Data, out: Decimal, _ uni: UniswapV3.Deployment) async throws
+    private func sellThere(_ net: EVMNetwork, _ token: EVMTokens.Token, units: Decimal, route: UniRoute, _ uni: UniswapV3.Deployment) async throws
         -> (got: Decimal, text: String) {
         let me = wallet.evm, scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
         let tokens = "\(Fmt.num(units / scale, maxFraction: 6)) \(token.symbol)"
         let before = try await net.rpc.tokenBalance(net.usdc, owner: me)
-        let hash = try await approveAndSend(net.rpc, token: token.address, spender: uni.router, units: units, approveNote: "Approve exactly \(tokens) to Uniswap",
-                                            to: uni.router,
-                                            data: try UniswapV3.exactInput(path: path, recipient: me, amountIn: units, amountOutMinimum: (out * Decimal(string: "0.99")!).whole),
-                                            note: "Sell \(tokens) on Uniswap")
+        let hash = try await swapUniswap(route, on: net, uni, tokenIn: token.address, units: units, what: tokens, note: "Sell \(tokens)")
         var after = try await net.rpc.tokenBalance(net.usdc, owner: me)
         for _ in 0..<10 where after <= before {
             try await Task.sleep(for: .seconds(1))
             after = try await net.rpc.tokenBalance(net.usdc, owner: me)
         }
         let got = Decimal(after > before ? after - before : 0) / 1_000_000
-        return (got, "Sold \(tokens) for \(Fmt.num(got)) USDC on \(net.name). \(net.explorer)/tx/\(hash)")
+        return (got, "Sold \(tokens) for \(Fmt.num(got)) USDC on \(net.name), on \(route.title). \(net.explorer)/tx/\(hash)")
     }
 
     /// Both ways to sell `units` back to USDC on Solana, quoted and valued (nothing is signed): Relay's swap-and-bridge,
     /// and Uniswap's best path to USDC on the chain followed by Relay's bridge; each one's gas counted against it.
     func sellWays(_ net: EVMNetwork, _ token: EVMTokens.Token, units: Decimal, _ uni: UniswapV3.Deployment) async throws
-        -> (ways: [SwapWay], uniswap: (path: Data, out: Decimal)?) {
+        -> (ways: [SwapWay], uniswap: UniRoute?) {
         let me = wallet.evm
         let allowed = allowedWays(net)
         guard allowed.relay else { throw ExecutionError(Modules.current.refusal(.relay) ?? "Relay is off in Settings › Modules.") }
@@ -371,15 +389,15 @@ extension Executor {
             ways.append(SwapWay(name: "relay", out: out, worth: out / 1_000_000 - gas,
                                 line: "Relay swap: \(Fmt.num(out / 1_000_000)) USDC on Solana after \(Fmt.usd(gas)) of gas"))
         }
-        var uniswap: (path: Data, out: Decimal)?
-        if allowed.uniswap, let best = await bestPath(on: net.rpc, uni, from: token.address, to: net.usdc, amountIn: units),
+        var uniswap: UniRoute?
+        if allowed.uniswap, let best = await bestUniswap(on: net, uni, from: token.address, to: net.usdc, amountIn: units),
            let bridge = try? await Relay.quote(user: me, recipient: wallet.solana, originChain: net.relayChain, destinationChain: Relay.Chain.solana,
                                                originCurrency: net.usdc, destinationCurrency: Relay.Currency.solanaUSDC, amount: 0, units: "\(best.out.whole)"),
            let out = Decimal(string: bridge.amountOut), out > 0 {
-            let gas = try await gasUSD(100_000 + (best.hops == 1 ? 160_000 : 240_000) + 120_000, on: net, uni)
+            let gas = try await gasUSD(50_000 + best.gas + 120_000, on: net, uni)
             ways.append(SwapWay(name: "uniswap", out: out, worth: out / 1_000_000 - gas,
-                                line: "Uniswap + Relay bridge: \(Fmt.num(out / 1_000_000)) USDC on Solana after \(Fmt.usd(gas)) of gas"))
-            uniswap = (best.path, best.out)
+                                line: "\(best.title) + Relay bridge: \(Fmt.num(out / 1_000_000)) USDC on Solana after \(Fmt.usd(gas)) of gas"))
+            uniswap = best
         }
         return (ways, uniswap)
     }
@@ -427,4 +445,14 @@ extension Executor {
         }
         throw ExecutionError("Relay didn't credit Solana within 4 minutes. Order \(quote.requestId) is in the journal. \(net.explorer)/tx/\(hash)")
     }
+}
+
+/// Uniswap on an EVM network for one trade: v3's best path or v4's pool without hooks, whichever gives more.
+struct UniRoute {
+    var v3: (path: Data, hops: Int)?
+    var v4: Executor.V4Route?
+    let out: Decimal
+    var title: String { v4 != nil ? "Uniswap v4" : "Uniswap v3" }
+    /// Gas the swap takes with its approves: v4's goes through Permit2 (an approve to it, Permit2's own, the swap).
+    var gas: UInt64 { v4 != nil ? 50_000 + 60_000 + 180_000 : 50_000 + ((v3?.hops ?? 1) == 1 ? 160_000 : 240_000) }
 }
