@@ -18,7 +18,7 @@ struct NextSteps {
 
     static func icon(_ command: String) -> String {
         let c = command.lowercased()
-        return c.hasPrefix("chart") ? "chart.xyaxis.line" : c.hasPrefix("watch") ? "star" : c.hasPrefix("alert") ? "bell"
+        return c.hasPrefix("jupiter dca") || c.contains(" every ") ? "calendar.badge.clock" : c.hasPrefix("chart") ? "chart.xyaxis.line" : c.hasPrefix("watch") ? "star" : c.hasPrefix("alert") ? "bell"
             : c.hasPrefix("buy") ? "cart" : c.hasPrefix("sell") ? "arrow.down.circle" : c.hasPrefix("long") ? "arrow.up.right"
             : c.hasPrefix("short") ? "arrow.down.right" : c.hasPrefix("withdraw") || c.hasPrefix("unstake") ? "arrow.uturn.backward"
             : c.hasPrefix("move") || c.hasPrefix("send") ? "arrow.left.arrow.right" : c.hasPrefix("where") ? "percent"

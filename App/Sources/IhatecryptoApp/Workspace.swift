@@ -343,6 +343,8 @@ final class Workspace {
     /// The running Jupiter DCA orders as last read, drawn on the canvas once asked for («show Jupiter DCA») or after one
     /// is placed or cancelled; nil = not shown.
     var jupiterDCAs: [JupiterRecurring.Order]?
+    /// The recurring buy the two ways were offered for: picking «in the app» brings it back and it goes ahead.
+    @ObservationIgnored var dcaChoice: WalletCommand?
     /// Commands scheduled for later or on repeat («in 1 week: rebalance USDC»), per wallet; `watch` runs them (Tasks.swift).
     var tasks: [ScheduledTask] = (UserDefaults.standard.data(forKey: Workspace.scoped("tasks")).flatMap { try? JSONDecoder().decode([ScheduledTask].self, from: $0) }) ?? [] {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(tasks), forKey: Workspace.scoped("tasks", activeWalletID)) }

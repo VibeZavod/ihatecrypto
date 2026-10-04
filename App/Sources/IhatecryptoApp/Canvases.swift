@@ -2049,6 +2049,14 @@ extension Workspace {
             await runSteps(steps)
             return
         }
+        // A recurring buy can run two ways: both are offered, in a line each, before either starts. Jupiter's DCA named
+        // outright, a step of a chain or a task, and the way already picked go straight.
+        if case .schedule(let asset, let usdc, let days) = command, !quiet, TaskRun.automation == nil, dcaChoice != command,
+           Modules.current.allows(.jupiterDCA) {
+            offerDCAChoice(asset, usdc: usdc, days: days, note: note)
+            return
+        }
+        if case .schedule = command { dcaChoice = nil }
         // It reads the active wallet's balances: a task on the automation wallet leaves the check to the move itself.
         if TaskRun.automation == nil, let why = refusalBeforeCard(command, inChain: quiet) { reply(why, note: note); return }
         switch command {
@@ -2065,6 +2073,32 @@ extension Workspace {
                       "Entendido: \(readable(command.summary)). Está en el lienzo: confírmalo")
                   + orCancel(say(", or say anything else to cancel.", " или напиши что-нибудь другое, чтобы отменить.", ", o di otra cosa para cancelar.")), note: note)
         }
+    }
+
+    /// Buying over time, the two ways as cards: Jupiter's DCA on-chain (a budget in rounds of at least 50, runs with the
+    /// app closed) or the app's own recurring buys (the money stays in the wallet, no minimum, the app must run).
+    private func offerDCAChoice(_ asset: SpotAsset, usdc: Decimal, days: Int, note: String?) {
+        let period = days == 1 ? "day" : days == 7 ? "week" : days == 30 ? "month" : "\(days) days"
+        let periodRU = days == 1 ? "день" : days == 7 ? "неделю" : days == 30 ? "месяц" : "\(days) дн."
+        // Jupiter takes a budget: four rounds of this amount, or its least (2 × 50) when the amount is under a round.
+        let (total, rounds) = usdc >= WalletCommand.jupiterDCAMinimum / 2 ? (usdc * 4, 4) : (WalletCommand.jupiterDCAMinimum, 2)
+        let jupiter = WalletCommand.jupiterDCA(asset, usdc: total, orders: rounds, every: days * 86400)
+        let app = WalletCommand.schedule(asset, usdc: usdc, days: days)
+        dcaChoice = app
+        let each = Fmt.num(total / Decimal(rounds))
+        withAnimation(StudioView.spring) {
+            nextSteps = NextSteps(options: [
+                ChatRouter.Option(title: say("Jupiter DCA: \(rounds) × \(each) USDC → \(asset.symbol)", "Jupiter DCA: \(rounds) × \(each) USDC → \(asset.symbol)"),
+                                  comment: say("On-chain: \(Fmt.num(total)) USDC goes in now and Jupiter buys every \(period), even with the app closed. From 100 USDC, 50 a round; 0.1% fee; cancel returns the rest.",
+                                               "На блокчейне: \(Fmt.num(total)) USDC вносятся сразу, Jupiter покупает раз в \(periodRU), даже при закрытом приложении. От 100 USDC, по 50 за раз; комиссия 0.1%; отмена вернёт остаток."),
+                                  command: jupiter.summary, recommended: usdc >= WalletCommand.jupiterDCAMinimum / 2),
+                ChatRouter.Option(title: say("In the app: \(Fmt.num(usdc)) USDC → \(asset.symbol) every \(period)", "В приложении: \(Fmt.num(usdc)) USDC → \(asset.symbol) раз в \(periodRU)"),
+                                  comment: say("The money stays in your wallet until each buy; no minimum. Buys while ihatecrypto runs (Keep running), each signed with Touch ID or the automation wallet.",
+                                               "Деньги лежат у тебя до каждой покупки; минимума нет. Покупает, пока ihatecrypto работает (Keep running), каждую покупку подписывает Touch ID или кошелёк автоматизации."),
+                                  command: app.summary, recommended: usdc < WalletCommand.jupiterDCAMinimum / 2),
+            ], userText: "", found: [], canvas: canvasID)
+        }
+        reply(say("\(asset.symbol) over time can be bought two ways — pick one on the canvas.", "Покупать \(asset.symbol) регулярно можно двумя способами — выбери на холсте."), note: note)
     }
 
     /// How a card waiting for Confirm is dropped, after the line that lays it out. With a model a question about the
