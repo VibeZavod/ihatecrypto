@@ -1284,6 +1284,8 @@ final class Workspace {
             return true
         default: break
         }
+        // «write to folder Ideas: alert me when BTC is above 120000» is a note, not an alert.
+        if let command = FolderCommand.parse(canonical) { folderCommand(command, note: note); return true }
         if let command = TokenCommand.parse(canonical) {
             await tokenCommand(command, note: note)
             return true
@@ -1303,7 +1305,6 @@ final class Workspace {
             alertCommand(command, note: note)
             return true
         }
-        if let command = FolderCommand.parse(canonical) { folderCommand(command, note: note); return true }
         if let command = AddressBookCommand.parse(canonical) {
             // The model only rewords: an address it wrote must be in the user's own message, character for character.
             if case .save(let address, _, _) = command, !text.contains(address) { return false }

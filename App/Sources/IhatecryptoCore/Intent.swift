@@ -83,8 +83,9 @@ public struct TradeIntent: Codable, Equatable, Sendable {
 public enum IntentParser {
     static let fallbackMarkets: Set<String> = ["BTC", "ETH", "SOL"]
     /// Words for markets that are not tickers: commodities on HIP-3 exchanges.
+    /// Brent before oil: «brent oil» is Brent.
     nonisolated(unsafe) static let aliases: [(Regex<Substring>, String)] = [
-        (try! Regex("нефт|\\boil\\b|\\bwti\\b|crude"), "CL"), (try! Regex("брент|brent"), "BRENTOIL"),
+        (try! Regex("брент|brent"), "BRENTOIL"), (try! Regex("нефт|\\boil\\b|\\bwti\\b|crude"), "CL"),
         (try! Regex("золот|\\bgold\\b"), "GOLD"), (try! Regex("серебр|silver"), "SILVER"),
         // Names people say instead of tickers. Not «Solana»: «с соланы» in a trade names the network.
         (try! Regex("\\bэфир\\w*|\\bethereum\\b|\\bэфириум\\w*"), "ETH"), (try! Regex("биткоин\\w*|биткойн\\w*|\\bбиток\\w*|\\bbitcoin\\b"), "BTC"),
@@ -170,7 +171,7 @@ public enum IntentParser {
         if let v = number(q, /(?:откат\w*|pullback|dip|retrace\w*)[^\d\p{L}]*(?:\p{L}{1,3}[^\d\p{L}]+)?(\d+(?:[.,]\d+)?)\s*%/)
             ?? number(q, /(\d+(?:[.,]\d+)?)\s*%\s*(?:pullback|dip|retrace\w*)/) {
             next.pullbackPct = v; next.entryPx = nil; hit = true
-        } else if let v = number(q, /(?:лимит\w*|вход\w*|limit|entry|enter)\s*(?:по|на|at)?\s*\$?(\d+(?:[.,]\d+)?)(?!\s*%|[\d.,])/) {
+        } else if let v = number(q, /(?:лимит\w*|вход\w*|limit|entry|enter)\s*(?:по|на|at)?\s*\$?(\d+(?:[.,]\d+)?)(?!\s*%|\d|[.,]\d)/) {
             next.entryPx = v; next.pullbackPct = nil; hit = true
         }
         if q.contains(/по\s+рынку|market/) { next.entryPx = nil; next.pullbackPct = nil; hit = true }

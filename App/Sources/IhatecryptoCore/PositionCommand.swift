@@ -21,11 +21,11 @@ public enum PositionCommand: Equatable, Sendable {
         }
         if q.contains(/отмени\w*\s+(?:лимит|ордер|заявк)|сними\w*\s+(?:лимит|ордер|заявк)|cancel\s+(?:the\s+|my\s+)?(?:limit|order)|remove\s+(?:the\s+)?(?:limit|order)/) { return .cancelOrders }
         if q.contains(/безубыт|стоп\w*\s+(?:в|на)\s+(?:ноль|бу\b|вход)|break\s*-?\s*even|stop\s+(?:to|at)\s+entry/) { return .stopToBreakeven }
-        if let m = q.firstMatch(of: /(?:(?:перенес\w*|передвин\w*|подвин\w*|постав\w*)?\s*стоп\w*\s+(?:на|в)|(?:move|set|put)?\s*(?:the\s+)?stop(?:[- ]?loss)?\s+(?:to|at))\s+\$?(\d+(?:[.,]\d+)?)(?!\s*%|[\d.,])/),
+        if let m = q.firstMatch(of: /(?:(?:перенес\w*|передвин\w*|подвин\w*|постав\w*)?\s*стоп\w*\s+(?:на|в)|(?:move|set|put)?\s*(?:the\s+)?stop(?:[- ]?loss)?\s+(?:to|at))\s+\$?(\d+(?:[.,]\d+)?)(?!\s*%|\d|[.,]\d)/),
            let v = Decimal(string: m.1.replacingOccurrences(of: ",", with: ".")) {
             return .stopTo(v)
         }
-        if let m = q.firstMatch(of: /(?:(?:перенес\w*|передвин\w*|подвин\w*|постав\w*)?\s*тейк\w*\s+(?:на|в)|(?:move|set|put)?\s*(?:the\s+)?take(?:[- ]?profit)?\s+(?:to|at))\s+\$?(\d+(?:[.,]\d+)?)(?!\s*%|[\d.,])/),
+        if let m = q.firstMatch(of: /(?:(?:перенес\w*|передвин\w*|подвин\w*|постав\w*)?\s*тейк\w*\s+(?:на|в)|(?:move|set|put)?\s*(?:the\s+)?take(?:[- ]?profit)?\s+(?:to|at))\s+\$?(\d+(?:[.,]\d+)?)(?!\s*%|\d|[.,]\d)/),
            let v = Decimal(string: m.1.replacingOccurrences(of: ",", with: ".")) {
             return .takeTo(v)
         }
@@ -223,9 +223,8 @@ public enum WalletCommand: Equatable, Sendable {
             .flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
         let jupiter = q.contains(/jupiter|jupyter|джупитер|юпитер|\bjup\s*(?:lend|vault|earn)|jlusdc/)
         let vault = jupiter || q.contains(/хранилищ|вол[тл]|vault|\blend|депозит|лендинг/)
-        let places = #"(?:the\s+|my\s+|мо[йеюи]\s+)?(?:vault|хранилищ|jupiter|jupyter|джупитер|юпитер|kamino|камино|aave|ааве|hlp|хлп|лендинг|lend)"#
-        let into = q.contains(Self.depositWords) || q.contains(try! Regex(#"(?:\bв\b|\bво\b|into|\bto\b|\bin\b)\s+"# + places))
-        let outOf = q.contains(Self.withdrawWords) || q.contains(try! Regex(#"(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b|out\s+of)\s+"# + places))
+        let into = q.contains(Self.depositWords) || q.contains(Self.intoPlace)
+        let outOf = q.contains(Self.withdrawWords) || q.contains(Self.outOfPlace)
         let coins = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:sol|сол|jitosol|usdt|jupusd|usdc)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
         // «USDC на Солане» is USDC; Solana alone is the network, SOL the coin.
         let symbol = q.contains(/usdc|юсдс|юсдц/) ? "USDC" : q.contains(/\bsol\b|\bсол\b/) ? "SOL" : q.contains(/usdt/) ? "USDT" : q.contains(/jupusd/) ? "JupUSD" : "USDC"
@@ -469,6 +468,10 @@ public enum WalletCommand: Equatable, Sendable {
 
     nonisolated(unsafe) static let depositWords = try! Regex("полож\\w*|внес\\w*|закин\\w*|вкин\\w*|кинь|засун\\w*|влож\\w*|задепозит\\w*|депозитн\\w*|депни|пополн\\w*|инвест\\w*|\\bdeposit\\w*|\\bdepo\\b|\\bput\\b|\\badd\\b|\\bplace\\b|\\bsupply\\b|\\bstash\\b|\\bpark\\b|\\binvest\\w*|\\btop\\s+up\\b")
     nonisolated(unsafe) static let withdrawWords = try! Regex("сним\\w*|выв[её]д\\w*|забер\\w*|верн\\w*|\\bwithdraw\\w*|take\\s+out|\\bremove\\b|\\bpull\\b|\\bredeem\\w*")
+    /// «в камино», «into the vault», «из хранилища»: compiled once, not on every message.
+    static let places = #"(?:the\s+|my\s+|мо[йеюи]\s+)?(?:vault|хранилищ|jupiter|jupyter|джупитер|юпитер|kamino|камино|aave|ааве|hlp|хлп|лендинг|lend)"#
+    nonisolated(unsafe) static let intoPlace = try! Regex(#"(?:\bв\b|\bво\b|into|\bto\b|\bin\b)\s+"# + places)
+    nonisolated(unsafe) static let outOfPlace = try! Regex(#"(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b|out\s+of)\s+"# + places)
 }
 
 /// A regular purchase the app carries out while it is open.

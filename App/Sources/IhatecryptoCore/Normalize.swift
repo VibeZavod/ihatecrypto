@@ -624,7 +624,7 @@ public enum ChatRouter {
         if !markets.isEmpty, let m = c.firstMatch(of: /^(?i)(?:long|short)\s+(\S+)/),
            !["risk", "stop", "take", "leverage", "by", "on", "limit", "trailing"].contains(m.1.lowercased()),
            !m.1.hasSuffix("USDC"), Double(m.1) == nil, IntentParser.namedAsset(String(m.1), markets: markets) == nil { return false }
-        return ["new canvas", "clear the plan", "lock"].contains(c.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! ")))
+        return ["new canvas", "clear the plan", "lock", "create an automation wallet"].contains(c.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! ")))
             || WalletCommand.parse(c) != nil || TokenCommand.parse(c) != nil || PositionCommand.parse(c) != nil || FolderCommand.parse(c) != nil
             || ChartCommand.parse(c, markets: markets) != nil || AlertCommand.parse(c, markets: markets) != nil || AddressBookCommand.parse(c) != nil
             || PnLCommand.parse(c, markets: markets) != nil || ScheduledTask.parse(c) != nil || ScheduledTask.cancelsAll(c)

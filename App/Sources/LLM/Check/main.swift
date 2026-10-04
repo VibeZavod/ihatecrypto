@@ -56,6 +56,8 @@ if prompt == "--route" {
     // the canvas and the money as the app gives them, for follow-ups about a waiting card.
     if let canvas = env["IHATECRYPTO_ROUTE_CANVAS"] { context.canvas = canvas.components(separatedBy: "|") }
     if let b = env["IHATECRYPTO_ROUTE_BALANCES"] { context.balances = b.components(separatedBy: "|") }
+    // `IHATECRYPTO_ROUTE_POSITIONS="long ETH|short WTI oil (xyz:CL)"`: open positions, for «стоп в безубыток», «закрой половину».
+    if let p = env["IHATECRYPTO_ROUTE_POSITIONS"] { context.positions = p.components(separatedBy: "|") }
     let client = try provider.client(credential, save: { _ in })
     // `IHATECRYPTO_MARKETS="BTC,ETH,…,xyz:CL"`: Hyperliquid's real list, for the plans test.
     let markets: Set<String> = env["IHATECRYPTO_MARKETS"].map { Set($0.components(separatedBy: ",")) } ?? ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]
@@ -108,6 +110,7 @@ if prompt == "--route" {
                 }
                 if let intent, let data = try? JSONEncoder().encode(intent) { out["intent"] = try? JSONSerialization.jsonObject(with: data) }
                 if let d = reading.doubt { out["doubt"] = d }
+                if let show = reading.show { out["show"] = show }
                 if let c = reading.corrected { out["corrected"] = c }
                 out["options"] = reading.options.map(\.command)
                 print(String(decoding: try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys]), as: UTF8.self))
