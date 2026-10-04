@@ -573,6 +573,7 @@ extension Workspace {
     /// A move that can't go through with what the wallet holds is said so at once, instead of a card whose Confirm
     /// could only fail («Sell 0 NEAR»).
     func refusalBeforeCard(_ command: WalletCommand, inChain: Bool = false) -> String? {
+        if !inChain, let why = fundingShortfall(command) { return why }
         /// A move from a place that hasn't the money: said before the card, not after a failed signature. A balance not
         /// loaded yet leaves it to the move's own checks.
         func lacks(_ have: Decimal?, _ asked: Decimal?, _ place: String, _ unit: String = "USDC") -> String? {

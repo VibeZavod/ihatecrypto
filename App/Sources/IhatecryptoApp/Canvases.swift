@@ -1487,7 +1487,7 @@ extension Workspace {
     static func arrives(_ c: WalletCommand) -> String? {
         switch c {
         case .bridge(_, let to, _): to == "hyperliquid" ? nil : to
-        case .evmToSolana, .baseToSolana, .arbitrumToSolana, .robinhoodToSolana, .withdrawToSolana: "solana"
+        case .evmToSolana, .baseToSolana, .arbitrumToSolana, .robinhoodToSolana, .withdrawToSolana, .sellNear: "solana"
         case .solanaTo(let to, _): to
         default: nil
         }
@@ -1497,7 +1497,7 @@ extension Workspace {
     static func spends(_ c: WalletCommand) -> String? {
         switch c {
         case .aave(true, _, let n), .morpho(true, _, let n), .buyOn(let n, _, _, _): n
-        case .lendDeposit, .kamino(true, _, _), .buy, .hlp(true, _), .allocate(_, _, _, _, from: "solana"): "solana"
+        case .lendDeposit, .kamino(true, _, _), .buy, .hlp(true, _), .allocate(_, _, _, _, from: "solana"), .solanaTo, .jupiterDCA: "solana"
         case .buyStock: "robinhood"
         default: nil
         }
@@ -1682,28 +1682,57 @@ extension Workspace {
         }
     }
 
-    /// USDC free at a place: Solana, Hyperliquid's withdrawable, each EVM network (Ethereum and Polygon from the tokens read).
-    /// A vault deposit whose own network and Solana are short, as steps: a straight move from the EVM network holding
-    /// the USDC, then the deposit. nil when they have enough (the deposit brings Solana's itself) or no network has it.
-    /// Jupiter Lend, Kamino and a buy on Solana: the move goes to Solana.
-    func fundedFromElsewhere(_ c: WalletCommand) -> [String]? {
+    /// What a deposit or a buy spends and where, and how much of it that place lacks; nil when it has it, or the move
+    /// brings its own money (a source the user named).
+    private func fundingNeed(_ c: WalletCommand) -> (short: Decimal, net: String)? {
         let amount: Decimal, net: String
         switch c {
-        case .aave(true, let a?, let n), .morpho(true, let a?, let n): (amount, net) = (a, n)
-        case .lendDeposit("USDC", let a?), .kamino(true, "USDC", let a?), .buy(_, let a?): (amount, net) = (a, "solana")
+        case .aave(true, let a?, let n), .morpho(true, let a?, let n), .buyOn(let n, _, let a?, nil): (amount, net) = (a, n)
+        case .buyStock(_, let a?): (amount, net) = (a, "robinhood")
+        case .lendDeposit("USDC", let a?), .kamino(true, "USDC", let a?), .buy(_, let a?), .jupiterDCA(_, let a?, _, _): (amount, net) = (a, "solana")
         default: return nil
         }
-        // The deposit step is run again from its words: only a command that reads back the same (not a token by its mint).
-        guard WalletCommand.parse(c.summary) == c else { return nil }
         let short = amount - (usdc(on: net) ?? 0)
-        guard short > 0, net == "solana" || (solana?.usdc ?? 0) < short else { return nil }
-        // Just what's short: the deposit runs after the move landed and spends what arrived (Workspace.fittedToArrival),
-        // so no dollar is held back for Relay's fee and left lying there («перевёл 100, задепозитил 99»).
-        let bring = short.rounded(2, .up)
-        guard let from = EVMNetwork.funding(bring, held: { $0 == net ? nil : self.usdc(on: $0) }) else { return nil }
-        return ["move \(Fmt.num(bring)) USDC from \(from.name) to \(WalletCommand.placeName(net))", c.summary]
+        return short > 0 ? (short, net) : nil
     }
 
+    /// One place pays all of it inside the move itself, one card: Solana for a move elsewhere, or one EVM network sending
+    /// straight (EVMNetwork.source, as Executor.ensureEVM and buyOn sign it).
+    private func oneSource(_ short: Decimal, _ net: String) -> Bool {
+        net != "solana" && ((solana?.usdc ?? 0) >= short + Decimal(string: "0.1")!
+            || EVMNetwork.source(arrive: short, onSolana: solana?.usdc ?? 0, target: net, held: { self.usdc(on: $0) }) != nil)
+    }
+
+    private func fundingLegs(_ short: Decimal, _ net: String) -> [String]? {
+        let evm = EVMNetwork.searched.map { FundingPlan.Place(key: $0.key, name: $0.name, usdc: usdc(on: $0.key) ?? 0) }
+        return FundingPlan.legs(short: short, target: net, targetName: WalletCommand.placeName(net), solana: solana?.usdc ?? 0, evm: evm,
+                                hyperliquid: hl?.withdrawable ?? 0, near: near, nearPrice: markets["NEAR"]?.markPx)
+    }
+
+    /// A deposit or a buy whose network hasn't the USDC, the source left unsaid, as steps: the portfolio's free money brought
+    /// there first — Solana, the EVM networks (Ethereum last), Hyperliquid's withdrawable, NEAR sold — one leg a place
+    /// (FundingPlan), then the move. nil when the network has it, one place pays all of it inside the move (one card), or
+    /// all of it together isn't enough (fundingShortfall says so).
+    func fundedFromElsewhere(_ c: WalletCommand) -> [String]? {
+        // The move is run again from its words: only a command that reads back the same (not a token by its mint).
+        guard let (short, net) = fundingNeed(c), WalletCommand.parse(c.summary) == c, !oneSource(short, net),
+              let legs = fundingLegs(short, net), !legs.isEmpty else { return nil }
+        return legs + [c.summary]
+    }
+
+    /// All the wallet's free money together can't pay the move: said before a card that would fail.
+    func fundingShortfall(_ c: WalletCommand) -> String? {
+        guard let (short, net) = fundingNeed(c), !oneSource(short, net), fundingLegs(short, net) == nil else { return nil }
+        var free: [(String, Decimal)] = [("Solana", solana?.usdc ?? 0)]
+        free += EVMNetwork.searched.compactMap { n in usdc(on: n.key).flatMap { $0 > 0 ? (n.name, $0) : nil } }
+        free.append(("Hyperliquid", hl?.withdrawable ?? 0))
+        if let price = markets["NEAR"]?.markPx, near > 0 { free.append(("NEAR", near * price)) }
+        let listed = free.filter { $0.1 >= Decimal(string: "0.01")! }.map { "\($0.0) \(Fmt.usd($0.1))" }.joined(separator: ", ")
+        return say("This needs \(Fmt.num(short)) USDC more on \(WalletCommand.placeName(net)), and all the free money together isn't enough: \(listed). Top up, or say a smaller amount.",
+                   "Нужно ещё \(Fmt.num(short)) USDC на \(WalletCommand.placeName(net)), а всех свободных денег не хватает: \(listed). Пополни или назови сумму меньше.")
+    }
+
+    /// USDC free at a place: Solana, Hyperliquid's withdrawable, each EVM network (Ethereum and Polygon from the tokens read).
     func usdc(on place: String) -> Decimal? {
         switch place {
         case "solana": solana?.usdc
