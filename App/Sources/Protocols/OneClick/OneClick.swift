@@ -12,6 +12,16 @@ public enum OneClick {
         public static let hyperCoreUSDC = "1cs_v1:hypercore:hip1:0x6d1e7cde53ba9467b783cb7c530ce054"
         /// NEAR on the NEAR chain (listed as wNEAR, 24 decimals).
         public static let near = "nep141:wrap.near"
+        /// Circle's USDC on the EVM networks 1Click quotes it from (/v0/tokens; a dry quote into NEAR answered for Base,
+        /// Arbitrum and Ethereum on 2026-10-05; Polygon's «Quoting for this pair is not available»), by ihatecrypto's key.
+        public static func usdc(onEVM key: String) -> String? {
+            switch key {
+            case "base": "nep141:base-0x833589fcd6edb6e08f4c7c32d4f71b54bda02913.omft.near"
+            case "arbitrum": "nep141:arb-0xaf88d065e77c8cc2239327c5edb3a432268e5831.omft.near"
+            case "ethereum": "nep141:eth-0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48.omft.near"
+            default: nil
+            }
+        }
     }
 
     public struct Quote: Sendable {

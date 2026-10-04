@@ -400,37 +400,61 @@ extension Executor {
         return changes
     }
 
-    /// Native NEAR for Solana USDC through NEAR Intents 1Click, delivered to `account` — the wallet's own NEAR implicit
-    /// account, which only the signer derives. The first quote is what the user approved; the live one must stay within
-    /// 1% of it, and 1Click itself must have the deposit address bound to our recipient, refund address and amount.
+    /// Where «buy NEAR» takes its USDC — the one rule the card shows and the executor signs: Solana when it holds the
+    /// amount, else the first EVM network 1Click takes USDC from (OneClick.Asset.usdc: Base, Arbitrum, Ethereum — Ethereum
+    /// last) that holds it, straight into 1Click: one hop, not a bridge to Solana and a second swap. nil: Solana.
+    public static func nearSource(usdc: Decimal, onSolana: Decimal, held: (String) -> Decimal?) -> EVMNetwork? {
+        guard onSolana < usdc else { return nil }
+        return EVMNetwork.searched.first { OneClick.Asset.usdc(onEVM: $0.key) != nil && (held($0.key) ?? 0) >= usdc }
+    }
+
+    /// Native NEAR for USDC through NEAR Intents 1Click, delivered to `account` — the wallet's own NEAR implicit account,
+    /// which only the signer derives. The USDC is Solana's, or an EVM network's when Solana is short (`nearSource`), sent
+    /// to 1Click's deposit address there; a refund goes back to the wallet on the same network. The first quote is what
+    /// the user approved; the live one must stay within 1% of it, and 1Click itself must have the deposit address bound
+    /// to our recipient, refund address, asset and amount.
     public func buyNear(usdc: Decimal, account: String) async throws -> String {
         let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
         guard usdc >= 1 else { throw ExecutionError("Buy NEAR from 1 USDC: below that 1Click's fee eats too much.") }
         guard account.wholeMatch(of: /[0-9a-f]{64}/) != nil else { throw ExecutionError("That is not a NEAR implicit account.") }
-        let shown = try await OneClick.quote(dry: true, origin: OneClick.Asset.solanaUSDC, destination: OneClick.Asset.near,
-                                             amount: "\(units)", refundTo: wallet.solana, recipient: account)
+        let onSolana = Decimal(try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
+        let idle = Dictionary(await idleUSDC().map { ($0.net.key, $0.usdc) }, uniquingKeysWith: +)
+        let src = Self.nearSource(usdc: usdc, onSolana: onSolana, held: { idle[$0] })
+        let origin = src.flatMap { OneClick.Asset.usdc(onEVM: $0.key) } ?? OneClick.Asset.solanaUSDC
+        let refundTo = src == nil ? wallet.solana : wallet.evm
+        let shown = try await OneClick.quote(dry: true, origin: origin, destination: OneClick.Asset.near,
+                                             amount: "\(units)", refundTo: refundTo, recipient: account)
         var envelope = Envelope.approve(input: usdc, quotedOutput: Decimal(string: shown.amountOutFormatted) ?? 0)
-        let quote = try await OneClick.quote(dry: false, origin: OneClick.Asset.solanaUSDC, destination: OneClick.Asset.near,
-                                             amount: "\(units)", refundTo: wallet.solana, recipient: account)
+        let quote = try await OneClick.quote(dry: false, origin: origin, destination: OneClick.Asset.near,
+                                             amount: "\(units)", refundTo: refundTo, recipient: account)
         guard let deposit = quote.depositAddress else { throw ExecutionError("1Click gave no deposit address.") }
         envelope.destination = deposit
         let problems = envelope.violations(input: Decimal(string: quote.amountInFormatted) ?? .greatestFiniteMagnitude,
                                            output: Decimal(string: quote.amountOutFormatted) ?? 0, destination: deposit)
         guard problems.isEmpty else { throw ExecutionError("The price moved past what was approved: " + problems.joined(separator: " ")) }
-        let binding = DepositGuard.check(bound: try await OneClick.boundRequest(depositAddress: deposit), recipient: account, refundTo: wallet.solana,
-                                         origin: OneClick.Asset.solanaUSDC, destination: OneClick.Asset.near, amount: "\(units)")
+        let binding = DepositGuard.check(bound: try await OneClick.boundRequest(depositAddress: deposit), recipient: account, refundTo: refundTo,
+                                         origin: origin, destination: OneClick.Asset.near, amount: "\(units)")
         guard binding.ok else { throw ExecutionError("The guard stopped the deposit: " + binding.problems.joined(separator: " ")) }
-        report("NEAR Intents: \(Fmt.num(usdc)) USDC → ≈ \(Fmt.num(Decimal(string: quote.amountOutFormatted) ?? 0, maxFraction: 4)) NEAR to your NEAR account.")
-        let sent = try await sendSolanaUSDC(units, to: deposit, label: "the 1Click deposit")
-        try journal.append(.init(chain: "1click", id: deposit, kind: .signed, note: "USDC→NEAR \(Fmt.num(usdc)) to \(account)"))
-        if let tx = sent.split(separator: "/").last { try? await OneClick.submitDeposit(txHash: String(tx), depositAddress: deposit) }
+        let from = src?.name ?? "Solana"
+        report("NEAR Intents: \(Fmt.num(usdc)) USDC from \(from) → ≈ \(Fmt.num(Decimal(string: quote.amountOutFormatted) ?? 0, maxFraction: 4)) NEAR to your NEAR account.")
+        let tx: String
+        if let src {
+            // Gas there first; the USDC goes to the deposit address, which the signer asks to allow in person.
+            try await ensureEVM(src, usdc: units)
+            tx = try await sendEVM(src.rpc, to: src.usdc, data: try ERC20.transfer(to: deposit, amount: units),
+                                   note: "Send \(Fmt.num(usdc)) USDC to the 1Click deposit", recipients: [deposit])
+        } else {
+            tx = String(try await sendSolanaUSDC(units, to: deposit, label: "the 1Click deposit").split(separator: "/").last ?? "")
+        }
+        try journal.append(.init(chain: "1click", id: deposit, kind: .signed, note: "USDC→NEAR \(Fmt.num(usdc)) from \(from) to \(account)"))
+        if !tx.isEmpty { try? await OneClick.submitDeposit(txHash: tx, depositAddress: deposit) }
         let started = Date()
         while Date().timeIntervalSince(started) < 600 {
             let s = try await OneClick.status(depositAddress: deposit)
             if s.isFinal {
                 try journal.append(.init(chain: "1click", id: deposit, kind: s.status == "SUCCESS" ? .settled : .failed, note: s.status))
-                guard s.status == "SUCCESS" else { throw ExecutionError("1Click \(s.status.lowercased()): \(s.refundedFormatted.map { "\($0) USDC went back to Solana" } ?? "see the journal").") }
-                let line = "Bought \(Fmt.num(Decimal(string: s.amountOutFormatted ?? "") ?? 0, maxFraction: 4)) NEAR for \(Fmt.num(usdc)) USDC in \(Int(Date().timeIntervalSince(started))) s — native NEAR on your NEAR account."
+                guard s.status == "SUCCESS" else { throw ExecutionError("1Click \(s.status.lowercased()): \(s.refundedFormatted.map { "\($0) USDC went back to \(from)" } ?? "see the journal").") }
+                let line = "Bought \(Fmt.num(Decimal(string: s.amountOutFormatted ?? "") ?? 0, maxFraction: 4)) NEAR for \(Fmt.num(usdc)) USDC from \(from) in \(Int(Date().timeIntervalSince(started))) s — native NEAR on your NEAR account."
                 report(line)
                 return line
             }

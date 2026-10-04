@@ -1153,6 +1153,7 @@ extension Workspace {
         case .buyOn(let place, let token, let usdc?, let from): swapRoute(place, token, usdc: usdc, sell: nil, from: from)
         case .sellOn(let place, let token, let amount, let keep): swapRoute(place, token, usdc: nil, sell: amount, keep: keep)
         case .sellNear(let asked): sellNearRoute(asked)
+        case .buyNear(let usdc?): buyNearRoute(usdc)
         case .sendNear(let name, let asked): nearOutRoute(to: name, amount: asked, close: false)
         case .closeNear(let name): nearOutRoute(to: name, amount: nil, close: true)
         case .sendSol(let name, let amount): solOutRoute(to: name, amount: amount)
@@ -1200,6 +1201,23 @@ extension Workspace {
     func fallbackRoute(_ command: WalletCommand) -> MoveRoute {
         MoveRoute(title: readable(Self.canvasTitle(command)),
                   footer: "Checked and simulated before it’s signed. Press Confirm; Cancel or “cancel” drops it.", steps: [])
+    }
+
+    /// USDC → native NEAR through NEAR Intents (1Click): from Solana, or from the EVM network holding it when Solana is
+    /// short — the executor's own rule (Executor.nearSource), so the card names where the USDC really comes from.
+    private func buyNearRoute(_ usdc: Decimal) -> MoveRoute {
+        let onSolana = self.usdc(on: "solana") ?? 0
+        let src = Executor.nearSource(usdc: usdc, onSolana: onSolana, held: { self.usdc(on: $0) })
+        let near = markets["NEAR"].map { usdc / $0.markPx }
+        let from = src?.name ?? "Solana"
+        return MoveRoute(title: "Buy NEAR for \(Fmt.num(usdc)) USDC",
+                         footer: "One transfer on \(from): exactly this USDC to the 1Click deposit address the quote names, checked before signing\(src == nil ? "" : "; a refund comes back to your own address there"). Native NEAR arrives on your NEAR account in ≈ 30–50 s. Press Confirm.",
+                         steps: [
+            step(src?.key ?? "sol", "FROM · \(from.uppercased())", "\(Fmt.num(usdc)) USDC",
+                 src == nil ? "" : "Solana has only \(Fmt.num(onSolana)) · straight from \(from), no bridge", src == nil ? .solana : .relay),
+            step("near", "SWAP · NEAR INTENTS", "1Click", "the quote is checked before signing", .relay),
+            step("near", "TO · NEAR", near.map { "≈ \(Fmt.num($0, maxFraction: 4)) NEAR" } ?? "NEAR", "your own NEAR account ✓", .near),
+        ])
     }
 
     /// Native NEAR → USDC on Solana through NEAR Intents (1Click); «all» keeps ≈ 0.09 NEAR: storage, and prepaid gas

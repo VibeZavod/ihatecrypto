@@ -2,7 +2,9 @@ import EVMChain
 import ExecutionCore
 import Foundation
 import HyperliquidSigning
+import OneClickKit
 import Testing
+import TxGuard
 @testable import TradeExecution
 import WalletCore
 
@@ -104,4 +106,35 @@ func uniswapPriceImpactGrowsWithTheAmount() async throws {
     print("impact: 100 USDC \(small.impact ?? -1) (\(small.title)), 2M USDC \(big.impact ?? -1) (\(big.title))\(big.impactText)")
     #expect((small.impact ?? 1) < Decimal(string: "0.005")! && small.tolerance == Decimal(string: "0.005")!)
     #expect((big.impact ?? 0) > (small.impact ?? 1) && big.tolerance > small.tolerance)
+}
+
+/// «buy NEAR» pays where the USDC is: Solana when it holds the amount, else Base or Arbitrum before Ethereum, never a
+/// network 1Click doesn't take USDC from (Polygon, Robinhood, Tempo).
+@Test func buyNearPaysFromSolanaElseANetwork1ClickTakes() {
+    let held: [String: Decimal] = ["base": 50, "ethereum": 500, "polygon": 900, "robinhood": 900]
+    #expect(Executor.nearSource(usdc: 10, onSolana: 10, held: { held[$0] }) == nil)
+    #expect(Executor.nearSource(usdc: 10, onSolana: 2, held: { held[$0] })?.key == "base")
+    #expect(Executor.nearSource(usdc: 100, onSolana: 2, held: { held[$0] })?.key == "ethereum")
+    #expect(Executor.nearSource(usdc: 600, onSolana: 2, held: { held[$0] }) == nil)   // only Polygon and Robinhood hold it
+}
+
+/// 1Click takes Base's, Arbitrum's and Ethereum's USDC for NEAR (IHATECRYPTO_NET=1; no money moves): a live quote issues
+/// a deposit address there, and 1Click has it bound to our NEAR account, our EVM address for a refund, that asset and
+/// the amount — what DepositGuard demands before anything is sent.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func oneClickTakesEVMUSDCForNearAndBindsTheDeposit() async throws {
+    let evm = "0x90F79bf6EB2c4f870365E785982E1f101E93b906", near = "8ec67b662faddd44e7d79875a4cf1e7f8c3f756a4b171ccea95a4149b8dddf2b"
+    for key in ["base", "arbitrum", "ethereum"] {
+        let origin = try #require(OneClick.Asset.usdc(onEVM: key))
+        let quote = try await OneClick.quote(dry: false, origin: origin, destination: OneClick.Asset.near, amount: "5000000", refundTo: evm, recipient: near)
+        let deposit = try #require(quote.depositAddress)
+        #expect(deposit.hasPrefix("0x") && deposit.count == 42, "\(key): \(deposit)")
+        let bound = try await OneClick.boundRequest(depositAddress: deposit)
+        #expect(DepositGuard.check(bound: bound, recipient: near, refundTo: evm, origin: origin, destination: OneClick.Asset.near, amount: "5000000").ok, "\(key)")
+        // A deposit bound to someone else's refund address is refused.
+        #expect(!DepositGuard.check(bound: bound, recipient: near, refundTo: "0x1111111111111111111111111111111111111111", origin: origin,
+                                    destination: OneClick.Asset.near, amount: "5000000").ok)
+        print("\(key): 5 USDC → \(quote.amountOutFormatted) NEAR, deposit \(deposit.prefix(10))…, ≈ \(quote.timeEstimate ?? -1) s")
+    }
+    #expect(OneClick.Asset.usdc(onEVM: "polygon") == nil && OneClick.Asset.usdc(onEVM: "robinhood") == nil)
 }
