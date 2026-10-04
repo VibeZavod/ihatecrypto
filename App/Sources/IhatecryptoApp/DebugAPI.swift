@@ -236,7 +236,7 @@ final class DebugAPI {
                 "robinhoodUSDG": num(ws.robinhood?.usdg),
             ] as [String: Any],
             "positions": ws.positions.map { "\($0.size > 0 ? "long" : "short") \($0.coin) pnl \($0.unrealizedPnl)" },
-            "wallet": ["solana": ws.solanaAddress, "evm": ws.hlAddress],
+            "wallet": ["solana": ws.solanaAddress, "evm": ws.hlAddress, "test": ws.activeWallet?.isTest == true] as [String: Any],
             "favoriteTokens": ws.favoriteTokens.map { "\($0.symbol) \($0.chain) \($0.address)" },
             // For `screencapture -l <id>` from a terminal allowed to record the screen: the glass chrome doesn't
             // render through cacheDisplay (/screenshot comes out blank since the redesign).

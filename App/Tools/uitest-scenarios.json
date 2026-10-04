@@ -149,6 +149,9 @@
       "pending_kind": "wallet",
       "reply_contains": "API",
       "not_executing": true
+    },
+    "only_if": {
+      "wallet": "main"
     }
   },
   {
@@ -324,6 +327,10 @@
         "ROBINHOOD"
       ],
       "title_contains": "Base → Robinhood"
+    },
+    "only_if": {
+      "balance": "baseUSDC",
+      "at_least": 5
     }
   },
   {
@@ -510,6 +517,39 @@
       "pending_kind": "wallet",
       "reply_contains": "deposit 1 USDC into Jupiter Lend",
       "title_contains": "to Solana"
+    }
+  },
+  {
+    "name": "a note that mentions an alert and a chart stays a note: no alert, no chart",
+    "send": [
+      "запиши в папку Тест-заметки: алерт если биткоин выше 120000 и глянуть график эфира"
+    ],
+    "expect": {
+      "note": "120",
+      "no_boards": [
+        "chart"
+      ],
+      "reply_lacks": "alert set"
+    }
+  },
+  {
+    "name": "brent oil is Brent, not WTI",
+    "send": [
+      "покажи график brent oil"
+    ],
+    "expect": {
+      "chart": "xyz:BRENTOIL"
+    }
+  },
+  {
+    "name": "an address saved on Tempo → the card says Tempo, the name stays the name",
+    "send": [
+      "сохрани 0x23618e81e3f5cdf7f54c3d65f7fbc0abf5b21e8f как Tester на tempo"
+    ],
+    "expect": {
+      "pending_kind": "address",
+      "pending_name": "Tester",
+      "reply_contains": "Tempo"
     }
   }
 ]

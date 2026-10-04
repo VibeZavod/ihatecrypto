@@ -64,6 +64,9 @@ struct ClaudeCodeClient: LLMClient {
         var env = ProcessInfo.processInfo.environment
         env["CLAUDECODE"] = nil
         env["CLAUDE_CODE_ENTRYPOINT"] = nil
+        // A chat message never reinstalls Claude Code: while it reinstalls, every run fails («The file “claude” doesn't
+        // exist», «unknown option '--restricted'») for a minute or two.
+        env["DISABLE_AUTOUPDATER"] = "1"
         process.environment = env
         let stdin = Pipe(), stdout = Pipe(), stderr = Pipe()
         process.standardInput = stdin

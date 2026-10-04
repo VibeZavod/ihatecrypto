@@ -55,6 +55,8 @@ def check(expect, state, replies):
             labels = [s["label"].upper() for s in (pending or {}).get("steps", [])]
             if not all(any(w in l for l in labels) for w in want):
                 why.append(f"steps {labels}, expected {want}")
+        elif key == "pending_name" and (pending or {}).get("name") != want:
+            why.append(f"the card saves «{(pending or {}).get('name')}», expected «{want}»")
         elif key == "title_contains" and want.lower() not in text((pending or {}).get("title")):
             why.append(f"title {text((pending or {}).get('title'))}, expected «{want}»")
         elif key.startswith("command_contains") and want.lower() not in text((pending or {}).get("command")):
@@ -115,8 +117,13 @@ def main():
     failed = skipped = 0
     try:
         for s in scenarios:
-            cond = s.get("only_if")  # a scenario that depends on what the wallet holds
-            if cond:
+            cond = s.get("only_if")  # a scenario that depends on what the wallet holds, or on which wallet signs
+            if cond and "wallet" in cond:
+                if (cond["wallet"] == "test") != bool(start["wallet"].get("test")):
+                    skipped += 1
+                    print(f"SKIP  {s['name']}  (needs the {cond['wallet']} wallet)")
+                    continue
+            elif cond:
                 have = float(start["balances"].get(cond["balance"]) or 0)
                 if ("at_least" in cond and have < cond["at_least"]) or ("below" in cond and have >= cond["below"]):
                     skipped += 1

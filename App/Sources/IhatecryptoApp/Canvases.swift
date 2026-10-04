@@ -1303,7 +1303,11 @@ extension Workspace {
                     step("usdg", "TO · USDG", usd.map { "≈ \(Fmt.num($0.rounded(2, .plain))) USDG" } ?? "USDG",
                          "on Robinhood Chain · then “move USDG from Robinhood to Solana”", .robinhood))
         case .sell(let a, let x):
-            return (step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "SELL · JUPITER", "\(n(x)) \(a.symbol)", "", .jupiter),
+            // What is held, so «sell all JUP» shows how much «all» is (the line was empty).
+            let held = a.symbol == "SOL" ? solana?.sol
+                : solana?.tokens.first { $0.contract == a.mint || (a.mint.isEmpty && $0.symbol.uppercased() == a.symbol.uppercased()) }?.amount
+            return (step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "SELL · JUPITER", "\(n(x)) \(a.symbol)",
+                         held.map { "held: \(Fmt.num($0, maxFraction: 6)) \(a.symbol)" } ?? "best route, simulated first", .jupiter),
                     step("usdc", "TO · SOLANA", "USDC", "your wallet", .solana))
         default:
             return nil
