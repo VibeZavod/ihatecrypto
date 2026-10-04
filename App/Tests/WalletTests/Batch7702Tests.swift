@@ -77,6 +77,22 @@ private let calls = [Batch7702.Call(to: baseUSDC, data: approve), Batch7702.Call
     #expect(EVMCall.decode(loose).payees(to: UniswapV4.permit2, value: 0, chainId: 8453) == [stranger])
 }
 
+/// The floor under a Uniswap swap follows its price impact: half a percent in a deep pool, up to 3% in a thin one.
+@Test func swapToleranceFollowsPriceImpact() {
+    let d = { Decimal(string: $0)! }
+    #expect(UniRoute.tolerance(impact: nil) == d("0.01"))
+    #expect(UniRoute.tolerance(impact: d("0.0004")) == d("0.005"))
+    #expect(UniRoute.tolerance(impact: d("0.012")) == d("0.01"))
+    #expect(UniRoute.tolerance(impact: d("0.03")) == d("0.025"))
+    #expect(UniRoute.tolerance(impact: d("0.2")) == d("0.03"))
+    var deep = UniRoute(v3: (Data(), 1), v4: nil, out: 1, impact: d("0.0004"))
+    #expect(deep.impactText.isEmpty && deep.warning == nil)
+    deep.impact = d("0.012")
+    #expect(deep.impactText == " · price impact 1.2%" && deep.warning == nil)
+    deep.impact = d("0.07")
+    #expect(deep.warning?.contains("7%") == true)
+}
+
 /// A user operation for ERC-4337's EntryPoint: once delegated, the account runs whatever it says, so it's never signed,
 /// whatever the site names its domain or type.
 @Test func userOperationsAreNeverSigned() throws {

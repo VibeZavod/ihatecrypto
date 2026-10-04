@@ -91,3 +91,17 @@ private struct NoSigner: TradeSigner {
                  recipients: [String]) async throws -> Data { throw ExecutionError("no") }
     func signNearIntentDeposit(amount: UInt128, depositAddress: String, nonce: UInt64, blockHash: Data) async throws -> Data { throw ExecutionError("no") }
 }
+
+/// Price impact grows with the amount (IHATECRYPTO_NET=1, reads only): 100 USDC into cbBTC on Base barely moves the pool,
+/// two million moves it by percents, and the floor under the swap widens with it.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func uniswapPriceImpactGrowsWithTheAmount() async throws {
+    let e = Executor(wallet: TradeWallet(solana: "", evm: "0x00000000000000000000000000000000000f0a11"), signer: NoSigner(),
+                     journal: Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("impact-\(UUID().uuidString).jsonl"))) { _ in }
+    let uni = try #require(UniswapV3.on(8453)), cbBTC = "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"
+    let small = try #require(await e.bestUniswap(on: .base, uni, from: EVMNetwork.base.usdc, to: cbBTC, amountIn: 100_000_000))
+    let big = try #require(await e.bestUniswap(on: .base, uni, from: EVMNetwork.base.usdc, to: cbBTC, amountIn: 2_000_000_000_000))
+    print("impact: 100 USDC \(small.impact ?? -1) (\(small.title)), 2M USDC \(big.impact ?? -1) (\(big.title))\(big.impactText)")
+    #expect((small.impact ?? 1) < Decimal(string: "0.005")! && small.tolerance == Decimal(string: "0.005")!)
+    #expect((big.impact ?? 0) > (small.impact ?? 1) && big.tolerance > small.tolerance)
+}
