@@ -69,6 +69,10 @@ struct ClaudeCodeClient: LLMClient {
         process.standardInput = stdin
         process.standardOutput = stdout
         process.standardError = stderr
+        // The exit is signalled by the handler, set before the run: `waitUntilExit()` on a Dispatch thread sometimes never
+        // woke after `claude` had exited (eight checks at once all hung on it), and the watchdog had nothing left to stop.
+        let exited = DispatchSemaphore(value: 0)
+        process.terminationHandler = { _ in exited.signal() }
         try process.run()
         let pid = process.processIdentifier
         // The waits and the watchdog run on Dispatch, never on Swift's few cooperative threads: several runs at once
@@ -88,9 +92,8 @@ struct ClaudeCodeClient: LLMClient {
         let data = await withTaskCancellationHandler {
             await Self.readAll(stdout.fileHandleForReading)
         } onCancel: { kill(pid, SIGTERM) }
-        nonisolated(unsafe) let running = process
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
-            DispatchQueue.global().async { running.waitUntilExit(); done.resume() }
+            DispatchQueue.global().async { exited.wait(); done.resume() }
         }
         watchdog.cancel()
         if timedOut.value {

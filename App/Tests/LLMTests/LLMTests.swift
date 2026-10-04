@@ -113,6 +113,17 @@ private func jwt(_ claims: [String: Any]) -> String {
     await #expect(throws: LLMError.self) { _ = try await ClaudeCodeClient.run("/bin/ls", ["/nonexistent-path"], input: "") }
 }
 
+/// `claude` closes its output a moment before it exits, many runs at once: each wait for the exit still ends (they hung in
+/// `waitUntilExit` with the process gone, past the watchdog).
+@Test(.timeLimit(.minutes(1))) func claudeCodeRunReturnsWhenTheProcessExitsAfterItsOutput() async throws {
+    try await withThrowingTaskGroup(of: Data.self) { group in
+        for i in 0..<40 { group.addTask { try await ClaudeCodeClient.run("/bin/sh", ["-c", "cat; exec 1>&-; sleep 0.3"], input: "\(i)") } }
+        var outputs = 0
+        for try await out in group where !out.isEmpty { outputs += 1 }
+        #expect(outputs == 40)
+    }
+}
+
 @Test func jsonModeOnlyWhereTheAPISupportsIt() {
     let request = LLMRequest(model: "m", messages: [LLMMessage(.user, "x")], wantsJSON: true)
     #expect(OpenAIChatClient(baseURL: "https://api.deepseek.com/", key: "k", jsonMode: true).body(request)["response_format"] != nil)
