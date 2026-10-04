@@ -619,7 +619,7 @@ extension WalletCommand {
     }
 
     public static func placeName(_ place: String) -> String {
-        ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood Chain", "polygon": "Polygon", "ethereum": "Ethereum", "tempo": "Tempo"][place] ?? place.capitalized
+        ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood", "polygon": "Polygon", "ethereum": "Ethereum", "tempo": "Tempo"][place] ?? place.capitalized
     }
 
     /// The EVM network a word names: «арбитрум» → «arbitrum», «полигон» → «polygon», «эфириум» or «mainnet» → «ethereum».
