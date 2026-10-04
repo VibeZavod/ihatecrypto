@@ -7,11 +7,11 @@ private let base = FundingPlan.Place(key: "base", name: "Base", usdc: 100)
 
 @Test func fundingTakesSolanaThenEVMThenHyperliquidThroughSolana() throws {
     let legs = try #require(FundingPlan.legs(short: 300, target: "robinhood", targetName: "Robinhood", solana: 9, evm: [base], hyperliquid: 250, near: 0, nearPrice: nil))
-    #expect(legs == ["move 100 USDC from Base to Robinhood", "withdraw 194 USDC to Solana", "move 202 USDC from Solana to Robinhood"])
+    #expect(legs == ["move 100 USDC from Base to Robinhood", "withdraw 194 USDC to Solana", "move 201 USDC from Solana to Robinhood"])
     // Each leg is a command the chat reads back as the right move.
     #expect(WalletCommand.parse(legs[0]) == .bridge(from: "base", to: "robinhood", 100))
     #expect(WalletCommand.parse(legs[1]) == .withdrawToSolana(194))
-    #expect(WalletCommand.parse(legs[2]) == .solanaTo("robinhood", 202))
+    #expect(WalletCommand.parse(legs[2]) == .solanaTo("robinhood", 201))
 }
 
 @Test func fundingForSolanaLandsEachSourceThereAndSellsNEARLast() throws {
@@ -37,5 +37,15 @@ private let base = FundingPlan.Place(key: "base", name: "Base", usdc: 100)
     let legs = try #require(FundingPlan.legs(short: Decimal(string: "1721.109778")!, target: "robinhood", targetName: "Robinhood",
                                              solana: Decimal(string: "9.008635")!, evm: [FundingPlan.Place(key: "base", name: "Base", usdc: Decimal(string: "1712.67116")!)],
                                              hyperliquid: Decimal(string: "4.007817")!, near: 0, nearPrice: nil))
-    #expect(legs == ["move 1712.67 USDC from Base to Robinhood", "withdraw 2.44 USDC to Solana", "move 10.44 USDC from Solana to Robinhood"])
+    #expect(legs == ["move 1712.67 USDC from Base to Robinhood", "withdraw 2.44 USDC to Solana", "move 9.44 USDC from Solana to Robinhood"])
+}
+
+/// Solana's leg names what arrives (fee on top): its whole balance asked to arrive could never be paid.
+@Test func solanaLegLeavesRoomForTheFee() throws {
+    let legs = try #require(FundingPlan.legs(short: 50, target: "robinhood", targetName: "Robinhood", solana: Decimal(string: "34.823554")!,
+                                             evm: [FundingPlan.Place(key: "base", name: "Base", usdc: Decimal(string: "21.5")!)], hyperliquid: 0, near: 0, nearPrice: nil))
+    #expect(legs == ["move 17.18 USDC from Base to Robinhood", "move 33.82 USDC from Solana to Robinhood"])
+    // A cent on Solana isn't a leg.
+    #expect(FundingPlan.legs(short: 5, target: "robinhood", targetName: "Robinhood", solana: Decimal(string: "1.2")!, evm: [base], hyperliquid: 0, near: 0, nearPrice: nil)
+        == ["move 6 USDC from Base to Robinhood"])
 }

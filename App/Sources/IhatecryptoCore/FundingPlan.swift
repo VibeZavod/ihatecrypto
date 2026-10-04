@@ -4,7 +4,8 @@ import Foundation
 /// money across the portfolio, one leg a place, best first — Solana, the EVM networks (in the order given, Ethereum
 /// last), Hyperliquid's withdrawable, NEAR sold for USDC. Hyperliquid's and NEAR's money lands on Solana and crosses to
 /// an EVM target in one leg with Solana's own. Each leg takes a dollar more for Relay's or 1Click's fee. The legs are the
-/// chat's own command forms, run as a chain that waits for each arrival (Workspace.runSteps).
+/// chat's own command forms, run as a chain that waits for each arrival (Workspace.runSteps). A leg from an EVM network or
+/// Hyperliquid names what it sends; «move X USDC from Solana to …» names what arrives, its fee on top.
 public enum FundingPlan {
     public struct Place: Sendable {
         public let key: String
@@ -16,6 +17,7 @@ public enum FundingPlan {
     static let fee: Decimal = 1
     /// Less than this isn't worth a leg: Relay's minimum and its fee would eat it.
     static let floor: Decimal = 2
+    static let half = Decimal(string: "0.5")!
     /// NEAR left on the account for its storage and fees.
     static let nearReserve = Decimal(string: "0.05")!
 
@@ -35,7 +37,8 @@ public enum FundingPlan {
         // every leg down left a buy a cent short and no plan at all.
         func take(_ have: Decimal, _ want: Decimal) -> Decimal { let w = want.rounded(2, .up); return w <= have ? w : have.rounded(2, .down) }
 
-        if !toSolana, solana >= Decimal(string: "0.5")!, need() > 0 { own = take(solana, need() + fee) }
+        // Solana's own leg delivers at least Relay's half-dollar minimum.
+        if !toSolana, solana >= fee + half, need() > 0 { own = take(solana, max(need(), half) + fee) }
         for p in evm where p.key != target && need() > 0 && p.usdc >= floor {
             let x = take(p.usdc, need() + fee)
             if toSolana {
@@ -58,7 +61,9 @@ public enum FundingPlan {
             landed += coins * price - fee
         }
         guard need() <= 0 else { return nil }
-        let crossing = own + landed
-        return direct + intoSolana + (toSolana || crossing <= 0 ? [] : ["move \(amount(crossing)) USDC from Solana to \(targetName)"])
+        // What arrives: the pool less the dollar kept for the fee. Asking the whole pool to arrive left Solana short of
+        // the fee on top, and the chain stopped after its first legs.
+        let arriving = (own + landed - fee).rounded(2, .down)
+        return direct + intoSolana + (toSolana || arriving <= 0 ? [] : ["move \(amount(arriving)) USDC from Solana to \(targetName)"])
     }
 }
