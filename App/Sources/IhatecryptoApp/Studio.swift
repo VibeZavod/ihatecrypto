@@ -1171,11 +1171,8 @@ struct StudioCanvas: View {
                     if ws.hasModel {
                         Text("or type anything in the chat").font(.ui(12)).foregroundStyle(.secondary)
                     } else {
-                        // Without a model the chat reads commands only; nothing moves without Confirm and Touch ID either way.
-                        HStack(spacing: 6) {
-                            Text("No model connected — the chat reads commands like “long ETH risk $5”").font(.ui(12)).foregroundStyle(.secondary)
-                            Button("Connect a model") { ws.openSettings(.signIns) }.buttonStyle(.link).font(.ui(12, .semibold))
-                        }
+                        // The chat needs a model: the bar under it says how to connect one.
+                        Text("Connect a model below to start").font(.ui(12)).foregroundStyle(.secondary)
                     }
                 }
             }
@@ -2246,6 +2243,111 @@ private struct VoiceBars: View {
     }
 }
 
+/// No model reads the chat yet: instead of a field whose words would only be guessed at, how to get one — a subscription,
+/// a key, or a model on this Mac — or, for the model on this Mac, what it still needs: Ollama running, the model downloaded.
+private struct ConnectModelBar: View {
+    @Environment(Workspace.self) private var ws
+
+    var body: some View {
+        let info = ws.provider.info, model = ws.model, name = LLMCatalog.displayName(model: model)
+        let local = info.kind == .local && info.unavailable == nil && LLMCatalog.chatRefusal(model: model) == nil
+        let down = local && ws.localServers[info.id] == false
+        let outdated = local && info.id == "ollama" && ws.ollamaOutdated
+        let size = ws.modelSizes[model]
+        VStack(alignment: .leading, spacing: 8) {
+            if outdated {
+                title("Ollama \(ws.ollamaVersion ?? "") is too old for \(name)",
+                      "Update it to \(ws.ollamaLatest.map { "the newest, \($0)" } ?? "the newest") — free, right here — then download the model.")
+            } else if down {
+                title(info.id == "ollama" ? "Ollama isn't running" : "\(info.name) isn't running",
+                      "Open it to chat with a model on this Mac — or connect a subscription instead.")
+            } else if local {
+                title("\(name) isn't on this Mac yet", size.map { gb in
+                    "≈ \(Fmt.num(Decimal(gb), maxFraction: 1)) GB to download; it runs in ≈ \(Fmt.num(Decimal(gb * 1.2), maxFraction: 0)) GB of this Mac's \(Int(OllamaModels.memoryGB.rounded())) GB"
+                        + (OllamaModels.fits(sizeGB: gb) ? "." : " — too big for it: pick a smaller one or a subscription.")
+                } ?? "Download it, or use one this Mac already has.")
+            } else if LLMCatalog.chatRefusal(model: model) != nil {
+                title("\(name) is too small for the chat", "Pick a bigger model above, or connect a subscription.")
+            } else {
+                title("Connect a model to chat", "The chat needs a model to understand you: a subscription you already pay for, an API key, or a free model on this Mac.")
+            }
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    if outdated {
+                        chip(ws.ollamaInstall ?? "Update Ollama" + (ws.ollamaLatest.map { " to \($0)" } ?? ""), symbol: "arrow.down.circle", accent: true) {
+                            Task { await ws.installOllama() }
+                        }
+                        .disabled(ws.ollamaInstall != nil)
+                        chip("Check again", symbol: "arrow.clockwise") { Task { await ws.refreshLocalModels() } }
+                    } else if down {
+                        if OllamaModels.installed, info.id == "ollama" {
+                            chip("Open Ollama", symbol: "play.circle") { OllamaModels.start() }
+                        } else if info.id == "ollama" {
+                            chip(ws.ollamaInstall ?? "Get Ollama" + (ws.ollamaLatest.map { " \($0)" } ?? ""), symbol: "arrow.down.circle", accent: true) {
+                                Task { await ws.installOllama() }
+                            }
+                            .disabled(ws.ollamaInstall != nil)
+                        }
+                        chip("Check again", symbol: "arrow.clockwise") { Task { await ws.refreshLocalModels() } }
+                    } else if local, info.id == "ollama" {
+                        if let p = ws.modelDownloads[model] {
+                            chip("Downloading · \(Int(p * 100))%", symbol: "arrow.down.circle") {}.disabled(true)
+                        } else if size.map({ OllamaModels.fits(sizeGB: $0) }) != false {
+                            chip(size.map { "Download · ≈ \(Fmt.num(Decimal($0), maxFraction: 1)) GB" } ?? "Download", symbol: "arrow.down.circle", accent: true) {
+                                Task { await ws.downloadModel(model) }
+                            }
+                        }
+                        // Models this Mac already has: one click and the chat opens.
+                        ForEach((ws.liveModels[info.id] ?? []).filter { LLMCatalog.chatRefusal(model: $0) == nil }.prefix(2), id: \.self) { have in
+                            chip("Use \(LLMCatalog.displayName(model: have))", symbol: "desktopcomputer") {
+                                ws.model = have
+                                OllamaModels.preload(have)
+                            }
+                        }
+                    }
+                    way("ChatGPT", logo: "llm-openai", id: "chatgpt")
+                    way("Claude", logo: "llm-claude", id: "claude-code")
+                    way("OpenRouter", logo: "llm-openrouter", id: "openrouter")
+                    if !local { chip("On this Mac", symbol: "desktopcomputer") { ws.providerID = "ollama" } }
+                }
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Brand.glassFill))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Brand.glassRim))
+    }
+
+    private func title(_ text: String, _ line: String) -> some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(text).font(.ui(13, .semibold))
+            Text(line).font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// A subscription or a key: chosen, then signed in where Settings › AI model shows how.
+    private func way(_ title: String, logo: String, id: String) -> some View {
+        Button { ws.providerID = id; ws.openSettings(.signIns) } label: {
+            HStack(spacing: 6) { LogoTile(logo: logo, size: 20); Text(title).font(.ui(12, .semibold)) }
+                .padding(.leading, 5).padding(.trailing, 10).frame(height: 30)
+                .background(Capsule().fill(Brand.glassFill)).overlay(Capsule().strokeBorder(Brand.glassRim))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain).pointerStyle(.link)
+    }
+
+    private func chip(_ title: String, symbol: String, accent: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: symbol).font(.ui(12, .semibold))
+                .foregroundStyle(accent ? Brand.onAccent : Color.primary)
+                .padding(.horizontal, 10).frame(height: 30)
+                .background(Capsule().fill(accent ? Brand.accent : Brand.glassFill)).overlay(Capsule().strokeBorder(accent ? .clear : Brand.glassRim))
+                .contentShape(Capsule())
+        }
+        .buttonStyle(.plain).pointerStyle(.link)
+    }
+}
+
 /// The chat's input: the model and the networks above it, the field with the microphone. Its own view: a keystroke or
 /// the voice's wave redraws the field and its buttons, not the conversation above it.
 private struct ChatComposer: View {
@@ -2291,10 +2393,12 @@ private struct ChatComposer: View {
             }
             if let step = ws.stepContext, !voice.listening { StepContextChip(step: step) }
             if !voice.listening, case let rows = suggestions, !rows.isEmpty { suggestionList(rows) }
-            if voice.listening { listening(voice) } else { field }
+            if voice.listening { listening(voice) } else if ws.hasModel { field } else { ConnectModelBar() }
         }
         .padding(12)
         .onChange(of: ws.draft) { pick = 0 }
+        // A model on this Mac: whether its server answers and has it, before a field is offered.
+        .task(id: ws.providerID) { if ws.provider.info.kind == .local { await ws.refreshLocalModels() } }
         // A contract or mint typed after «@»: asked once, for the list above the field.
         .task(id: ComposerSuggestion.mentionedAddress(ws.draft, caret: caret)) {
             if let address = ComposerSuggestion.mentionedAddress(ws.draft, caret: caret) { await ws.lookUpContract(address) }
@@ -2680,15 +2784,13 @@ struct ChatModelMenu: View {
             // Ollama that didn't answer: open it, or get it — models on this Mac need it running.
             if info.id == "ollama", ws.localServers["ollama"] == false {
                 if OllamaModels.installed {
-                    MenuRow(title: "Ollama isn't running", detail: FileManager.default.fileExists(atPath: "/Applications/Ollama.app") ? "open it, then this menu again" : "run «ollama serve» in Terminal",
-                            icon: "exclamationmark.triangle") {
-                        NSWorkspace.shared.openApplication(at: URL(fileURLWithPath: "/Applications/Ollama.app"), configuration: .init())
-                    }
+                    MenuRow(title: "Ollama isn't running", detail: "start it, then open this menu again", icon: "exclamationmark.triangle") { OllamaModels.start() }
                     .padding(.leading, 28)
                 } else {
-                    MenuRow(title: "Get Ollama", detail: "free · runs models on this Mac, no internet", icon: "arrow.down.circle") {
-                        NSWorkspace.shared.open(URL(string: "https://ollama.com/download")!)
+                    MenuRow(title: ws.ollamaInstall ?? "Get Ollama", detail: "free · the newest release · runs models on this Mac, no internet", icon: "arrow.down.circle") {
+                        Task { await ws.installOllama() }
                     }
+                    .disabled(ws.ollamaInstall != nil)
                     .padding(.leading, 28)
                 }
             }
@@ -2703,7 +2805,8 @@ struct ChatModelMenu: View {
                         detail: loading.map { "downloading · \(Int($0 * 100))%" }
                             ?? (tooBig ? "≈ \(Fmt.num(Decimal(size ?? 0), maxFraction: 1)) GB · too big for this Mac"
                                 : pullable ? "Download · \(size.map { "≈ \(Fmt.num(Decimal($0), maxFraction: 1)) GB" } ?? "not on this Mac yet")"
-                                : absent ? "not downloaded" : off != nil ? "too small for the chat" : id == info.defaultModel ? "recommended" : nil),
+                                : absent ? "not downloaded" : off != nil ? "too small for the chat"
+                                : details(info, id)),
                         icon: pullable && loading == nil && !tooBig ? "arrow.down.circle" : nil, iconTint: Brand.accentInk,
                         // Not on this Mac: greyed like a disabled row — it can't be picked, only downloaded.
                         checked: info.id == ws.providerID && id == chosen(info), tint: absent ? .secondary : .primary) {
@@ -2728,6 +2831,14 @@ struct ChatModelMenu: View {
         return listed.contains(chosen) || chosen.isEmpty ? listed : listed + [chosen]
     }
 
+    /// What a model row says: recommended, the memory a model on this Mac takes, and how it did in the chat's exam.
+    private func details(_ info: ProviderInfo, _ id: String) -> String? {
+        let parts = [id == info.defaultModel ? "recommended" : nil,
+                     info.kind == .local ? ws.modelSizes[id].map { "≈ \(Fmt.num(Decimal($0 * 1.2), maxFraction: 0)) GB memory" } : nil,
+                     ws.score(info.id, id).map { ($0.good ? "✓ " : "⚠︎ ") + $0.short }].compactMap { $0 }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
     /// Listed for a server on this Mac that answered, but not downloaded there.
     private func missing(_ info: ProviderInfo, _ id: String) -> Bool {
         info.kind == .local && ws.liveModels[info.id].map { !$0.contains(id) } == true
@@ -2749,6 +2860,8 @@ struct ChatModelMenu: View {
     private func pick(_ info: ProviderInfo, model: String? = nil) {
         ws.providerID = info.id
         if let model { ws.model = model }
+        // Loaded into memory now, so the first answer doesn't wait for it.
+        if info.id == "ollama", let model { OllamaModels.preload(model) }
         ws.saveCanvas()
         open = false
         if !connected(info) { ws.openSettings(.signIns) }

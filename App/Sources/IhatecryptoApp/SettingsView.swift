@@ -115,7 +115,7 @@ struct SettingsView: View {
         case .modules: ModulesSettings()
         case .general: SettingsPage(title: "General", line: "How the app talks to you and keeps running.") { general }
         case .agent: SettingsPage(title: "Trading agent", line: "How the assistant trades for you. Code checks every plan against these rules.") { agent }
-        case .signIns: SettingsPage(title: "AI model", line: "What reads your chat. Optional: typed commands work without it.") { ModelSection() }
+        case .signIns: SettingsPage(title: "AI model", line: "What reads your chat: a subscription, an API key, or a free model on this Mac.") { ModelSection() }
         case .wallet: SettingsPage(title: "Wallet", line: "Your wallets, the key that signs and Touch ID.") { wallet }
         case .debugging: SettingsPage(title: "Debugging", line: "Developer tools on this Mac.") { debugging }
         }
@@ -756,24 +756,13 @@ struct ModelSection: View {
     @Environment(Workspace.self) private var ws
     @State private var key = ""
     private static let ways = ["claude-code", "chatgpt", "openrouter"]
-    private static let commands = ["long ETH risk $5", "send 5 USDC to Bybit", "stop 3%"]
 
     var body: some View {
         VStack(alignment: .leading, spacing: 26) {
             model
             secondCheck
-            SettingsSection(icon: "text.bubble", title: "Without a model", line: "Typed commands still work, with no subscription.") {
-                SettingsGroup {
-                    HStack(alignment: .top, spacing: 10) {
-                        SettingsIcon(icon: "terminal")
-                        ViewThatFits(in: .horizontal) {
-                            HStack(spacing: 6) { commandChips }
-                            VStack(alignment: .leading, spacing: 6) { commandChips }
-                        }
-                    }
-                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                    SettingsRow("English or Russian commands", icon: "textformat", info: "Click an example to put it in the chat. Free wording in any language, such as «закрой половину, если упадёт ниже 3000», needs a model.") { EmptyView() }
-                }
+            SettingsSection(icon: "desktopcomputer", title: "Free, on this Mac", line: "No subscription needed: Ollama runs a model here, with no internet.") {
+                SettingsGroup { LocalModelsPanel().padding(14) }
             }
             SettingsSection(icon: "lock.shield", title: "Safety", line: "A model reads your words. It cannot approve a move.") {
                 SettingsGroup {
@@ -800,18 +789,6 @@ struct ModelSection: View {
                 }
                 if let status = ws.jevStatus { SettingsRow(status, icon: "info.circle") { EmptyView() } }
             }
-        }
-    }
-
-    private var commandChips: some View {
-        ForEach(Self.commands, id: \.self) { command in
-            Button { ws.draft = command; ws.settingsOpen = false } label: {
-                Text(command).font(.system(size: 11.5, design: .monospaced))
-                    .padding(.horizontal, 9).padding(.vertical, 6)
-                    .background(RoundedRectangle(cornerRadius: 7).fill(Brand.canvas))
-                    .overlay(RoundedRectangle(cornerRadius: 7).strokeBorder(Brand.cardBorder))
-            }
-            .buttonStyle(.plain).pointerStyle(.link).help("Put it in the chat")
         }
     }
 
@@ -912,9 +889,16 @@ struct ModelSection: View {
             }
             .fixedSize()
         }
-        SettingsRow("Connection", icon: "antenna.radiowaves.left.and.right") {
+        SettingsRow("Connection", icon: "antenna.radiowaves.left.and.right",
+                    info: "Check asks the model \(ModelExam.questions.count) requests people send — buy, send, lend, a chart, a long, a question, DCA — and counts how many it reads right. 8 or more is good for the chat; fewer, and it will misread.") {
             if ws.llmBusy { ProgressView().controlSize(.small) }
-            Button("Test") { Task { await ws.testModel() } }.disabled(ws.llmBusy)
+            if let n = ws.examProgress {
+                ProgressView().controlSize(.small)
+                Text("\(n)/\(ModelExam.questions.count)").monospacedDigit().foregroundStyle(.secondary)
+            } else if let s = ws.score(ws.providerID, ws.model) {
+                SettingsPill(text: s.short, good: s.good)
+            }
+            Button("Check") { Task { await ws.checkModel() } }.disabled(ws.llmBusy || ws.examProgress != nil || !ws.hasModel)
             if ws.credential != nil { Button("Disconnect") { ws.setCredential(nil) } }
         }
         if let status = ws.llmStatus {

@@ -157,7 +157,7 @@ struct OnboardingView: View {
 
     @ViewBuilder private var page: some View {
         switch step {
-        case .model: ModelStep(next: { go(.modelReady) }, skip: afterModel, back: back)
+        case .model: ModelStep(next: { go(.modelReady) }, back: back)
         case .modelReady: ModelReadyStep(next: afterModel, back: back)
         case .newWallet:
             NewWalletStep(back: back) { reply in
@@ -317,43 +317,40 @@ private func statusLine(_ text: String, ok: Bool? = nil) -> some View {
 private struct ModelStep: View {
     @Environment(Workspace.self) private var ws
     let next: () -> Void
-    let skip: () -> Void
     let back: () -> Void
     @State private var keyProvider = "openai"
     @State private var key = ""
 
-    /// Ways in by an API key, or a model run on this Mac; Apple's on-device model is too small for the chat.
+    /// Ways in by an API key; models on this Mac have their own row (Ollama), Apple's on-device one is too small.
     private var keyed: [any LLMProvider] {
-        LLMCatalog.all.filter { p in
-            p.info.unavailable == nil && p.info.id != "openrouter" && p.info.id != "apple" && (p.info.takesKey || p.info.kind == .local)
-        }
+        LLMCatalog.all.filter { p in p.info.unavailable == nil && p.info.id != "openrouter" && p.info.takesKey }
     }
 
+    // A model is required: without one the chat could only guess at words, and people took that for the product.
     var body: some View {
         OnboardingCard(mood: .tuning, title: "What does the chat think with?",
-                       subtitle: "A model you already pay for, or one you run. It reads your words and the plan, never your keys.",
-                       primary: "Continue", busy: ws.llmBusy, enabled: ws.llmClient() != nil, action: next) {
+                       subtitle: "The chat needs a model to understand you: one you already pay for, an API key, or a free one on this Mac. It reads your words and the plan, never your keys.",
+                       primary: "Continue", busy: ws.llmBusy, enabled: ws.hasModel, action: next) {
             VStack(spacing: 10) {
                 way("chatgpt", "ChatGPT subscription", "Plus or Pro: sign in once in the browser", logo: "llm-openai")
                 way("claude-code", "Claude subscription", "Uses the Claude Code already on this Mac", logo: "llm-claude")
                 way("openrouter", "OpenRouter", "One key for many models: sign in in the browser", logo: "llm-openrouter")
                 keyRow
+                localRow
             }
-            if let status = ws.llmStatus { statusLine(status, ok: ws.llmClient() != nil) }
-            Text("Apple's on-device model is too small for the chat. More ways and the model itself: Settings › Sign-ins.")
-                .font(.ui(11.5)).foregroundStyle(.secondary)
+            if let status = ws.llmStatus { statusLine(status, ok: ws.hasModel) }
         } quiet: {
             QuietButton("Back", action: back)
-            QuietButton("Skip for now", action: skip)
         }
+        .task { await ws.refreshLocalModels() }
     }
 
-    private func connected(_ id: String) -> Bool { ws.providerID == id && ws.llmClient() != nil }
+    private func connected(_ id: String) -> Bool { ws.providerID == id && ws.hasModel }
 
     private func way(_ id: String, _ title: String, _ line: String, logo: String) -> some View {
         let p = LLMCatalog.provider(id: id)
         return Tile(selected: connected(id)) {
-            TokenLogo(name: logo, size: 30).clipShape(RoundedRectangle(cornerRadius: 8))
+            LogoTile(logo: logo, size: 30)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.ui(14.5, .bold))
                 Text(line).font(.ui(12)).foregroundStyle(.secondary)
@@ -362,7 +359,7 @@ private struct ModelStep: View {
             if connected(id) {
                 Label("Connected", systemImage: "checkmark.circle.fill").font(.ui(12.5, .semibold)).foregroundStyle(Brand.profit)
             } else if let p {
-                if let existing = p.info.existingLoginLabel, p.info.signInLabel != nil {
+                if let existing = p.info.existingLoginLabel, p.info.signInLabel != nil, p.existingLogin() != nil {
                     Button(existing) { ws.providerID = id; ws.useExistingLogin() }
                         .buttonStyle(.plain).font(.ui(12, .semibold)).foregroundStyle(Brand.accentInk).pointerStyle(.link)
                 }
@@ -377,28 +374,33 @@ private struct ModelStep: View {
 
     private var keyRow: some View {
         Tile(selected: keyed.contains { connected($0.info.id) }) {
-            Image(systemName: "key.fill").font(.system(size: 14, weight: .semibold)).foregroundStyle(.secondary)
-                .frame(width: 30, height: 30).background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
+            LogoTile(symbol: "key.fill", size: 30)
             VStack(alignment: .leading, spacing: 6) {
-                Text("An API key, or a model on this Mac").font(.ui(14.5, .bold))
+                Text("An API key").font(.ui(14.5, .bold))
                 HStack(spacing: 8) {
                     Picker("Provider", selection: $keyProvider) {
                         ForEach(keyed, id: \.info.id) { Text($0.info.name).tag($0.info.id) }
                     }
                     .labelsHidden().frame(width: 170)
-                    if LLMCatalog.provider(id: keyProvider)?.info.takesKey ?? false {
-                        SecureField("Key", text: $key).textFieldStyle(.roundedBorder)
-                        Button("Save") {
-                            ws.providerID = keyProvider
-                            ws.setCredential(.apiKey(key.trimmingCharacters(in: .whitespacesAndNewlines)))
-                            key = ""
-                        }
-                        .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
-                    } else {
-                        Button("Use it") { ws.providerID = keyProvider }
-                        Spacer(minLength: 0)
+                    SecureField("Key", text: $key).textFieldStyle(.roundedBorder)
+                    Button("Save") {
+                        ws.providerID = keyProvider
+                        ws.setCredential(.apiKey(key.trimmingCharacters(in: .whitespacesAndNewlines)))
+                        key = ""
                     }
+                    .disabled(key.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
+            }
+        }
+    }
+
+    /// Free, on this Mac through Ollama (LocalModelsPanel: its state, memory, Use or Download).
+    private var localRow: some View {
+        Tile(selected: connected("ollama")) {
+            LogoTile(symbol: "desktopcomputer", size: 30)
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Free, on this Mac").font(.ui(14.5, .bold))
+                LocalModelsPanel()
             }
         }
     }
@@ -409,22 +411,21 @@ private struct ModelReadyStep: View {
     let next: () -> Void
     let back: () -> Void
 
-    private var answered: Bool { ws.llmStatus?.contains(" answered in ") ?? false }
-
     var body: some View {
-        OnboardingCard(mood: ws.llmBusy ? .thinking : answered ? .done : .waiting,
+        let score = ws.score(ws.providerID, ws.model)
+        OnboardingCard(mood: ws.examProgress != nil ? .thinking : score?.good == true ? .done : .waiting,
                        title: "\(ws.provider.info.name) is connected",
-                       subtitle: "A quick test, so you know it answers. \(LLMCatalog.displayName(model: ws.model)) does the talking; change it any time in the chat's menu.",
-                       primary: "Continue", busy: ws.llmBusy, action: next) {
+                       subtitle: "A check of how \(LLMCatalog.displayName(model: ws.model)) reads the chat: \(ModelExam.questions.count) requests people send. Change the model any time in the chat's menu.",
+                       primary: "Continue", busy: false, action: next) {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Spacer()
-                    Text("Reply with one word: works").font(.ui(13)).foregroundStyle(.white)
+                    Text("«купи SOL на 5 долларов», «покажи график эфира», «лонг биткоин, риск $5»…").font(.ui(13)).foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8).background(RoundedRectangle(cornerRadius: 12).fill(Color(hex: 0x111111)))
                 }
                 HStack(alignment: .top, spacing: 9) {
-                    BrandLogo(size: 24, mood: answered ? .done : .thinking)
-                    Text(ws.llmBusy ? "…" : ws.llmStatus ?? "…").font(.ui(13))
+                    BrandLogo(size: 24, mood: score?.good == true ? .done : .thinking)
+                    Text(ws.examProgress.map { "Reading \($0 + 1) of \(ModelExam.questions.count)…" } ?? ws.llmStatus ?? "…").font(.ui(13))
                         .padding(.horizontal, 12).padding(.vertical, 8)
                         .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.05)))
                         .fixedSize(horizontal: false, vertical: true)
@@ -433,9 +434,9 @@ private struct ModelReadyStep: View {
             }
         } quiet: {
             QuietButton("Use another", action: back)
-            QuietButton("Test again") { Task { await ws.testModel() } }
+            QuietButton("Check again") { Task { await ws.checkModel() } }
         }
-        .task { await ws.testModel() }
+        .task { if ws.score(ws.providerID, ws.model) == nil { await ws.checkModel() } }
     }
 }
 

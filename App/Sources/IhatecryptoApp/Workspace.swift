@@ -349,6 +349,12 @@ final class Workspace {
     /// of the suggested models they haven't got.
     var localServers: [String: Bool] = [:]
     var modelSizes: [String: Double] = [:]
+    /// Ollama's version, and whether a download said it's too old for a model («requires a newer version of Ollama»).
+    var ollamaVersion: String?
+    var ollamaOutdated = false
+    /// Ollama's newest release, read once a launch; and what installing it is doing right now (nil = not running).
+    var ollamaLatest: String?
+    var ollamaInstall: String?
     /// The recurring buy the two ways were offered for: picking «in the app» brings it back and it goes ahead.
     @ObservationIgnored var dcaChoice: WalletCommand?
     /// Commands scheduled for later or on repeat («in 1 week: rebalance USDC»), per wallet; `watch` runs them (Tasks.swift).
@@ -510,8 +516,36 @@ final class Workspace {
         return true
     }
     @ObservationIgnored private var signedInCache: Set<String> = []
-    /// A model reads the chat (`llmClient()` would make one), for views: without one only typed commands work.
-    var hasModel: Bool { provider.info.unavailable == nil && (provider.info.kind == .local || signedIn) }
+    /// A model can read the chat: a subscription or a key signed in, or on this Mac a downloaded model of a server that
+    /// answers. Without one the chat isn't offered: keyword guesses misread free words, and people took that for the product.
+    var hasModel: Bool {
+        let info = provider.info
+        guard info.unavailable == nil, LLMCatalog.chatRefusal(model: model) == nil else { return false }
+        guard info.kind == .local else { return signedIn }
+        return localServers[info.id] != false && liveModels[info.id].map { $0.contains(model) } != false
+    }
+
+    /// How each model did in the chat's exam (Settings › AI model › Check), by «provider/model»; kept between launches.
+    var modelScores: [String: ModelExam.Result] = (UserDefaults.standard.data(forKey: "modelScores").flatMap { try? JSONDecoder().decode([String: ModelExam.Result].self, from: $0) }) ?? [:] {
+        didSet { UserDefaults.standard.set(try? JSONEncoder().encode(modelScores), forKey: "modelScores") }
+    }
+    /// Questions of the exam answered so far while it runs; nil when it doesn't.
+    var examProgress: Int?
+
+    func score(_ provider: String, _ model: String) -> ModelExam.Result? { modelScores["\(provider)/\(model)"] }
+
+    /// Runs the exam on the chosen model: its score shows in Settings and in the model menu.
+    func checkModel() async {
+        guard let client = llmClient(), examProgress == nil else { llmStatus = "Connect \(provider.info.name) first."; return }
+        let key = "\(providerID)/\(model)", model = model
+        examProgress = 0
+        defer { examProgress = nil }
+        let result = await ModelExam.run(client: client, model: model) { n in await MainActor.run { self.examProgress = n } }
+        modelScores[key] = result
+        llmStatus = result.good
+            ? "\(LLMCatalog.displayName(model: model)) understood \(result.passed) of \(result.total) requests, \(String(format: "%.1f", result.seconds)) s a reply — good for the chat."
+            : "\(LLMCatalog.displayName(model: model)) understood only \(result.passed) of \(result.total) — it will misread requests. A bigger model or a subscription reads better. Missed: " + result.misses.prefix(3).joined(separator: "; ")
+    }
 
     func setCredential(_ credential: Credential?) {
         Keychain.save(credential, for: providerID)
@@ -593,6 +627,14 @@ final class Workspace {
     /// A server that isn't running leaves its list as it was; embedding models can't chat and stay out.
     func refreshLocalModels() async {
         for p in LLMCatalog.all where p.info.kind == .local && p.info.unavailable == nil && p.info.id != "apple" {
+            // Ollama's own list says how big each downloaded model is: what it takes in memory to run.
+            if p.info.id == "ollama", let tags = await OllamaModels.downloaded() {
+                for (name, gb) in tags { modelSizes[name] = gb }
+                // An updated Ollama may take the model now.
+                let version = await OllamaModels.version()
+                if version != ollamaVersion { ollamaVersion = version; ollamaOutdated = false }
+                if ollamaLatest == nil { ollamaLatest = await OllamaInstaller.latest() }
+            }
             guard let list = try? await p.models(nil) else { localServers[p.info.id] = false; continue }
             localServers[p.info.id] = true
             let chat = list.filter { !$0.lowercased().contains("embed") }
