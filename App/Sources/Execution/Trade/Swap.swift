@@ -406,8 +406,9 @@ extension Executor {
         }
         let mint = Relay.Currency.solanaUSDC
         let solBefore = try await rpc.tokenBalance(owner: wallet.solana, mint: mint)
-        try await approve(net.rpc, token: token.address, spender: proxy, units: units, note: "Approve exactly \(Fmt.num(units / scale, maxFraction: 6)) \(token.symbol) to Relay")
-        let hash = try await sendEVM(net.rpc, to: call.to, data: call.data, note: "Relay: sell \(Fmt.num(units / scale, maxFraction: 6)) \(token.symbol) on \(net.name)")
+        let hash = try await approveAndSend(net.rpc, token: token.address, spender: proxy, units: units,
+                                            approveNote: "Approve exactly \(Fmt.num(units / scale, maxFraction: 6)) \(token.symbol) to Relay",
+                                            to: call.to, data: call.data, note: "Relay: sell \(Fmt.num(units / scale, maxFraction: 6)) \(token.symbol) on \(net.name)")
         try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "\(net.name) \(token.symbol)→Solana USDC, tx \(hash)"))
         let started = Date()
         let target = solBefore + NSDecimalNumber(decimal: arriving * 990_000).uint64Value

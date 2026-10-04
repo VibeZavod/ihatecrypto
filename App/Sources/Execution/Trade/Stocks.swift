@@ -201,7 +201,9 @@ extension Executor {
         var q = try await checked()
         let first = q
         report("\(token.name) (\(token.symbol)): no Uniswap v3 pool with USDG, so Relay \(buy ? "buys" : "sells") it on Robinhood Chain: ≈ \(Fmt.usd(q.price)) a token.")
-        try await approve(rpc, token: tokenIn, spender: proxy, units: units, note: "Approve exactly \(Fmt.num(amountIn, maxFraction: 6)) \(inSymbol) to Relay")
+        // Batched (EIP-7702), the approve goes with the swap; otherwise first, on its own.
+        let approveNote = "Approve exactly \(Fmt.num(amountIn, maxFraction: 6)) \(inSymbol) to Relay", batched = canBatch(rpc)
+        if !batched { try await approve(rpc, token: tokenIn, spender: proxy, units: units, note: approveNote) }
         func held() async throws -> Decimal { buy ? try await balance(token.address, on: rpc) : Decimal(try await rpc.tokenBalance(usdg, owner: me)) }
         let before = try await held()
         // Relay's route is priced for the moment it's quoted: after the approve's wait it's asked again, and a dry run that
@@ -215,15 +217,16 @@ extension Executor {
             if let drop = Self.worseByMoreThanTenPercent(first: first.out, now: q.out) {
                 throw ExecutionError("⚠️ Asked again, Relay gives \(Fmt.num(q.out, maxFraction: 2)) \(outSymbol) for \(Fmt.num(amountIn, maxFraction: 6)) \(inSymbol) instead of "
                                      + "\(Fmt.num(first.out, maxFraction: 2)) (−\(Fmt.num(drop))%): more than 10% worse, so nothing was swapped. "
-                                     + "The exact approve stays; say «do it» again to \(buy ? "buy" : "sell") at the new price.")
+                                     + (batched ? "" : "The exact approve stays; ") + "say «do it» again to \(buy ? "buy" : "sell") at the new price.")
             }
             do {
-                hash = try await sendEVM(rpc, to: q.call.to, data: q.call.data, note: "Relay: \(buy ? "buy" : "sell") \(token.symbol) for \(buy ? "\(Fmt.num(amountIn)) USDG" : "USDG")")
+                hash = try await approveAndSend(rpc, token: tokenIn, spender: proxy, units: units, approveNote: approveNote, to: q.call.to, data: q.call.data,
+                                                note: "Relay: \(buy ? "buy" : "sell") \(token.symbol) for \(buy ? "\(Fmt.num(amountIn)) USDG" : "USDG")")
                 break
             } catch where "\(error.localizedDescription)".contains("eth_estimateGas") {
                 guard attempt < 2 else {
                     throw ExecutionError("Relay couldn't route \(Fmt.num(amountIn, maxFraction: 6)) \(inSymbol) into \(outSymbol) just now (\(error.localizedDescription)). "
-                                         + "Nothing was swapped; the exact approve stays for the next try. Try again in a minute, or with less.")
+                                         + "Nothing was swapped\(batched ? "" : "; the exact approve stays for the next try"). Try again in a minute, or with less.")
                 }
                 report("Relay's route for \(token.symbol) moved before the swap: asking it again.")
                 try await Task.sleep(for: .seconds(2))

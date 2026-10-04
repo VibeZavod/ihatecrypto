@@ -216,3 +216,57 @@ func forkRobinhoodV4SwapIsOneTransaction() async throws {
     #expect(try await rpc.nonce(me) == nonce0 + 4)
     #expect(try await rpc.tokenBalance(usdg, owner: me) == usdg0 - 8_000_000)
 }
+
+/// Aave's supply, Morpho's deposit and Relay's bridge deposit, each with its exact approve, on an anvil fork of Base
+/// (Tools/fork7702.sh): one type-4 transaction each, the allowance spent to zero, the position or the deposit there.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_ANVIL_CHAIN"] == "8453"))
+func forkDepositsGoAsOneTransaction() async throws {
+    let env = ProcessInfo.processInfo.environment
+    let rpc = EVMRPC(url: URL(string: env["IHATECRYPTO_ANVIL"]!)!, chainId: 8453)
+    let key = Data(hex: env["IHATECRYPTO_ANVIL_KEY"]!)!
+    let me = try EVMAccount.address(privateKey: key)
+    let journal = Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("fork7702-\(UUID().uuidString).jsonl"))
+    let e = Executor(wallet: TradeWallet(solana: "", evm: me), signer: ForkSigner(key: key, address: me), journal: journal) { print("·", $0) }
+    func receiptType(_ hash: String) async throws -> String { ((try await rpc.call("eth_getTransactionReceipt", [hash])) as? [String: Any])?["type"] as? String ?? "?" }
+    func allowance(_ spender: String) async throws -> Decimal { ABI.decimal(in: try await rpc.read(baseUSDC, try ERC20.allowance(owner: me, spender: spender)), word: 0) ?? -1 }
+    func held(_ token: String) async throws -> Decimal { try await e.balance(token, on: rpc) }
+
+    // Aave v3: approve + supply.
+    let aave = AaveV3.base
+    let a0 = try await held(aave.aUSDC), u0 = try await rpc.tokenBalance(baseUSDC, owner: me)
+    let supplied = try await e.approveAndSend(rpc, token: baseUSDC, spender: aave.pool, units: 3_000_000, approveNote: "Approve exactly 3 USDC to Aave",
+                                              to: aave.pool, data: try AaveV3.supply(asset: baseUSDC, amount: 3_000_000, onBehalfOf: me), note: "Aave supply 3 USDC")
+    #expect(try await receiptType(supplied) == "0x4")
+    #expect(try await held(aave.aUSDC) - a0 >= 2_999_999)
+    #expect(try await rpc.tokenBalance(baseUSDC, owner: me) == u0 - 3_000_000)
+    #expect(try await allowance(aave.pool) == 0)
+
+    // Morpho (Gauntlet USDC Prime): approve + deposit, the shares to this wallet.
+    let vault = MorphoVault.base.address
+    let s0 = try await held(vault)
+    let deposited = try await e.approveAndSend(rpc, token: baseUSDC, spender: vault, units: 3_000_000, approveNote: "Approve exactly 3 USDC to Morpho",
+                                               to: vault, data: try MorphoVault.deposit(assets: 3_000_000, receiver: me), note: "Morpho deposit 3 USDC")
+    #expect(try await receiptType(deposited) == "0x4")
+    #expect(try await held(vault) > s0)
+    #expect(try await allowance(vault) == 0)
+
+    // Relay: approve + depositErc20 to its depository, as quoted live for this wallet (Base → Solana).
+    var request = URLRequest(url: URL(string: "https://api.relay.link/quote")!)
+    request.httpMethod = "POST"
+    request.setValue("application/json", forHTTPHeaderField: "content-type")
+    request.httpBody = try JSONSerialization.data(withJSONObject: [
+        "user": me, "originChainId": 8453, "destinationChainId": 792703809, "originCurrency": baseUSDC,
+        "destinationCurrency": "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v", "recipient": "3YqEpfo3c818GhvbQ1UmVY1nJxw16vtu4JB9peJXT94k",
+        "amount": "2000000", "tradeType": "EXACT_INPUT"])
+    let quote = try #require(try JSONSerialization.jsonObject(with: try await URLSession.shared.data(for: request).0) as? [String: Any])
+    let items = (quote["steps"] as? [[String: Any]] ?? []).filter { $0["id"] as? String == "deposit" }.flatMap { $0["items"] as? [[String: Any]] ?? [] }
+    let tx = try #require(items.first?["data"] as? [String: Any])
+    let to = try #require(tx["to"] as? String), data = try #require(Data(hex: tx["data"] as? String ?? ""))
+    #expect(data.prefix(4).hex == "e8017952")
+    let u1 = try await rpc.tokenBalance(baseUSDC, owner: me)
+    let bridged = try await e.approveAndSend(rpc, token: baseUSDC, spender: to, units: 2_000_000, approveNote: "Approve exactly 2 USDC to Relay",
+                                             to: to, data: data, note: "Relay deposit 2 USDC")
+    #expect(try await receiptType(bridged) == "0x4")
+    #expect(try await rpc.tokenBalance(baseUSDC, owner: me) == u1 - 2_000_000)
+    #expect(try await allowance(to) == 0)
+}

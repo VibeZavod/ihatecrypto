@@ -9,7 +9,8 @@ PORT=8547
 NET=${NET:-base}
 case $NET in
   base)      FORK=${FORK_URL:-https://mainnet.base.org}; USDC=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
-             QUOTER=0x3d4e44eb1374240ce5f1b871ab261cd16335b76a; WETH=0x4200000000000000000000000000000000000006; TEST=forkApproveAndSwapGoAsOneTransaction ;;
+             QUOTER=0x3d4e44eb1374240ce5f1b871ab261cd16335b76a; WETH=0x4200000000000000000000000000000000000006
+             TEST="forkApproveAndSwapGoAsOneTransaction forkDepositsGoAsOneTransaction" ;;
   arbitrum)  FORK=${FORK_URL:-https://arb1.arbitrum.io/rpc}; USDC=0xaf88d065e77c8cc2239327c5edb3a432268e5831
              QUOTER=0x61ffe014ba17989e743c5f6cb21bf9697530b21e; WETH=0x82af49447d8a07e3bd95bd0d56f35241523fbab1; TEST=forkApproveAndSwapGoAsOneTransaction ;;
   ethereum)  FORK=${FORK_URL:-https://ethereum-rpc.publicnode.com}; USDC=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
@@ -41,6 +42,14 @@ else
     cast call $QUOTER "quoteExactInputSingle((address,address,uint256,uint24,uint160))(uint256,uint160,uint32,uint256)" \
       "($USDC,$WETH,3000000,$FEE,0)" --rpc-url $RPC >/dev/null 2>&1 || true
   done
+  if [ "$NET" = base ]; then   # Aave's pool and Morpho's vault (it reads every market it lends to) for the deposits
+    cast call 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5 "getReserveData(address)" $USDC --rpc-url $RPC >/dev/null 2>&1 || true
+    cast call 0xee8f4ec5672f09119b96ab6fb59c27e1b7e44b61 "totalAssets()(uint256)" --rpc-url $RPC >/dev/null 2>&1 || true
+    cast call 0xee8f4ec5672f09119b96ab6fb59c27e1b7e44b61 "maxDeposit(address)(uint256)" "$ME" --rpc-url $RPC >/dev/null 2>&1 || true
+  fi
 fi
 echo "$NET fork $(cast block-number --rpc-url $RPC) · $ME · $(cast call $USDC 'balanceOf(address)(uint256)' "$ME" --rpc-url $RPC) units"
-IHATECRYPTO_ANVIL=$RPC IHATECRYPTO_ANVIL_CHAIN=$(cast chain-id --rpc-url $RPC) IHATECRYPTO_ANVIL_KEY=${KEY#0x} swift test ${1:-} --filter $TEST
+# One test at a time: they share the key, and parallel ones would race for its nonce.
+for T in $TEST; do
+  IHATECRYPTO_ANVIL=$RPC IHATECRYPTO_ANVIL_CHAIN=$(cast chain-id --rpc-url $RPC) IHATECRYPTO_ANVIL_KEY=${KEY#0x} swift test ${1:-} --filter "$T"
+done

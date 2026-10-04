@@ -113,10 +113,10 @@ extension Executor {
         guard let requested, requested > 0 else { throw ExecutionError("Say how much, e.g. “lend 2 USDC on Aave”.") }
         let want = units(requested)
         try await ensureEVM(net, usdc: want)
-        try await approve(rpc, token: usdc, spender: pool, amount: want, note: "Approve exactly \(show(want)) USDC to Aave on \(m.chainName)")
         let before = try await rpc.tokenBalance(m.aUSDC, owner: me)
-        let hash = try await sendEVM(rpc, to: pool, data: try AaveV3.supply(asset: usdc, amount: want, onBehalfOf: me),
-                                     note: "Aave supply \(show(want)) USDC on \(m.chainName)")
+        let hash = try await approveAndSend(rpc, token: usdc, spender: pool, units: Decimal(want), approveNote: "Approve exactly \(show(want)) USDC to Aave on \(m.chainName)",
+                                            to: pool, data: try AaveV3.supply(asset: usdc, amount: want, onBehalfOf: me),
+                                            note: "Aave supply \(show(want)) USDC on \(m.chainName)")
         // A node can answer from a block before the receipt's for a moment: give it up to ten seconds.
         var after = try await rpc.tokenBalance(m.aUSDC, owner: me)
         for _ in 0..<10 where after <= before {
@@ -264,8 +264,8 @@ extension Executor {
             return try await rpc.tokenBalance(owner: wallet.solana, mint: mint)
         }
         let before = try await landed()
-        try await approve(base, token: usdc, spender: depository, amount: amount, note: "Approve exactly \(show(amount)) USDC to Relay")
-        let hash = try await sendEVM(base, to: deposit.to, data: deposit.data, note: "Relay deposit \(show(amount)) USDC on \(net.name)")
+        let hash = try await approveAndSend(base, token: usdc, spender: depository, units: Decimal(amount), approveNote: "Approve exactly \(show(amount)) USDC to Relay",
+                                            to: deposit.to, data: deposit.data, note: "Relay deposit \(show(amount)) USDC on \(net.name)")
         try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "\(net.name) USDC→\(there) \(show(amount)), tx \(hash)"))
         let started = Date()
         while Date().timeIntervalSince(started) < 180 {
@@ -447,12 +447,15 @@ extension Executor {
         }
         _ = try await checked()
         let before = try await rpc.balance(me)
-        try await approve(rpc, token: net.usdc, spender: proxy, amount: units, note: "Approve exactly \(Fmt.num(usd)) USDC to Relay for gas")
+        // Batched (EIP-7702), the approve goes with the swap; otherwise first, on its own.
+        let approveNote = "Approve exactly \(Fmt.num(usd)) USDC to Relay for gas"
+        if !canBatch(rpc) { try await approve(rpc, token: net.usdc, spender: proxy, amount: units, note: approveNote) }
         // Quoted again after the approve's wait, and once more if its dry run reverts: a route is priced for its moment.
         for attempt in 0..<2 {
             let call = try await checked()
             do {
-                _ = try await sendEVM(rpc, to: call.to, data: call.data, note: "Relay: \(Fmt.usd(usd)) of USDC into \(net.gasCoin) on \(net.name)")
+                _ = try await approveAndSend(rpc, token: net.usdc, spender: proxy, units: Decimal(units), approveNote: approveNote,
+                                             to: call.to, data: call.data, note: "Relay: \(Fmt.usd(usd)) of USDC into \(net.gasCoin) on \(net.name)")
                 break
             } catch where attempt == 0 && "\(error.localizedDescription)".contains("eth_estimateGas") {
                 try await Task.sleep(for: .seconds(2))

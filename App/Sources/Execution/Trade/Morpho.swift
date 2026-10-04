@@ -59,10 +59,10 @@ extension Executor {
         guard let requested, requested > 0 else { throw ExecutionError("Say how much, e.g. “deposit 2 USDC into Morpho”.") }
         let want = units(requested)
         try await ensureEVM(net, usdc: want, gas: Self.morphoGas)
-        try await approve(rpc, token: usdc, spender: vault, amount: want, note: "Approve exactly \(show(want)) USDC to Morpho on \(v.chainName)")
         let before = try await MorphoVault.value(me, v)
-        let hash = try await sendEVM(rpc, to: vault, data: try MorphoVault.deposit(assets: want, receiver: me),
-                                     note: "Morpho deposit \(show(want)) USDC on \(v.chainName)")
+        let hash = try await approveAndSend(rpc, token: usdc, spender: vault, units: Decimal(want), approveNote: "Approve exactly \(show(want)) USDC to Morpho on \(v.chainName)",
+                                            to: vault, data: try MorphoVault.deposit(assets: want, receiver: me),
+                                            note: "Morpho deposit \(show(want)) USDC on \(v.chainName)")
         // A node can answer from a block before the receipt's for a moment: give it up to ten seconds.
         var after = try await MorphoVault.value(me, v)
         for _ in 0..<10 where after <= before {
