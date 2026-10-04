@@ -39,9 +39,20 @@ public indirect enum RLP: Sendable {
     }
 }
 
-/// EIP-1559 (type 2) transaction.
+/// EIP-1559 (type 2) transaction; with `authorizations`, EIP-7702's type 4.
 /// ponytail: value in wei as UInt64 caps a single native transfer at ~18 ETH; widen when that matters.
 public struct EVMTransaction: Sendable {
+    /// EIP-7702: this address may run `address`'s code. The key signed keccak256(0x05 ‖ rlp([chainId, address, nonce])).
+    public struct Authorization: Sendable {
+        public let chainId: UInt64
+        public let address: String
+        public let nonce: UInt64
+        public let signature: EVMSignature
+        public init(chainId: UInt64, address: String, nonce: UInt64, signature: EVMSignature) {
+            (self.chainId, self.address, self.nonce, self.signature) = (chainId, address, nonce, signature)
+        }
+    }
+
     public var chainId: UInt64
     public var nonce: UInt64
     public var maxPriorityFeePerGas: UInt64
@@ -50,6 +61,7 @@ public struct EVMTransaction: Sendable {
     public var to: String
     public var value: UInt64
     public var data: Data
+    public var authorizations: [Authorization] = []
 
     public init(chainId: UInt64, nonce: UInt64, maxPriorityFeePerGas: UInt64, maxFeePerGas: UInt64,
                 gasLimit: UInt64, to: String, value: UInt64, data: Data) {
@@ -63,16 +75,25 @@ public struct EVMTransaction: Sendable {
         self.data = data
     }
 
+    /// 2, or 4 when it carries authorizations.
+    public var type: UInt8 { authorizations.isEmpty ? 2 : 4 }
+
     func fields() throws -> [RLP] {
         guard let to = Data(hex: to), to.count == 20 else { throw WalletError("Invalid recipient address: \(self.to)") }
-        return [.uint(chainId), .uint(nonce), .uint(maxPriorityFeePerGas), .uint(maxFeePerGas), .uint(gasLimit),
-                .bytes(to), .uint(value), .bytes(data), .list([])]
+        let base: [RLP] = [.uint(chainId), .uint(nonce), .uint(maxPriorityFeePerGas), .uint(maxFeePerGas), .uint(gasLimit),
+                           .bytes(to), .uint(value), .bytes(data), .list([])]
+        guard !authorizations.isEmpty else { return base }
+        return base + [.list(try authorizations.map { a in
+            guard let address = Data(hex: a.address), address.count == 20 else { throw WalletError("Invalid authorization address: \(a.address)") }
+            return .list([.uint(a.chainId), .bytes(address), .uint(a.nonce), .uint(UInt64(a.signature.v - 27)),
+                          .uint(bigEndian: a.signature.r), .uint(bigEndian: a.signature.s)])
+        })]
     }
 
-    /// 0x02 ‖ rlp(fields): the unsigned transaction, as a hardware wallet reads it.
-    public func unsignedPayload() throws -> Data { Data([0x02]) + RLP.list(try fields()).encoded }
+    /// type ‖ rlp(fields): the unsigned transaction, as a hardware wallet reads it.
+    public func unsignedPayload() throws -> Data { Data([type]) + RLP.list(try fields()).encoded }
 
-    /// keccak256(0x02 ‖ rlp(fields)) — what the key signs.
+    /// keccak256(type ‖ rlp(fields)) — what the key signs.
     public func signingHash() throws -> Data { Keccak.hash256(try unsignedPayload()) }
 
     /// Raw signed transaction and its hash (the transaction id).
@@ -82,7 +103,7 @@ public struct EVMTransaction: Sendable {
 
     /// The transaction with a signature made elsewhere (a Ledger), v = 27 or 28.
     public func signed(with signature: EVMSignature) throws -> (raw: Data, hash: String) {
-        let raw = Data([0x02]) + RLP.list(try fields() + [
+        let raw = Data([type]) + RLP.list(try fields() + [
             .uint(UInt64(signature.v - 27)), .uint(bigEndian: signature.r), .uint(bigEndian: signature.s),
         ]).encoded
         return (raw, "0x" + Keccak.hash256(raw).hex)
@@ -327,8 +348,12 @@ public struct EVMRPC: Sendable {
     }
 
     /// eth_estimateGas as a dry run: fails if the call would revert or the balance is short.
-    public func estimateGas(from: String, to: String, value: UInt64, data: Data) async throws -> UInt64 {
-        try await quantity("eth_estimateGas", [["from": from, "to": to, "value": "0x" + String(value, radix: 16), "data": "0x" + data.hex]])
+    /// `runningCodeOf`: the dry run as if `from` were already delegated to that contract (EIP-7702), by a state override
+    /// of its code — every node ihatecrypto uses takes one; drpc drops a transaction's authorizationList from an estimate.
+    public func estimateGas(from: String, to: String, value: UInt64, data: Data, runningCodeOf delegate: String? = nil) async throws -> UInt64 {
+        let tx: [String: String] = ["from": from, "to": to, "value": "0x" + String(value, radix: 16), "data": "0x" + data.hex]
+        guard let delegate else { return try await quantity("eth_estimateGas", [tx]) }
+        return try await quantity("eth_estimateGas", [tx, "latest", [from: ["code": "0xef0100" + delegate.dropFirst(2).lowercased()]]])
     }
 
     public func send(_ raw: Data) async throws -> String {

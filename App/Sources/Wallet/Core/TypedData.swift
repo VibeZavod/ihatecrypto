@@ -7,6 +7,8 @@ public struct TypedData: Sendable {
     public let primaryType: String
     public let domainName: String
     public let chainId: String
+    /// The domain's verifyingContract, lowercased, or "".
+    public var verifyingContract = ""
     /// name, type and the value as shown, in the order the site declared them.
     public let fields: [(name: String, type: String, value: String)]
     public let digest: Data
@@ -32,6 +34,13 @@ public struct TypedData: Sendable {
     /// «Agent» that signs an action's hash blind — which the main key, the Hyperliquid account's own, signs only in
     /// ihatecrypto's guarded steps; EIP-3009 transfers by signature; any struct that names a payee and an amount.
     public var refusal: String? {
+        // ERC-4337's EntryPoints (v0.6, v0.7, v0.8; Batch7702.entryPoints, which this module can't import): a wallet
+        // delegated to an account contract (EIP-7702) does whatever a user operation signed for one says.
+        let entryPoints: Set<String> = ["0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789", "0x0000000071727de22e5e9d8baf0edac6f37da032",
+                                        "0x4337084d9e255ff0702461cf8895ce9e3b5ff108"]
+        if entryPoints.contains(verifyingContract) || domainName == "ERC4337" || primaryType.contains("UserOperation") {
+            return "\(primaryType): an ERC-4337 user operation — it would run any calls from this wallet. ihatecrypto doesn't sign these."
+        }
         if isTokenPermission {
             return "\(primaryType): this is permission to spend your tokens (Permit) — the drainers' main trick. ihatecrypto doesn't sign these."
         }
@@ -74,8 +83,10 @@ public struct TypedData: Sendable {
         let domainFields = try fields(domainType, domain)
         let messageFields = try fields(declared, message)
         let shown = declared.map { d in (d["name"] ?? "", d["type"] ?? "", describe(message[d["name"] ?? ""])) }
-        return TypedData(primaryType: primary, domainName: domain["name"] as? String ?? "", chainId: describe(domain["chainId"]),
-                         fields: shown, digest: try EIP712.digest(domain: domainFields, type: primary, message: messageFields))
+        var typed = TypedData(primaryType: primary, domainName: domain["name"] as? String ?? "", chainId: describe(domain["chainId"]),
+                              fields: shown, digest: try EIP712.digest(domain: domainFields, type: primary, message: messageFields))
+        typed.verifyingContract = (domain["verifyingContract"] as? String ?? "").lowercased()
+        return typed
     }
 
     static func describe(_ v: Any?) -> String {

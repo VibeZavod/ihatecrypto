@@ -117,16 +117,30 @@ extension Executor {
         return UniswapV4.PoolKey(currency0: c0, currency1: c1, fee: UInt32(fee), tickSpacing: spacing, hooks: hooks)
     }
 
-    /// The swap itself; returns its transaction.
-    func v4Swap(_ route: V4Route, tokenIn: String, units: Decimal, minOut: Decimal, what: String, note: String) async throws -> String {
-        let rpc = EVMRPC.robinhood, me = wallet.evm, router = UniswapV4.robinhoodRouter
-        try await approve(rpc, token: tokenIn, spender: UniswapV4.permit2, units: units, note: "Approve exactly \(what) to Permit2")
+    /// The swap itself; returns its transaction. `rpc`: Robinhood Chain's node, or a fork of it in a test.
+    func v4Swap(_ route: V4Route, tokenIn: String, units: Decimal, minOut: Decimal, what: String, note: String,
+                rpc: EVMRPC = .robinhood) async throws -> String {
+        let me = wallet.evm, router = UniswapV4.robinhoodRouter
         // Permit2's own allowance for the router: exactly this much, for half an hour, unless one that covers it is still on.
         func allowed() async throws -> (amount: Decimal, until: UInt64) {
             let answer = try await rpc.read(UniswapV4.permit2, try UniswapV4.permit2Allowance(owner: me, token: tokenIn, spender: router))
             return (ABI.decimal(in: answer, word: 0) ?? 0, ABI.uint(in: answer, word: 1) ?? 0)
         }
         let now = UInt64(Date().timeIntervalSince1970)
+        let swap = try UniswapV4.execute(route.key, zeroForOne: route.zeroForOne, amountIn: units, amountOutMinimum: minOut, deadline: now + 600)
+        // The three as one transaction where it batches: the approve to Permit2, Permit2's to the router, the swap.
+        if canBatch(rpc) {
+            var calls: [Batch7702.Call] = []
+            let toPermit2 = ABI.decimal(in: try await rpc.read(tokenIn, try ERC20.allowance(owner: me, spender: UniswapV4.permit2)), word: 0) ?? 0
+            if toPermit2 < units { calls.append(.init(to: tokenIn, data: try ERC20.approve(spender: UniswapV4.permit2, units: units))) }
+            let current = try await allowed()
+            if current.amount < units || current.until < now + 120 {
+                calls.append(.init(to: UniswapV4.permit2, data: try UniswapV4.permit2Approve(token: tokenIn, spender: router, amount: units, expiration: now + 1800)))
+            }
+            guard calls.isEmpty else { return try await sendEVM(rpc, to: me, data: Data(), note: note, batch: calls + [.init(to: router, data: swap)]) }
+            return try await sendEVM(rpc, to: router, data: swap, note: note)
+        }
+        try await approve(rpc, token: tokenIn, spender: UniswapV4.permit2, units: units, note: "Approve exactly \(what) to Permit2")
         let current = try await allowed()
         if current.amount < units || current.until < now + 120 {
             _ = try await sendEVM(rpc, to: UniswapV4.permit2,
@@ -140,7 +154,6 @@ extension Executor {
             }
             guard seen else { throw ExecutionError("Permit2's approval went through but the network doesn't show it yet. Try again in a minute; nothing was swapped.") }
         }
-        return try await sendEVM(rpc, to: router, data: try UniswapV4.execute(route.key, zeroForOne: route.zeroForOne, amountIn: units,
-                                                                               amountOutMinimum: minOut, deadline: now + 600), note: note)
+        return try await sendEVM(rpc, to: router, data: swap, note: note)
     }
 }

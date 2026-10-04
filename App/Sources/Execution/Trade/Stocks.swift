@@ -144,11 +144,11 @@ extension Executor {
         } else {
             guard let fresh = try await bestPool(usdg, token.address, amountIn: Decimal(units)) else { throw ExecutionError(noPool(symbol, listing)) }
             let minimum = (fresh.out * 99 / 100).rounded(0, .down)
-            try await approve(rpc, token: usdg, spender: UniswapV3.robinhoodRouter, amount: units, note: "Approve exactly \(Fmt.num(Decimal(units) / 1_000_000)) USDG to Uniswap")
-            hash = try await sendEVM(rpc, to: UniswapV3.robinhoodRouter,
-                                     data: try UniswapV3.exactInputSingle(tokenIn: usdg, tokenOut: token.address, fee: fresh.fee, recipient: me,
-                                                                          amountIn: Decimal(units), amountOutMinimum: minimum),
-                                     note: "Buy \(symbol) for \(Fmt.num(Decimal(units) / 1_000_000)) USDG")
+            hash = try await approveAndSend(rpc, token: usdg, spender: UniswapV3.robinhoodRouter, units: Decimal(units),
+                                            approveNote: "Approve exactly \(Fmt.num(Decimal(units) / 1_000_000)) USDG to Uniswap", to: UniswapV3.robinhoodRouter,
+                                            data: try UniswapV3.exactInputSingle(tokenIn: usdg, tokenOut: token.address, fee: fresh.fee, recipient: me,
+                                                                                 amountIn: Decimal(units), amountOutMinimum: minimum),
+                                            note: "Buy \(symbol) for \(Fmt.num(Decimal(units) / 1_000_000)) USDG")
         }
         var after = try await balance(token.address, on: rpc)
         for _ in 0..<10 where after <= before {
@@ -305,11 +305,11 @@ extension Executor {
                                     note: "Sell \(tokens) on Uniswap v4")
         } else {
             guard let pool = v3 else { throw ExecutionError(noPool(symbol, listing)) }
-            try await approve(rpc, token: token.address, spender: UniswapV3.robinhoodRouter, units: wanted, note: "Approve exactly \(tokens) to Uniswap")
-            hash = try await sendEVM(rpc, to: UniswapV3.robinhoodRouter,
-                                     data: try UniswapV3.exactInputSingle(tokenIn: token.address, tokenOut: usdg, fee: pool.fee, recipient: me,
-                                                                          amountIn: wanted, amountOutMinimum: (pool.out * 99 / 100).rounded(0, .down)),
-                                     note: "Sell \(tokens)")
+            hash = try await approveAndSend(rpc, token: token.address, spender: UniswapV3.robinhoodRouter, units: wanted,
+                                            approveNote: "Approve exactly \(tokens) to Uniswap", to: UniswapV3.robinhoodRouter,
+                                            data: try UniswapV3.exactInputSingle(tokenIn: token.address, tokenOut: usdg, fee: pool.fee, recipient: me,
+                                                                                 amountIn: wanted, amountOutMinimum: (pool.out * 99 / 100).rounded(0, .down)),
+                                            note: "Sell \(tokens)")
         }
         var after = try await rpc.tokenBalance(usdg, owner: me)
         for _ in 0..<10 where after <= before {

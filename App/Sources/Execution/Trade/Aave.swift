@@ -309,18 +309,47 @@ extension Executor {
         throw ExecutionError("The approve went through but the network doesn't show it yet. Try again in a minute; nothing else was signed.")
     }
 
+    /// Whether calls on this network can go as one EIP-7702 transaction: a network in Batch7702.chains that takes fees in
+    /// its own coin, and a signer that signs batches (not a Ledger).
+    func canBatch(_ rpc: EVMRPC) -> Bool {
+        signer.signsBatches && Batch7702.chains.contains(rpc.chainId) && EVMNetwork.of(chainId: rpc.chainId)?.feeToken == nil
+    }
+
+    /// An exact approve and the call that spends it. Where they can batch (`canBatch`) they go as one transaction under one
+    /// Touch ID, dry-run together first, so a call that would fail stops before anything is signed; elsewhere the approve,
+    /// its wait, then the call, as before.
+    func approveAndSend(_ rpc: EVMRPC, token: String, spender: String, units: Decimal, approveNote: String,
+                        to: String, data: Data, note: String, recipients: [String] = []) async throws -> String {
+        if canBatch(rpc) {
+            let allowance = ABI.decimal(in: try await rpc.read(token, try ERC20.allowance(owner: wallet.evm, spender: spender)), word: 0) ?? 0
+            if allowance < units {
+                let calls = [Batch7702.Call(to: token, data: try ERC20.approve(spender: spender, units: units)), Batch7702.Call(to: to, data: data)]
+                return try await sendEVM(rpc, to: wallet.evm, data: Data(), note: "\(approveNote) + \(note)", recipients: recipients, batch: calls)
+            }
+        } else {
+            try await approve(rpc, token: token, spender: spender, units: units, note: approveNote)
+        }
+        return try await sendEVM(rpc, to: to, data: data, note: note, recipients: recipients)
+    }
+
     /// One EVM transaction: dry run by eth_estimateGas (a call that would revert stops here), the fee within the ETH
     /// there, the journal written before sending.
-    func sendEVM(_ rpc: EVMRPC, to: String, data: Data, note: String, recipients: [String] = []) async throws -> String {
+    /// `batch`: these calls instead, as one EIP-7702 transaction from and to the wallet (`to` and `data` unused); the dry
+    /// run sees the wallet already running Batch7702.delegate, and the gas limit adds the authorization's own.
+    func sendEVM(_ rpc: EVMRPC, to: String, data: Data, note: String, recipients: [String] = [], batch: [Batch7702.Call]? = nil) async throws -> String {
         guard let net = EVMNetwork.of(chainId: rpc.chainId) else { throw ExecutionError("ihatecrypto doesn't move money on network \(rpc.chainId). Nothing was signed.") }
         if let token = net.feeToken, to.lowercased() != Tempo.feeManager {
             // Only a plain transfer of the fee coin pays its fee in that coin by itself.
             let paysInToken = if case .transfer = EVMCall.decode(data) { to.lowercased() == token } else { false }
             if !paysInToken { try await chooseFeeToken(net, token) }
         }
-        let estimate = try await rpc.estimateGas(from: wallet.evm, to: to, value: 0, data: data)
+        let estimate = if let batch {
+            try await rpc.estimateGas(from: wallet.evm, to: wallet.evm, value: 0, data: try Batch7702.executeBatch(batch), runningCodeOf: Batch7702.delegate)
+        } else {
+            try await rpc.estimateGas(from: wallet.evm, to: to, value: 0, data: data)
+        }
         let (tip, maxFee) = try await rpc.fees()
-        let gasLimit = estimate + estimate / 4
+        let gasLimit = estimate + estimate / 4 + (batch == nil ? 0 : Batch7702.authorizationGas)
         if let token = net.feeToken {
             guard Tempo.feeUnits(gasLimit * maxFee) <= (try await rpc.tokenBalance(token, owner: wallet.evm)) else {
                 throw ExecutionError("Not enough \(net.gasCoin) on \(net.name) for the fee: \(note).")
@@ -339,8 +368,13 @@ extension Executor {
             }
         }
         let nonce = try await rpc.nonce(wallet.evm)
-        let raw = try await signer.signEVM(chainId: rpc.chainId, nonce: nonce, maxPriorityFee: tip, maxFee: maxFee, gasLimit: gasLimit, to: to, data: data,
-                                           recipients: recipients)
+        let raw = if let batch {
+            try await signer.signEVMBatch(chainId: rpc.chainId, nonce: nonce, maxPriorityFee: tip, maxFee: maxFee, gasLimit: gasLimit, calls: batch,
+                                          recipients: recipients)
+        } else {
+            try await signer.signEVM(chainId: rpc.chainId, nonce: nonce, maxPriorityFee: tip, maxFee: maxFee, gasLimit: gasLimit, to: to, data: data,
+                                     recipients: recipients)
+        }
         let hash = "0x" + Keccak.hash256(raw).hex
         try journal.append(.init(chain: net.key, id: hash, kind: .signed, note: note))
         _ = try await rpc.send(raw)

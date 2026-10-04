@@ -85,7 +85,7 @@ enum Signer {
                 throw WalletError("Only the automation wallet signs for a scheduled task.")
             }
             switch inner {
-            case .signSolana, .signEVMTransaction, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
+            case .signSolana, .signEVMTransaction, .signEVMBatch, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
                  .signNearIntentDeposit, .signNearTransfer: break
             default: throw WalletError("The automation wallet signs only a task's moves.")
             }
@@ -359,6 +359,7 @@ enum Signer {
                                     gasLimit: gasLimit, to: to, value: value, data: data)
             if !EVMRPC.signable.contains(chainId) { v.problems.append("ihatecrypto doesn't sign for network \(chainId).") }
             if let refusal = call.refusal(sender: owner) { v.problems.append(refusal) }
+            if let refusal = Batch7702.selfCall(to: to, data: data, owner: owner) { v.problems.append(refusal) }
             if let fee = tx.feeProblem { v.problems.append(fee) }
             // Coins (calldata or not), tokens, NFTs and spending rights go only to this wallet or an address approved in person.
             for payee in call.payees(to: to, value: value, chainId: chainId) where !approved.contains(payee.lowercased()) {
@@ -371,6 +372,35 @@ enum Signer {
                 try tx.signed(privateKey: $0).raw
             }
             r.checks = ["Calldata parsed by the signer: no unlimited approvals, no spending by others, money only to approved addresses."]
+            return r
+
+        case .signEVMBatch(let chainId, let nonce, let maxPriorityFee, let maxFee, let gasLimit, let signerCalls, let recipients):
+            let owner = try address("evm")
+            let calls = signerCalls.map { Batch7702.Call(to: $0.to, data: $0.data) }
+            var v = Verdict()
+            v.problems = Batch7702.problems(calls, owner: owner, chainId: chainId)
+            if !EVMRPC.signable.contains(chainId) { v.problems.append("ihatecrypto doesn't sign for network \(chainId).") }
+            let fee = EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee,
+                                     gasLimit: gasLimit, to: owner, value: 0, data: Data())
+            if let problem = fee.feeProblem { v.problems.append(problem) }
+            let approved = Set(recipients.map { $0.lowercased() } + [owner.lowercased()])
+            for c in calls {
+                for payee in EVMCall.decode(c.data).payees(to: c.to, value: 0, chainId: chainId) where !approved.contains(payee.lowercased()) {
+                    v.problems.append("Money or the right to spend it goes to an unapproved address \(payee).")
+                }
+            }
+            guard v.ok else { return refused(v) }
+            try approve(recipients)
+            // The prompt names every call, read from its calldata here, then that they go as one — and that the wallet
+            // keeps running the batch account's code on that network afterwards (it accepts coins and tokens as before).
+            let lines = calls.map { EVMCall.decode($0.data).summary(chainId: chainId, to: $0.to, value: 0) }
+            let net = EVMRPC.names[chainId] ?? "network \(chainId)"
+            var r = SignerReply(ok: true)
+            r.signedRaw = try withKey("evm", reason: lines.joined(separator: "\nthen ") + "\nas one transaction: this wallet runs the audited batch account on \(net) (EIP-7702)\nnetwork fee " + fee.feeText) {
+                try Batch7702.signed(chainId: chainId, nonce: nonce, maxPriorityFee: maxPriorityFee, maxFee: maxFee, gasLimit: gasLimit,
+                                     owner: owner, calls: calls, privateKey: $0).raw
+            }
+            r.checks = ["Each call parsed by the signer and held to the one-call rules; the wallet runs only the audited batch account's code."]
             return r
 
         case .signSolana(let wire, let accounts, let recipients, let tokenOwners, let extraPrograms):

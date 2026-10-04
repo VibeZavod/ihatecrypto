@@ -71,6 +71,17 @@ nonisolated struct XPCTradeSigner: TradeSigner {
         return raw
     }
 
+    var signsBatches: Bool { true }
+
+    func signEVMBatch(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
+                      calls: [Batch7702.Call], recipients: [String]) async throws -> Data {
+        let reply = try await Self.signing { try await send(.signEVMBatch(chainId: chainId, nonce: nonce, maxPriorityFee: maxPriorityFee, maxFee: maxFee,
+                                                                gasLimit: gasLimit, calls: calls.map { SignerCall(to: $0.to, data: $0.data) },
+                                                                recipients: recipients)) }
+        guard reply.ok, let raw = reply.signedRaw else { throw ExecutionError(Self.reason(reply)) }
+        return raw
+    }
+
     func signEVMTransfer(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                          to: String, value: UInt64, recipients: [String]) async throws -> Data {
         let reply = try await Self.signing { try await send(.signEVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFee: maxPriorityFee, maxFee: maxFee,

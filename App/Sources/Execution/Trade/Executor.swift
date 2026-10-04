@@ -1,3 +1,4 @@
+import EVMChain
 import ExecutionCore
 import Foundation
 import HyperliquidSigning
@@ -22,6 +23,11 @@ public protocol TradeSigner: Sendable {
     /// `recipients`: addresses the user approved for a token transfer (from the address book), besides their own.
     func signEVM(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                  to: String, data: Data, recipients: [String]) async throws -> Data
+    /// Whether `signEVMBatch` signs: the signing process and the terminal's test key do; a Ledger doesn't.
+    var signsBatches: Bool { get }
+    /// `calls` as one EIP-7702 transaction from and to the wallet (Batch7702); each call is held to signEVM's rules.
+    func signEVMBatch(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
+                      calls: [Batch7702.Call], recipients: [String]) async throws -> Data
     /// The network's own coin (ETH, POL): `value` wei to `to`, which must be among `recipients`; no calldata.
     func signEVMTransfer(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                          to: String, value: UInt64, recipients: [String]) async throws -> Data
@@ -35,6 +41,11 @@ public protocol TradeSigner: Sendable {
 }
 
 extension TradeSigner {
+    public var signsBatches: Bool { false }
+    public func signEVMBatch(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
+                             calls: [Batch7702.Call], recipients: [String]) async throws -> Data {
+        throw ExecutionError("This signer doesn't sign batched calls.")
+    }
     public func signEVMTransfer(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                                 to: String, value: UInt64, recipients: [String]) async throws -> Data {
         throw ExecutionError("Sending a network's own coin is signed in the ihatecrypto app.")

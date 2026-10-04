@@ -50,6 +50,10 @@ public enum SignerRequest: Codable, Sendable {
     /// coins, tokens, NFTs and a spender that isn't a contract ihatecrypto uses go only to an address in `recipients`.
     case signEVMTransaction(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                             to: String, value: UInt64, data: Data, recipients: [String])
+    /// ihatecrypto's own calls as one EIP-7702 transaction (an approve and the swap that spends it): each call is held to
+    /// signEVMTransaction's rules, none may call the wallet itself, and the wallet runs only Batch7702.delegate's code.
+    case signEVMBatch(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
+                      calls: [SignerCall], recipients: [String])
     /// Hyperliquid order/cancel (L1). The signer hashes the action itself.
     case signHyperliquidL1(action: MsgPack, nonce: UInt64, mainnet: Bool)
     /// Hyperliquid transfer-type action signed by the main key. The signer picks the EIP-712 schema from the
@@ -101,6 +105,13 @@ public enum SignerRequest: Codable, Sendable {
     /// Only a money move's signature passes (no wallet changes, no site messages), with the same guard, and «our
     /// addresses» and the approved ones are that wallet's own.
     indirect case asWallet(id: String, request: SignerRequest)
+}
+
+/// One call of a batch: a contract and its calldata, no coins.
+public struct SignerCall: Codable, Sendable, Equatable {
+    public let to: String
+    public let data: Data
+    public init(to: String, data: Data) { (self.to, self.data) = (to, data) }
 }
 
 /// One wallet the signer holds, public parts only: its name, what it can sign for, its addresses.
@@ -239,7 +250,7 @@ public final class SignerClient: @unchecked Sendable {
         if Self.untrusted {
             switch request {
             case .status, .nearAddress, .endSession, .ledgerAgent(_, false), .addressBook: break
-            case .signSolana, .signEVMTransaction, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
+            case .signSolana, .signEVMTransaction, .signEVMBatch, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
                  .signNearIntentDeposit, .signNearTransfer, .signNearDeleteAccount:
                 let status = try await Self.$untrusted.withValue(false) { try await send(.status) }
                 guard status.wallets?.first(where: { $0.id == status.activeWallet })?.isTest == true else {

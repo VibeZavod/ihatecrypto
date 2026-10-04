@@ -52,12 +52,28 @@ struct LocalSigner: TradeSigner {
                  recipients: [String]) async throws -> Data {
         guard EVMRPC.signable.contains(chainId) else { throw ExecutionError("Not signing for network \(chainId).") }
         let call = EVMCall.decode(data)
-        if let refusal = call.refusal(sender: wallet.evm) { throw ExecutionError(refusal) }
+        if let refusal = call.refusal(sender: wallet.evm) ?? Batch7702.selfCall(to: to, data: data, owner: wallet.evm) { throw ExecutionError(refusal) }
         if let payee = call.payees(to: to, value: 0, chainId: chainId).first(where: { p in !(recipients + [wallet.evm]).contains { $0.lowercased() == p.lowercased() } }) {
             throw ExecutionError("Tokens or the right to spend them would go to \(payee).")
         }
         return try EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee,
                                   gasLimit: gasLimit, to: to, value: 0, data: data).signed(privateKey: keys.evm).raw
+    }
+
+    var signsBatches: Bool { true }
+
+    /// The same batch rules as the signing process: each call's own rules, no call into the wallet, payees approved.
+    func signEVMBatch(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
+                      calls: [Batch7702.Call], recipients: [String]) async throws -> Data {
+        if let problem = Batch7702.problems(calls, owner: wallet.evm, chainId: chainId).first { throw ExecutionError(problem) }
+        for c in calls {
+            if let payee = EVMCall.decode(c.data).payees(to: c.to, value: 0, chainId: chainId)
+                .first(where: { p in !(recipients + [wallet.evm]).contains { $0.lowercased() == p.lowercased() } }) {
+                throw ExecutionError("Tokens or the right to spend them would go to \(payee).")
+            }
+        }
+        return try Batch7702.signed(chainId: chainId, nonce: nonce, maxPriorityFee: maxPriorityFee, maxFee: maxFee, gasLimit: gasLimit,
+                                    owner: wallet.evm, calls: calls, privateKey: keys.evm).raw
     }
 
     /// The same fixed wrap.near transaction the signing process builds.

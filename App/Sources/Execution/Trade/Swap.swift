@@ -194,11 +194,10 @@ extension Executor {
             guard let fresh = await bestPath(on: net.rpc, uni, from: net.usdc, to: token.address, amountIn: Decimal(plan.arrive)) else {
                 throw ExecutionError("Uniswap no longer quotes \(token.symbol); the USDC waits on \(net.name).")
             }
-            try await approve(net.rpc, token: net.usdc, spender: uni.router, amount: plan.arrive,
-                              note: "Approve exactly \(Fmt.num(Decimal(plan.arrive) / 1_000_000)) USDC to Uniswap")
-            hash = try await sendEVM(net.rpc, to: uni.router,
-                                     data: try UniswapV3.exactInput(path: fresh.path, recipient: me, amountIn: Decimal(plan.arrive), amountOutMinimum: (fresh.out * Decimal(string: "0.99")!).whole),
-                                     note: "Buy \(token.symbol) for \(Fmt.num(Decimal(plan.arrive) / 1_000_000)) USDC on Uniswap")
+            hash = try await approveAndSend(net.rpc, token: net.usdc, spender: uni.router, units: Decimal(plan.arrive),
+                                            approveNote: "Approve exactly \(Fmt.num(Decimal(plan.arrive) / 1_000_000)) USDC to Uniswap", to: uni.router,
+                                            data: try UniswapV3.exactInput(path: fresh.path, recipient: me, amountIn: Decimal(plan.arrive), amountOutMinimum: (fresh.out * Decimal(string: "0.99")!).whole),
+                                            note: "Buy \(token.symbol) for \(Fmt.num(Decimal(plan.arrive) / 1_000_000)) USDC on Uniswap")
         }
         var after = try await balance(token.address, on: net.rpc)
         let started = Date()
@@ -242,10 +241,10 @@ extension Executor {
         }
         report("\(usdc) USDC on \(net.name) → \(token.symbol) on Uniswap: ≈ \(amount(best.out)), no bridge.")
         let before = try await balance(token.address, on: net.rpc)
-        try await approve(net.rpc, token: net.usdc, spender: uni.router, amount: units, note: "Approve exactly \(usdc) USDC to Uniswap")
-        let hash = try await sendEVM(net.rpc, to: uni.router,
-                                     data: try UniswapV3.exactInput(path: best.path, recipient: me, amountIn: Decimal(units), amountOutMinimum: (best.out * Decimal(string: "0.99")!).whole),
-                                     note: "Buy \(token.symbol) for \(usdc) USDC on Uniswap")
+        let hash = try await approveAndSend(net.rpc, token: net.usdc, spender: uni.router, units: Decimal(units), approveNote: "Approve exactly \(usdc) USDC to Uniswap",
+                                            to: uni.router,
+                                            data: try UniswapV3.exactInput(path: best.path, recipient: me, amountIn: Decimal(units), amountOutMinimum: (best.out * Decimal(string: "0.99")!).whole),
+                                            note: "Buy \(token.symbol) for \(usdc) USDC on Uniswap")
         var after = try await balance(token.address, on: net.rpc)
         for _ in 0..<10 where after <= before {
             try await Task.sleep(for: .seconds(1))
@@ -343,11 +342,11 @@ extension Executor {
         -> (got: Decimal, text: String) {
         let me = wallet.evm, scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
         let tokens = "\(Fmt.num(units / scale, maxFraction: 6)) \(token.symbol)"
-        try await approve(net.rpc, token: token.address, spender: uni.router, units: units, note: "Approve exactly \(tokens) to Uniswap")
         let before = try await net.rpc.tokenBalance(net.usdc, owner: me)
-        let hash = try await sendEVM(net.rpc, to: uni.router,
-                                     data: try UniswapV3.exactInput(path: path, recipient: me, amountIn: units, amountOutMinimum: (out * Decimal(string: "0.99")!).whole),
-                                     note: "Sell \(tokens) on Uniswap")
+        let hash = try await approveAndSend(net.rpc, token: token.address, spender: uni.router, units: units, approveNote: "Approve exactly \(tokens) to Uniswap",
+                                            to: uni.router,
+                                            data: try UniswapV3.exactInput(path: path, recipient: me, amountIn: units, amountOutMinimum: (out * Decimal(string: "0.99")!).whole),
+                                            note: "Sell \(tokens) on Uniswap")
         var after = try await net.rpc.tokenBalance(net.usdc, owner: me)
         for _ in 0..<10 where after <= before {
             try await Task.sleep(for: .seconds(1))
