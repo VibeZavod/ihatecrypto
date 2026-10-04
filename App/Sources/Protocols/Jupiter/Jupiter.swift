@@ -15,10 +15,14 @@ public enum Jupiter {
         /// Least output after slippage: the floor the user agrees to.
         public let minOut: UInt64
         public let route: String
+        /// The route's pools by Jupiter's label, e.g. ["HumidiFi", "Hadron"]: what `excludeDexes` takes.
+        public let dexes: [String]
     }
 
-    public static func quote(input: String, output: String, amount: UInt64, slippageBps: Int = 50) async throws -> Quote {
-        let url = URL(string: "\(base)/quote?inputMint=\(input)&outputMint=\(output)&amount=\(amount)&slippageBps=\(slippageBps)")!
+    /// `excludeDexes`: labels Jupiter must route around (a route that failed before signing).
+    public static func quote(input: String, output: String, amount: UInt64, slippageBps: Int = 50, excludeDexes: [String] = []) async throws -> Quote {
+        var url = URL(string: "\(base)/quote?inputMint=\(input)&outputMint=\(output)&amount=\(amount)&slippageBps=\(slippageBps)")!
+        if !excludeDexes.isEmpty { url.append(queryItems: [URLQueryItem(name: "excludeDexes", value: excludeDexes.joined(separator: ","))]) }
         let (data, response) = try await URLSession.shared.data(from: url)
         guard (response as? HTTPURLResponse)?.statusCode == 200,
               let j = try JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -27,9 +31,8 @@ public enum Jupiter {
               let minOut = (j["otherAmountThreshold"] as? String).flatMap(UInt64.init) else {
             throw JupiterError(String(decoding: data.prefix(300), as: UTF8.self))
         }
-        let route = (j["routePlan"] as? [[String: Any]] ?? [])
-            .compactMap { ($0["swapInfo"] as? [String: Any])?["label"] as? String }.joined(separator: " → ")
-        return Quote(raw: data, inAmount: inAmount, outAmount: outAmount, minOut: minOut, route: route)
+        let dexes = (j["routePlan"] as? [[String: Any]] ?? []).compactMap { ($0["swapInfo"] as? [String: Any])?["label"] as? String }
+        return Quote(raw: data, inAmount: inAmount, outAmount: outAmount, minOut: minOut, route: dexes.joined(separator: " → "), dexes: dexes)
     }
 
     /// Unsigned versioned transaction for `quote`, paid by `user`.

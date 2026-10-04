@@ -287,21 +287,45 @@ extension Executor {
         guard units > 0, units <= spendable else {
             throw ExecutionError("You have \(Fmt.num(Decimal(spendable) / scale, maxFraction: 6)) \(from.symbol)\(nativeIn ? " (0.01 SOL is kept for fees)" : ""); need \(Fmt.num(Decimal(units) / scale, maxFraction: 6)).")
         }
-        let quote = try await Jupiter.quote(input: from.mint, output: to.mint, amount: units)
-        report("\(from.symbol) → \(to.symbol) via Jupiter: \(Fmt.num(Decimal(units) / scale, maxFraction: 8)) → ≈ \(Fmt.num(Decimal(quote.outAmount) / outScale, maxFraction: 8)), at least \(Fmt.num(Decimal(quote.minOut) / outScale, maxFraction: 8)). Route: \(quote.route).")
-        let tx = try await Jupiter.swapTransaction(quote, user: wallet.solana)
         let inAccount = try SPL.associatedAccount(owner: wallet.solana, mint: from.mint, program: from.token2022 ? SPL.token2022Program : SPL.tokenProgram)
         let outAccount = try SPL.associatedAccount(owner: wallet.solana, mint: to.mint, program: to.token2022 ? SPL.token2022Program : SPL.tokenProgram)
         let owners = [inAccount: wallet.solana, outAccount: wallet.solana]   // wSOL accounts too, for the native side
-        var rules: [(String, String, Bool, Int64)] = []
-        if !nativeIn { rules.append((inAccount, from.symbol, true, -Int64(units))) }
-        if !nativeOut { rules.append((outAccount, "\(to.symbol) (quote minimum)", true, Int64(quote.minOut))) }
-        let fee: Int64 = 5_000_000
-        // Up to ~0.0021 SOL more when the output token's account is created (rent, returned when it is closed).
-        let lamportsAtLeast: Int64 = nativeIn ? -Int64(units) - fee : nativeOut ? Int64(quote.minOut) - fee : -fee
         let outBefore = nativeOut ? try await rpc.balance(wallet.solana) : try await rpc.tokenBalance(owner: wallet.solana, mint: to.mint)
-        let changes = try await signAndSend(tx.wire, lastValid: tx.lastValidBlockHeight, owners: owners, rules: rules, note: "Jupiter \(from.symbol)→\(to.symbol)",
-                                            lamportsAtLeast: lamportsAtLeast, dryRun: dryRun)
+        // Jupiter's route can fail before anything is signed: its transaction is over Solana's 1232 bytes (HumidiFi → Hadron
+        // into a Token-2022 coin), or the simulation ends under its own minimum — 6001, SlippageToleranceExceeded, when a
+        // pool quoted more than it gives (Flux → Hadron, TesseraV → Hadron). Up to three routes, each without the failed ones' pools.
+        var excluded: [String] = [], firstFailure: Error?, changes: [String] = []
+        for attempt in 1...3 {
+            let quote: Jupiter.Quote
+            do { quote = try await Jupiter.quote(input: from.mint, output: to.mint, amount: units, excludeDexes: excluded) }
+            catch { throw firstFailure ?? error }
+            report("\(from.symbol) → \(to.symbol) via Jupiter: \(Fmt.num(Decimal(units) / scale, maxFraction: 8)) → ≈ \(Fmt.num(Decimal(quote.outAmount) / outScale, maxFraction: 8)), at least \(Fmt.num(Decimal(quote.minOut) / outScale, maxFraction: 8)). Route: \(quote.route).")
+            let tx = try await Jupiter.swapTransaction(quote, user: wallet.solana)
+            var rules: [(String, String, Bool, Int64)] = []
+            if !nativeIn { rules.append((inAccount, from.symbol, true, -Int64(units))) }
+            if !nativeOut { rules.append((outAccount, "\(to.symbol) (quote minimum)", true, Int64(quote.minOut))) }
+            let fee: Int64 = 5_000_000
+            // Up to ~0.0021 SOL more when the output token's account is created (rent, returned when it is closed).
+            let lamportsAtLeast: Int64 = nativeIn ? -Int64(units) - fee : nativeOut ? Int64(quote.minOut) - fee : -fee
+            let failure: Error, why: String
+            if tx.wire.count > 1232 {
+                why = "is \(tx.wire.count) bytes, over Solana's limit of 1232"
+                failure = ExecutionError("Jupiter's route \(quote.route) \(why), so nothing was signed.")
+            } else {
+                do {
+                    changes = try await signAndSend(tx.wire, lastValid: tx.lastValidBlockHeight, owners: owners, rules: rules, note: "Jupiter \(from.symbol)→\(to.symbol)",
+                                                    lamportsAtLeast: lamportsAtLeast, dryRun: dryRun)
+                    break
+                } catch let e as ExecutionError where e.message.hasPrefix("The simulation failed") && e.message.contains(#"{"Custom":6001}"#) {
+                    why = "would give less than its minimum (Jupiter's 6001)"
+                    failure = e
+                }
+            }
+            guard attempt < 3 else { throw failure }
+            firstFailure = firstFailure ?? failure
+            excluded += quote.dexes.filter { !excluded.contains($0) }
+            report("Route \(quote.route) \(why); nothing was signed. Asking Jupiter for a route without \(excluded.joined(separator: ", ")).")
+        }
         if dryRun { return "Simulation (nothing signed): " + changes.joined(separator: "; ") }
         let outAfter = nativeOut ? try await rpc.balance(wallet.solana) : try await rpc.tokenBalance(owner: wallet.solana, mint: to.mint)
         var line = "Swapped \(Fmt.num(Decimal(units) / scale, maxFraction: 8)) \(from.symbol) → \(to.symbol) +\(Fmt.num(Decimal(Int64(outAfter) - Int64(outBefore)) / outScale, maxFraction: 8))\(nativeOut ? " (net of fees)" : "")."
