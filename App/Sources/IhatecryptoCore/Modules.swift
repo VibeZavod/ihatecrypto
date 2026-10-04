@@ -13,7 +13,7 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .base: "Base"
         case .near: "NEAR"
         case .arbitrum: "Arbitrum"
-        case .robinhood: "Robinhood Chain"
+        case .robinhood: "Robinhood"
         case .polygon: "Polygon"
         case .ethereum: "Ethereum"
         case .tempo: "Tempo"

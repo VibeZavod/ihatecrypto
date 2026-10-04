@@ -188,7 +188,8 @@ struct NetworkCard: View {
                 .map { name, kind in (name, lines.filter { $0.kind == kind }.reduce(Decimal(0)) { $0 + $1.usd }) }
                 .filter { $0.1 >= Decimal(string: "0.01")! }.sorted { $0.1 > $1.1 }
             let stocks = ws.robinhood?.stocks.count ?? 0
-            let parts = (network == .robinhood && stocks > 0 ? ["\(stocks) stock token\(stocks == 1 ? "" : "s")"] : [])
+            // Stock tokens and tokens bought by contract alike.
+            let parts = (network == .robinhood && stocks > 0 ? ["\(stocks) token\(stocks == 1 ? "" : "s")"] : [])
                 + sums.map { "\($0.0) \(Fmt.usd($0.1))" }
             let tokens = ws.shownTokens.contains { $0.chain == network.rawValue }
             return parts.isEmpty ? (lines.first?.detail ?? (tokens ? "tokens" : "nothing here yet")) : parts.joined(separator: " · ")
