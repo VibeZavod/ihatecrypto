@@ -44,3 +44,17 @@ func everyFallbackNodeServesTheExecutor() async throws {
         #expect(try await alone.estimateGas(from: me, to: me, value: 0, data: Data(), runningCodeOf: Batch7702.delegate) >= 21_000)
     }
 }
+
+/// Ethereum's transactions go to MEV Blocker, the rest to their own node (IHATECRYPTO_NET=1): a malformed one comes back
+/// with MEV Blocker's own error, so it went there and nowhere public.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func ethereumTransactionsGoThroughMEVBlocker() async throws {
+    #expect(EVMRPC.ethereum.sendURL?.host == "rpc.mevblocker.io")
+    #expect([EVMRPC.base, .arbitrum, .polygon, .robinhood].allSatisfy { $0.sendURL == nil })
+    do {
+        _ = try await EVMRPC.ethereum.send(Data([0x02, 0xf8]))
+        Issue.record("a malformed transaction was taken")
+    } catch {
+        #expect("\(error)".contains("Request of eth_sendRawTransaction failed"), "\(error)")
+    }
+}

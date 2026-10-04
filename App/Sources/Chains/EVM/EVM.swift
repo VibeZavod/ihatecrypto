@@ -251,11 +251,14 @@ public struct EVMRPC: Sendable {
     /// same one. base.drpc.org answered «You reached Public endpoint rate limit» to every call for minutes, and each read
     /// sat through 15 s of retries before failing (a spread took 50 s and lost the Base vaults).
     public let fallbacks: [URL]
+    /// Where signed transactions go instead, when set: a private relay that keeps them out of the public mempool.
+    public let sendURL: URL?
 
-    public init(url: URL, chainId: UInt64, fallbacks: [URL] = []) {
+    public init(url: URL, chainId: UInt64, fallbacks: [URL] = [], sendURL: URL? = nil) {
         self.url = url
         self.chainId = chainId
         self.fallbacks = fallbacks
+        self.sendURL = sendURL
     }
 
     /// Fallbacks (2026-10-05): each served calls, estimates with a state override, fees, nonces, receipts and
@@ -281,8 +284,12 @@ public struct EVMRPC: Sendable {
     /// Circle's native USDC on Polygon, not the bridged USDC.e.
     public static let polygonUSDC = "0x3c499c542cef5e3811e1192ce70d8cc03d5c3359"
     /// Ethereum mainnet: a supply costs dollars of gas here, so the planners weigh it before choosing it.
+    /// Its transactions go through MEV Blocker (rpc.mevblocker.io): out of the public mempool, so a swap can't be
+    /// front-run or sandwiched; it simulates each first and refuses one that would revert, unpaid; it takes type-4
+    /// (EIP-7702) transactions — Flashbots Protect took an unfunded one without a word (checked 2026-10-05).
     public static let ethereum = EVMRPC(url: URL(string: "https://eth.drpc.org")!, chainId: 1,
-                                        fallbacks: [URL(string: "https://ethereum-rpc.publicnode.com")!])
+                                        fallbacks: [URL(string: "https://ethereum-rpc.publicnode.com")!],
+                                        sendURL: URL(string: "https://rpc.mevblocker.io")!)
     public static let ethereumUSDC = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48"
     /// Tempo, Stripe's payments chain: no coin of its own, fees come out of a USD stablecoin (Tempo.feeManager), and
     /// eth_getBalance answers a placeholder (4242…42) for every address, so it's never read there (checked 2026-09-30).
@@ -366,8 +373,9 @@ public struct EVMRPC: Sendable {
     }
 
     public func send(_ raw: Data) async throws -> String {
+        let node = sendURL.map { EVMRPC(url: $0, chainId: chainId) } ?? self
         do {
-            guard let hash = try await call("eth_sendRawTransaction", ["0x" + raw.hex]) as? String else { throw WalletError("No transaction hash") }
+            guard let hash = try await node.call("eth_sendRawTransaction", ["0x" + raw.hex]) as? String else { throw WalletError("No transaction hash") }
             return hash
         } catch let error as WalletError where error.message.lowercased().contains("already known") || error.message.lowercased().contains("known transaction") {
             // A retry after the first send got through: it's the same transaction, waiting for its block.
