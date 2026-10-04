@@ -1,5 +1,24 @@
 [
   {
+    "version": "0.4.3",
+    "date": "2026-10-04",
+    "stories": [
+      {
+        "title": "The chat sees your canvas",
+        "text": "Ask about anything on the canvas — a token's card, a chart, a position, the P/L, a service's answer — and the answer comes from the numbers you see there, in the range the chart shows.",
+        "try": "what did the chart do today?",
+        "symbol": "eye.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "A token's month, free",
+        "text": "Looking a token up now brings its pool's last 30 days: the low, the high and a close a day. «Where should I buy?» gets a range from the chart, not an offer to pay for history.",
+        "symbol": "chart.xyaxis.line",
+        "color": "2775CA"
+      }
+    ]
+  },
+  {
     "version": "0.4.2",
     "date": "2026-10-04",
     "stories": [
