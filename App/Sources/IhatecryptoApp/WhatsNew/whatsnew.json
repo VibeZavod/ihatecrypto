@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.4.2",
+    "date": "2026-10-04",
+    "stories": [
+      {
+        "title": "Orders keep their price",
+        "text": "«limit 2650.» and «stop at 2650.» no longer lose the price to the full stop, so a limit stays a limit. «Brent oil» is Brent, not WTI. 26,617 ways to write a command were checked; all read right.",
+        "symbol": "scope",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "A yes is a yes",
+        "text": "«yeah right» or «ну да, конечно» can be sarcasm: they go to the model instead of signing the waiting card. A plain yes still signs at once, and no change ever does.",
+        "symbol": "hand.thumbsup.fill",
+        "color": "2775CA"
+      },
+      {
+        "title": "The chat never freezes",
+        "text": "A Claude Code reply can't hang the chat after it ends, and Claude Code updating itself no longer breaks answers for a minute.",
+        "symbol": "bolt.horizontal.circle.fill",
+        "color": "0B7A55"
+      },
+      {
+        "title": "Small things",
+        "text": "A note that mentions an alert or a chart stays a note. «save 0x… as Mom on tempo» saves «Mom» on Tempo. «Sell all JUP» shows how much «all» is.",
+        "symbol": "checkmark.seal.fill",
+        "color": "4615C8"
+      }
+    ]
+  },
+  {
     "version": "0.4.1",
     "date": "2026-10-04",
     "stories": [
