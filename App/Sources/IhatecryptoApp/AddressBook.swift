@@ -967,7 +967,7 @@ struct TransferBoard: View {
                     Label("First transfer to this address. Sending a small test amount first is the safe habit.", systemImage: "exclamationmark.triangle.fill")
                         .font(.ui(10)).foregroundStyle(Brand.jevInk)
                 }
-                Label("Only this saved address may receive the money: the guard and the signer check it, the simulation must show exactly \(Fmt.num(amount)) USDC leaving. Say “do it” or press Confirm.",
+                Label("Only this saved address may receive the money: the guard and the signer check it, the simulation must show exactly \(Fmt.num(amount)) USDC leaving. Press Confirm.",
                       systemImage: "checkmark.shield")
                     .font(.ui(10)).foregroundStyle(.secondary)
                 PendingButtons()

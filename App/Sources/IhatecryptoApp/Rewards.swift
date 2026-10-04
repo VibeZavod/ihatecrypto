@@ -72,7 +72,7 @@ extension Workspace {
         return MoveRoute(title: "\(into == nil ? "Claim" : "Sweep") rewards · \(owed.map(Self.shown).joined(separator: ", "))",
                          footer: "One \(names.joined(separator: ", ")) transaction a chain: Merkl's distributor pays each reward to this wallet — the signer refuses a claim that pays anyone else. "
                             + (into == nil ? "" : "Then each reward worth $1 or more is sold for USDC on Solana (Relay's swap or Uniswap and the bridge, whichever leaves more), paying only this wallet; dust stays. ")
-                            + "The proofs are asked for again right before signing; gas missing there comes from Solana over Relay. Say “do it” or press Confirm.",
+                            + "The proofs are asked for again right before signing; gas missing there comes from Solana over Relay. Press Confirm.",
                          steps: steps)
     }
 }

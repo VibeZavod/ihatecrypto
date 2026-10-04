@@ -1083,7 +1083,7 @@ struct PendingButtons: View {
         HStack(spacing: 8) {
             Button("Cancel") { Task { await ws.send("cancel") } }
                 .buttonStyle(.bordered).controlSize(.large)
-            Button { Task { await ws.send("do it") } } label: {
+            Button { Task { await ws.pressConfirm() } } label: {
                 Label(confirm, systemImage: "touchid").font(.ui(13, .semibold)).padding(.horizontal, 6)
             }
             .buttonStyle(.borderedProminent).controlSize(.large)
@@ -1163,9 +1163,9 @@ extension Workspace {
         case .claimRewards, .sweepRewards: claimRoute()
         default: ends(command).map { from, to in
             let footer = if case .sellStock = command {
-                "Two Robinhood Chain transactions: an exact approve and the Uniswap swap, which may only pay this wallet. Say “do it” or press Confirm; Cancel or “cancel” drops it."
+                "Two Robinhood Chain transactions: an exact approve and the Uniswap swap, which may only pay this wallet. Press Confirm; Cancel or “cancel” drops it."
             } else {
-                "One Solana signature, checked and simulated before it’s signed. Say “do it” or press Confirm; Cancel or “cancel” drops it."
+                "One Solana signature, checked and simulated before it’s signed. Press Confirm; Cancel or “cancel” drops it."
             }
             return MoveRoute(title: readable(command.summary.prefix(1).uppercased() + command.summary.dropFirst()), footer: footer, steps: around(command, [from, to]))
         }
@@ -1199,7 +1199,7 @@ extension Workspace {
     /// Any wallet command without a drawn route still gets its card with Confirm: a pending move is never invisible.
     func fallbackRoute(_ command: WalletCommand) -> MoveRoute {
         MoveRoute(title: readable(Self.canvasTitle(command)),
-                  footer: "Checked and simulated before it’s signed. Say “do it” or press Confirm; Cancel or “cancel” drops it.", steps: [])
+                  footer: "Checked and simulated before it’s signed. Press Confirm; Cancel or “cancel” drops it.", steps: [])
     }
 
     /// Native NEAR → USDC on Solana through NEAR Intents (1Click); «all» keeps ≈ 0.09 NEAR: storage, and prepaid gas
@@ -1208,7 +1208,7 @@ extension Workspace {
         let amount = asked ?? max(0, near - Decimal(string: "0.09")!)
         let usd = markets["NEAR"].map { amount * $0.markPx }
         return MoveRoute(title: "Sell \(Fmt.num(amount, maxFraction: 4)) NEAR for USDC on Solana",
-                         footer: "One NEAR transaction: exactly this NEAR, wrapped and sent to the 1Click deposit address the quote names, checked before signing. USDC arrives on your own Solana address in ≈ 30–40 s. Say “do it” or press Confirm.",
+                         footer: "One NEAR transaction: exactly this NEAR, wrapped and sent to the 1Click deposit address the quote names, checked before signing. USDC arrives on your own Solana address in ≈ 30–40 s. Press Confirm.",
                          steps: [
             step("near", "FROM · NEAR", "\(Fmt.num(amount, maxFraction: 4)) NEAR", usd.map { "≈ \(Fmt.usd($0)) · ≈ 0.09 NEAR stays for storage and gas, most of it back after" } ?? "", .near),
             step("near", "SWAP · NEAR INTENTS", "1Click", "the quote is checked before signing", .relay),
@@ -1228,7 +1228,7 @@ extension Workspace {
                          footer: (close
                             ? "One NEAR transaction: your NEAR account is deleted and NEAR sends everything on it to \(entry.name). Touch ID asks in plain words first; buying NEAR later opens the account again. "
                             : "One NEAR transfer, built and signed by the signer; only this saved address may receive it. ")
-                            + "Say “do it” or press Confirm.",
+                            + "Press Confirm.",
                          steps: [
             step("near", "FROM · NEAR", "\(Fmt.num(amount, maxFraction: 4)) NEAR",
                  usd.map { "≈ \(Fmt.usd($0))" + (close ? " · everything" : asked == nil ? " · ≈ 0.012 NEAR stays" : "") } ?? "", .near),
@@ -1241,7 +1241,7 @@ extension Workspace {
         guard let entry = savedAddress(name, on: .solana) else { return nil }
         let ends = AddressCheck.ends(entry.address)
         return MoveRoute(title: "Send \(Fmt.num(amount, maxFraction: 9)) SOL to \(entry.name)",
-                         footer: "One Solana transfer: only this saved address may receive it, and the simulation must show exactly this SOL leaving plus the fee. Say “do it” or press Confirm.",
+                         footer: "One Solana transfer: only this saved address may receive it, and the simulation must show exactly this SOL leaving plus the fee. Press Confirm.",
                          steps: [
             step("sol", "FROM · SOLANA", "\(Fmt.num(amount, maxFraction: 9)) SOL", solana.map { "free: \(Fmt.num($0.sol, maxFraction: 6)) SOL" } ?? "", .solana),
             step("sol", "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", .solana),
@@ -1256,7 +1256,7 @@ extension Workspace {
         let held = holdings.first { $0.chain == net && ($0.symbol.lowercased() == token.lowercased() || $0.contract.lowercased() == token.lowercased()) }
         let what = "\(amount.map { Fmt.num($0, maxFraction: 9) } ?? "all") \(held?.symbol ?? token)"
         return MoveRoute(title: "Send \(what) to \(entry.name)",
-                         footer: "One transfer on \(place?.title ?? net), the token as it is: only this saved address may receive it. Say “do it” or press Confirm.",
+                         footer: "One transfer on \(place?.title ?? net), the token as it is: only this saved address may receive it. Press Confirm.",
                          steps: [
             step(logo, "FROM · \((place?.title ?? net).uppercased())", what, held.map { "held: \(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol)" } ?? "", fill),
             step(logo, "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", fill),
@@ -1267,7 +1267,7 @@ extension Workspace {
         let free = hl?.withdrawable
         let amount = asked ?? free
         return MoveRoute(title: "Withdraw · \(amount.map { Fmt.num($0) } ?? "all") USDC to Solana",
-                         footer: "Signed with the main key — the trading key can’t withdraw. Say “do it” or press Confirm; Cancel or “cancel” drops it.", steps: [
+                         footer: "Signed with the main key — the trading key can’t withdraw. Press Confirm; Cancel or “cancel” drops it.", steps: [
             step("hype", "FROM · HYPERLIQUID", free.map { f in amount.map { "\(Fmt.usd(f)) → \(Fmt.usd(max(0, f - $0)))" } ?? Fmt.usd(f) } ?? "—",
                  "position margin isn’t touched", .hyperliquid),
             step("relay", "BRIDGE · RELAY", amount.map { "\(Fmt.num($0)) USDC" } ?? "—", "≈ 4 s · small Relay fee", .relay),
@@ -1300,7 +1300,7 @@ extension Workspace {
         return MoveRoute(title: morpho ? "Morpho · deposit \(Fmt.num(amount)) USDC on Base" : "Aave · lend \(Fmt.num(amount)) USDC on Base",
                          footer: (bridging ? "One Solana signature for the bridge, then " : "")
                             + "two on Base: approve exactly \(Fmt.num(amount)) USDC, then \(morpho ? "deposit; the shares come to this wallet only" : "supply"). "
-                            + "\(morpho ? "The vault’s asset is" : "Pool and rate are") re-read from Base first. Say “do it” or press Confirm.",
+                            + "\(morpho ? "The vault’s asset is" : "Pool and rate are") re-read from Base first. Press Confirm.",
                          steps: steps)
     }
 
@@ -1532,7 +1532,7 @@ extension Workspace {
                             + "an exact USDG approve and the swap the best way takes (Uniswap v4, v3 or Relay’s swap, compared in the step), which may only pay this wallet. "
                             + (contract ? "The token is taken by its contract: it must trade on Robinhood Chain with $50k+ of liquidity, and the price must sit within 5% of DexScreener's."
                                         : "The token is Robinhood's registered contract, checked on-chain, and the price must sit within Robinhood's own quote.")
-                            + " Say “do it” or press Confirm.", steps: [
+                            + " Press Confirm.", steps: [
             from,
         ] + (bring == 0 ? [] : [step("relay", "BRIDGE · RELAY", elsewhere.map { "\($0.net.name) → Robinhood" } ?? "USDG → Robinhood",
                                      (elsewhere == nil ? "" : "straight, no stop on Solana · ") + "+ ETH for gas when there's none", .relay)]) + [
@@ -1578,7 +1578,7 @@ extension Workspace {
             }
             let footer = (src.map { "First Relay moves the USDC from \(WalletCommand.placeName($0)) to \(name): an exact approve and its deposit. Then two" } ?? "Two")
                 + " \(name) transactions: an exact approve and the Uniswap swap, which may only pay this wallet"
-                + (usdc == nil ? "; the USDC stays on \(name)." : ".") + " Say “do it” or press Confirm."
+                + (usdc == nil ? "; the USDC stays on \(name)." : ".") + " Press Confirm."
             if let usdc {
                 return MoveRoute(title: "Buy \(label) · \(Fmt.num(usdc)) USDC on \(name)", footer: footer, steps: start + [
                     approve("\(Fmt.num(usdc)) USDC", for: "Uniswap", logo: "uni", fill, line: src == nil ? nil : "what arrives · only Uniswap may take it"),
@@ -1601,7 +1601,7 @@ extension Workspace {
         let viaUniswap = (routeWays[Self.wayKey(place, token)] ?? swapQuote.flatMap { q in q.command == command ? q.ways.first?.way : nil }) == "uniswap"
         let footer = "Relay’s swap is one Solana signature; the other way bridges USDC over Relay and swaps on Uniswap with an exact approve, the swap paying only this wallet. "
             + (token.hasPrefix("0x") ? "A token by its contract must trade on \(name) with $50k+ of liquidity. " : "The ticker is taken from Uniswap’s token list, its contract checked on-chain. ")
-            + "Say “do it” or press Confirm."
+            + "Press Confirm."
         if let usdc {
             return MoveRoute(title: "Buy \(label) · \(Fmt.num(usdc)) USDC on \(name)", footer: footer, steps: [
                 step("sol", "FROM · SOLANA", "\(Fmt.num(usdc)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana),
@@ -1758,7 +1758,7 @@ extension Workspace {
         let fill: RouteFill = ["base": .base, "arbitrum": .arbitrum, "robinhood": .robinhood][place] ?? .relay
         return MoveRoute(title: "Gas · \(Fmt.usd(usd)) of \(coin) on \(name)",
                          footer: "One Solana signature for the Relay bridge: \(Fmt.usd(usd)) of \(coin) and half a dollar of USDC arrive at your own address on \(name). "
-                            + "When Solana is short, Relay swaps \(name)'s own USDC for it there. Say “do it” or press Confirm.",
+                            + "When Solana is short, Relay swaps \(name)'s own USDC for it there. Press Confirm.",
                          steps: [
             step("sol", "FROM · SOLANA", "\(Fmt.num(usd + Decimal(string: "0.58")!)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana),
             step("relay", "BRIDGE · RELAY", "\(Fmt.usd(usd)) of \(coin)", "+ 0.5 USDC along · a few seconds", .relay),
@@ -1774,7 +1774,7 @@ extension Workspace {
         let shown = moving.map { Fmt.num($0) } ?? "all"
         return MoveRoute(title: "Move \(shown) USDC · \(a) → \(b)",
                          footer: "Two \(a) transactions: an exact approve and Relay's deposit, checked field by field before signing; "
-                            + "it pays only your own address on \(b). Say “do it” or press Confirm.",
+                            + "it pays only your own address on \(b). Press Confirm.",
                          steps: [
             step(ModuleNetwork(place: from)?.logo ?? "eth", "FROM · \(a.uppercased())",
                  have.map { h in "\(Fmt.num(h)) → \(Fmt.num(max(0, h - (moving ?? h))))" } ?? "\(shown) USDC", "USDC on \(a)", fill(from)),
@@ -1791,7 +1791,7 @@ extension Workspace {
         let there = place == "base" ? base?.usdc : place == "arbitrum" ? arbitrumUSDC : place == "tempo" ? tempoUSDC : robinhood?.usdg
         let fill: RouteFill = place == "base" ? .base : place == "arbitrum" ? .arbitrum : place == "tempo" ? .tempo : .robinhood
         return MoveRoute(title: "Move \(Fmt.num(amount)) USDC · Solana → \(name)",
-                         footer: "One Solana signature for the Relay bridge, checked and simulated before it’s signed; it pays only your own address on \(name). Say “do it” or press Confirm.",
+                         footer: "One Solana signature for the Relay bridge, checked and simulated before it’s signed; it pays only your own address on \(name). Press Confirm.",
                          steps: [
             step("sol", "FROM · SOLANA", solana.map { "\(Fmt.num($0.usdc)) → \(Fmt.num(max(0, $0.usdc - amount)))" } ?? "\(Fmt.num(amount)) USDC", "USDC on Solana", .solana),
             step("relay", "BRIDGE · RELAY", "\(Fmt.num(amount)) USDC", place == "tempo" ? "a few seconds · fees there come out of the USDC" : "a few seconds · + ETH for gas when there's none", .relay),
@@ -1817,7 +1817,7 @@ extension Workspace {
                          footer: (from.count > 1 ? "What's missing on \(name) comes from Solana over Relay, with \(coin) for gas when there's none; then two" : "Two")
                             + " \(name) transactions: approve exactly \(Fmt.num(amount)) USDC, then \(morpho ? "deposit; the shares come to this wallet only" : "supply"). "
                             + "\(morpho ? "The vault's asset is" : "Pool and aToken are") re-read from \(name) first"
-                            + (network == "ethereum" ? "; Ethereum's gas changes by the hour (cents to dollars): ask the chat «сколько газа?» for today's" : "") + ". Say “do it” or press Confirm.",
+                            + (network == "ethereum" ? "; Ethereum's gas changes by the hour (cents to dollars): ask the chat «сколько газа?» for today's" : "") + ". Press Confirm.",
                          steps: from + [
             approve("\(Fmt.num(amount)) USDC", for: protocolName, logo: morpho ? "morpho" : "aave", morpho ? .morpho : .aave),
             morpho ? step("morpho", "MORPHO · \(name.uppercased())", "\(Fmt.num(amount)) USDC", "rate from the vault", .morpho)
@@ -1837,7 +1837,7 @@ extension Workspace {
             return MoveRoute(title: lending ? "\(what) · withdraw \(moving) USDC on \(name) to Solana" : "\(name) · \(moving) USDC to Solana",
                              footer: (lending ? "Three \(name) transactions: withdraw from \(what), an exact approve and Relay’s deposit"
                                               : "Two \(name) transactions: an exact approve and Relay’s deposit")
-                                + " — checked field by field before signing. Say “do it” or press Confirm.", steps: [
+                                + " — checked field by field before signing. Press Confirm.", steps: [
                 from,
                 approve("\(moving) USDC", for: "Relay", logo: "relay", .relay),
                 step("relay", "BRIDGE · RELAY", "\(moving) USDC", "a few seconds", .relay),
@@ -1858,7 +1858,7 @@ extension Workspace {
                    "idle \(place == "robinhood" ? "USDG" : "USDC")", place == "arbitrum" ? .arbitrum : place == "robinhood" ? .robinhood : .base)
         return MoveRoute(title: place == "aave" || place == "morpho" ? "\(place == "aave" ? "Aave" : "Morpho") · withdraw \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana" : "\(chainName) · \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana",
                          footer: (place == "aave" || place == "morpho" ? "Three Base transactions: withdraw from \(place == "aave" ? "Aave" : "Morpho"), an exact approve and Relay’s deposit" : "Two \(chainName) transactions: an exact approve and Relay’s deposit")
-                            + " — checked field by field before signing. Say “do it” or press Confirm.", steps: [
+                            + " — checked field by field before signing. Press Confirm.", steps: [
             from,
             approve(moving.map { "\(Fmt.num($0)) \(place == "robinhood" ? "USDG" : "USDC")" } ?? "all of it", for: "Relay", logo: "relay", .relay),
             step("relay", "BRIDGE · RELAY", moving.map { "\(Fmt.num($0)) \(place == "robinhood" ? "USDG" : "USDC")" } ?? "—", "≈ $0.02 · a few seconds", .relay),

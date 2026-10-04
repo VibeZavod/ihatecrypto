@@ -434,3 +434,16 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(TokenResearch.solanaMint(data, symbol: "$SPX") == "SPXmint")
     #expect(TokenResearch.solanaMint(data, symbol: "spx6900 real") == nil)
 }
+
+/// Only the Confirm button carries out a waiting move: a typed «yes» in any language is answered, never signed.
+@Test func typedApprovalNeverCarriesOutAMove() {
+    for yes in ["да", "делай", "do it", "yes, do it", "ok", "sí, hazlo", "погнали", "confirm"] {
+        #expect(ChatWords.typedApproval(yes, pressed: false, waiting: true), "\(yes)")
+        #expect(!ChatWords.typedApproval(yes, pressed: true, waiting: true), "\(yes) pressed")   // the button's own «do it»
+        #expect(!ChatWords.typedApproval(yes, pressed: false, waiting: false), "\(yes) nothing waiting")
+    }
+    // Not an approval: a question, a change, a refusal go on to the model or the parser.
+    for other in ["да?", "давай на 30", "не делай", "cancel", "what's the fee"] {
+        #expect(!ChatWords.typedApproval(other, pressed: false, waiting: true), "\(other)")
+    }
+}

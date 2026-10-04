@@ -142,7 +142,7 @@ extension Workspace {
         return MoveRoute(title: "Pay \(price) USDC · \(quote.service)",
                          footer: "One Tempo transfer of \(price) USDC to the address \(host) named (\(AddressCheck.ends(c.payee).start) … \(AddressCheck.ends(c.payee).end)); "
                             + (short ? "what's short comes from \(src?.name ?? "Solana") over Relay first; " : "")
-                            + "the fee, ≈ $0.001, comes out of the USDC. Then the request goes again with the payment's hash. Say “do it” or press Confirm.",
+                            + "the fee, ≈ $0.001, comes out of the USDC. Then the request goes again with the payment's hash. Press Confirm.",
                          steps: [
             // Short on Tempo: a dollar's float comes from Solana (Executor.tempoFloat), plus a cent for fees; Relay's ≈ $0.02 on top.
             short ? ActivityBubble(kind: "step", label: "FROM · \((src?.name ?? "Solana").uppercased()) → TEMPO",

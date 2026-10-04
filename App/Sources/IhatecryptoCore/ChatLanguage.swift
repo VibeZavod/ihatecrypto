@@ -59,6 +59,12 @@ public enum ChatWords {
         }
         return !words.isEmpty && words.allSatisfy { yes.contains($0) || filler.contains($0) } && words.contains(where: yes.contains)
     }
+    /// A typed approval while a card waits for Confirm: it's answered with «press Confirm» and moves nothing. Only the
+    /// Confirm or Sign button's own «do it» (`pressed`) carries a move out, so text from a site, a note or a pasted message
+    /// can't agree for the user, whatever it says.
+    public static func typedApproval(_ text: String, pressed: Bool, waiting: Bool) -> Bool {
+        !pressed && waiting && confirms(text)
+    }
     static let yes: Set<String> = [
         "делай", "делаем", "да", "давай", "подтверждаю", "подтверди", "раскладывай", "го", "гоу", "погнали", "поехали", "жми",
         "подписывай", "подписываю", "запускай", "ок", "окей", "ага", "угу", "согласен", "согласна",

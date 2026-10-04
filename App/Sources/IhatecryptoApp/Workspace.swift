@@ -144,7 +144,7 @@ final class Workspace {
     /// The plan last carried out; while the intent equals it, the card shows the position, not a new trade.
     var executed: TradeIntent?
     /// Regular purchases, carried out while the app is open.
-    /// An allocation plan shown and waiting for «делай».
+    /// An allocation plan shown and waiting for its Sign button.
     var pendingAllocation: WalletCommand? {
         didSet { if pendingAllocation != nil, oldValue == nil { remindToConfirm() } }
     }
@@ -708,6 +708,15 @@ final class Workspace {
         }
     }
 
+    /// Set while a Confirm or Sign button's own «do it» goes through `send`: only a press carries out a move waiting for
+    /// Confirm. A typed «yes» never does — text on the canvas, a site or a pasted note can't agree for the user.
+    @TaskLocal static var pressed = false
+
+    /// The Confirm (or Sign) button: the move waiting on the card goes ahead, as «do it» in the chat.
+    func pressConfirm() async {
+        await Self.$pressed.withValue(true) { await send("do it") }
+    }
+
     func send(_ raw: String) async {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !busy else { return }
@@ -777,12 +786,19 @@ final class Workspace {
 
         // A confirmation from the debug API would only fail at the signer and lose the card: keep it for the window.
         if SignerClient.untrusted, activeWallet?.isTest != true, pendingAction != nil || pendingAllocation != nil, ChatWords.confirms(text) {
-            reply(say("That «do it» came from the debug API, which can’t confirm money moves. In the window, press Confirm on the card or type «do it» yourself.",
-                      "Это «do it» пришло из отладочного API, а он не подтверждает переводы. В окне нажми Confirm на карточке или напиши «делай» сам."), note: "debug API")
+            reply(say("That «do it» came from the debug API, which can’t confirm money moves. In the window, press Confirm on the card.",
+                      "Это «do it» пришло из отладочного API, а он не подтверждает переводы. В окне нажми Confirm на карточке."), note: "debug API")
+            return
+        }
+        // Only the button carries out a move: a typed «yes», «do it», «делай» leaves the card waiting.
+        if ChatWords.typedApproval(text, pressed: Self.pressed, waiting: pendingAction != nil || pendingAllocation != nil) {
+            reply(say("Press Confirm on the card to go ahead — a typed «yes» never moves money, so text from a site, a note or a pasted message can't confirm for you. The card keeps waiting.",
+                      "Нажми Confirm на карточке — напечатанное «да» деньги не двигает, чтобы текст с сайта, из заметки или вставленного сообщения не мог подтвердить за тебя. Карточка ждёт."),
+                  note: "Confirm is a button")
             return
         }
 
-        // «делай» / «do it» right after a plan that waits for it carries it out; anything else drops it.
+        // The button's «do it» right after a plan that waits for it carries it out; anything else drops it.
         let confirms = ChatWords.confirms(text)
         let declines = ChatWords.declines(text)
         // Read once per message: each read is a Keychain round trip and a JSON decode.
@@ -972,8 +988,8 @@ final class Workspace {
                     // A close or a cancel can't be taken back: it waits for Confirm, as when a model reads it.
                     pendingAction = .position(command, coin: coin)
                     pendingText = text
-                    reply(say("“\(text)” for \(IntentParser.pretty(coin)): say “do it” or press Confirm to go ahead.",
-                              "«\(text)» для \(IntentParser.pretty(coin)): напиши «делай» или нажми Confirm."))
+                    reply(say("“\(text)” for \(IntentParser.pretty(coin)): press Confirm to go ahead.",
+                              "«\(text)» для \(IntentParser.pretty(coin)): нажми Confirm."))
                 default:
                     await manage(command, coin: coin)
                 }
@@ -1152,15 +1168,17 @@ final class Workspace {
         }
         switch reading?.route {
         case .confirm?:
-            // A safety rule, not a reading: a number in the message, in digits or words, or «half», «добавь ещё», is a
-            // change, whatever the model says. Apple's model read «add another 300» as a confirm once (its second reading
-            // too), which would have signed the 500 waiting.
+            // The model read an approval: only the button carries out a move, so the card keeps waiting for it. A number or
+            // a change in the message («add another 300», which Apple's model once read as a yes) is said to be one.
             let said = aboutStep ? String(text[(text.range(of: "»: ")?.upperBound ?? text.startIndex)...]) : text
             if ChatWords.mayChange(said) {
                 reply(say("That reads like a yes, but it has a number or a change in it, so nothing was signed and the card keeps waiting. If it's a change, say it as one («make it 800»); if not, press Confirm on the card.",
                           "Похоже на «да», но в сообщении есть число или изменение — я ничего не подписывал, карточка ждёт. Если это изменение, скажи его так («сделай 800»); если нет — нажми Confirm на карточке."), note: note)
+            } else if pendingAction != nil || pendingAllocation != nil {
+                reply(say("Press Confirm on the card to go ahead — a typed «yes» never moves money. The card keeps waiting.",
+                          "Нажми Confirm на карточке — напечатанное «да» деньги не двигает. Карточка ждёт."), note: note)
             } else {
-                await confirmWaiting(note: note)
+                reply(say("Nothing is waiting for a confirmation right now.", "Сейчас нечего подтверждать."), note: note)
             }
         case .cancel?:
             let waited = pendingAction != nil || pendingAllocation != nil
@@ -1218,26 +1236,6 @@ final class Workspace {
 
     /// The card waiting for Confirm, carried out because the model read the message as approving it — the same path as
     /// a typed «да». Never from the debug API (it can't confirm money moves), and nothing when no card waits.
-    private func confirmWaiting(note: String) async {
-        guard pendingAction != nil || pendingAllocation != nil else {
-            reply(say("Nothing is waiting for a confirmation right now.", "Сейчас нечего подтверждать."), note: note)
-            return
-        }
-        if SignerClient.untrusted, activeWallet?.isTest != true {
-            reply(say("That «yes» came from the debug API, which can’t confirm money moves. In the window, press Confirm on the card or say it yourself.",
-                      "Это «да» пришло из отладочного API, а он не подтверждает переводы. В окне нажми Confirm на карточке или скажи сам."), note: "debug API · \(note)")
-            return
-        }
-        if let pending = pendingAllocation {
-            pendingAllocation = nil
-            await move(pending, confirmed: true)
-        } else if let pending = pendingAction {
-            pendingAction = nil
-            pendingText = nil
-            await carryOut(pending)
-        }
-    }
-
     /// A new command or plan read from the message takes the place of the card that waited for Confirm, and of the
     /// chain's steps after it. A question about the card (chat, clarify) leaves them. Asked about one route step
     /// («Why?» on its card), the move keeps waiting as before.
@@ -1427,8 +1425,8 @@ final class Workspace {
         if let coin = targetCoin(for: canonical), let command = PositionCommand.parse(canonical) {
             pendingAction = .position(command, coin: coin)
             pendingText = canonical
-            reply(say("Understood as “\(canonical)” for \(IntentParser.pretty(coin)). Say “do it” or press Confirm to go ahead.",
-                      "Понял как «\(canonical)» для \(IntentParser.pretty(coin)). Напиши «делай» или нажми Confirm."), note: note)
+            reply(say("Understood as “\(canonical)” for \(IntentParser.pretty(coin)). Press Confirm to go ahead.",
+                      "Понял как «\(canonical)» для \(IntentParser.pretty(coin)). Нажми Confirm."), note: note)
             return true
         }
         // «close ETH», «move stop to breakeven» with no such position: never a new plan («close ETH» names ETH).

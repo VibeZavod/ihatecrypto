@@ -2142,10 +2142,10 @@ private struct ChatActions: View {
 
     var body: some View {
         if let text = ws.pendingText {
-            Button { Task { await ws.send("do it") } } label: { primary("Confirm: \(text)") }
+            Button { Task { await ws.pressConfirm() } } label: { primary("Confirm: \(text)") }
                 .buttonStyle(.plain).disabled(ws.executing).padding(.bottom, 4)
         } else if ws.pendingAllocation != nil {
-            Button { Task { await ws.send("do it") } } label: { primary("Sign") }
+            Button { Task { await ws.pressConfirm() } } label: { primary("Sign") }
                 .buttonStyle(.plain).disabled(ws.executing).padding(.bottom, 4)
         } else if ws.managesPosition, ws.positions.contains(where: { $0.coin == ws.intent.asset }) {
             ScrollView(.horizontal, showsIndicators: false) {
