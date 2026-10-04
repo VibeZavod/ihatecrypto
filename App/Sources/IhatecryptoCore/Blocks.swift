@@ -52,6 +52,9 @@ public enum BlockCatalog {
 
         Block(group: "Buy and sell", label: "SWAP · JUPITER", title: "Tokens on Solana", form: "buy|sell SOL, BTC, ETH, JUP, BONK… for N USDC",
               example: "buy SOL for 2 USDC", fill: "jupiter", logo: "jup"),
+        Block(group: "Buy and sell", label: "EVERY DAY · JUPITER DCA", title: "DCA on Jupiter",
+              form: "Jupiter DCA N USDC into SOL, BTC, JUP, BONK… in K orders every day|week · on-chain, from 100 USDC, 50 an order",
+              example: "Jupiter DCA 100 USDC into SOL in 2 orders every day", fill: "jupiter", logo: "jup"),
         Block(group: "Buy and sell", label: "BUY · ON BASE", title: "Base and Arbitrum", form: "buy TICKER on base|arbitrum for N USDC · Relay or Uniswap, the better",
               example: "buy AERO on base for 2 USDC", fill: "base", logo: "base"),
         Block(group: "Buy and sell", label: "BUY · ROBINHOOD CHAIN", title: "Stock tokens", form: "buy TSLA, NVDA, SpaceX… stock for N USDC",

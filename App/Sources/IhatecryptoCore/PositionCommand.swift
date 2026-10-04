@@ -104,6 +104,14 @@ public enum WalletCommand: Equatable, Sendable {
     case sell(SpotAsset, amount: Decimal?)
     /// Regular purchases (DCA): `usdc` of the coin every `days` days.
     case schedule(SpotAsset, usdc: Decimal, days: Int)
+    /// Jupiter's on-chain DCA: `usdc` in all (nil = ask) into the coin, in `orders` swaps (nil = one per 50 USDC, 2 to 10)
+    /// `every` seconds apart. The whole amount goes into an order account of the wallet's own at once; Jupiter's keepers
+    /// buy, and the coin comes to the wallet after each swap — the app needn't run.
+    case jupiterDCA(SpotAsset, usdc: Decimal?, orders: Int?, every: Int)
+    /// Running Jupiter DCA orders closed, the USDC they haven't spent back; nil = all, else those buying this coin.
+    case jupiterDCACancel(SpotAsset?)
+    /// The running Jupiter DCA orders, on the canvas.
+    case jupiterDCAOrders
     case stopSchedules
     /// nil = everything withdrawable.
     case withdrawToSolana(Decimal?)
@@ -196,6 +204,8 @@ public enum WalletCommand: Equatable, Sendable {
         }
         let text = IntentParser.plainNumbers(text)
         let q = text.lowercased()
+        // Jupiter's on-chain DCA, before the app's own recurring buys below take «dca».
+        if q.contains(Self.jupiterDCAWords) { return jupiterDCA(q) }
         // «add gas on robinhood for 3 USDC», «добавь газа на робингуд на 3 бакса», «докинь газ в полигон».
         if q.contains(/\bgas\b|\bгаз\w*/), q.contains(/\badd\b|top\s*up|\bbring\b|\bget\b|\bbuy\b|добав\w*|доки\w*|пополн\w*|закин\w*|подкин\w*|купи\w*|нуж\w*/),
            let word = q.firstMatch(of: /\b(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet)\b/),
@@ -500,6 +510,68 @@ public struct Schedule: Codable, Equatable, Sendable {
 }
 
 extension WalletCommand {
+    /// «jupiter dca …», «dca on jupiter», «дса через юпитер».
+    nonisolated(unsafe) static let jupiterDCAWords = /(?:jupiter|jupyter|джупитер\w*|юпитер\w*)\s*(?:dca|дса|дца)|(?:dca|дса|дца)\s+(?:on|via|through|with|at|через|на|в|с)\s+(?:jupiter|jupyter|джупитер\w*|юпитер\w*)/
+
+    /// «jupiter dca 100 USDC into SOL in 2 orders every day», «… over 4 weeks», «cancel jupiter dca SOL», «show jupiter dca».
+    static func jupiterDCA(_ q: String) -> WalletCommand? {
+        let rest = q.replacing(/jupiter|jupyter|джупитер\w*|юпитер\w*/, with: " ")
+        // «into BONK»: a coin by ticker; «jupiter» itself must not read as JUP.
+        let named = rest.firstMatch(of: /(?:into|in|for|of|в|на)\s+\$?([a-z][a-z0-9]{1,9})\b/).map { String($0.1) }
+            .flatMap { ["usdc", "usd", "orders", "order", "parts", "swaps", "total", "all"].contains($0) ? nil : SpotAsset.find($0) ?? SpotAsset.bySymbol($0) }
+        let coin = named ?? SpotAsset.find(rest)
+        if rest.contains(/cancel|stop|close|\bend\b|отмен|останов|прекрат|закр|стоп/) { return .jupiterDCACancel(coin) }
+        let usdc = (rest.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? rest.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|\$|долл|dollars?|bucks|бакс)/)?.1)
+            .flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
+        guard let coin, coin != .usdc, usdc != nil || !rest.contains(/show|list|status|\bmy\b|покаж|мои|список|статус|какие/) else {
+            return usdc == nil ? .jupiterDCAOrders : nil
+        }
+        func unit(_ w: Substring) -> Int? {
+            w.hasPrefix("min") || w.hasPrefix("мин") ? 60 : w.hasPrefix("hour") || w.hasPrefix("час") ? 3600
+                : w.hasPrefix("day") || w.hasPrefix("дн") || w.hasPrefix("день") || w.hasPrefix("сут") ? 86400
+                : w.hasPrefix("week") || w.hasPrefix("недел") ? 604_800 : w.hasPrefix("month") || w.hasPrefix("месяц") ? 2_592_000 : nil
+        }
+        var orders = rest.firstMatch(of: /(\d+)\s*(?:orders?|buys?|purchases?|swaps?|times|parts?|раз\b|раза|покуп\w*|част\w*|сдел\w*)/).flatMap { Int($0.1) }
+        var every: Int?
+        if let m = rest.firstMatch(of: /(?:every|each|кажд\w*|раз\s+в)\s+(\d+)?\s*(minutes?|hours?|days?|weeks?|months?|мин\w*|час\w*|дн\w*|день|сут\w*|недел\w*|месяц\w*)/), let u = unit(m.2) {
+            every = (m.1.flatMap { Int($0) } ?? 1) * u
+        } else if let m = rest.firstMatch(of: /\b(hourly|daily|weekly|monthly|ежечасн|ежедневн|еженедельн|ежемесячн)/) {
+            every = ["hourly": 3600, "daily": 86400, "weekly": 604_800, "monthly": 2_592_000, "ежечасн": 3600, "ежедневн": 86400,
+                     "еженедельн": 604_800, "ежемесячн": 2_592_000][String(m.1)]
+        }
+        // «over 4 weeks»: 4 swaps a week apart, or the given swaps spread over that time.
+        if let m = rest.firstMatch(of: /(?:over|within|during|for|за|в\s+течени\w*|на)\s+(\d+)\s*(minutes?|hours?|days?|weeks?|months?|мин\w*|час\w*|дн\w*|день|сут\w*|недел\w*|месяц\w*)/), let n = Int(m.1), let u = unit(m.2), n > 0 {
+            if let o = orders, o > 0, every == nil { every = n * u / o } else if orders == nil { orders = n; every = every ?? u }
+        }
+        return .jupiterDCA(coin, usdc: usdc, orders: orders, every: max(every ?? 86400, 60))
+    }
+
+    /// Swaps when none are named: one per 50 USDC (Jupiter's least swap), 2 to 10.
+    public static func jupiterDCAOrders(for usdc: Decimal) -> Int {
+        max(2, min(10, NSDecimalNumber(decimal: (usdc / 50).rounded(0, .down)).intValue))
+    }
+
+    /// Jupiter's least DCA, in USDC.
+    public static let jupiterDCAMinimum: Decimal = 100
+
+    /// Jupiter's own minimums for its DCA, said before a card: nil when the order can be placed.
+    public static func jupiterDCAProblem(usdc: Decimal, orders: Int) -> String? {
+        if usdc < jupiterDCAMinimum { return "Jupiter's DCA takes at least 100 USDC in all, 50 a swap: \(Fmt.num(usdc)) USDC is too little." }
+        if orders < 2 { return "Jupiter's DCA needs at least 2 swaps." }
+        if usdc / Decimal(orders) < 50 {
+            return "Jupiter's DCA buys at least 50 USDC a swap: \(Fmt.num(usdc)) USDC makes \(NSDecimalNumber(decimal: (usdc / 50).rounded(0, .down)).intValue) swaps at most."
+        }
+        return nil
+    }
+
+    /// «day», «2 days», «week», «hour»: an interval in seconds as words.
+    public static func everyText(_ seconds: Int) -> String {
+        for (s, w) in [(2_592_000, "month"), (604_800, "week"), (86400, "day"), (3600, "hour"), (60, "minute")] where seconds % s == 0 {
+            return seconds == s ? w : "\(seconds / s) \(w)s"
+        }
+        return "\(seconds) seconds"
+    }
+
     /// A deposit, a buy or a stake that came without an amount: the chat asks, and the next answer fills it.
     public var amountQuestion: String? {
         switch self {
@@ -509,6 +581,7 @@ extension WalletCommand {
         case .aave(true, nil, let net): "How much USDC into Aave on \(Self.placeName(net))?"
         case .morpho(true, nil, let net): "How much USDC into Morpho on \(Self.placeName(net))?"
         case .buy(let a, nil): "For how many USDC should I buy \(a.symbol)?"
+        case .jupiterDCA(let a, nil, _, _): "How many USDC in all for the Jupiter DCA into \(a.symbol)? (at least 100, 50 a swap)"
         case .buyNear(nil): "For how many USDC should I buy NEAR?"
         case .buyStock(let s, nil): "For how many USDC should I buy \(s)?"
         case .buyOn(let place, let t, nil, _): "For how many USDC should I buy \(t) on \(Self.placeName(place))?"
@@ -522,7 +595,7 @@ extension WalletCommand {
     public var editableAmount: Decimal? {
         switch self {
         case .lendDeposit(_, let x), .kamino(_, _, let x), .hlp(_, let x), .aave(_, let x, _), .morpho(_, let x, _), .buy(_, let x),
-             .buyNear(let x), .buyStock(_, let x), .buyOn(_, _, let x, _), .stake(let x), .solanaTo(_, let x): x
+             .buyNear(let x), .buyStock(_, let x), .buyOn(_, _, let x, _), .stake(let x), .solanaTo(_, let x), .jupiterDCA(_, let x, _, _): x
         default: nil
         }
     }
@@ -535,6 +608,7 @@ extension WalletCommand {
         case .aave(let d, _, let net): .aave(deposit: d, amount: amount, network: net)
         case .morpho(let d, _, let net): .morpho(deposit: d, amount: amount, network: net)
         case .buy(let a, _): .buy(a, usdc: amount)
+        case .jupiterDCA(let a, _, let o, let e): .jupiterDCA(a, usdc: amount, orders: o, every: e)
         case .buyNear: .buyNear(usdc: amount)
         case .buyStock(let s, _): .buyStock(symbol: s, usdc: amount)
         case .buyOn(let place, let t, _, let from): .buyOn(place, token: t, usdc: amount, from: from)
@@ -614,6 +688,11 @@ extension WalletCommand {
         case .sell(let a, let x): return "sell \(n(x)) \(a.symbol)"
         case .schedule(let a, let u, let d): return "buy \(a.symbol) for \(Fmt.num(u)) USDC every \(d == 1 ? "day" : d == 7 ? "week" : "\(d) days")"
         case .stopSchedules: return "stop recurring buys"
+        // The canonical form: it parses back to the same order.
+        case .jupiterDCA(let a, let u, let o, let e):
+            return "Jupiter DCA \(n(u)) USDC into \(a.symbol) in \(o ?? u.map(Self.jupiterDCAOrders) ?? 2) orders every \(Self.everyText(e))"
+        case .jupiterDCACancel(let a): return "cancel Jupiter DCA" + (a.map { " \($0.symbol)" } ?? "")
+        case .jupiterDCAOrders: return "show Jupiter DCA"
         case .withdrawToSolana(let u): return "withdraw \(n(u)) USDC from Hyperliquid to Solana"
         case .lendDeposit(let s, let x): return "deposit \(n(x)) \(s) into Jupiter Lend"
         case .lendWithdraw(let s, let x): return "withdraw \(n(x)) \(s) from Jupiter Lend"

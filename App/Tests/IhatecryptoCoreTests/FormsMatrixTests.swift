@@ -197,6 +197,12 @@ func formCases() -> [FormCase] {
     for (t, asset) in spot {
         add("spot", "buy \(t)", w(.buy(asset, usdc: nil)))
         for (a, v) in amounts { add("spot", "buy \(t) for \(a) USDC", w(.buy(asset, usdc: v))) }
+        for (every, seconds) in [("day", 86400), ("week", 604_800), ("3 days", 259_200), ("hour", 3600)] {
+            for orders in [2, 4] {
+                add("jupiter dca", "Jupiter DCA 200 USDC into \(t) in \(orders) orders every \(every)", w(.jupiterDCA(asset, usdc: 200, orders: orders, every: seconds)))
+            }
+        }
+        add("jupiter dca", "cancel Jupiter DCA \(t)", w(.jupiterDCACancel(asset)))
         guard t != "JitoSOL" else { continue }
         add("spot", "sell \(t)", w(.sell(asset, amount: nil)))
         for (a, v) in amounts { add("spot", "sell \(a) \(t)", w(.sell(asset, amount: v))) }
@@ -207,6 +213,9 @@ func formCases() -> [FormCase] {
         }
     }
     add("dca", "stop recurring buys", w(.stopSchedules))
+    add("jupiter dca", "cancel Jupiter DCA", w(.jupiterDCACancel(nil)))
+    add("jupiter dca", "show Jupiter DCA", w(.jupiterDCAOrders))
+    add("jupiter dca", "Jupiter DCA 100 USDC into BONK in 2 orders every day", w(.jupiterDCA(.bySymbol("BONK"), usdc: 100, orders: 2, every: 86400)))
     for t in ["BONK", "WIF", "USDT", "JTO", "PYTH", "POPCAT", "RENDER", "RAY", "TRUMP"] {
         for (a, v) in amounts { add("jupiter token", "buy \(t) on solana for \(a) USDC", w(.buy(.bySymbol(t), usdc: v))) }
         add("jupiter token", "sell \(t) on solana", w(.sell(.bySymbol(t), amount: nil)))

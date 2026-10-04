@@ -85,11 +85,11 @@ public enum ModuleKind: String, CaseIterable, Sendable {
 }
 
 public enum ModuleProtocol: String, CaseIterable, Sendable {
-    case jupiter, uniswap, jupiterLend, kamino, jitoSOL, aave, morpho, hlp, hlPerps, xyz, robinhoodStocks, relay, oneClick, mpp
+    case jupiter, jupiterDCA, uniswap, jupiterLend, kamino, jitoSOL, aave, morpho, hlp, hlPerps, xyz, robinhoodStocks, relay, oneClick, mpp
 
     public var kind: ModuleKind {
         switch self {
-        case .jupiter, .uniswap: .swaps
+        case .jupiter, .jupiterDCA, .uniswap: .swaps
         case .jupiterLend, .kamino, .jitoSOL, .aave, .morpho, .hlp: .earn
         case .hlPerps: .perps
         case .xyz, .robinhoodStocks: .stocks
@@ -101,7 +101,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
     /// The networks it can't work without. Relay's other end is checked per move (`Modules.refusal(_:via:)`).
     public var networks: [ModuleNetwork] {
         switch self {
-        case .jupiter, .jupiterLend, .kamino, .jitoSOL, .relay: [.solana]
+        case .jupiter, .jupiterDCA, .jupiterLend, .kamino, .jitoSOL, .relay: [.solana]
         // Uniswap works on Robinhood Chain, Base and Arbitrum: the network is checked per move.
         case .uniswap: []
         case .robinhoodStocks: [.robinhood]
@@ -116,6 +116,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
     public var name: String {
         switch self {
         case .jupiter: "Jupiter"
+        case .jupiterDCA: "Jupiter DCA"
         case .uniswap: "Uniswap"
         case .jupiterLend: "Jupiter Lend"
         case .kamino: "Kamino"
@@ -136,6 +137,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
     public var place: String {
         switch self {
         case .hlPerps: "BTC, ETH, SOL and more"
+        case .jupiterDCA: "Solana · on-chain buys over time, from 100 USDC"
         case .xyz: "Oil, metals, stocks"
         case .relay: "Solana ⇄ Base · Arbitrum · Polygon · Ethereum · Robinhood · Tempo"
         case .uniswap: "Robinhood · Base · Arbitrum"
@@ -150,7 +152,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
     /// The logo in Logos/.
     public var logo: String {
         switch self {
-        case .jupiter, .jupiterLend: "jup"
+        case .jupiter, .jupiterDCA, .jupiterLend: "jup"
         case .uniswap: "uni"
         case .kamino: "kamino"
         case .jitoSOL: "jitosol"
@@ -224,6 +226,7 @@ public struct Modules: Equatable, Sendable {
         func r(_ p: ModuleProtocol, via: [ModuleNetwork] = []) -> String? { refusal(p, via: via, ru: ru) }
         switch command {
         case .buy, .sell, .schedule: return r(.jupiter)
+        case .jupiterDCA, .jupiterDCACancel, .jupiterDCAOrders: return r(.jupiterDCA)
         case .stake, .unstake: return r(.jitoSOL)
         case .lendDeposit, .lendWithdraw: return r(.jupiterLend)
         case .kamino: return r(.kamino)

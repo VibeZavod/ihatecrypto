@@ -2,6 +2,7 @@ import DeFiYields
 import EVMChain
 import Foundation
 import IhatecryptoCore
+import JupiterSwap
 import SwiftUI
 import TradeExecution
 
@@ -143,6 +144,11 @@ extension Workspace {
             out.append("P/L board (\(r.period.title)): " + (PnL.facts(r, pretty: IntentParser.pretty) + pnl.held.map(\.english)).joined(separator: " "))
         }
         if showMovers { out.append("movers board: " + moversFacts()) }
+        if let dca = jupiterDCAs, !dca.isEmpty {
+            out.append("Jupiter DCA board, running: " + dca.map { o in
+                "\(Fmt.num(o.used))/\(Fmt.num(o.deposited)) USDC spent into \(SpotAsset.all.first { $0.mint == o.outputMint }?.symbol ?? o.outputMint), \(Fmt.num(o.perCycle)) every \(WalletCommand.everyText(o.every)), \(o.fills) fills"
+            }.joined(separator: "; "))
+        }
         if let a = serviceAnswer {
             out.append("\(a.service)'s answer" + (a.usdc.map { " (paid \(Fmt.num($0, maxFraction: 6)) USDC)" } ?? "") + ": " + a.raw.prefix(2000))
         }

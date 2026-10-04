@@ -176,6 +176,64 @@ extension Executor {
         return line
     }
 
+    // MARK: Jupiter DCA
+
+    /// Jupiter's on-chain DCA: `usdc` into `asset` in `orders` swaps `every` seconds apart, the first right away. One
+    /// signature moves the whole amount into an order account of the wallet's own; Jupiter's keepers swap, and the coin
+    /// comes to the wallet after each. `dryRun`: built, guarded and simulated, not signed.
+    public func jupiterDCA(_ asset: SpotAsset, usdc: Decimal, orders: Int, every: Int, dryRun: Bool = false) async throws -> String {
+        if let problem = WalletCommand.jupiterDCAProblem(usdc: usdc, orders: orders) { throw ExecutionError(problem) }
+        guard asset.resolved, asset.mint != SpotAsset.usdc.mint else { throw ExecutionError("Which coin should the DCA buy?") }
+        let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
+        let have = try await rpc.tokenBalance(owner: wallet.solana, mint: SpotAsset.usdc.mint)
+        // A dry run still shows what the guard says of Jupiter's transaction when the wallet is short.
+        guard units <= have || dryRun else {
+            throw ExecutionError("You have \(Fmt.num(Decimal(have) / 1_000_000)) USDC on Solana; the DCA puts in \(Fmt.num(usdc)) at once.")
+        }
+        let wire = try await JupiterRecurring.createOrder(user: wallet.solana, input: SpotAsset.usdc.mint, output: asset.mint,
+                                                          amount: units, orders: orders, every: every).wire
+        let lastValid = try await rpc.latestBlockhash().lastValidBlockHeight
+        let myUSDC = try SPL.associatedAccount(owner: wallet.solana, mint: SpotAsset.usdc.mint)
+        let myCoin = try SPL.associatedAccount(owner: wallet.solana, mint: asset.mint)
+        // Exactly the amount leaves the USDC account; SOL pays the fee and ≈ 0.005 SOL of rent the order returns at its end.
+        let changes = try await signAndSend(wire, lastValid: lastValid, owners: [myUSDC: wallet.solana, myCoin: wallet.solana],
+                                            rules: [(myUSDC, "USDC", true, -Int64(units))], note: "Jupiter DCA \(Fmt.num(usdc)) USDC into \(asset.symbol)",
+                                            lamportsAtLeast: -12_000_000, dryRun: dryRun)
+        if dryRun { return "Dry run, nothing signed: " + changes.joined(separator: "; ") }
+        let line = "Jupiter DCA set: \(Fmt.num(usdc)) USDC into \(asset.symbol), \(orders) swaps of \(Fmt.num(usdc / Decimal(orders))) USDC every "
+            + "\(WalletCommand.everyText(every)); the first runs now, and \(asset.symbol) comes to the wallet after each."
+        report(line)
+        return line
+    }
+
+    /// Closes the running Jupiter DCA orders (`asset` nil = all of them): what they haven't spent comes back, with their rent.
+    public func cancelJupiterDCA(_ asset: SpotAsset?, dryRun: Bool = false) async throws -> String {
+        let open = try await jupiterDCAOrders().filter { asset == nil || $0.outputMint == asset?.mint }
+        guard !open.isEmpty else { return "No Jupiter DCA\(asset.map { " into \($0.symbol)" } ?? "") is running." }
+        var notes: [String] = []
+        for order in open {
+            let wire = try await JupiterRecurring.cancelOrder(user: wallet.solana, order: order.key).wire
+            let lastValid = try await rpc.latestBlockhash().lastValidBlockHeight
+            let myIn = try SPL.associatedAccount(owner: wallet.solana, mint: order.inputMint)
+            let myOut = try SPL.associatedAccount(owner: wallet.solana, mint: order.outputMint)
+            // Money only comes back: the input account can't go down, SOL only by the fee.
+            let changes = try await signAndSend(wire, lastValid: lastValid, owners: [myIn: wallet.solana, myOut: wallet.solana],
+                                                rules: [(myIn, "unspent input", true, 0)], note: "cancel Jupiter DCA \(order.key.prefix(4))…",
+                                                lamportsAtLeast: -1_000_000, dryRun: dryRun)
+            if dryRun { notes.append(changes.joined(separator: "; ")) }
+        }
+        if dryRun { return "Dry run, nothing signed: " + notes.joined(separator: " | ") }
+        let back = open.reduce(Decimal(0)) { $0 + max($1.deposited - $1.used, 0) }
+        let line = "Cancelled \(open.count == 1 ? "the Jupiter DCA" : "\(open.count) Jupiter DCAs"): about \(Fmt.num(back)) of what they hadn't spent and their rent are back in the wallet."
+        report(line)
+        return line
+    }
+
+    /// The wallet's running Jupiter DCA orders, newest first.
+    public func jupiterDCAOrders() async throws -> [JupiterRecurring.Order] {
+        try await JupiterRecurring.orders(user: wallet.solana)
+    }
+
     /// Closes our token account when it holds nothing; returns the line saying how much rent came back.
     private func closeIfEmpty(_ account: String, mint: String, label: String) async throws -> String? {
         guard (try? await rpc.call("getAccountInfo", [account, ["encoding": "base64"]]) as? [String: Any])?["value"] is [String: Any],
@@ -274,6 +332,8 @@ extension Executor {
         let message = try SolanaMessage.parse(transaction: unsigned)
         let accounts = try await rpc.resolveAccounts(message)
         var verdict = SolanaGuard.check(message, accounts: accounts, policy: SolanaPolicy(owner: wallet.solana), tokenOwners: owners)
+        // A program or an account the guard refuses stops it before the simulation: that answer needs no balances.
+        guard verdict.ok else { throw ExecutionError("The guard stopped \(note): " + verdict.problems.joined(separator: " ")) }
         let watch = rules.map(\.0) + [wallet.solana]
         var before: [String: Int64] = [:]
         for (account, _, token, _) in rules {

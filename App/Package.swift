@@ -10,7 +10,7 @@ let package = Package(
         // For the Xcode project (project.yml) that builds ihatecrypto.app and its signing service.
         .library(name: "IhatecryptoKit", targets: [
             "IhatecryptoCore", "LLMCore", "LLMCatalog", "WalletCore", "TxGuard", "GuardJev", "SignerAPI", "HyperliquidSigning", "SolanaChain",
-            "TradeExecution", "ExecutionCore", "DeFiJupiterLend", "EVMChain", "DeFiKamino", "DeFiYields", "Ledger",
+            "TradeExecution", "ExecutionCore", "DeFiJupiterLend", "JupiterSwap", "EVMChain", "DeFiKamino", "DeFiYields", "Ledger",
         ]),
         .library(name: "IhatecryptoSignerKit", targets: ["SignerAPI", "WalletCore", "TxGuard", "HyperliquidSigning", "SolanaChain", "EVMChain"]),
     ],
@@ -79,7 +79,7 @@ let package = Package(
         .executableTarget(
             name: "IhatecryptoApp",
             dependencies: ["IhatecryptoCore", "LLMCore", "LLMCatalog", "WalletCore", "TxGuard", "GuardJev", "SignerAPI", "HyperliquidSigning", "SolanaChain",
-                           "TradeExecution", "ExecutionCore", "DeFiJupiterLend", "EVMChain", "DeFiKamino", "DeFiYields", "Ledger",
+                           "TradeExecution", "ExecutionCore", "DeFiJupiterLend", "JupiterSwap", "EVMChain", "DeFiKamino", "DeFiYields", "Ledger",
                            .product(name: "Sparkle", package: "Sparkle")],
             // Logos, sounds and the stories are bundled by the Xcode project; `swift run` shows lettered circles instead.
             exclude: ["Logos", "Sounds", "WhatsNew"],

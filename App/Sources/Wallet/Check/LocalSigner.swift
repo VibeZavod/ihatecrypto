@@ -104,12 +104,23 @@ func moveMoney(_ text: String) async throws {
     print("Command: \(command)")
     // Read-only commands and the allocation plan run without --yes; the plan executes only with it.
     switch command {
-    case .yields, .allocate, .rebalance, .pay: break
+    // Jupiter DCA without --yes: built, guarded and simulated, not signed.
+    case .yields, .allocate, .rebalance, .pay, .jupiterDCA, .jupiterDCACancel, .jupiterDCAOrders: break
     default: guard send else { print("Add --yes."); return }
     }
-    let signer = try LocalSigner()
-    let executor = Executor(wallet: signer.wallet, signer: signer, journal: journal, rpc: rpc) { print("[\(stamp())] \($0)") }
+    // `DRY_SOLANA=<address>`: a dry run for a wallet whose key lives in the signer (the test wallet does now).
+    let dry = ProcessInfo.processInfo.environment["DRY_SOLANA"].map { DryRunSigner(wallet: TradeWallet(solana: $0, evm: "")) }
+    let signer: any TradeSigner = try dry ?? LocalSigner()
+    let wallet = dry?.wallet ?? (signer as! LocalSigner).wallet
+    let executor = Executor(wallet: wallet, signer: signer, journal: journal, rpc: rpc) { print("[\(stamp())] \($0)") }
     switch command {
+    case .jupiterDCA(let asset, let usdc, let orders, let every):
+        print(try await executor.jupiterDCA(asset, usdc: usdc ?? 0, orders: orders ?? WalletCommand.jupiterDCAOrders(for: usdc ?? 0), every: every, dryRun: !send))
+    case .jupiterDCACancel(let asset): print(try await executor.cancelJupiterDCA(asset, dryRun: !send))
+    case .jupiterDCAOrders:
+        for o in try await executor.jupiterDCAOrders() {
+            print("\(o.key): \(Fmt.num(o.used))/\(Fmt.num(o.deposited)) spent, \(Fmt.num(o.perCycle)) every \(WalletCommand.everyText(o.every)), \(o.fills) fills, received \(Fmt.num(o.received, maxFraction: 9))")
+        }
     case .withdrawToSolana(let usdc): _ = try await executor.withdrawToSolana(usdc: usdc)
     case .lendDeposit(let symbol, let amount): _ = try await executor.lend(symbol, amount: amount, deposit: true)
     case .lendWithdraw(let symbol, let amount): _ = try await executor.lend(symbol, amount: amount, deposit: false)
@@ -158,11 +169,11 @@ func moveMoney(_ text: String) async throws {
         print("Price: \(Fmt.num(c.usdc, maxFraction: 6)) USDC to \(c.payee) (\(c.realm))\(c.purpose.map { " for «\($0)»" } ?? ""), memo \(c.memo.map { "0x" + $0.hex } ?? "none")")
         guard send else { print("Add --yes to pay it."); return }
         let hash = try await executor.payTempo(c.amount, to: c.payee, memo: c.memo, label: c.realm)
-        let (paid, _, answer) = try await MPP.call(method, url, body, credential: (c.field, MPP.credential(c, hash: hash, payer: signer.wallet.evm)))
+        let (paid, _, answer) = try await MPP.call(method, url, body, credential: (c.field, MPP.credential(c, hash: hash, payer: wallet.evm)))
         print("Paid: \(EVMNetwork.tempo.explorer)/tx/\(hash)\n\(paid):\n\(MPP.shown(answer))")
     case .claimRewards:
         // Without --yes: what Merkl owes. With it: claimed on each chain.
-        let owed = try await Merkl.rewards(user: signer.wallet.evm)
+        let owed = try await Merkl.rewards(user: wallet.evm)
         for r in owed { print("chain \(r.chainId): \(Fmt.num(r.claimable, maxFraction: 6)) \(r.symbol)\(r.worthUSD.map { " ≈ \(Fmt.usd($0))" } ?? "")") }
         guard !owed.isEmpty else { print("Nothing to claim on Merkl."); return }
         guard send else { print("Add --yes to claim it."); return }
@@ -170,7 +181,7 @@ func moveMoney(_ text: String) async throws {
     case .sweepRewards(let min, let into):
         guard send else { print("Add --yes to claim and sell."); return }
         print(try await executor.sweepRewards(minUSD: min, into: into))
-    case .receive: print("Solana (USDC, SOL): \(signer.wallet.solana)\nBase / EVM (USDC, ETH): \(signer.wallet.evm)")
+    case .receive: print("Solana (USDC, SOL): \(wallet.solana)\nBase / EVM (USDC, ETH): \(wallet.evm)")
     case .rebalance(let share):
         let (text, ready, _) = try await executor.rebalance(maxShare: share ?? 50, execute: send)
         print(text + (ready && !send ? "\nWith --yes I'll make these moves." : ""))
@@ -506,4 +517,17 @@ func sweepEVM(to destination: String) async throws {
         let ok = try await chain.waitForReceipt(hash)
         print("\(net.name): sent \(balance - fee) wei → \(ok ? "confirmed" : "FAILED") \(net.explorer)/tx/\(hash); left \(try await chain.balance(me)) wei")
     }
+}
+
+/// Signs nothing: dry runs (`DRY_SOLANA`) build, guard and simulate a move for an address alone.
+struct DryRunSigner: TradeSigner {
+    let wallet: TradeWallet
+    private func refuse() -> Error { WalletError("A dry run signs nothing.") }
+    func signSolana(_ wire: Data, accounts: [String], recipients: [String], tokenOwners: [String: String]) async throws -> Data { throw refuse() }
+    func signHyperliquid(_ action: MsgPack, nonce: UInt64) async throws -> EVMSignature { throw refuse() }
+    func signHyperliquidUser(_ action: MsgPack, recipients: [String]) async throws -> EVMSignature { throw refuse() }
+    func signRelayMapping(wallet: String, depositor: String, id: Data, nonce: UInt64) async throws -> EVMSignature { throw refuse() }
+    func signEVM(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
+                 to: String, data: Data, recipients: [String]) async throws -> Data { throw refuse() }
+    func signNearIntentDeposit(amount: UInt128, depositAddress: String, nonce: UInt64, blockHash: Data) async throws -> Data { throw refuse() }
 }

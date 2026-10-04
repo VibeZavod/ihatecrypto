@@ -114,6 +114,8 @@ public enum ChatRouter {
     SPOT ON SOLANA (Jupiter): buy <SOL|BTC|ETH|JUP|JitoSOL> for N USDC | sell [N] <SOL|BTC|ETH|JUP>
       any other Jupiter-verified token by its ticker: buy <TICKER> on solana for N USDC | sell [N] <TICKER> on solana   (BONK, WIF, USDT, JTO, PYTH, POPCAT, RENDER…)
       buy <SOL|BTC|ETH|JUP> for N USDC every <day|week|N days> | stop recurring buys
+      Jupiter DCA N USDC into <SOL|BTC|ETH|JUP|TICKER> [in K orders] [every <hour|day|week|month|N days> | over N <days|weeks|months>] | cancel Jupiter DCA [<TICKER>] | show Jupiter DCA
+      (Jupiter's on-chain DCA: all N goes into an order account of the wallet's own at once and Jupiter's keepers buy each round, even with the app closed; at least 100 USDC and 50 per order; no K = one per 50 USDC. Write it when the user names Jupiter's DCA or wants buys that run on-chain without the app; a plain «buy SOL every week» is the app's own recurring buy above)
       buy NEAR for N USDC | sell [N] NEAR   (native NEAR on the NEAR account → USDC on Solana; no N = all of it)
     STOCK TOKENS ON ROBINHOOD CHAIN: buy <COMPANY or TICKER> stock for N USDC | sell <TICKER> stock | move USDG from Robinhood to Solana
     ANY TOKEN BY ITS CONTRACT (Robinhood Chain): buy token <0xCONTRACT> for N USDC | sell [N] tokens <0xCONTRACT>

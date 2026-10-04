@@ -1,6 +1,7 @@
 import EVMChain
 import Foundation
 import IhatecryptoCore
+import JupiterSwap
 import LLMCatalog
 import SwiftUI
 import TradeExecution
@@ -974,6 +975,55 @@ struct ScheduleBoard: View {
     private var period: String { schedule.days == 1 ? "day" : schedule.days == 7 ? "week" : schedule.days == 30 ? "month" : "\(schedule.days) days" }
 }
 
+/// The running Jupiter DCA orders: how much each has spent and bought, the swap size and interval, and Cancel. The
+/// orders live on-chain; this reads them from Jupiter when asked and after a DCA is placed or cancelled.
+struct JupiterDCABoard: View {
+    @Environment(Workspace.self) private var ws
+    let orders: [JupiterRecurring.Order]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                TokenLogo(name: "jup", size: 26)
+                Text("Jupiter DCA").font(.ui(15, .bold))
+                Spacer()
+                StatusChip(text: orders.count == 1 ? "1 running" : "\(orders.count) running", tint: Brand.profit)
+            }
+            ForEach(orders, id: \.key) { order in row(order) }
+            Text("On-chain: Jupiter's keepers buy even with ihatecrypto closed. Cancel returns what wasn't spent and the rent.")
+                .font(.ui(10)).foregroundStyle(.secondary)
+        }
+        .padding(16)
+        .frame(width: RouteCards.width(3) + 32)
+        .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.06), radius: 14, y: 8))
+        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.cardBorder))
+    }
+
+    private func row(_ o: JupiterRecurring.Order) -> some View {
+        let coin = SpotAsset.all.first { $0.mint == o.outputMint }?.symbol ?? "\(o.outputMint.prefix(4))…"
+        let done = o.deposited > 0 ? NSDecimalNumber(decimal: o.used / o.deposited).doubleValue : 0
+        return VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                TokenLogo(name: "usdc", size: 22)
+                Image(systemName: "arrow.right").font(.caption.weight(.bold)).foregroundStyle(.secondary)
+                AssetBadge(coin: coin, size: 22)
+                Text("\(Fmt.num(o.perCycle)) USDC → \(coin) every \(WalletCommand.everyText(o.every))").font(.ui(13, .semibold))
+                Spacer()
+                Button("Cancel") { Task { await ws.send("cancel Jupiter DCA \(coin)") } }.buttonStyle(.borderless).foregroundStyle(Brand.loss)
+            }
+            ProgressView(value: min(max(done, 0), 1)).tint(Brand.accent)
+            HStack {
+                Text("spent \(Fmt.num(o.used)) of \(Fmt.num(o.deposited)) USDC · \(o.fills) \(o.fills == 1 ? "swap" : "swaps")").monospacedDigit()
+                Spacer()
+                Text("bought \(Fmt.num(o.received, maxFraction: 6)) \(coin)").monospacedDigit()
+            }
+            .font(.ui(11.5)).foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.primary.opacity(0.04)))
+    }
+}
+
 extension Workspace {
     /// Why a plan can't go, in a few words for its status and a sentence for the chat. nil when nothing stops it (or a
     /// detail is still missing: that has its own «By the book»).
@@ -1288,6 +1338,15 @@ extension Workspace {
         case .buy(let a, let u):
             return (step("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC, .solana),
                     step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "BUY · JUPITER", a.symbol, "best route, simulated first", .jupiter))
+        case .jupiterDCA(let a, let u, let o, let e):
+            let orders = o ?? u.map(WalletCommand.jupiterDCAOrders) ?? 2
+            return (step("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC + (solUSDC.isEmpty ? "" : " · ") + "all goes in now", .solana),
+                    step(TokenLogo.name(forAsset: a.symbol) ?? "jup", "EVERY \(WalletCommand.everyText(e).uppercased()) · JUPITER DCA",
+                         "\(orders) × \(u.map { Fmt.num($0 / Decimal(orders)) } ?? "?") USDC → \(a.symbol)",
+                         "Jupiter's keepers buy on-chain, the first now · 0.1% fee · cancel any time", .jupiter))
+        case .jupiterDCACancel(let a):
+            return (step("jup", "FROM · JUPITER DCA", a.map { "\($0.symbol) orders" } ?? "all orders", "what they haven't spent", .jupiter),
+                    step("usdc", "TO · SOLANA", "USDC", "your wallet · the ≈ 0.005 SOL rent too", .solana))
         case .sellStock(let s, let x):
             // In dollars: what is held (or asked) at the last price, and about as much USDG back.
             let stock = robinhood?.stocks.first { $0.symbol.uppercased() == s.uppercased() || $0.address.lowercased() == s.lowercased() }
@@ -1930,6 +1989,12 @@ extension Workspace {
         case .sell(let a, let x) where !a.resolved:
             guard let token = await spotToken(a, note: note) else { return }
             command = .sell(token, amount: x)
+        case .jupiterDCA(let a, let u, let o, let e) where !a.resolved:
+            guard let token = await spotToken(a, note: note) else { return }
+            command = .jupiterDCA(token, usdc: u, orders: o, every: e)
+        case .jupiterDCACancel(let a?) where !a.resolved:
+            guard let token = await spotToken(a, note: note) else { return }
+            command = .jupiterDCACancel(token)
         default: break
         }
         updateActivity { $0.understood = command.summary }
@@ -1970,6 +2035,12 @@ extension Workspace {
             reply(say(question, "Сколько? Напиши число.") + amountHint(command), note: note)
             return
         }
+        // Jupiter's DCA: the swaps when none were named, and Jupiter's own minimums before a card that would fail.
+        if case .jupiterDCA(let a, let u?, let o, let e) = command {
+            let orders = o ?? WalletCommand.jupiterDCAOrders(for: u)
+            if let problem = WalletCommand.jupiterDCAProblem(usdc: u, orders: orders) { reply(problem, note: note); return }
+            command = .jupiterDCA(a, usdc: u, orders: orders, every: e)
+        }
         // A deposit into Aave or Morpho takes the USDC on its own network first, then Solana's. When neither has enough
         // but another EVM network does, that money comes straight from there, the way a trade's does: the move, then the
         // deposit, one Confirm. «положи 300 в aave на арбитруме» with the USDC on Ethereum made a card that could only fail.
@@ -1981,7 +2052,7 @@ extension Workspace {
         // It reads the active wallet's balances: a task on the automation wallet leaves the check to the move itself.
         if TaskRun.automation == nil, let why = refusalBeforeCard(command, inChain: quiet) { reply(why, note: note); return }
         switch command {
-        case .yields, .allocate, .rebalance, .schedule, .stopSchedules:
+        case .yields, .allocate, .rebalance, .schedule, .stopSchedules, .jupiterDCAOrders:
             // Read-only, or with a board and a step of their own.
             await move(command)
         default:

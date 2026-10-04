@@ -1,6 +1,7 @@
 import AppKit
 import DeFiYields
 import IhatecryptoCore
+import JupiterSwap
 import LLMCatalog
 import LLMCore
 import SwiftUI
@@ -1119,8 +1120,9 @@ struct StudioCanvas: View {
             if nodes.isEmpty {
                 if (ws.yieldOptions ?? ws.heldAnswer?.yields) == nil, ws.allocationPreview == nil, ws.rebalancePlan == nil {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
+                    if let dca = ws.jupiterDCAs, !dca.isEmpty { JupiterDCABoard(orders: dca) }
                     // Under a running board (a chain's move done, its next step coming) the saved one would draw it twice.
-                    if let board, ws.runningAction == nil { SavedBoard(canvas: board) } else if board == nil, positions.isEmpty, ws.schedules.isEmpty, (ws.nextSteps ?? ws.heldAnswer?.steps) == nil, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
+                    if let board, ws.runningAction == nil { SavedBoard(canvas: board) } else if board == nil, positions.isEmpty, ws.schedules.isEmpty, ws.jupiterDCAs?.isEmpty ?? true, (ws.nextSteps ?? ws.heldAnswer?.steps) == nil, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
                               (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty {
                         // Never blank while something is under way: whatever path left nothing live, the canvas's last
                         // board stays until the answer or the outcome takes its place. The empty canvas is for when nothing runs.

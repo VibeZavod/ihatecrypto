@@ -48,6 +48,8 @@ public enum SolanaGuard {
     public static let computeBudget = "ComputeBudget111111111111111111111111111111"
     public static let jupiterSwap = "JUP6LkbZbjS1jKKwapdHNy74zcZ3tLUZoi5QNyVTaV4"
     public static let jupiterLend = "jup3YeL8QhtSx1e253b2FDvsMNC87fDrgQZivbrndc9"
+    /// Jupiter's on-chain DCA (Recurring v1): open_dca_v2 and close_dca on the user's own order account.
+    public static let jupiterDCA = "DCA265Vj8a9CEuX1eb1LWRnDT7uK6q1xMipnNyatn23M"
     /// Relay Depository (github.com/relayprotocol/relay-depository), Anchor program.
     public static let relayDepository = "99vQwtBwYtrqqD9YSXbdum3KBdxPAVxYTaQ3cfnJSrN2"
     public static let kaminoLend = "KLend2g3cP87fffoy8q1mQqGKjrxjC8boSyAYavgmjD"
@@ -58,7 +60,7 @@ public enum SolanaGuard {
     public static let lookupTableProgram = "AddressLookupTab1e1111111111111111111111111"
     public static let knownPrograms: [String: String] = [
         system: "System", computeBudget: "Compute Budget", SPL.tokenProgram: "SPL Token", SPL.token2022Program: "SPL Token-2022",
-        SPL.associatedTokenProgram: "Associated Token", jupiterSwap: "Jupiter Swap", jupiterLend: "Jupiter Lend Earn",
+        SPL.associatedTokenProgram: "Associated Token", jupiterSwap: "Jupiter Swap", jupiterLend: "Jupiter Lend Earn", jupiterDCA: "Jupiter DCA",
         relayDepository: "Relay Depository", kaminoLend: "Kamino Lend", kaminoVault: "Kamino Vault", kaminoFarms: "Kamino Farms",
         lookupTableProgram: "Address Lookup Table",
     ]

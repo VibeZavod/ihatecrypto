@@ -8,6 +8,7 @@ import ExecutionCore
 import Foundation
 import GuardJev
 import IhatecryptoCore
+import JupiterSwap
 import LLMCatalog
 import LLMCore
 import Observation
@@ -339,6 +340,9 @@ final class Workspace {
     var schedules: [Schedule] = (UserDefaults.standard.data(forKey: Workspace.scoped("schedules")).flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) }) ?? [] {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(schedules), forKey: Workspace.scoped("schedules", activeWalletID)) }
     }
+    /// The running Jupiter DCA orders as last read, drawn on the canvas once asked for («show Jupiter DCA») or after one
+    /// is placed or cancelled; nil = not shown.
+    var jupiterDCAs: [JupiterRecurring.Order]?
     /// Commands scheduled for later or on repeat («in 1 week: rebalance USDC»), per wallet; `watch` runs them (Tasks.swift).
     var tasks: [ScheduledTask] = (UserDefaults.standard.data(forKey: Workspace.scoped("tasks")).flatMap { try? JSONDecoder().decode([ScheduledTask].self, from: $0) }) ?? [] {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(tasks), forKey: Workspace.scoped("tasks", activeWalletID)) }

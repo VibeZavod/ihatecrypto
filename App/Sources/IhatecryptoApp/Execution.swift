@@ -5,6 +5,7 @@ import Foundation
 import GuardJev
 import HyperliquidSigning
 import IhatecryptoCore
+import JupiterSwap
 import SignerAPI
 import SwiftUI
 import TradeExecution
@@ -532,6 +533,18 @@ extension Workspace {
                 reply(n == 0 ? "There were no scheduled purchases." : "Scheduled purchases stopped (\(n)).")
                 return
             case .buy(let asset, let usdc): _ = try await e.swap(asset, buy: true, amount: usdc, equity: equity)
+            case .jupiterDCA(let asset, let usdc, let orders, let every):
+                _ = try await e.jupiterDCA(asset, usdc: usdc ?? 0, orders: orders ?? WalletCommand.jupiterDCAOrders(for: usdc ?? 0), every: every)
+                jupiterDCAs = try? await e.jupiterDCAOrders()
+            case .jupiterDCACancel(let asset):
+                _ = try await e.cancelJupiterDCA(asset)
+                jupiterDCAs = (try? await e.jupiterDCAOrders()).flatMap { $0.isEmpty ? nil : $0 }
+            case .jupiterDCAOrders:
+                let orders = try await e.jupiterDCAOrders()
+                jupiterDCAs = orders.isEmpty ? nil : orders
+                reply(orders.isEmpty ? say("No Jupiter DCA is running.", "Jupiter DCA сейчас не запущен.")
+                      : say("Running Jupiter DCA: \(orders.count). They're on the canvas.", "Запущено Jupiter DCA: \(orders.count). Они на холсте."))
+                return
             case .sell(let asset, let amount): _ = try await e.swap(asset, buy: false, amount: amount)
             }
             finish(true)
@@ -551,7 +564,7 @@ extension Workspace {
 
     private func movesMoney(_ command: WalletCommand, confirmed: Bool) -> Bool {
         switch command {
-        case .yields, .sendTo, .receive, .schedule, .stopSchedules: false
+        case .yields, .sendTo, .receive, .schedule, .stopSchedules, .jupiterDCAOrders: false
         case .allocate, .rebalance: confirmed
         default: true
         }
@@ -593,6 +606,20 @@ extension Workspace {
             }
             return lacks(hlp.equity, asked, "HLP")
         case .lendDeposit("USDC", let asked?), .kamino(deposit: true, symbol: "USDC", amount: let asked?): return lacks(solana?.usdc, asked, "Solana")
+        // All of it goes in at once, and Jupiter starts at 100: «say less» would only meet its minimum.
+        case .jupiterDCA(_, let asked?, _, _):
+            if let have = solana?.usdc, asked > have {
+                return have < WalletCommand.jupiterDCAMinimum
+                    ? say("Only \(Fmt.num(have)) USDC is on Solana, and Jupiter's DCA starts at 100 — all of it goes in at once. Top up Solana first.",
+                          "На Solana только \(Fmt.num(have)) USDC, а DCA у Jupiter — от 100, и вся сумма вносится сразу. Сначала пополни Solana.")
+                    : say("Only \(Fmt.num(have)) USDC is on Solana, and the DCA puts all \(Fmt.num(asked)) in at once. Say up to \(Fmt.num(have)).",
+                          "На Solana только \(Fmt.num(have)) USDC, а DCA вносит все \(Fmt.num(asked)) сразу. Назови сумму до \(Fmt.num(have)).")
+            }
+            if let sol = solana?.sol, sol < Decimal(string: "0.007")! {
+                return say("The DCA's order account takes ≈ 0.006 SOL of rent, back when it ends; Solana has \(Fmt.num(sol, maxFraction: 4)) SOL.",
+                           "Аккаунт ордера DCA берёт ≈ 0.006 SOL залога (вернётся в конце), а на Solana \(Fmt.num(sol, maxFraction: 4)) SOL.")
+            }
+            return nil
         // «move 100 USDC to arbitrum» read as from Solana, where 1.69 lay: said before the card, with where the money is.
         case .solanaTo(_, let asked?) where !inChain:
             guard let why = lacks(solana?.usdc, asked, "Solana") else { return nil }
