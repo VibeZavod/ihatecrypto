@@ -2274,8 +2274,9 @@ private struct ConnectModelBar: View {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
                     if outdated {
-                        chip(ws.ollamaInstall ?? "Update Ollama" + (ws.ollamaLatest.map { " to \($0)" } ?? ""), symbol: "arrow.down.circle", accent: true) {
-                            Task { await ws.installOllama() }
+                        chip(ws.ollamaInstall ?? ws.modelDownloads[model].map { "Downloading · \(Int($0 * 100))%" } ?? "Update Ollama" + (ws.ollamaLatest.map { " to \($0)" } ?? "") + " and download",
+                             symbol: "arrow.down.circle", accent: true) {
+                            Task { await ws.setUpLocal() }
                         }
                         .disabled(ws.ollamaInstall != nil)
                         chip("Check again", symbol: "arrow.clockwise") { Task { await ws.refreshLocalModels() } }
@@ -2283,8 +2284,8 @@ private struct ConnectModelBar: View {
                         if OllamaModels.installed, info.id == "ollama" {
                             chip("Open Ollama", symbol: "play.circle") { OllamaModels.start() }
                         } else if info.id == "ollama" {
-                            chip(ws.ollamaInstall ?? "Get Ollama" + (ws.ollamaLatest.map { " \($0)" } ?? ""), symbol: "arrow.down.circle", accent: true) {
-                                Task { await ws.installOllama() }
+                            chip(ws.ollamaInstall ?? "Get Ollama" + (ws.ollamaLatest.map { " \($0)" } ?? "") + " and a model", symbol: "arrow.down.circle", accent: true) {
+                                Task { await ws.setUpLocal() }
                             }
                             .disabled(ws.ollamaInstall != nil)
                         }
@@ -2308,7 +2309,8 @@ private struct ConnectModelBar: View {
                     way("ChatGPT", logo: "llm-openai", id: "chatgpt")
                     way("Claude", logo: "llm-claude", id: "claude-code")
                     way("OpenRouter", logo: "llm-openrouter", id: "openrouter")
-                    if !local { chip("On this Mac", symbol: "desktopcomputer") { ws.providerID = "ollama" } }
+                    // Everything for a free model here in one go: the newest Ollama, then a model that fits this Mac.
+                    if !local { chip("On this Mac", symbol: "desktopcomputer") { Task { await ws.setUpLocal() } } }
                 }
             }
         }
@@ -2787,8 +2789,8 @@ struct ChatModelMenu: View {
                     MenuRow(title: "Ollama isn't running", detail: "start it, then open this menu again", icon: "exclamationmark.triangle") { OllamaModels.start() }
                     .padding(.leading, 28)
                 } else {
-                    MenuRow(title: ws.ollamaInstall ?? "Get Ollama", detail: "free · the newest release · runs models on this Mac, no internet", icon: "arrow.down.circle") {
-                        Task { await ws.installOllama() }
+                    MenuRow(title: ws.ollamaInstall ?? "Get Ollama", detail: "free · the newest release, then a model that fits this Mac", icon: "arrow.down.circle") {
+                        Task { await ws.setUpLocal() }
                     }
                     .disabled(ws.ollamaInstall != nil)
                     .padding(.leading, 28)

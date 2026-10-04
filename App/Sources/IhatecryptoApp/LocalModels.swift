@@ -169,6 +169,7 @@ extension Workspace {
     func installOllama() async {
         guard ollamaInstall == nil else { return }
         ollamaInstall = "…"
+        ollamaUpdated = true
         defer { ollamaInstall = nil }
         do {
             try await OllamaInstaller.install { [weak self] text in self?.ollamaInstall = text }
@@ -188,6 +189,8 @@ extension Workspace {
     /// Downloads a model into Ollama from the model menu; the chat says when it's ready, or why not.
     func downloadModel(_ model: String) async {
         guard modelDownloads[model] == nil else { return }
+        // New models need a new Ollama: the newest goes in first, so the download doesn't stop at «requires a newer version».
+        if needsNewOllama { await installOllama() }
         modelDownloads[model] = 0
         defer { modelDownloads[model] = nil }
         do {
@@ -213,11 +216,36 @@ extension Workspace {
         case noOllama, notRunning, outdated, missing, ready
     }
 
+    /// Ollama is older than its newest release (and wasn't just updated), or a model said it's too old.
+    var needsNewOllama: Bool {
+        if ollamaOutdated { return true }
+        guard !ollamaUpdated, let version = ollamaVersion, let latest = ollamaLatest else { return localServers["ollama"] == false && !OllamaModels.installed }
+        return OllamaInstaller.older(version, than: latest)
+    }
+
+    /// «On this Mac» in one go: Ollama installed or updated to its newest release and started, then the chosen model —
+    /// or, when it isn't there, one this Mac already has, else the biggest suggested one that fits its memory —
+    /// downloaded, picked and loaded.
+    func setUpLocal() async {
+        providerID = "ollama"
+        await refreshLocalModels()
+        if localServers["ollama"] != true || needsNewOllama { await installOllama() }
+        guard localServers["ollama"] == true else { return }
+        let have = (liveModels["ollama"] ?? []).filter { LLMCatalog.chatRefusal(model: $0) == nil }
+        if have.contains(model) { useLocal(model); return }
+        if let first = have.first { useLocal(first); return }
+        let suggested = LLMCatalog.provider(id: "ollama")?.info.models ?? []
+        guard let pick = suggested.first(where: { m in modelSizes[m].map(OllamaModels.fits(sizeGB:)) ?? false }) ?? suggested.last else { return }
+        model = pick
+        await downloadModel(pick)
+        if liveModels["ollama"]?.contains(pick) == true { useLocal(pick) }
+    }
+
     var localState: LocalState {
         if localServers["ollama"] == false { return OllamaModels.installed ? .notRunning : .noOllama }
         // Too old for a model it tried, or older than the newest release while the model still has to be downloaded.
         let missing = liveModels["ollama"].map { $0.contains(model) } == false
-        if ollamaOutdated || (missing && ollamaLatest.map { v in ollamaVersion.map { OllamaInstaller.older($0, than: v) } ?? false } == true) { return .outdated }
+        if ollamaOutdated || (missing && needsNewOllama) { return .outdated }
         return liveModels["ollama"].map { $0.contains(model) } == false || providerID != "ollama" ? .missing : .ready
     }
 
@@ -245,14 +273,14 @@ struct LocalModelsPanel: View {
         VStack(alignment: .leading, spacing: 8) {
             switch ws.localState {
             case .noOllama:
-                line("Needs Ollama, a free app that runs models here with no internet. This Mac has \(memory) GB of memory.")
-                HStack { install("Get Ollama"); recheck }
+                line("One click: the newest Ollama (free, runs models here with no internet), then the best model for this Mac's \(memory) GB.")
+                HStack { setUp; recheck }
             case .notRunning:
                 line("Ollama is installed but not running.")
-                HStack { Button("Start Ollama") { OllamaModels.start() }; recheck }
+                HStack { Button("Start Ollama") { OllamaModels.start() }; setUp; recheck }
             case .outdated:
-                line("Ollama \(ws.ollamaVersion ?? "") is too old for these models: update it to the newest\(ws.ollamaLatest.map { ", \($0)" } ?? ""), free.")
-                HStack { install("Update Ollama"); recheck }
+                line("Ollama \(ws.ollamaVersion ?? "") is too old for these models. One click updates it to the newest\(ws.ollamaLatest.map { ", \($0)" } ?? "") and downloads the model.")
+                HStack { setUp; recheck }
             case .missing, .ready:
                 line("This Mac has \(memory) GB of memory. A model runs in about 1.2× its size.")
                 ForEach(ws.ollamaChoices.prefix(4), id: \.self) { model($0) }
@@ -265,8 +293,12 @@ struct LocalModelsPanel: View {
         Text(text).font(.ui(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
     }
 
-    private func install(_ title: String) -> some View {
-        Button(ws.ollamaInstall ?? title) { Task { await ws.installOllama() } }.disabled(ws.ollamaInstall != nil)
+    /// Ollama to its newest release, then a model that fits, picked and loaded.
+    private var setUp: some View {
+        Button(ws.ollamaInstall ?? ws.modelDownloads.first.map { "Downloading · \(Int($0.value * 100))%" } ?? "Set up on this Mac") {
+            Task { await ws.setUpLocal() }
+        }
+        .disabled(ws.ollamaInstall != nil || !ws.modelDownloads.isEmpty)
     }
 
     private var recheck: some View { Button("Check again") { Task { await ws.refreshLocalModels() } } }
