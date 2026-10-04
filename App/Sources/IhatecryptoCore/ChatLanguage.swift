@@ -50,11 +50,11 @@ public enum ChatWords {
     /// change or a question the model reads: «давай на 30» signed the waiting 20 when a confirmation only had to start
     /// with «давай»; «si quieres…» is an «if».
     /// A «?» asks and a «не / don't / not» refuses («ok?», «да?», «да не»); «да ну (его)» and «let it go» brush the card
-    /// off: all of them are for the model.
+    /// off, and «ну да, конечно» or «yeah right» may be sarcasm: all of them are for the model.
     public static func confirms(_ text: String) -> Bool {
         let words = text.lowercased().split { !$0.isLetter && !$0.isNumber && $0 != "'" && $0 != "’" }.map(String.init)
         let line = " " + words.joined(separator: " ") + " "
-        if text.contains(where: { $0 == "?" || $0 == "¿" }) || words.contains(where: negations.contains) || line.contains(" да ну ") || line.contains(" let it go ") {
+        if text.contains(where: { $0 == "?" || $0 == "¿" }) || words.contains(where: negations.contains) || line.contains(" да ну ") || line.contains(" ну да ") || line.contains(" let it go ") {
             return false
         }
         return !words.isEmpty && words.allSatisfy { yes.contains($0) || filler.contains($0) } && words.contains(where: yes.contains)
@@ -69,7 +69,7 @@ public enum ChatWords {
     /// Words that can go with a «yes» without changing it: «да, давай, сделай это», «yes please, do it now».
     static let filler: Set<String> = [
         "это", "его", "её", "ее", "сделай", "сейчас", "теперь", "пожалуйста", "плиз", "так", "ну", "и", "вперёд", "вперед", "конечно", "хорошо",
-        "it", "this", "that", "now", "please", "pls", "ahead", "let's", "let’s", "lets", "let", "us", "and", "then", "just", "right",
+        "it", "this", "that", "now", "please", "pls", "ahead", "let's", "let’s", "lets", "let", "us", "and", "then", "just",
         "de", "por", "favor", "ya", "lo",
     ]
 

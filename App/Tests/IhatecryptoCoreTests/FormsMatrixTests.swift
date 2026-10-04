@@ -527,3 +527,36 @@ private let sampled: [FormCase] = {
     if !wrong.isEmpty { print("read back wrong \(wrong.count): \(wrong.prefix(10))") }
     #expect(wrong.isEmpty)
 }
+
+extension Seeded: RandomNumberGenerator {}
+
+/// The instant yes and no, without the model: any mix of yes-words and fillers signs; the same with a change, a number,
+/// a question or a «not» in it never does; any mix of no-words drops the card.
+@Test func yesAndNoAreWholeMessages() {
+    var rng = Seeded(state: 1004)
+    let yes = ChatWords.yes.sorted(), filler = ChatWords.filler.sorted()
+    let no = ChatWords.no.subtracting(["never"]).sorted(), noFiller = ChatWords.noFiller.subtracting(["не", "no"]).sorted()
+    let changes = ["на 30", "30", "но меньше", "only half", "instead", "on arbitrum", "без kamino", "потом", "later", "wait", "подожди", "?", "не",
+                   "don't", "but", "только", "половину", "ещё 300", "another 300", "to kamino", "a bit less", "хм", "maybe", "может", "двадцать",
+                   "twice", "в aave", "сначала", "first", "tomorrow", "завтра", "x3", "50%", "or", "или", "not yet", "ещё нет", "right"]
+    var wrong: [String] = []
+    for _ in 0..<5_000 {
+        var words = (0..<Int(rng.next() % 3 + 1)).map { _ in rng.pick(yes) } + (0..<Int(rng.next() % 3)).map { _ in rng.pick(filler) }
+        words.shuffle(using: &rng)
+        let text = words.joined(separator: rng.pick([" ", ", ", " "])) + rng.pick(["", "!", ".", " 👍"])
+        let line = " " + words.joined(separator: " ") + " "
+        if !["да ну", "ну да", "let it go"].contains(where: { line.contains(" \($0) ") }), !ChatWords.confirms(text) || ChatWords.declines(text) {
+            wrong.append("a yes not taken: «\(text)»")
+        }
+        words.insert(rng.pick(changes), at: Int(rng.next() % UInt64(words.count + 1)))
+        let changed = words.joined(separator: " ")
+        if ChatWords.confirms(changed) { wrong.append("signs a change: «\(changed)»") }
+        var nos = (0..<Int(rng.next() % 2 + 1)).map { _ in rng.pick(no) } + (0..<Int(rng.next() % 3)).map { _ in rng.pick(noFiller) }
+        nos.shuffle(using: &rng)
+        let refusal = nos.joined(separator: rng.pick([" ", ", "])) + rng.pick(["", "!", "."])
+        if !ChatWords.declines(refusal) || ChatWords.confirms(refusal) { wrong.append("a no not taken: «\(refusal)»") }
+    }
+    for sarcasm in ["yeah right", "ну да, конечно", "да ну его"] where ChatWords.confirms(sarcasm) { wrong.append("signs «\(sarcasm)»") }
+    if !wrong.isEmpty { print("yes/no wrong \(wrong.count): \(Array(Set(wrong)).prefix(15))") }
+    #expect(wrong.isEmpty)
+}
