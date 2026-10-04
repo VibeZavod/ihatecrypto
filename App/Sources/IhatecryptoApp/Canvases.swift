@@ -1516,18 +1516,26 @@ extension Workspace {
         let usdg = robinhood?.usdg ?? 0
         let fits = usdg > 0 && usdg < asked && asked - usdg <= max(1, asked / 50)
         let usdc = fits ? usdg : asked, bring = max(0, usdc - usdg)
+        // Solana short: the USDC comes straight from the EVM network holding it, as Executor.ensureEVM does.
+        let elsewhere = bring > 0 ? solana.flatMap { s in EVMNetwork.source(arrive: bring, onSolana: s.usdc, target: "robinhood", held: { self.usdc(on: $0) }) } : nil
         let from = bring == 0
             ? step("robinhood", "FROM · ROBINHOOD CHAIN", "\(Fmt.num(usdg)) → \(Fmt.num(usdg - usdc)) USDG", fits ? "what's there · the cents short aren't worth a bridge" : "already there · no bridge", .robinhood)
-            : step("sol", "FROM · SOLANA", "\(Fmt.num(bring)) USDC", (usdg > 0 ? "the rest of \(Fmt.num(usdc)) is on Robinhood · " : "")
+            : elsewhere.map { e in
+                step(ModuleNetwork(place: e.net.key)?.logo ?? e.net.key, "FROM · \(e.net.name.uppercased())", "≈ \(Fmt.num(e.send)) USDC",
+                     "Solana has only \(Fmt.num(solana?.usdc ?? 0)) · free there: \(Fmt.num(self.usdc(on: e.net.key) ?? 0)) USDC", RouteFill(rawValue: e.net.key) ?? .relay)
+            }
+            ?? step("sol", "FROM · SOLANA", "\(Fmt.num(bring)) USDC", (usdg > 0 ? "the rest of \(Fmt.num(usdc)) is on Robinhood · " : "")
                    + (solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? ""), .solana)
         return MoveRoute(title: "Buy \(symbol) · \(Fmt.num(usdc)) USDC on Robinhood Chain",
-                         footer: (bring == 0 ? "Two signatures on Robinhood Chain with the USDG already there: " : "One Solana signature for the bridge, then two on Robinhood Chain: ")
+                         footer: (bring == 0 ? "Two signatures on Robinhood Chain with the USDG already there: "
+                                  : elsewhere.map { "An exact approve and Relay's deposit on \($0.net.name), then two on Robinhood Chain: " } ?? "One Solana signature for the bridge, then two on Robinhood Chain: ")
                             + "an exact USDG approve and the swap the best way takes (Uniswap v4, v3 or Relay’s swap, compared in the step), which may only pay this wallet. "
                             + (contract ? "The token is taken by its contract: it must trade on Robinhood Chain with $50k+ of liquidity, and the price must sit within 5% of DexScreener's."
                                         : "The token is Robinhood's registered contract, checked on-chain, and the price must sit within Robinhood's own quote.")
                             + " Say “do it” or press Confirm.", steps: [
             from,
-        ] + (bring == 0 ? [] : [step("relay", "BRIDGE · RELAY", "USDG → Robinhood", "+ ETH for gas when there's none", .relay)]) + [
+        ] + (bring == 0 ? [] : [step("relay", "BRIDGE · RELAY", elsewhere.map { "\($0.net.name) → Robinhood" } ?? "USDG → Robinhood",
+                                     (elsewhere == nil ? "" : "straight, no stop on Solana · ") + "+ ETH for gas when there's none", .relay)]) + [
             approve("≈ \(Fmt.num(usdc)) USDG", for: ways?.first?.way == "relay" ? "Relay" : ways?.first?.way == "v4" ? "Permit2, then Uniswap v4" : "Uniswap", logo: ways?.first?.way == "relay" ? "relay" : "uni",
                     .robinhood, line: ways?.first?.way == "v4" ? "exactly this · Permit2 lets Uniswap v4 take it for 30 min" : nil),
             stockBuyStep(symbol, ways, fallback: price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 2)) \(symbol) worth ≈ \(Fmt.usd(usdc)) · 1 \(symbol) = \(tokenPrice($0))" } ?? "at the pool price"),
@@ -1546,9 +1554,15 @@ extension Workspace {
         let command: WalletCommand = usdc != nil ? .buyOn(place, token: token, usdc: usdc, from: from) : .sellOn(place, token: token, amount: sell, keep: keep)
         // On the network itself, as the executor decides (Executor.buyHere): its quote says so; before it lands, the balances.
         let quoted = swapQuote.flatMap { q in q.command == command ? q.ways : nil }
-        let src = from.flatMap { $0 == "solana" || $0 == place ? nil : $0 }
+        // Solana short and the network without the USDC: it comes straight from the EVM network holding it, as Executor.buyOn
+        // decides (EVMNetwork.source) — the card said «from Solana» while Base paid.
+        let auto = usdc.flatMap { u in
+            from == nil && routeWays[Self.wayKey(place, token)] == nil && (self.usdc(on: place) ?? 0) < u
+                ? solana.flatMap { s in EVMNetwork.source(arrive: u, onSolana: s.usdc, target: place, held: { self.usdc(on: $0) })?.net.key } : nil
+        }
+        let src = (from ?? auto).flatMap { $0 == "solana" || $0 == place ? nil : $0 }
         // A source the user named is the card's, never Solana's ways: if it can't pay, the move is refused, not swapped.
-        let here = keep || (from != nil && from != "solana") || (usdc.map { u in quoted?.first.map { $0.way == "here" }
+        let here = keep || ((from ?? auto) != nil && (from ?? auto) != "solana") || (usdc.map { u in quoted?.first.map { $0.way == "here" }
             ?? (from != "solana" && (self.usdc(on: place) ?? 0) >= u) } ?? false)
         if here {
             let gets = quoted?.first { $0.way == "here" }?.gets

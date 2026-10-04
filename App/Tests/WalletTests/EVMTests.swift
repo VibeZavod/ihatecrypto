@@ -416,3 +416,15 @@ import WalletCore
     #expect(Merkl.toSell(owed, into: nil).map(\.symbol) == ["MORPHO", "WETH"])
     #expect(Merkl.toSell(owed, into: "weth").map(\.symbol) == ["MORPHO"])
 }
+
+/// One rule for where a move's USDC comes from: the card and Executor.ensureEVM/buyOn both read EVMNetwork.source.
+@Test func usdcComesFromSolanaWhenItHasItElseStraightFromTheNetworkThatDoes() {
+    let held: [String: Decimal] = ["base": 300, "ethereum": 5000, "robinhood": 400]
+    #expect(EVMNetwork.source(arrive: 249.14, onSolana: 260, target: "robinhood", held: { held[$0] }) == nil)
+    let base = EVMNetwork.source(arrive: 249.14, onSolana: 9.01, target: "robinhood", held: { held[$0] })
+    #expect(base?.net.key == "base" && base?.send == Decimal(string: "250.14"))
+    // Ethereum last, the target never pays itself, and nobody holding enough leaves it to Solana's own refusal.
+    #expect(EVMNetwork.source(arrive: 1000, onSolana: 0, target: "robinhood", held: { held[$0] })?.net.key == "ethereum")
+    #expect(EVMNetwork.source(arrive: 350, onSolana: 0, target: "base", held: { $0 == "robinhood" ? 400 : $0 == "base" ? 9000 : nil })?.net.key == "robinhood")
+    #expect(EVMNetwork.source(arrive: 9000, onSolana: 0, target: "base", held: { held[$0] }) == nil)
+}

@@ -68,6 +68,15 @@ public struct EVMNetwork: Sendable {
         searched.first { (held($0.key) ?? 0) >= send + Decimal(string: "0.1")! }
     }
 
+    /// Where the USDC a move needs on `target` comes from — the one rule the executor signs and the card shows: Solana
+    /// pays when it holds what must arrive plus 10 cents; else the EVM network holding it (Ethereum last) sends it
+    /// straight, a dollar over for Relay's fee. nil: Solana pays (or nobody holds it, and the move says so).
+    public static func source(arrive: Decimal, onSolana: Decimal, target: String, held: (String) -> Decimal?) -> (net: EVMNetwork, send: Decimal)? {
+        guard onSolana < arrive + Decimal(string: "0.1")! else { return nil }
+        let send = (arrive + 1).rounded(2, .up)
+        return funding(send, held: { $0 == target ? nil : held($0) }).map { ($0, send) }
+    }
+
     /// Every network a search for money looks at: all but the ones switched off in Settings › Modules — the user's rule,
     /// never a network left out by us. Ethereum comes last, so a cheaper network pays first when both hold enough.
     public static var searched: [EVMNetwork] {
@@ -158,8 +167,7 @@ extension Executor {
         let onSolana = Decimal(try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
         if onSolana < arrive + Decimal(string: "0.1")! {
             let idle = Dictionary(await idleUSDC().map { ($0.net.key, $0.usdc) }, uniquingKeysWith: +)
-            let send = (arrive + 1).rounded(2, .up)   // a dollar over for Relay's fee; what's left stays there
-            if let from = EVMNetwork.funding(send, held: { $0 == net.key ? nil : idle[$0] }) {
+            if let (from, send) = EVMNetwork.source(arrive: arrive, onSolana: onSolana, target: net.key, held: { idle[$0] }) {
                 report("\(net.name) needs \(Fmt.num(arrive)) USDC and Solana has \(Fmt.num(onSolana)): bringing \(Fmt.num(send)) straight from \(from.name).")
                 _ = try await bridge(from, to: net, usdc: send)
                 return

@@ -154,6 +154,14 @@ extension Executor {
         guard units >= 500_000 else { throw ExecutionError("At least 0.5 USDC: less isn't worth the bridge.") }
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
         func amount(_ raw: Decimal) -> String { "\(Fmt.num(raw / scale, maxFraction: 6)) \(token.symbol)" }
+        // Solana short and the network without the USDC: it comes straight from the EVM network that holds it (the card
+        // shows the same, EVMNetwork.source), not from a Solana that can't pay.
+        var from = from
+        if from == nil, prefer == nil, Decimal(try await net.rpc.tokenBalance(net.usdc, owner: me)) / 1_000_000 < usdc {
+            let onSolana = Decimal(try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
+            let idle = Dictionary(await idleUSDC().map { ($0.net.key, $0.usdc) }, uniquingKeysWith: +)
+            from = EVMNetwork.source(arrive: usdc, onSolana: onSolana, target: net.key, held: { idle[$0] })?.net.key
+        }
         // A way picked on the route's step is one of Solana's: only then is the money on the network passed over.
         if prefer == nil || from != nil, let here = try await buyHere(net, token, units: units, from: from, uni) {
             var spend = units
