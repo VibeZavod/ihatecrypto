@@ -44,6 +44,29 @@ public enum ChatLanguage: String, CaseIterable, Sendable {
     }
 }
 
+/// ↑ and ↓ in the chat's field walk what was sent, as a terminal's history does: ↑ in an empty field or on a message
+/// brought back goes one further back, ↓ one forward and past the newest to an empty field. Confirmations («да», «do it»,
+/// most of them the Confirm button's own) and a message the same as the one before it aren't kept: sending one again
+/// does nothing useful.
+public enum SentHistory {
+    public static func list(_ sent: [String]) -> [String] {
+        sent.filter { !ChatWords.confirms($0) }.reduce(into: [String]()) { out, text in if out.last != text { out.append(text) } }
+    }
+
+    /// The field's text and the place in `history` after ↑ (`up`) or ↓; nil when the key isn't history's: the field
+    /// holds text of its own, or ↓ with nothing brought back.
+    public static func step(_ history: [String], at: Int?, draft: String, up: Bool) -> (at: Int?, draft: String)? {
+        let current = at.flatMap { $0 < history.count && history[$0] == draft ? $0 : nil }
+        if up {
+            guard draft.isEmpty || current != nil else { return nil }
+            let back = (current ?? history.count) - 1
+            return back >= 0 ? (back, history[back]) : (current, draft)
+        }
+        guard let current else { return nil }
+        return current + 1 < history.count ? (current + 1, history[current + 1]) : (nil, "")
+    }
+}
+
 /// Short replies read without the model: a «yes» to a card waiting for Confirm, a «no» that drops it.
 public enum ChatWords {
     /// A confirmation is the whole message: «делай», «да, давай», «yes, do it», «sí, hazlo», «ok». Anything more is a

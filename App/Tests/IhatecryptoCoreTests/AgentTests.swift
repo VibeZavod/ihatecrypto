@@ -447,3 +447,28 @@ private final class Script: LLMClient, @unchecked Sendable {
         #expect(!ChatWords.typedApproval(other, pressed: false, waiting: true), "\(other)")
     }
 }
+
+/// ↑ walks back through what was sent, ↓ forward and out to an empty field; a field with its own text keeps its arrows.
+@Test func upAndDownWalkWhatWasSent() {
+    let history = SentHistory.list(["buy SOL for 5 USDC", "do it", "do it", "show my P/L", "show my P/L", "да", "send 1 USDC to Mom"])
+    #expect(history == ["buy SOL for 5 USDC", "show my P/L", "send 1 USDC to Mom"])
+    var at: Int? = nil, draft = ""
+    func press(_ up: Bool) -> Bool {
+        guard let next = SentHistory.step(history, at: at, draft: draft, up: up) else { return false }
+        (at, draft) = next
+        return true
+    }
+    #expect(press(true) && draft == "send 1 USDC to Mom")
+    #expect(press(true) && draft == "show my P/L")
+    #expect(press(true) && draft == "buy SOL for 5 USDC")
+    #expect(press(true) && draft == "buy SOL for 5 USDC")   // the oldest stays
+    #expect(press(false) && draft == "show my P/L")
+    #expect(press(false) && draft == "send 1 USDC to Mom")
+    #expect(press(false) && draft == "" && at == nil)        // past the newest: an empty field
+    #expect(!press(false))                                    // ↓ with nothing brought back isn't history's
+    // An edited message is the user's own text now: the arrows move the caret in it.
+    #expect(press(true) && draft == "send 1 USDC to Mom")
+    draft = "send 2 USDC to Mom"
+    #expect(!press(true) && !press(false))
+    #expect(SentHistory.step([], at: nil, draft: "", up: true) != nil)   // nothing sent yet: handled, nothing changes
+}

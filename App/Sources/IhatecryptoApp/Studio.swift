@@ -2359,6 +2359,8 @@ private struct ChatComposer: View {
     @State private var pick = 0
     /// The field's text when Esc closed the list: it stays closed until the text changes.
     @State private var dismissed: String?
+    /// The sent message ↑ brought back into the field (SentHistory), while the field still holds it.
+    @State private var recalled: Int?
 
     /// Where the caret is in the field: «/» and «@» lists work on the word it's in, anywhere in the text.
     @State private var selection: TextSelection?
@@ -2369,6 +2371,13 @@ private struct ChatComposer: View {
         guard case .selection(let r)? = selection?.indices, r.upperBound.encodedOffset <= ws.draft.utf16.count else { return nil }
         return r.upperBound.utf16Offset(in: ws.draft)
     }
+    private func walk(up: Bool) -> KeyPress.Result {
+        let history = SentHistory.list(ws.messages.filter(\.fromUser).map(\.text))
+        guard let next = SentHistory.step(history, at: recalled, draft: ws.draft, up: up) else { return .ignored }
+        (recalled, ws.draft) = next
+        return .handled
+    }
+
     private var suggestions: [ComposerSuggestion] { ws.draft == dismissed ? [] : ComposerSuggestion.for(ws.draft, caret: caret, ws: ws) }
     private var picked: ComposerSuggestion? { let rows = suggestions; return rows.indices.contains(pick) ? rows[pick] : nil }
 
@@ -2473,17 +2482,15 @@ private struct ChatComposer: View {
                     NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)
                     return .handled
                 }
-                // ↑↓ walk the «/» or «@» list; ↑ in an empty field brings back the last message, to send again or edit.
+                // ↑↓ walk the «/» or «@» list; otherwise what was sent, as a terminal's history: ↑ in an empty field or on a
+                // message brought back goes one further back, ↓ forward and out to an empty field (SentHistory).
                 .onKeyPress(.upArrow) {
                     if !suggestions.isEmpty { pick = max(0, pick - 1); return .handled }
-                    guard ws.draft.isEmpty, let last = ws.messages.last(where: \.fromUser)?.text else { return .ignored }
-                    ws.draft = last
-                    return .handled
+                    return walk(up: true)
                 }
                 .onKeyPress(.downArrow) {
-                    guard !suggestions.isEmpty else { return .ignored }
-                    pick = min(suggestions.count - 1, pick + 1)
-                    return .handled
+                    if !suggestions.isEmpty { pick = min(suggestions.count - 1, pick + 1); return .handled }
+                    return walk(up: false)
                 }
                 .onKeyPress(.tab) {
                     guard let row = picked else { return .ignored }
