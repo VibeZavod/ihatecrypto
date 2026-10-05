@@ -2142,8 +2142,10 @@ private struct ChatActions: View {
 
     var body: some View {
         if let text = ws.pendingText {
-            Button { Task { await ws.pressConfirm() } } label: { primary("Confirm: \(text)") }
+            // The move is drawn on the canvas, step by step: the button only says what it does.
+            Button { Task { await ws.pressConfirm() } } label: { primary("Confirm") }
                 .buttonStyle(.plain).disabled(ws.executing).padding(.bottom, 4)
+                .help(text).accessibilityLabel("Confirm: \(text)")
         } else if ws.pendingAllocation != nil {
             Button { Task { await ws.pressConfirm() } } label: { primary("Sign") }
                 .buttonStyle(.plain).disabled(ws.executing).padding(.bottom, 4)
