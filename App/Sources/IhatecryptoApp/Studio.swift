@@ -1139,8 +1139,8 @@ struct StudioCanvas: View {
                 let route = ws.planRoute(nodes)
                 RouteCards(steps: route.steps, footer: route.footer, build: true,
                            buildKey: String(describing: ws.intent) + route.steps.map(\.label).joined())
-                Label(route.footer, systemImage: "signature").font(.ui(10)).foregroundStyle(.secondary)
-                    .frame(maxWidth: 470, alignment: .leading)
+                Label(route.footer, systemImage: "signature").font(.ui(12)).foregroundStyle(.primary.opacity(0.78)).lineSpacing(2)
+                    .frame(maxWidth: 560, alignment: .leading)
                 // One list of ways on: what fits (checked by the code), the model's ideas, raising the limit.
                 let blocked = nodes.contains { $0.status == .blocked }
                 let ideas = (ws.nextSteps ?? ws.heldAnswer?.steps).flatMap { $0.canvas == ws.canvasID ? $0 : nil }

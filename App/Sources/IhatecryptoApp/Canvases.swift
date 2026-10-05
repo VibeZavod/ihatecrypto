@@ -2221,8 +2221,9 @@ struct WithdrawBoard: View {
                         PendingButtons()
                     }
                     RouteCards(steps: route.steps + ws.chainSteps(), footer: route.footer, pending: command, build: true)
-                    Label(route.footer, systemImage: "signature").font(.ui(10)).foregroundStyle(.secondary)
-                        .frame(maxWidth: 470, alignment: .leading)
+                    // What will be signed and what's checked: read before Confirm, so it reads as text, not as fine print.
+                    Label(route.footer, systemImage: "signature").font(.ui(12)).foregroundStyle(.primary.opacity(0.78)).lineSpacing(2)
+                        .frame(maxWidth: 560, alignment: .leading)
                 }
                 if let warning = route.warning {
                     Label(warning, systemImage: "exclamationmark.triangle").font(.ui(10)).foregroundStyle(Brand.jevInk)

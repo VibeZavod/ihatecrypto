@@ -153,7 +153,7 @@ struct NetworkCard: View {
         case .polygon: (Color(light: 0xF3EDFF, dark: 0x221A36), Color(light: 0x6B32C9, dark: 0xC4A7FF), Color(hex: 0x8247E5))
         case .near: (Color(light: 0xE6FBF3, dark: 0x0E2A20), Color(light: 0x05785A, dark: 0x00EC97), Color(hex: 0x00C08B))
         case .tempo: (Color(light: 0xF1F2F5, dark: 0x22252C), Color(light: 0x5F6470, dark: 0xC5CAD3), Color(hex: 0x8A8F98))
-        case .hyperevm: (Color(light: 0xE9F6F2, dark: 0x10261F), Color(light: 0x0E4D3F, dark: 0x8FE3CC), Color(hex: 0x0E2B26))
+        case .hyperevm: (Color(light: 0xE9F6F2, dark: 0x10261F), Color(light: 0x0E4D3F, dark: 0x8FE3CC), Color(light: 0x0E4D3F, dark: 0x5FD3B7))
         }
     }
 
@@ -334,7 +334,7 @@ struct InTransit: View {
                             Text(Self.what(e.note)).font(.ui(11.5)).lineLimit(open.contains(e.id) ? nil : 1)
                                 .fixedSize(horizontal: false, vertical: open.contains(e.id))
                             Text("\(Self.bridge(e).name) · \(Self.receiving(e) ? "waiting for your deposit" : "on its way") \(Self.since(e.at))")
-                                .font(.ui(9.5)).foregroundStyle(.secondary).lineLimit(open.contains(e.id) ? nil : 1)
+                                .font(.ui(10.5)).foregroundStyle(.secondary).lineLimit(open.contains(e.id) ? nil : 1)
                                 .fixedSize(horizontal: false, vertical: open.contains(e.id))
                         }
                         Spacer(minLength: 4)
