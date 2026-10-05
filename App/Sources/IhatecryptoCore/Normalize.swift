@@ -149,7 +149,8 @@ public enum ChatRouter {
       rebalance USDC [max N% per protocol]   (moves money ALREADY in vaults to better rates: «переложи», «перекинь депозиты», «перебалансируй», «rebalance». «spread» / «разложи» / «распредели» is only for FREE USDC, on any network)
     MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from <Base|Arbitrum|Polygon|Ethereum|Tempo> to Solana
       move N USDC from Solana to <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo>   (arrives as USDG on Robinhood Chain)
-      move N USDC from <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo> to <another of them|Hyperliquid>   (straight over Relay, no Solana in between; no N = all of it)
+      move N USDC from <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo> to <another of them|Hyperliquid>   (straight over Relay, no Solana in between; no N = all of it; NEAR Intents' 1Click or Circle's CCTP is taken instead when it lands more)
+      move N USDC from <Base|Arbitrum|Polygon|Ethereum> to <another of them> via CCTP   (Circle's burn and mint, only when asked by name: «через CCTP», «via Circle»)
       add gas on <Base|Arbitrum|Polygon|Ethereum|Robinhood> [for N USDC]   (that network's own coin for fees, over Relay; no N = $1. Gas is never a dead end:
       a move short of it tops it up by itself, so «not enough ETH» is fixed with this form, never refused)
       send N USDC to <NAME from the address book> [on <network the user names — any, Ethereum mainnet too; they decide about the fee>] | top up (where to send money into ihatecrypto)

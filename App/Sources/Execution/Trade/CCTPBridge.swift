@@ -29,7 +29,7 @@ extension Executor {
 
     /// Circle's word on a burn: attested, and the mint it broadcast (its forward) — nil while there's none, or when the
     /// API doesn't answer.
-    static func cctpForward(source: UInt32, burn: String) async -> String? {
+    public static func cctpForward(source: UInt32, burn: String) async -> String? {
         guard let url = URL(string: "\(CCTP.iris)/v2/messages/\(source)?transactionHash=\(burn)"),
               let (data, _) = try? await URLSession.shared.data(from: url),
               let message = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any]).flatMap({ ($0["messages"] as? [[String: Any]])?.first }) else { return nil }

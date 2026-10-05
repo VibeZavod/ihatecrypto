@@ -1,6 +1,10 @@
+import EVMChain
 import ExecutionCore
 import IhatecryptoCore
+import OneClickKit
+import RelayBridge
 import SwiftUI
+import TradeExecution
 
 /// The portfolio by network (the user's pick of ten, P01 on the design canvas): each network is one card holding
 /// everything on it — idle money, deposits, gas, tokens, positions. Solana, Hyperliquid and Robinhood Chain lead;
@@ -310,20 +314,36 @@ struct NetworkLineRow: View {
 /// Money between networks: each bridge order signed and not landed yet (Journal.inTransit), with how long it's been on
 /// its way; it leaves the list once its bridge says it settled or went back.
 struct InTransit: View {
+    @Environment(Workspace.self) private var ws
     let entries: [Journal.Entry]
+    /// Rows opened by a click: the whole description, the bridge's own word on it now, and its links.
+    @State private var open: Set<String> = []
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
             Label("In transit", systemImage: "arrow.triangle.swap").font(.ui(12, .semibold))
             ForEach(entries, id: \.id) { e in
-                HStack(spacing: 8) {
-                    TokenLogo(name: e.chain == "1click" ? "near" : e.chain == "cctp" ? "usdc" : "relay", size: 18)
-                    VStack(alignment: .leading, spacing: 0) {
-                        Text(Self.what(e.note)).font(.ui(11.5)).lineLimit(1)
-                        Text("\(e.chain == "1click" ? "NEAR Intents" : e.chain == "cctp" ? "Circle's CCTP" : "Relay") · on its way \(Self.since(e.at))").font(.ui(9.5)).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 6) {
+                    Button {
+                        withAnimation(.easeOut(duration: 0.15)) { if open.contains(e.id) { open.remove(e.id) } else { open.insert(e.id) } }
+                    } label: { HStack(spacing: 8) {
+                        TokenLogo(name: Self.bridge(e).logo, size: 18)
+                        VStack(alignment: .leading, spacing: 0) {
+                            Text(Self.what(e.note)).font(.ui(11.5)).lineLimit(open.contains(e.id) ? nil : 1)
+                                .fixedSize(horizontal: false, vertical: open.contains(e.id))
+                            Text("\(Self.bridge(e).name) · \(Self.receiving(e) ? "waiting for your deposit" : "on its way") \(Self.since(e.at))")
+                                .font(.ui(9.5)).foregroundStyle(.secondary).lineLimit(open.contains(e.id) ? nil : 1)
+                                .fixedSize(horizontal: false, vertical: open.contains(e.id))
+                        }
+                        Spacer(minLength: 4)
+                        Image(systemName: open.contains(e.id) ? "chevron.up" : "chevron.down").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary)
                     }
+                    .contentShape(Rectangle()) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("In transit: \(Self.what(e.note))")
+                    if open.contains(e.id) { TransitDetails(entry: e) }
                 }
-                .help("Signed at \(Fmt.date(e.at)); it shows here until the bridge says it landed or went back. Order \(e.id)")
+                .help("Signed at \(Fmt.date(e.at)); it shows here until the bridge says it landed or went back. Click for details.")
             }
         }
         .padding(.horizontal, 11).padding(.vertical, 9)
@@ -331,11 +351,106 @@ struct InTransit: View {
         .background(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent.opacity(0.5)))
     }
 
+    static func bridge(_ e: Journal.Entry) -> (name: String, logo: String) {
+        switch e.chain {
+        case "1click": ("NEAR Intents", "near")
+        case "cctp": ("Circle's CCTP", "usdc")
+        default: ("Relay", "relay")
+        }
+    }
+
+    /// A deposit address ihatecrypto opened for money coming in from elsewhere (receiveAcross), not a move of its own.
+    static func receiving(_ e: Journal.Entry) -> Bool { e.note.hasPrefix("Receive:") }
+
     /// The journal's note without its transaction: «Base USDC→Solana 5, tx 0x…» → «Base USDC→Solana 5».
     static func what(_ note: String) -> String { note.components(separatedBy: ", tx ").first ?? note }
 
     static func since(_ at: Date, now: Date = Date()) -> String {
         let minutes = Int(now.timeIntervalSince(at) / 60)
         return minutes < 1 ? "for under a minute" : minutes < 60 ? "for \(minutes) min" : "for \(minutes / 60) h \(minutes % 60) min"
+    }
+}
+
+/// An in-transit row opened: the bridge's state asked now, when it was signed, the order, its links; for an incoming
+/// deposit address, the address itself with Copy and its QR card.
+private struct TransitDetails: View {
+    @Environment(Workspace.self) private var ws
+    let entry: Journal.Entry
+    @State private var state = "asking…"
+    @State private var copied = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            line("State", state)
+            line("Signed", Fmt.date(entry.at))
+            if let tx = Self.transaction(entry) { line("Transaction", "\(tx.prefix(10))…\(tx.suffix(6))") }
+            if InTransit.receiving(entry) {
+                Text(entry.id).font(.system(size: 10, design: .monospaced)).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+                HStack(spacing: 8) {
+                    Button(copied ? "Copied" : "Copy address") {
+                        NSPasteboard.general.clearContents()
+                        NSPasteboard.general.setString(entry.id, forType: .string)
+                        copied = true
+                    }
+                    if ws.acrossDeposit?.address == entry.id {
+                        Button("Show QR") { withAnimation(StudioView.spring) { ws.detail = "receive-across" } }
+                    }
+                }
+                .controlSize(.small)
+            } else {
+                line("Order", "\(entry.id.prefix(12))…")
+            }
+            HStack(spacing: 10) {
+                ForEach(Self.links(entry), id: \.title) { l in Link(l.title, destination: l.url).font(.ui(10.5)) }
+            }
+        }
+        .padding(.leading, 26)
+        .task(id: entry.id) { state = await Self.state(entry) }
+    }
+
+    private func line(_ label: String, _ value: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(label).font(.ui(10)).foregroundStyle(.secondary).frame(width: 70, alignment: .leading)
+            Text(value).font(.ui(10.5)).fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// The source transaction the note carries («…, tx 0x…» or «…, tx <signature>»).
+    static func transaction(_ e: Journal.Entry) -> String? {
+        e.note.components(separatedBy: ", tx ").dropFirst().first.map { String($0.prefix { !$0.isWhitespace }) }
+    }
+
+    /// The bridge's own word on the order now.
+    static func state(_ e: Journal.Entry) async -> String {
+        switch e.chain {
+        case "1click":
+            guard let s = try? await OneClick.status(depositAddress: e.id) else { return "NEAR Intents didn't answer" }
+            return Executor.oneClickWords[s.status] ?? s.status.lowercased()
+        case "cctp":
+            guard let colon = e.id.firstIndex(of: ":"), let source = UInt32(e.id[..<colon]) else { return "unknown" }
+            return await Executor.cctpForward(source: source, burn: String(e.id[e.id.index(after: colon)...])).map { "minted by Circle (\($0.prefix(10))…)" }
+                ?? "burned, waiting for Circle's mint"
+        default:
+            guard let s = try? await Relay.status(requestId: e.id).status else { return "Relay didn't answer" }
+            return ["waiting": "waiting for the deposit", "pending": "deposit seen, filling", "submitted": "fill sent", "success": "landed",
+                    "delayed": "delayed — Relay is still on it", "refund": "refunded", "failure": "failed"][s] ?? s
+        }
+    }
+
+    static func links(_ e: Journal.Entry) -> [(title: String, url: URL)] {
+        var out: [(title: String, url: URL)] = []
+        switch e.chain {
+        case "1click": if let u = URL(string: "https://explorer.near-intents.org/transactions/\(e.id)") { out.append(("NEAR Intents explorer", u)) }
+        case "cctp":
+            if let colon = e.id.firstIndex(of: ":"), let source = UInt32(e.id[..<colon]),
+               let net = EVMNetwork.all.first(where: { CCTP.domain($0.rpc.chainId) == source }),
+               let u = URL(string: "\(net.explorer)/tx/\(e.id[e.id.index(after: colon)...])") { out.append(("Burn on \(net.name)", u)) }
+        default: if let u = URL(string: "https://relay.link/transaction/\(e.id)") { out.append(("Relay", u)) }
+        }
+        if e.chain != "cctp", let tx = transaction(e) {
+            let url = tx.hasPrefix("0x") ? nil : URL(string: "https://solscan.io/tx/\(tx)")
+            if let url { out.append(("Solscan", url)) }
+        }
+        return out
     }
 }
