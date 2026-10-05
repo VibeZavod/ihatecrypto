@@ -353,3 +353,53 @@ func forkBaseV4BuyIsOneTransaction() async throws {
     #expect(try await e.balance(cbBTC, on: rpc) - btc0 >= route.out * Decimal(string: "0.99")!)
     #expect(ABI.decimal(in: try await rpc.read(baseUSDC, try ERC20.allowance(owner: me, spender: UniswapV4.permit2)), word: 0) == 0)
 }
+
+/// Uniswap v2 on an anvil fork of Ethereum (NET=ethereum Tools/fork7702.sh), through the executor's own swapUniswap:
+/// 3 USDC into PEPE by v2's best path (its deepest pool is v2's), approve and swap as two transactions; then all the PEPE
+/// back to USDC as one type-4 transaction; the allowance spent to zero both times, and a v2 swap paying another address
+/// refused by the signer's rules.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_ANVIL_CHAIN"] == "1"))
+func forkV2BuysAndSellsPEPE() async throws {
+    let env = ProcessInfo.processInfo.environment
+    UserDefaults.standard.set(true, forKey: Executor.batchKey)   // the user's switch, on for the fork runs
+    let rpc = EVMRPC(url: URL(string: env["IHATECRYPTO_ANVIL"]!)!, chainId: 1)
+    let key = Data(hex: env["IHATECRYPTO_ANVIL_KEY"]!)!
+    let me = try EVMAccount.address(privateKey: key)
+    let uni = try #require(UniswapV3.on(1)), v2 = try #require(UniswapV2.on(1))
+    let usdc = EVMNetwork.ethereum.usdc, pepe = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
+    let journal = Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("forkv2-\(UUID().uuidString).jsonl"))
+    func executor(batches: Bool) -> Executor {
+        Executor(wallet: TradeWallet(solana: "", evm: me), signer: ForkSigner(key: key, address: me, batches: batches), journal: journal) { print("·", $0) }
+    }
+    func receiptType(_ hash: String) async throws -> String { ((try await rpc.call("eth_getTransactionReceipt", [hash])) as? [String: Any])?["type"] as? String ?? "?" }
+    func allowance(_ token: String) async throws -> Decimal { ABI.decimal(in: try await rpc.read(token, try ERC20.allowance(owner: me, spender: v2.router)), word: 0) ?? -1 }
+
+    let e = executor(batches: false)
+    let usdc0 = try await rpc.tokenBalance(usdc, owner: me), nonce0 = try await rpc.nonce(me)
+    // 1. Buy: v2's best path for 3 USDC, quoted on the fork, swapped by the executor.
+    let buy = try #require(await e.bestV2(on: rpc, from: usdc, to: pepe, amountIn: 3_000_000))
+    print("3 USDC → PEPE on v2: \(buy.out) via \(buy.path)")
+    let route = UniRoute(v3: nil, v4: nil, v2: buy.path, out: buy.out)
+    let hash = try await e.swapUniswap(route, on: .ethereum, uni, tokenIn: usdc, units: 3_000_000, what: "3 USDC", note: "Buy PEPE", rpc: rpc)
+    #expect(try await receiptType(hash) == "0x2")
+    #expect(try await rpc.nonce(me) == nonce0 + 2)                   // the approve, then the swap
+    #expect(try await rpc.tokenBalance(usdc, owner: me) == usdc0 - 3_000_000)
+    let held = try await e.balance(pepe, on: rpc)
+    #expect(held >= (buy.out * (1 - route.tolerance)).whole)
+    #expect(try await allowance(usdc) == 0)
+    // 2. Sell it all back: approve + swap as one type-4 transaction.
+    let sell = try #require(await e.bestV2(on: rpc, from: pepe, to: usdc, amountIn: held))
+    let back = UniRoute(v3: nil, v4: nil, v2: sell.path, out: sell.out)
+    let sold = try await executor(batches: true).swapUniswap(back, on: .ethereum, uni, tokenIn: pepe, units: held, what: "PEPE", note: "Sell PEPE", rpc: rpc)
+    #expect(try await receiptType(sold) == "0x4")
+    #expect(try await e.balance(pepe, on: rpc) == 0)
+    let usdc2 = try await rpc.tokenBalance(usdc, owner: me)
+    print("sold back: \(usdc2 - (usdc0 - 3_000_000)) USDC units of 3000000")
+    #expect(usdc2 > usdc0 - 3_000_000 + 2_900_000)                  // two v2 fees of 0.3% and a little impact
+    #expect(try await allowance(pepe) == 0)
+    // 3. The same swap paying another address never signs.
+    let theirs = try UniswapV2.swapExactTokens(amountIn: 1, amountOutMin: 1, path: sell.path, to: "0x00000000000000000000000000000000000f0a11", deadline: 9_999_999_999)
+    await #expect(throws: (any Error).self) {
+        try await ForkSigner(key: key, address: me).signEVM(chainId: 1, nonce: 0, maxPriorityFee: 1, maxFee: 1, gasLimit: 100_000, to: v2.router, data: theirs, recipients: [])
+    }
+}

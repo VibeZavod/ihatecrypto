@@ -89,15 +89,38 @@ extension Executor {
         }
     }
 
-    /// The better of Uniswap's v3 path (one pool or two through WETH) and its v4 pool without hooks (UniswapV4.on), for
-    /// `amountIn` of `a` into `b` on the network: both quoted at once, the one that gives more taken.
+    /// Uniswap v2's best path: its pool of the pair, or two through WETH, quoted by the router (before any transfer tax).
+    func bestV2(on rpc: EVMRPC, from a: String, to b: String, amountIn: Decimal) async -> (path: [String], out: Decimal)? {
+        guard let v2 = UniswapV2.on(rpc.chainId) else { return nil }
+        var paths = [[a, b]]
+        if a.lowercased() != v2.weth, b.lowercased() != v2.weth { paths.append([a, v2.weth, b]) }
+        return await withTaskGroup(of: ([String], Decimal)?.self) { group in
+            for path in paths {
+                group.addTask {
+                    guard let answer = try? await rpc.read(v2.router, try UniswapV2.getAmountsOut(amountIn, path: path)),
+                          let out = UniswapV2.amountOut(answer), out > 0 else { return nil }
+                    return (path, out)
+                }
+            }
+            var best: (path: [String], out: Decimal)?
+            for await r in group { if let r, r.1 > (best?.out ?? 0) { best = (r.0, r.1) } }
+            return best
+        }
+    }
+
+    /// The best of Uniswap's v3 path (one pool or two through WETH), its v4 pool without hooks (UniswapV4.on) and its v2
+    /// path (UniswapV2.on), for `amountIn` of `a` into `b` on the network: all quoted at once, the one that gives most taken.
     func bestUniswap(on net: EVMNetwork, _ uni: UniswapV3.Deployment, from a: String, to b: String, amountIn: Decimal) async -> UniRoute? {
         async let v3 = bestPath(on: net.rpc, uni, from: a, to: b, amountIn: amountIn)
         async let v4 = UniswapV4.on(net.rpc.chainId) == nil ? nil : v4Route(a, b, amountIn: amountIn, rpc: net.rpc)
-        let (p3, p4) = await (v3, v4)
+        async let v2 = bestV2(on: net.rpc, from: a, to: b, amountIn: amountIn)
+        let (p3, p4, p2) = await (v3, v4, v2)
         var route: UniRoute
-        if let p4, p4.out > (p3?.out ?? 0) { route = UniRoute(v3: nil, v4: p4, out: p4.out) }
-        else if let p3 { route = UniRoute(v3: (p3.path, p3.hops), v4: nil, out: p3.out) }
+        let top = max(p3?.out ?? 0, p4?.out ?? 0, p2?.out ?? 0)
+        if top <= 0 { return nil }
+        if let p4, p4.out == top { route = UniRoute(v3: nil, v4: p4, out: p4.out) }
+        else if let p3, p3.out == top { route = UniRoute(v3: (p3.path, p3.hops), v4: nil, out: p3.out) }
+        else if let p2 { route = UniRoute(v3: nil, v4: nil, v2: p2.path, out: p2.out) }
         else { return nil }
         // Price impact: the trade's own price against a twentieth of it on the same route.
         let small = (amountIn / 20).whole
@@ -106,6 +129,9 @@ extension Executor {
                 await v4Quote(v4.key, zeroForOne: v4.zeroForOne, amount: small, rpc: net.rpc)
             } else if let v3 = route.v3, let answer = try? await net.rpc.read(uni.quoter, try UniswapV3.quoteExactInput(path: v3.path, amountIn: small)) {
                 ABI.decimal(in: answer, word: 0)
+            } else if let path = route.v2, let v2 = UniswapV2.on(net.rpc.chainId),
+                      let answer = try? await net.rpc.read(v2.router, try UniswapV2.getAmountsOut(small, path: path)) {
+                UniswapV2.amountOut(answer)
             } else { nil }
             if let smallOut, smallOut > 0 { route.impact = max(0, 1 - (route.out / amountIn) / (smallOut / small)) }
         }
@@ -113,17 +139,25 @@ extension Executor {
     }
 
     /// The swap by `route` for `units` of `tokenIn`, for at least what it quoted less the route's tolerance (UniRoute:
-    /// 0.5% to 3% by its price impact), paying only this wallet: v3's exactInput with its exact approve, or v4's swap
-    /// through Permit2 (v4Swap); batched where the wallet can (EIP-7702).
+    /// 0.5% to 3% by its price impact), paying only this wallet: v3's exactInput or v2's router with its exact approve, or
+    /// v4's swap through Permit2 (v4Swap); batched where the wallet can (EIP-7702). `rpc`: the network's node, or a fork in a test.
     func swapUniswap(_ route: UniRoute, on net: EVMNetwork, _ uni: UniswapV3.Deployment, tokenIn: String, units: Decimal, what: String,
-                     note: String) async throws -> String {
+                     note: String, rpc: EVMRPC? = nil) async throws -> String {
+        let rpc = rpc ?? net.rpc
         if let warning = route.warning { report(warning) }
         let minOut = (route.out * (1 - route.tolerance)).whole
         if let v4 = route.v4 {
-            return try await v4Swap(v4, tokenIn: tokenIn, units: units, minOut: minOut, what: what, note: note + " on Uniswap v4", rpc: net.rpc)
+            return try await v4Swap(v4, tokenIn: tokenIn, units: units, minOut: minOut, what: what, note: note + " on Uniswap v4", rpc: rpc)
+        }
+        if let path = route.v2 {
+            guard let v2 = UniswapV2.on(rpc.chainId) else { throw ExecutionError("No Uniswap v2 on \(net.name). Nothing was signed.") }
+            let swap = try UniswapV2.swapExactTokens(amountIn: units, amountOutMin: minOut, path: path, to: wallet.evm,
+                                                     deadline: UInt64(Date().timeIntervalSince1970) + 600)
+            return try await approveAndSend(rpc, token: tokenIn, spender: v2.router, units: units, approveNote: "Approve exactly \(what) to Uniswap v2",
+                                            to: v2.router, data: swap, note: note + " on Uniswap v2")
         }
         guard let v3 = route.v3 else { throw ExecutionError("Uniswap's route went away. Nothing was signed.") }
-        return try await approveAndSend(net.rpc, token: tokenIn, spender: uni.router, units: units, approveNote: "Approve exactly \(what) to Uniswap",
+        return try await approveAndSend(rpc, token: tokenIn, spender: uni.router, units: units, approveNote: "Approve exactly \(what) to Uniswap",
                                         to: uni.router, data: try UniswapV3.exactInput(path: v3.path, recipient: wallet.evm, amountIn: units, amountOutMinimum: minOut),
                                         note: note + " on Uniswap")
     }
@@ -462,14 +496,16 @@ extension Executor {
     }
 }
 
-/// Uniswap on an EVM network for one trade: v3's best path or v4's pool without hooks, whichever gives more.
+/// Uniswap on an EVM network for one trade: v3's best path, v4's pool without hooks or v2's path, whichever gives most.
 struct UniRoute {
     var v3: (path: Data, hops: Int)?
     var v4: Executor.V4Route?
+    /// v2's path: the pair's pool, or two through WETH.
+    var v2: [String]?
     let out: Decimal
     /// How much worse the trade's price is than a twentieth of it on the same route, 0…1; nil when it couldn't be read.
     var impact: Decimal?
-    var title: String { v4 != nil ? "Uniswap v4" : "Uniswap v3" }
+    var title: String { v4 != nil ? "Uniswap v4" : v2 != nil ? "Uniswap v2" : "Uniswap v3" }
     /// How far below the quote the swap may still go through: 0.5% in a deep pool (impact under 0.5%), 1% under 2%,
     /// past that half the impact plus 1%, at most 3%; 1% when the impact is unknown. A tighter floor leaves less to take
     /// for anyone moving the price around the swap; a thin pool moves more on its own between the quote and the block.
@@ -491,5 +527,9 @@ struct UniRoute {
         return "⚠️ This swap moves \(title)'s price by \(Fmt.num((impact * 100).rounded(1, .plain)))%: a thin pool — a smaller amount loses less."
     }
     /// Gas the swap takes with its approves: v4's goes through Permit2 (an approve to it, Permit2's own, the swap).
-    var gas: UInt64 { v4 != nil ? 50_000 + 60_000 + 180_000 : 50_000 + ((v3?.hops ?? 1) == 1 ? 160_000 : 240_000) }
+    var gas: UInt64 {
+        if v4 != nil { return 50_000 + 60_000 + 180_000 }
+        if let v2 { return 50_000 + (v2.count == 2 ? 130_000 : 200_000) }
+        return 50_000 + ((v3?.hops ?? 1) == 1 ? 160_000 : 240_000)
+    }
 }

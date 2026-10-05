@@ -14,7 +14,7 @@ case $NET in
   arbitrum)  FORK=${FORK_URL:-https://arb1.arbitrum.io/rpc}; USDC=0xaf88d065e77c8cc2239327c5edb3a432268e5831
              QUOTER=0x61ffe014ba17989e743c5f6cb21bf9697530b21e; WETH=0x82af49447d8a07e3bd95bd0d56f35241523fbab1; TEST=forkApproveAndSwapGoAsOneTransaction ;;
   ethereum)  FORK=${FORK_URL:-https://ethereum-rpc.publicnode.com}; USDC=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
-             QUOTER=0x61ffe014ba17989e743c5f6cb21bf9697530b21e; WETH=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2; TEST=forkApproveAndSwapGoAsOneTransaction ;;
+             QUOTER=0x61ffe014ba17989e743c5f6cb21bf9697530b21e; WETH=0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2; TEST="forkApproveAndSwapGoAsOneTransaction forkV2BuysAndSellsPEPE" ;;
   polygon)   FORK=${FORK_URL:-https://polygon.drpc.org}; USDC=0x3c499c542cef5e3811e1192ce70d8cc03d5c3359
              QUOTER=0x61ffe014ba17989e743c5f6cb21bf9697530b21e; WETH=0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270; TEST=forkApproveAndSwapGoAsOneTransaction ;;
   robinhood) FORK=${FORK_URL:-https://rpc.mainnet.chain.robinhood.com}; USDC=0x5fc5360d0400a0fd4f2af552add042d716f1d168; TEST=forkRobinhoodV4SwapIsOneTransaction ;;
@@ -42,6 +42,10 @@ else
     cast call $QUOTER "quoteExactInputSingle((address,address,uint256,uint24,uint160))(uint256,uint160,uint32,uint256)" \
       "($USDC,$WETH,3000000,$FEE,0)" --rpc-url $RPC >/dev/null 2>&1 || true
   done
+  if [ "$NET" = ethereum ]; then   # Uniswap v2's USDC/WETH and PEPE/WETH pairs for the v2 run
+    cast call 0x7a250d5630b4cf539739df2c5dacb4c659f2488d "getAmountsOut(uint256,address[])(uint256[])" 3000000 \
+      "[$USDC,$WETH,0x6982508145454ce325ddbe47a25d4ec3d2311933]" --rpc-url $RPC >/dev/null 2>&1 || true
+  fi
   if [ "$NET" = base ]; then   # Aave's pool and Morpho's vault (it reads every market it lends to) for the deposits
     cast call 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5 "getReserveData(address)" $USDC --rpc-url $RPC >/dev/null 2>&1 || true
     cast call 0xee8f4ec5672f09119b96ab6fb59c27e1b7e44b61 "totalAssets()(uint256)" --rpc-url $RPC >/dev/null 2>&1 || true

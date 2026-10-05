@@ -490,7 +490,7 @@ public enum EVMCall: Equatable, Sendable {
     case setApprovalForAll(operator: String, approved: Bool)
     case permit
     /// Any other contract function, by selector.
-    /// A Uniswap swap (SwapRouter02.exactInputSingle): who gets what comes out.
+    /// A Uniswap swap (v3's SwapRouter02 exactInput/exactInputSingle, v2's Router02): who gets what comes out.
     case swap(recipient: String)
     /// An ERC-4626 vault (Morpho): who gets the shares or the assets, and whose shares are spent (nil for a deposit).
     case vault(receiver: String, owner: String?)
@@ -525,6 +525,9 @@ public enum EVMCall: Equatable, Sendable {
         case "04e45aaf": if let r = address(3) { return .swap(recipient: r) }
         // SwapRouter02.exactInput((bytes path, address recipient, uint256, uint256)): the tuple sits behind an offset.
         case "b858183f": if let r = address(2) { return .swap(recipient: r) }
+        // Uniswap v2's Router02: swapExactTokensForTokens, …ForETH and their fee-on-transfer forms, all (amountIn,
+        // amountOutMin, path, to, deadline): `to` gets what comes out.
+        case "38ed1739", "5c11d795", "18cbafe5", "791ac947": if let r = address(3) { return .swap(recipient: r) }
         case "6e553f65": if let r = address(1) { return .vault(receiver: r, owner: nil) }
         case "b460af94", "ba087652": if let r = address(1), let o = address(2) { return .vault(receiver: r, owner: o) }
         // Aave: supply/deposit(asset, amount, onBehalfOf, referral) and withdraw(asset, amount, to): the third word.
@@ -578,13 +581,14 @@ public enum EVMCall: Equatable, Sendable {
     /// ponytail: more than 79 billion of an 18-decimal token can't be approved in one go; compare with the balance if that matters.
     static func unlimited(_ amount: Data) -> Bool { amount.prefix(20).contains { $0 != 0 } }
 
-    /// Contracts ihatecrypto itself lets spend its tokens on a network: Uniswap's routers (v3, and v4's with Permit2),
+    /// Contracts ihatecrypto itself lets spend its tokens on a network: Uniswap's routers (v2, v3, and v4's with Permit2),
     /// Aave's pools, Morpho's vaults, Relay's depository and approval proxy (one address on every network, api.relay.link/chains
     /// 2026-10-03). An approve to any other spender needs it approved in person, like a recipient.
     public static func knownSpenders(chainId: UInt64) -> Set<String> {
         var s = ["0x4cd00e387622c35bddb9b4c962c136462338bc31", "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be"]
         s += AaveV3.markets.filter { $0.rpc.chainId == chainId }.map(\.pool) + MorphoVault.vaults.filter { $0.rpc.chainId == chainId }.map(\.address)
         if let uni = UniswapV3.on(chainId) { s.append(uni.router) }
+        if let v2 = UniswapV2.on(chainId) { s.append(v2.router) }
         if chainId == EVMRPC.robinhood.chainId { s.append(UniswapV3.robinhoodRouter) }
         if let v4 = UniswapV4.on(chainId) { s += [v4.router, UniswapV4.permit2] }
         return Set(s.map { $0.lowercased() })
