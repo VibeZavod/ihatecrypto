@@ -962,7 +962,7 @@ final class Workspace {
         }
         if let command = FolderCommand.parse(text) { folderCommand(command); return }
         if let command = AddressBookCommand.parse(text) {
-            addressBookCommand(command)
+            await addressBookCommand(command)
             return
         }
         if let command = AlertCommand.parse(text, markets: Set(markets.keys)) {
@@ -1413,7 +1413,7 @@ final class Workspace {
         if let command = AddressBookCommand.parse(canonical) {
             // The model only rewords: an address it wrote must be in the user's own message, character for character.
             if case .save(let address, _, _) = command, !text.contains(address) { return false }
-            addressBookCommand(command, note: note)
+            await addressBookCommand(command, note: note)
             return true
         }
         if case .sendTo(let name, let amount, let net)? = WalletCommand.parse(canonical) {

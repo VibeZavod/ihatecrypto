@@ -677,7 +677,7 @@ extension Workspace {
 
 extension Workspace {
     /// «save <address> as Bybit on Arbitrum» waits for a confirmation on the canvas; favorites change at once.
-    func addressBookCommand(_ command: AddressBookCommand, note: String? = nil) {
+    func addressBookCommand(_ command: AddressBookCommand, note: String? = nil) async {
         switch command {
         case .favorite(let name, let on):
             let key = name.lowercased()
@@ -689,16 +689,15 @@ extension Workspace {
             reply(on ? "⭐ “\(addressBook[i].name)” is in your favorites." : "“\(addressBook[i].name)” is no longer a favorite.", note: note)
         case .save(let address, let name, let net):
             // A name (vitalik.eth, toly.sol) is read on its own chain now, and the address it points at is what's saved:
-            // the name changing hands later moves nothing. The card and Touch ID show that address, whole.
+            // the name changing hands later moves nothing. The card and Touch ID show that address, whole. Awaited, so
+            // the card lands on the canvas it was asked on, after the message, while the chat shows it's busy.
             if ENS.isName(address) || SNS.isName(address) {
-                Task {
-                    do {
-                        let resolved = ENS.isName(address) ? try await ENS.resolve(address) : try await SNS.resolve(address)
-                        saveFromChat(resolved, name: name, net: net ?? (address.hasSuffix(".sol") ? "solana" : "ethereum"), domain: address, note: note)
-                    } catch {
-                        reply(say("Couldn't read \(address): \(error.localizedDescription) Nothing was saved.",
-                                  "Не получилось прочитать \(address): \(error.localizedDescription) Ничего не сохранено."), note: note)
-                    }
+                do {
+                    let resolved = ENS.isName(address) ? try await ENS.resolve(address) : try await SNS.resolve(address)
+                    saveFromChat(resolved, name: name, net: net ?? (address.hasSuffix(".sol") ? "solana" : "ethereum"), domain: address, note: note)
+                } catch {
+                    reply(say("Couldn't read \(address): \(error.localizedDescription) Nothing was saved.",
+                              "Не получилось прочитать \(address): \(error.localizedDescription) Ничего не сохранено."), note: note)
                 }
                 return
             }

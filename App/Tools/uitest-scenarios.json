@@ -598,7 +598,7 @@
     "expect": {
       "pending_kind": "address",
       "pending_name": "Vitalik",
-      "reply_contains": "0xd8dA"
+      "reply_contains": "6045"
     }
   }
 ]
