@@ -577,5 +577,28 @@
       "reply_contains": "$",
       "reply_cyrillic": true
     }
+  },
+  {
+    "name": "a typed «да» never confirms: the card keeps waiting for the button",
+    "send": [
+      "положи 1 USDC в Jupiter",
+      "да"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "reply_contains": "Confirm",
+      "not_executing": true
+    }
+  },
+  {
+    "name": "an ENS name is read on-chain: «save vitalik.eth as Vitalik» → the address it points at, on a card",
+    "send": [
+      "save vitalik.eth as Vitalik"
+    ],
+    "expect": {
+      "pending_kind": "address",
+      "pending_name": "Vitalik",
+      "reply_contains": "0xd8dA"
+    }
   }
 ]

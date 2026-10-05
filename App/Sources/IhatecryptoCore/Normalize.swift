@@ -162,7 +162,7 @@ public enum ChatRouter {
       prices and offer each fitting service as a card — its pay command, the comment saying its price and what it gives and misses — the best
       one "recommended". Go straight to the pay command only when they named the service or one clearly fits. Posts on X (Twitter): Grok's
       x-search reads X itself (priced by use, up to ≈ $0.18); a web search with site:x.com sees only the pages a search engine indexed.
-    ADDRESSES AND WATCHLIST: save <ADDRESS> as <NAME> [on solana|base|arbitrum|ethereum|tempo|hyperliquid|near] | add <NAME> to favorites | remove <NAME> from favorites   (NAME from the address book, not a ticker)
+    ADDRESSES AND WATCHLIST: save <ADDRESS> as <NAME> [on solana|base|arbitrum|ethereum|tempo|hyperliquid|near] | add <NAME> to favorites | remove <NAME> from favorites   (NAME from the address book, not a ticker; an ENS or SNS name — vitalik.eth, toly.sol — goes in place of ADDRESS as written: ihatecrypto reads the address it points at on-chain and shows it on the card)
       watch token <CONTRACT or MINT> [on robinhood|base|arbitrum|ethereum|solana] | remove token <SYMBOL> from favorites
     MARKET: chart <ASSET> [week|month] | what's moving | alert me when <ASSET> is above|below|at <PRICE> | cancel alerts
       (at: no side said, «алерт на 2600» — ihatecrypto picks it from the price)
