@@ -614,3 +614,12 @@ private final class Script: LLMClient, @unchecked Sendable {
         #expect(WalletCommand.parse(c.summary) == c, "\(c.summary)")
     }
 }
+
+@Test func cctpIsAskedForByName() {
+    #expect(WalletCommand.parse("move 500 USDC from base to arbitrum via cctp") == .cctp(from: "base", to: "arbitrum", 500))
+    #expect(WalletCommand.parse("переведи 100 USDC с арбитрума на полигон через circle") == .cctp(from: "arbitrum", to: "polygon", 100))
+    #expect(WalletCommand.parse("move 500 USDC from base to arbitrum") == .bridge(from: "base", to: "arbitrum", 500))
+    #expect(WalletCommand.parse("move 5 USDC from base to robinhood via cctp") == .bridge(from: "base", to: "robinhood", 5))
+    let c = WalletCommand.cctp(from: "ethereum", to: "base", 250)
+    #expect(WalletCommand.parse(c.summary) == c)
+}

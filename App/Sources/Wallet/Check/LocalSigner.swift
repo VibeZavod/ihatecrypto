@@ -186,6 +186,7 @@ func moveMoney(_ text: String) async throws {
         print(try await executor.revokeApproval(EVMNetwork.named(place) ?? .base, token: token, spender: spender, permit2: permit2))
     case .sweepDust: throw ExecutionError("Sweeping dust works in the ihatecrypto app, where the portfolio is.")
     case .swapOn(let place, let from, let to, let amount): print(try await executor.swapOn(EVMNetwork.named(place) ?? .base, from: from, to: to, amount: amount))
+    case .cctp(let from, let to, let amount): print(try await executor.cctpBridge(from: EVMNetwork.named(from) ?? .base, to: EVMNetwork.named(to) ?? .arbitrum, usdc: amount))
     case .receiveAcross: print("Receiving through NEAR Intents opens a deposit address in the app.")
     case .crossSwap(let a, let from, let b, let to, let amount): print(try await executor.crossSwap(a, on: from, for: b, on: to, amount: amount))
     case .robinhoodToSolana(let amount): print(try await executor.evmToSolana(.robinhood, usdc: amount))

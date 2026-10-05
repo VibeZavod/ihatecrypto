@@ -498,6 +498,9 @@ extension Workspace {
             case .swapOn(let place, let from, let to, let amount):
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't swap on \(place).") }
                 reply(try await e.swapOn(net, from: from, to: to, amount: amount), note: "\(net.name) · Uniswap")
+            case .cctp(let from, let to, let amount):
+                guard let a = EVMNetwork.named(from), let b = EVMNetwork.named(to) else { throw ExecutionError("Circle's CCTP moves USDC between Ethereum, Arbitrum, Base and Polygon.") }
+                reply(try await e.cctpBridge(from: a, to: b, usdc: amount), note: "Circle's CCTP · \(a.name) → \(b.name)")
             case .receiveAcross: break   // no card: the deposit address goes on the canvas (prepareReceiveAcross)
             case .crossSwap(let a, let from, let b, let to, let amount):
                 reply(try await e.crossSwap(a, on: from, for: b, on: to, amount: amount),

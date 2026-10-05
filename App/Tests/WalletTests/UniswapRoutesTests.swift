@@ -189,3 +189,32 @@ func approvalsAreReadOnEveryNetwork() async throws {
     #expect(Batch7702.calls(in: Data([0x34, 0xfc, 0xd5, 0xbe, 0])) == nil)
     #expect(Batch7702.calls(in: try ERC20.approve(spender: "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be", units: 5)) == nil)
 }
+
+/// Circle's CCTP burn as the executor writes it, read back by the signer: the mint's recipient is a payee like any
+/// other, a recipient that isn't an EVM address is refused, and the TokenMessenger is a spender ihatecrypto uses.
+@Test func cctpBurnIsReadByTheSigner() throws {
+    let me = "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc"
+    let data = try CCTP.burn(units: 5_000_000, to: 3, recipient: me, usdc: EVMNetwork.base.usdc, maxFee: 100_000)
+    #expect(data.prefix(4).hex == "779b432d")
+    guard case .cctpBurn(let r?, 3, let amount) = EVMCall.decode(data) else { Issue.record("not read as a burn"); return }
+    #expect(r == me && ABI.uint(in: amount, word: 0) == 5_000_000)
+    #expect(EVMCall.decode(data).payees(to: CCTP.tokenMessenger, value: 0, chainId: 8453) == [me])
+    #expect(EVMCall.decode(data).refusal(sender: me, chainId: 8453) == nil)
+    var solana = data
+    solana.replaceSubrange(4 + 64..<4 + 76, with: Data(repeating: 7, count: 12))
+    #expect(EVMCall.decode(solana).refusal(sender: me, chainId: 8453) != nil)
+    #expect(EVMCall.knownSpenders(chainId: 8453).contains(CCTP.tokenMessenger))
+    #expect(CCTP.domain(42161) == 3 && CCTP.domain(8453) == 6 && CCTP.domain(4663) == nil)
+}
+
+/// Live (IHATECRYPTO_NET=1, reads only): what CCTP lands for 20 and 1000 USDC from Base to Arbitrum now.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func cctpIsQuoted() async throws {
+    let e = Executor(wallet: TradeWallet(solana: "", evm: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"), signer: QuoteOnly(),
+                     journal: Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("c-\(UUID().uuidString).jsonl"))) { _ in }
+    for units: UInt64 in [20_000_000, 1_000_000_000] {
+        let q = try #require(await e.cctpQuote(from: .base, to: .arbitrum, units: units))
+        print("CCTP \(Decimal(units) / 1_000_000) USDC Base → Arbitrum: lands \(q.arrives), cap \(q.maxFee)")
+        #expect(q.arrives > Decimal(units) / 1_000_000 * Decimal(string: "0.99")! && q.maxFee < units / 100)
+    }
+}

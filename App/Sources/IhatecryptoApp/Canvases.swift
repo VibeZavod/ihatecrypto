@@ -1179,6 +1179,7 @@ extension Workspace {
             else { tokenOutRoute(to: name, token: token, amount: amount, network: network) }
         case .pay: payRoute(command)
         case .bridge(let from, let to, let amount): bridgeRoute(from, to, amount)
+        case .cctp(let from, let to, let amount): bridgeRoute(from, to, amount, cctp: true)
         case .gas(let place, let usd): gasRoute(place, usd ?? 1)
         case .claimRewards, .sweepRewards: claimRoute()
         default: ends(command).map { from, to in
@@ -1966,18 +1967,23 @@ extension Workspace {
     }
 
     /// One EVM network → Relay → another, both our own address: no stop on Solana.
-    private func bridgeRoute(_ from: String, _ to: String, _ amount: Decimal?) -> MoveRoute {
+    /// `cctp`: through Circle's CCTP as asked, whatever Relay would land.
+    private func bridgeRoute(_ from: String, _ to: String, _ amount: Decimal?, cctp: Bool = false) -> MoveRoute {
         let a = WalletCommand.placeName(from), b = WalletCommand.placeName(to), stable = to == "robinhood" ? "USDG" : "USDC"
         let have = usdc(on: from), moving = amount.map { min($0, have ?? $0) } ?? have
         func fill(_ place: String) -> RouteFill { ["base": .base, "arbitrum": .arbitrum, "robinhood": .robinhood, "tempo": .tempo, "hyperliquid": .hyperliquid][place] ?? .relay }
         let shown = moving.map { Fmt.num($0) } ?? "all"
         return MoveRoute(title: "Move \(shown) USDC · \(a) → \(b)",
-                         footer: "Two \(a) transactions: an exact approve and Relay's deposit, checked field by field before signing; "
-                            + "it pays only your own address on \(b). Press Confirm.",
+                         footer: (cctp ? "Circle's CCTP: an exact approve and the burn on \(a) (one transaction where it batches); Circle mints on \(b) itself, "
+                                       + "fast-transfer fee plus its gas, a minute or so. "
+                                       : "An exact approve and the bridge's deposit on \(a), checked field by field before signing: Relay, unless NEAR Intents' 1Click "
+                                       + "or Circle's CCTP lands more right then. ")
+                            + "It pays only your own address on \(b). Press Confirm.",
                          steps: [
             step(ModuleNetwork(place: from)?.logo ?? "eth", "FROM · \(a.uppercased())",
                  have.map { h in "\(Fmt.num(h)) → \(Fmt.num(max(0, h - (moving ?? h))))" } ?? "\(shown) USDC", "USDC on \(a)", fill(from)),
-            step("relay", "BRIDGE · RELAY", "\(shown) USDC", "≈ $0.03 · a few seconds · no stop on Solana", .relay),
+            cctp ? step("usdc", "BURN & MINT · CIRCLE'S CCTP", "\(shown) USDC", "≈ 1.3 bp + ≈ $0.08 of gas · Circle mints there", .relay)
+                 : step("relay", "BRIDGE · RELAY", "\(shown) USDC", "≈ $0.03 · a few seconds · no stop on Solana", .relay),
             step(ModuleNetwork(place: to)?.logo ?? "eth", "TO · \(b.uppercased())",
                  usdc(on: to).map { "\(Fmt.num($0)) → \(Fmt.num($0 + (moving ?? 0))) \(stable)" } ?? "\(shown) \(stable)", "your own address ✓", fill(to)),
         ])

@@ -64,6 +64,6 @@ public struct Journal: Sendable {
     /// Money on its way between networks: a bridge order (Relay's, 1Click's) signed within `within` and not yet settled,
     /// refunded or failed. The newest first.
     public func inTransit(within: TimeInterval = 86_400, now: Date = Date()) throws -> [Entry] {
-        try unresolved().filter { ["relay", "1click"].contains($0.chain) && now.timeIntervalSince($0.at) < within }.reversed()
+        try unresolved().filter { ["relay", "1click", "cctp"].contains($0.chain) && now.timeIntervalSince($0.at) < within }.reversed()
     }
 }

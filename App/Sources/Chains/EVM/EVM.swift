@@ -510,6 +510,8 @@ public enum EVMCall: Equatable, Sendable {
     case wrap
     /// WETH9.withdraw(amount): that much of the wrapped token back to the sender as the coin.
     case unwrap(amount: Data)
+    /// Circle's CCTP burn: `amount` of USDC minted on `domain` to `recipient` (nil: not an EVM address).
+    case cctpBurn(recipient: String?, domain: UInt32, amount: Data)
     case contract(selector: String)
 
     public static func decode(_ data: Data) -> EVMCall {
@@ -545,6 +547,7 @@ public enum EVMCall: Equatable, Sendable {
         case "eecea000": if let d = address(0), let b = word(1) { return .delegation(to: d, granted: b.contains { $0 != 0 }) }
         case "d0e30db0": return .wrap
         case "2e1a7d4d": if let a = word(0) { return .unwrap(amount: a) }
+        case "8e0250ee", "779b432d": if let b = CCTP.readBurn(data) { return .cctpBurn(recipient: b.recipient, domain: b.domain, amount: b.amount) }
         default: break
         }
         return .contract(selector: "0x" + selector)
@@ -583,6 +586,7 @@ public enum EVMCall: Equatable, Sendable {
         case .vault(_, let owner): "\(owner == nil ? "deposit into" : "withdraw from") the vault \(short(to)) \(net)"
         case .lending: "use the lending pool \(short(to)) \(net), for this wallet"
         case .nftTransfer(_, let recipient): "send NFTs of \(short(to)) to \(short(recipient)) \(net)"
+        case .cctpBurn(let recipient, let domain, let a): "move \(units(a, 6)) USDC \(net) to \(recipient.map(short) ?? "?") on \(CCTP.chainName(domain)) through Circle's CCTP"
         case .contract where to.lowercased() == Tempo.feeManager: "pay Tempo's fees in USDC from now on"
         default: "call the contract \(short(to)) \(net)"
         }
@@ -596,10 +600,11 @@ public enum EVMCall: Equatable, Sendable {
 
     /// Contracts ihatecrypto itself lets spend its tokens on a network: Uniswap's routers (v2, v3, and v4's with Permit2),
     /// Aave's pools, Morpho's vaults, Relay's depository and approval proxy (one address on every network, api.relay.link/chains
-    /// 2026-10-03). An approve to any other spender needs it approved in person, like a recipient.
+    /// 2026-10-03), Circle's CCTP TokenMessenger. An approve to any other spender needs it approved in person, like a recipient.
     public static func knownSpenders(chainId: UInt64) -> Set<String> {
         var s = ["0x4cd00e387622c35bddb9b4c962c136462338bc31", "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be"]
         s += AaveV3.markets.filter { $0.rpc.chainId == chainId }.map(\.pool) + MorphoVault.vaults.filter { $0.rpc.chainId == chainId }.map(\.address)
+        if CCTP.domain(chainId) != nil { s.append(CCTP.tokenMessenger) }
         if let uni = UniswapV3.on(chainId) { s.append(uni.router) }
         if let v2 = UniswapV2.on(chainId) { s.append(v2.router) }
         if chainId == EVMRPC.robinhood.chainId { s.append(UniswapV3.robinhoodRouter) }
@@ -614,6 +619,8 @@ public enum EVMCall: Equatable, Sendable {
         var out = value > 0 && !returnsCoins(to: to, value: value, chainId: chainId) ? [to] : []
         switch self {
         case .transfer(let r, _), .nftTransfer(_, let r): out.append(r)
+        // What CCTP mints goes to its recipient: this wallet, or an address allowed in person.
+        case .cctpBurn(let r?, _, _): out.append(r)
         // An approve of zero — a revoke — gives nobody anything: no one to allow for it.
         case .approve(let s, let a), .increaseAllowance(let s, let a), .permit2Approve(_, let s, let a, _):
             if a.contains(where: { $0 != 0 }), !Self.knownSpenders(chainId: chainId).contains(s.lowercased()) { out.append(s) }
@@ -644,6 +651,7 @@ public enum EVMCall: Equatable, Sendable {
             return "The lending pool would credit \(beneficiary), not this wallet."
         }
         if case .v4Swap(let swap) = self, let why = UniswapV4.refusal(swap, chainId: chainId) { return why }
+        if case .cctpBurn(nil, _, _) = self { return "The CCTP burn mints to an account that isn't an EVM address. ihatecrypto mints only to EVM addresses." }
         if case .permit2Approve(_, _, let amount, let expiration) = self {
             if Self.unlimited(amount) { return "Unlimited spending through Permit2 — the drainers' main trick. ihatecrypto only approves exact amounts." }
             if expiration > UInt64(Date().timeIntervalSince1970) + 86_400 { return "A Permit2 approval for longer than a day. ihatecrypto approves for the one swap only." }

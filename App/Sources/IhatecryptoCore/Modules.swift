@@ -266,6 +266,9 @@ public struct Modules: Equatable, Sendable {
         case .pay: return r(.mpp)
         case .gas(let place, _): return r(.relay, via: ModuleNetwork(place: place).map { [$0] } ?? [])
         case .bridge(let from, let to, _): return r(.relay, via: [from, to].compactMap(ModuleNetwork.init(place:)))
+        case .cctp(let from, let to, _):
+            if let off = [from, to].compactMap(ModuleNetwork.init(place:)).lazy.compactMap({ self.refusal(network: $0, ru: ru) }).first { return off }
+            return isOn(.bridges) ? nil : ru ? "\(ModuleKind.bridges.name) выключены в Settings › Modules." : "\(ModuleKind.bridges.name) is off in Settings › Modules."
         case .sendTo, .yields, .receive, .stopSchedules: return nil
         }
     }

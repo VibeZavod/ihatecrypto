@@ -195,6 +195,8 @@ public enum WalletCommand: Equatable, Sendable {
     /// USDC from one EVM network straight to another over Relay, at our own address («base» → «robinhood», where it
     /// arrives as USDG), or to our Hyperliquid trading balance («hyperliquid»); nil = everything on `from`.
     case bridge(from: String, to: String, Decimal?)
+    /// The same move through Circle's CCTP, asked for by name («… via CCTP»): Ethereum, Arbitrum, Base, Polygon.
+    case cctp(from: String, to: String, Decimal?)
     /// The network's own coin for fees («robinhood», «base», …), `usd` worth of it over Relay; nil = $1.
     case gas(String, usd: Decimal?)
     /// A paid API on Tempo (MPP): the request as the service documents it; the price comes from its 402 answer and
@@ -398,6 +400,10 @@ public enum WalletCommand: Equatable, Sendable {
         if !q.contains(/\baave\b|ааве|morpho|морфо/),
            let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*|hyperliquid|гипер\w*|хайпер\w*|hl\b)/),
            let from = Self.network(String(m.1)), let to = Self.network(String(m.2)), from != to {
+            // «… via CCTP», «… через Circle»: Circle's burn and mint, whatever Relay would land.
+            if q.contains(/\bcctp\b|\bcircle\b|циркл|сиркл/), !["hyperliquid", "robinhood", "tempo"].contains(from), !["hyperliquid", "robinhood", "tempo"].contains(to) {
+                return .cctp(from: from, to: to, amount)
+            }
             return .bridge(from: from, to: to, amount)
         }
         if !fromSolana, q.contains(/robinhood|робин[гх]уд/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
@@ -828,6 +834,7 @@ extension WalletCommand {
         case .pay(let method, let url, _): return "pay for \(method) \(url) in USDC on Tempo"
         case .gas(let place, let usd): return "add ≈ \(Fmt.usd(usd ?? 1)) of gas on \(Self.placeName(place))"
         case .bridge(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to))" + (to == "robinhood" ? " (arrives as USDG)" : "")
+        case .cctp(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to)) via CCTP"
         case .claimRewards: return "claim rewards on Merkl"
         case .hlSpotBuy(let s, let u): return "buy \(s) on Hyperliquid spot for \(n(u)) USDC"
         case .hlSpotSell(let s, let x): return "sell \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(s) on Hyperliquid spot"

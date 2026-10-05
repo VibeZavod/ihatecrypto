@@ -265,6 +265,18 @@ extension Executor {
         }
         let arriving = Decimal(string: quote.amountOutFormatted) ?? 0
         let spend = Decimal(amount) / 1_000_000
+        // Circle's CCTP between EVM networks, when no gas has to come along and it lands more than Relay by the margin
+        // 1Click must beat too: one signature, Circle mints on the other side itself.
+        if !hyperliquid, topup == nil, let dest, let cctp = await cctpQuote(from: net, to: dest, units: amount) {
+            let better = cctp.arrives - arriving >= Self.oneClickEdge(spend)
+            report("Relay lands ≈ \(Fmt.num(arriving, maxFraction: 4)) USDC, Circle's CCTP ≈ \(Fmt.num(cctp.arrives, maxFraction: 4)): "
+                   + (better ? "taking CCTP." : "Relay\(cctp.arrives > arriving ? " (CCTP's \(Fmt.usd(cctp.arrives - arriving)) more isn't worth the wait)" : "")."))
+            if better {
+                let started = Date()
+                let got = try await cctpMove(from: net, to: dest, units: amount, maxFee: cctp.maxFee)
+                return "Moved \(show(amount)) USDC from \(net.name) to \(there) through Circle's CCTP in \(Int(Date().timeIntervalSince(started))) s: \(Fmt.num(got)) USDC arrived."
+            }
+        }
         // NEAR Intents' 1Click for the same USDC, when it serves both ends and no gas has to come along: the better lands.
         if !hyperliquid, topup == nil, OneClick.Asset.usdc(onEVM: net.key) != nil, dest == nil || OneClick.Asset.usdc(onEVM: dest!.key) != nil,
            let better = await oneClickBeats(from: net.key, to: dest?.key, units: amount, relayOut: arriving) {

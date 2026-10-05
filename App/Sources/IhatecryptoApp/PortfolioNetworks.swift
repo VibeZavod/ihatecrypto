@@ -317,10 +317,10 @@ struct InTransit: View {
             Label("In transit", systemImage: "arrow.triangle.swap").font(.ui(12, .semibold))
             ForEach(entries, id: \.id) { e in
                 HStack(spacing: 8) {
-                    TokenLogo(name: e.chain == "1click" ? "near" : "relay", size: 18)
+                    TokenLogo(name: e.chain == "1click" ? "near" : e.chain == "cctp" ? "usdc" : "relay", size: 18)
                     VStack(alignment: .leading, spacing: 0) {
                         Text(Self.what(e.note)).font(.ui(11.5)).lineLimit(1)
-                        Text("\(e.chain == "1click" ? "NEAR Intents" : "Relay") · on its way \(Self.since(e.at))").font(.ui(9.5)).foregroundStyle(.secondary)
+                        Text("\(e.chain == "1click" ? "NEAR Intents" : e.chain == "cctp" ? "Circle's CCTP" : "Relay") · on its way \(Self.since(e.at))").font(.ui(9.5)).foregroundStyle(.secondary)
                     }
                 }
                 .help("Signed at \(Fmt.date(e.at)); it shows here until the bridge says it landed or went back. Order \(e.id)")

@@ -340,6 +340,8 @@ final class Browser {
             lines.append("Call to permit (permission to spend).")
         case .swap(let r):
             lines.append("Uniswap swap paying \(r.lowercased() == from.lowercased() ? "this wallet" : r).")
+        case .cctpBurn(let r, let domain, let a):
+            lines.append("Circle's CCTP: burn \(amount(a, 6)) USDC here to mint on \(CCTP.chainName(domain)) to \(r.map { $0.lowercased() == from.lowercased() ? "this wallet" : $0 } ?? "a non-EVM account").")
         case .v4Swap(let s):
             let (a, b) = (await token(s.currencyIn), await token(s.currencyOut))
             func n(_ x: Decimal, _ d: Int) -> String { Fmt.num(x / Decimal(sign: .plus, exponent: d, significand: 1), maxFraction: 6) }
