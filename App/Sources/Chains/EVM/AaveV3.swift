@@ -49,10 +49,30 @@ public enum AaveV3 {
         Data([0x69, 0x32, 0x8d, 0xec]) + (try ABI.address(asset)) + (amount.map(ABI.uint) ?? Data(repeating: 0xff, count: 32)) + (try ABI.address(to))
     }
 
+    /// borrow(address asset, uint256 amount, uint256 interestRateMode, uint16 referralCode, address onBehalfOf): variable
+    /// rate (2), sent to the caller, the debt on `onBehalfOf`.
+    public static func borrow(asset: String, amount: UInt64, onBehalfOf: String) throws -> Data {
+        Data([0xa4, 0x15, 0xbc, 0xad]) + (try ABI.address(asset)) + ABI.uint(amount) + ABI.uint(2) + ABI.uint(0) + (try ABI.address(onBehalfOf))
+    }
+
+    /// repay(address asset, uint256 amount, uint256 interestRateMode, address onBehalfOf); nil = the whole debt.
+    public static func repay(asset: String, amount: UInt64?, onBehalfOf: String) throws -> Data {
+        Data([0x57, 0x3a, 0xde, 0x81]) + (try ABI.address(asset)) + (amount.map(ABI.uint) ?? Data(repeating: 0xff, count: 32)) + ABI.uint(2)
+            + (try ABI.address(onBehalfOf))
+    }
+
+    /// getUserAccountData(address): collateral, debt and what's still borrowable in USD (8 decimals), the liquidation
+    /// threshold and LTV in basis points, the health factor (18 decimals; uint256.max with no debt).
+    public static func accountData(_ user: String) throws -> Data { Data([0xbf, 0x92, 0x85, 0x7c]) + (try ABI.address(user)) }
+
+    /// getPriceOracle() on the addresses provider; getAssetPrice(asset) on the oracle, USD with 8 decimals.
+    public static let getPriceOracle = Data([0xfc, 0xa5, 0x13, 0xa8])
+    public static func assetPrice(_ asset: String) throws -> Data { Data([0xb3, 0x59, 0x6f, 0x07]) + (try ABI.address(asset)) }
+
     /// getPool()
     public static let getPool = Data([0x02, 0x6b, 0x1d, 0x5f])
 
-    /// getReserveData(address): word 2 is the supply rate in ray (1e27), word 8 the aToken.
+    /// getReserveData(address): word 2 is the supply rate in ray (1e27), word 8 the aToken, word 10 the variable debt token.
     public static func getReserveData(_ asset: String) throws -> Data { Data([0x35, 0xea, 0x6a, 0x75]) + (try ABI.address(asset)) }
 
     /// Supply APY in %: the ray rate compounded every second over a year.

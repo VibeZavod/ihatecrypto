@@ -235,6 +235,7 @@ public struct Modules: Equatable, Sendable {
         case .kamino: return r(.kamino)
         case .hlp: return r(.hlp)
         case .aave(_, _, let net): return r(.aave) ?? r(.relay, via: ModuleNetwork(place: net).map { [$0] } ?? [])
+        case .aaveBorrow(_, let net), .aaveRepay(_, let net), .aaveCollateral(_, let net): return r(.aave, via: ModuleNetwork(place: net).map { [$0] } ?? [])
         case .morpho(_, _, let net): return r(.morpho) ?? r(.relay, via: ModuleNetwork(place: net).map { [$0] } ?? [])
         case .withdrawToSolana: return r(.relay, via: [.hyperliquid])
         case .baseToSolana: return r(.relay, via: [.base])

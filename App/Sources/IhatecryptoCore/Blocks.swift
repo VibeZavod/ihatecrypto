@@ -80,6 +80,8 @@ public enum BlockCatalog {
               example: "stake 0.01 SOL", fill: "jito", logo: "jitosol"),
         Block(group: "Earn", label: "SELL · REWARDS", title: "Sell rewards", form: "sweep rewards [over $N] [into TOKEN] · every hour: sweep rewards over $10 into USDC",
               example: "every day: sweep rewards over $10 into USDC", fill: "morpho", logo: "usdc"),
+        Block(group: "Earn", label: "BORROW · AAVE", title: "Borrow USDC", form: "supply N ETH as collateral on Aave · borrow N USDC on Aave · repay all USDC on Aave — health factor kept at 1.5+",
+              example: "borrow 5 USDC on Aave on base", fill: "aave", logo: "aave"),
         Block(group: "Earn", label: "INTO · BEST RATES", title: "The best rates", form: "spread N USDC across the best rates · rebalance USDC",
               example: "spread USDC across the best rates", fill: "jupiter", logo: "usdc"),
 

@@ -218,3 +218,20 @@ func cctpIsQuoted() async throws {
         #expect(q.arrives > Decimal(units) / 1_000_000 * Decimal(string: "0.99")! && q.maxFee < units / 100)
     }
 }
+
+/// Aave's borrow and repay as the signer reads them: only this wallet's own debt; and the health-factor arithmetic the
+/// card shows (Aave's: collateral × weighted threshold ÷ debt; liquidation where that reaches 1).
+@Test func aaveBorrowIsReadAndPriced() throws {
+    let me = "0x3c44cdddb6a900fa2b585dd299e03d12fa4293bc", other = "0x" + String(repeating: "12", count: 20)
+    let borrow = try AaveV3.borrow(asset: EVMRPC.baseUSDC, amount: 5_000_000, onBehalfOf: me)
+    #expect(borrow.prefix(4).hex == "a415bcad" && EVMCall.decode(borrow).refusal(sender: me, chainId: 8453) == nil)
+    #expect(EVMCall.decode(try AaveV3.borrow(asset: EVMRPC.baseUSDC, amount: 1, onBehalfOf: other)).refusal(sender: me, chainId: 8453) != nil)
+    #expect(EVMCall.decode(try AaveV3.repay(asset: EVMRPC.baseUSDC, amount: nil, onBehalfOf: other)).refusal(sender: me, chainId: 8453) != nil)
+    #expect(EVMCall.decode(try AaveV3.repay(asset: EVMRPC.baseUSDC, amount: nil, onBehalfOf: me)).payees(to: AaveV3.basePool, value: 0, chainId: 8453).isEmpty)
+    // $3000 of ETH (1 ETH), threshold 0.83, $1000 borrowed: health 2.49; liquidation when ETH is $1204.82.
+    #expect(AaveAccount.health(collateral: 3000, debt: 1000, threshold: Decimal(string: "0.83")!) == Decimal(string: "2.49")!)
+    let liq = try #require(AaveAccount.liquidationPrice(debt: 1000, threshold: Decimal(string: "0.83")!, collateral: 3000, amount: 1, price: 3000))
+    #expect(liq > Decimal(string: "1204.81")! && liq < Decimal(string: "1204.83")!)
+    // $2000 of USDC beside the ETH covers the debt on its own: no ETH price liquidates it.
+    #expect(AaveAccount.liquidationPrice(debt: 1000, threshold: Decimal(string: "0.83")!, collateral: 5000, amount: 1, price: 3000) == nil)
+}

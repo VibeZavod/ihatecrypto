@@ -141,6 +141,11 @@ public enum WalletCommand: Equatable, Sendable {
     /// USDC into Aave v3 on `network` («base», «arbitrum», «polygon», «ethereum»; bridged from Solana when short) or
     /// out of it and back to Solana; nil = ask (deposit) / everything (withdraw).
     case aave(deposit: Bool, amount: Decimal?, network: String = "base")
+    /// USDC borrowed on Aave against what the wallet supplied there, paid back (nil = all of it), and ETH supplied there
+    /// as collateral; the network as for `aave`.
+    case aaveBorrow(Decimal?, network: String = "base")
+    case aaveRepay(Decimal?, network: String = "base")
+    case aaveCollateral(Decimal?, network: String = "base")
     /// The same with a Morpho vault («base», «arbitrum», «ethereum»).
     case morpho(deposit: Bool, amount: Decimal?, network: String = "base")
     /// USDC idle on Base back to Solana over Relay; nil = everything.
@@ -433,6 +438,17 @@ public enum WalletCommand: Equatable, Sendable {
         }
         // The network the lending command names; Base when it names none.
         let lendingNetwork = Self.network(in: q) ?? "base"
+        // Borrowing on Aave and paying it back, and ETH as its collateral: «borrow 10 USDC on aave», «займи 10 USDC в aave»,
+        // «repay all USDC on aave», «погаси долг на aave», «supply 0.01 ETH as collateral on aave», «положи 0.01 ETH в залог».
+        if q.contains(/\bborrow\w*|\bзайм\w*|\bзайми\b|занять|\bв\s+долг\b|\bloan\b/), !q.contains(/\brepay\w*|погас\w*|верн\w*/) {
+            return .aaveBorrow(amount ?? bare, network: lendingNetwork)
+        }
+        if q.contains(/\brepay\w*|погас\w*|(?:верни|вернуть|закрой|закрыть)\s+(?:весь\s+|мой\s+)?долг/) {
+            return .aaveRepay(q.contains(/\ball\b|\bвесь\b|\bвсё\b|\bвсе\b|полност/) ? nil : amount ?? bare, network: lendingNetwork)
+        }
+        if q.contains(/collateral|залог/), let m = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:eth|эфир)/) {
+            return .aaveCollateral(Decimal(string: String(m.1).replacingOccurrences(of: ",", with: ".")), network: lendingNetwork)
+        }
         if q.contains(/\baave\b|ааве|\bаав/) {
             if outOf { return .aave(deposit: false, amount: coins ?? amount ?? bare, network: lendingNetwork) }
             // Only with a word for putting money in: «what do I have on Aave?» is a question.
@@ -681,6 +697,8 @@ extension WalletCommand {
         case .stake(nil): "How much SOL to stake?"
         case .solanaTo(let place, nil): "How many USDC should I move from Solana to \(Self.placeName(place))?"
         case .receiveAcross(let net, let t, nil): "How much \(t) will you send from \(AddressCheck.Network(rawValue: net)?.title ?? net)?"
+        case .aaveBorrow(nil, let net): "How many USDC to borrow on Aave on \(Self.placeName(net))?"
+        case .aaveCollateral(nil, let net): "How much ETH as collateral on Aave on \(Self.placeName(net))?"
         default: nil
         }
     }
@@ -709,6 +727,8 @@ extension WalletCommand {
         case .stake: .stake(amount)
         case .solanaTo(let place, _): .solanaTo(place, amount)
         case .receiveAcross(let net, let t, _): .receiveAcross(network: net, token: t, amount: amount)
+        case .aaveBorrow(_, let net): .aaveBorrow(amount, network: net)
+        case .aaveCollateral(_, let net): .aaveCollateral(amount, network: net)
         default: self
         }
     }
@@ -839,6 +859,9 @@ extension WalletCommand {
         case .gas(let place, let usd): return "add ≈ \(Fmt.usd(usd ?? 1)) of gas on \(Self.placeName(place))"
         case .bridge(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to))" + (to == "robinhood" ? " (arrives as USDG)" : "")
         case .cctp(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to)) via CCTP"
+        case .aaveBorrow(let x, let net): return "borrow \(n(x)) USDC on Aave on \(Self.placeName(net))"
+        case .aaveRepay(let x, let net): return x == nil ? "repay all USDC on Aave on \(Self.placeName(net))" : "repay \(n(x)) USDC on Aave on \(Self.placeName(net))"
+        case .aaveCollateral(let x, let net): return "supply \(n(x)) ETH as collateral on Aave on \(Self.placeName(net))"
         case .claimRewards: return "claim rewards on Merkl"
         case .hlSpotBuy(let s, let u): return "buy \(s) on Hyperliquid spot for \(n(u)) USDC"
         case .hlSpotSell(let s, let x): return "sell \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(s) on Hyperliquid spot"

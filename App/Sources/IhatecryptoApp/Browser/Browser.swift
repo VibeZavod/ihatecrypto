@@ -340,6 +340,12 @@ final class Browser {
             lines.append("Call to permit (permission to spend).")
         case .swap(let r):
             lines.append("Uniswap swap paying \(r.lowercased() == from.lowercased() ? "this wallet" : r).")
+        case .borrow(let asset, let a, let owner):
+            let t = await token(asset)
+            lines.append("Borrow \(amount(a, t.decimals)) \(t.symbol) from \(to), the debt on \(owner.lowercased() == from.lowercased() ? "this wallet" : owner).")
+        case .repay(let asset, let a, let owner):
+            let t = await token(asset)
+            lines.append("Repay \(a.allSatisfy { $0 == 0xff } ? "all the" : amount(a, t.decimals)) \(t.symbol) debt of \(owner.lowercased() == from.lowercased() ? "this wallet" : owner) to \(to).")
         case .cctpBurn(let r, let domain, let a):
             lines.append("Circle's CCTP: burn \(amount(a, 6)) USDC here to mint on \(CCTP.chainName(domain)) to \(r.map { $0.lowercased() == from.lowercased() ? "this wallet" : $0 } ?? "a non-EVM account").")
         case .v4Swap(let s):

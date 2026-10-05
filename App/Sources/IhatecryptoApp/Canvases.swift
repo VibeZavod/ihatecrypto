@@ -1181,6 +1181,8 @@ extension Workspace {
         case .pay: payRoute(command)
         case .bridge(let from, let to, let amount): bridgeRoute(from, to, amount)
         case .cctp(let from, let to, let amount): bridgeRoute(from, to, amount, cctp: true)
+        case .aaveBorrow(let x?, let net), .aaveCollateral(let x?, let net): aaveDebtRoute(command, x, net)
+        case .aaveRepay(let x, let net): aaveDebtRoute(command, x, net)
         case .gas(let place, let usd): gasRoute(place, usd ?? 1)
         case .claimRewards, .sweepRewards: claimRoute()
         default: ends(command).map { from, to in
@@ -1783,6 +1785,38 @@ extension Workspace {
                          steps: steps, warning: warning)
     }
 
+    /// Borrowing on Aave, paying it back, or ETH supplied as its collateral: the collateral, the move on Aave with the
+    /// health factor before and after (quoted while the card waits) and where the money ends.
+    private func aaveDebtRoute(_ command: WalletCommand, _ amount: Decimal?, _ net: String) -> MoveRoute {
+        let name = WalletCommand.placeName(net), logo = ModuleNetwork(place: net)?.logo ?? net
+        let fill = RouteFill(rawValue: net) ?? .aave
+        let q = swapQuote.flatMap { $0.command == command ? $0.ways : nil }
+        func line(_ way: String) -> String? { q?.first(where: { $0.way == way }).map(\.gets) }
+        let what = amount.map { Fmt.num($0, maxFraction: 6) } ?? "all"
+        switch command {
+        case .aaveRepay:
+            return MoveRoute(title: "Repay \(what) USDC on Aave · \(name)",
+                             footer: "An approve of what's owed (a tenth of a percent over, for the interest of the next blocks), then the repay — of this wallet's own debt only. Press Confirm.",
+                             steps: [step(logo, "FROM · \(name.uppercased())", "\(what) USDC", "USDC on \(name)", fill),
+                                     approve("\(what) USDC", for: "Aave", logo: "aave", .aave),
+                                     step("aave", "REPAY · AAVE", "\(what) USDC", "the debt goes down, the collateral stays", .aave)])
+        case .aaveCollateral:
+            return MoveRoute(title: "\(what) ETH as collateral on Aave · \(name)",
+                             footer: "ETH wrapped into WETH, an exact approve, the supply to this wallet: it earns a little and can be borrowed against. Press Confirm.",
+                             steps: [step(logo, "FROM · \(name.uppercased())", "\(what) ETH", "its fees stay", fill),
+                                     step("eth", "WRAP · WETH", "\(what) WETH", "the coin as a token, one to one", fill),
+                                     step("aave", "COLLATERAL · AAVE", "\(what) ETH", "borrowable against, ≈ 80% of its value", .aave)])
+        default:
+            return MoveRoute(title: "Borrow \(what) USDC on Aave · \(name)",
+                             footer: "One transaction: Aave lends \(what) USDC to this wallet against what it supplied there. If the health factor reaches 1, Aave sells "
+                                + "the collateral at a penalty; ihatecrypto won't borrow below 1.5. Pay it back with “repay all USDC on Aave”. Press Confirm.",
+                             steps: [step("aave", "COLLATERAL · AAVE", line("collateral") ?? "reading…", "what you supplied on Aave on \(name)", .aave),
+                                     step("aave", "BORROW · AAVE", "\(what) USDC", line("health").map { "health factor \($0)" } ?? "health factor: reading…", .aave),
+                                     step(logo, "TO · \(name.uppercased())", "\(what) USDC", "your own address", fill)],
+                             warning: line("liquidation").flatMap { $0.isEmpty ? nil : "Liquidation if \($0): Aave sells your collateral at a penalty. Keep an eye on it, or borrow less." })
+        }
+    }
+
     static func wayName(_ way: String) -> String { way == "relay" ? "Relay swap" : "Relay + Uniswap" }
     static func stockWayName(_ way: String) -> String { way == "v4" ? "Uniswap v4" : way == "v3" ? "Uniswap v3" : "Relay swap" }
 
@@ -1821,6 +1855,20 @@ extension Workspace {
         case .sellStock(let s, let a): await quoteStock(command, s, usdc: nil, sell: a); return
         case .swapOn(let p, let a, let b, let x): await quotePair(command, p, a, b, x); return
         case .crossSwap(let a, let from, let b, let to, let x): await quoteCross(command, a, from, b, to, x); return
+        case .aaveBorrow(let x?, let net):
+            // The health factor after the borrow and the price of ETH that would liquidate it, read again every 30 s.
+            guard let wallet = previewWallet, let m = AaveV3.markets.first(where: { $0.chain == net }) else { return }
+            while !Task.isCancelled {
+                let p = try? await executor(wallet).aaveBorrowPreview(m, usdc: x)
+                guard !Task.isCancelled else { return }
+                if let p {
+                    let now = p.now.health.map { Fmt.num($0, maxFraction: 2) } ?? "∞", after = p.after.map { Fmt.num($0, maxFraction: 2) } ?? "∞"
+                    swapQuote = (command, [("health", "\(now) → \(after)", p.after ?? 0), ("liquidation", p.liquidation.map { "ETH ≤ \(Fmt.usd($0))" } ?? "", 0),
+                                           ("collateral", Fmt.usd(p.now.collateral), p.now.collateral)])
+                }
+                try? await Task.sleep(for: .seconds(30))
+            }
+            return
         case .sendToken(let name, let token, let x?, let network):
             if let r = try? acrossRecipient(name, token: token, network: network) { await quoteAcross(command, r.symbol, x, r.entry.network.rawValue, r.address) }
             return

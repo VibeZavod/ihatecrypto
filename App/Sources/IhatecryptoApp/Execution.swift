@@ -501,6 +501,15 @@ extension Workspace {
             case .cctp(let from, let to, let amount):
                 guard let a = EVMNetwork.named(from), let b = EVMNetwork.named(to) else { throw ExecutionError("Circle's CCTP moves USDC between Ethereum, Arbitrum, Base and Polygon.") }
                 reply(try await e.cctpBridge(from: a, to: b, usdc: amount), note: "Circle's CCTP · \(a.name) → \(b.name)")
+            case .aaveBorrow(let x, let net), .aaveRepay(let x, let net), .aaveCollateral(let x, let net):
+                guard let m = AaveV3.markets.first(where: { $0.chain == net }) else {
+                    throw ExecutionError("ihatecrypto uses Aave on Base, Arbitrum, Polygon and Ethereum, not on \(WalletCommand.placeName(net)).")
+                }
+                switch command {
+                case .aaveBorrow: reply(try await e.aaveBorrow(m, usdc: x ?? 0), note: "\(m.place) · borrow")
+                case .aaveRepay: reply(try await e.aaveRepay(m, usdc: x), note: "\(m.place) · repay")
+                default: reply(try await e.aaveSupplyETH(m, eth: x ?? 0), note: "\(m.place) · collateral")
+                }
             case .receiveAcross: break   // no card: the deposit address goes on the canvas (prepareReceiveAcross)
             case .crossSwap(let a, let from, let b, let to, let amount):
                 reply(try await e.crossSwap(a, on: from, for: b, on: to, amount: amount),

@@ -540,6 +540,9 @@ public enum EVMCall: Equatable, Sendable {
     case unwrap(amount: Data)
     /// Circle's CCTP burn: `amount` of USDC minted on `domain` to `recipient` (nil: not an EVM address).
     case cctpBurn(recipient: String?, domain: UInt32, amount: Data)
+    /// Aave's borrow: `amount` of `asset` sent to the caller, the debt on `onBehalfOf`; its repay pays down that debt.
+    case borrow(asset: String, amount: Data, onBehalfOf: String)
+    case repay(asset: String, amount: Data, onBehalfOf: String)
     case contract(selector: String)
 
     public static func decode(_ data: Data) -> EVMCall {
@@ -576,6 +579,8 @@ public enum EVMCall: Equatable, Sendable {
         case "d0e30db0": return .wrap
         case "2e1a7d4d": if let a = word(0) { return .unwrap(amount: a) }
         case "8e0250ee", "779b432d": if let b = CCTP.readBurn(data) { return .cctpBurn(recipient: b.recipient, domain: b.domain, amount: b.amount) }
+        case "a415bcad": if let a = address(0), let x = word(1), let o = address(4) { return .borrow(asset: a, amount: x, onBehalfOf: o) }
+        case "573ade81": if let a = address(0), let x = word(1), let o = address(3) { return .repay(asset: a, amount: x, onBehalfOf: o) }
         default: break
         }
         return .contract(selector: "0x" + selector)
@@ -615,6 +620,9 @@ public enum EVMCall: Equatable, Sendable {
         case .lending: "use the lending pool \(short(to)) \(net), for this wallet"
         case .nftTransfer(_, let recipient): "send NFTs of \(short(to)) to \(short(recipient)) \(net)"
         case .cctpBurn(let recipient, let domain, let a): "move \(units(a, 6)) USDC \(net) to \(recipient.map(short) ?? "?") on \(CCTP.chainName(domain)) through Circle's CCTP"
+        case .borrow(let asset, let a, _): "borrow \(amount(a, of: asset)) from the lending pool \(short(to)) \(net), a debt of this wallet's"
+        case .repay(let asset, let a, _): a.allSatisfy({ $0 == 0xff }) ? "repay all of this wallet's \(EVMRPC.dollars[asset.lowercased()] ?? short(asset)) debt to \(short(to)) \(net)"
+            : "repay \(amount(a, of: asset)) of this wallet's debt to \(short(to)) \(net)"
         case .contract where to.lowercased() == Tempo.feeManager: "pay Tempo's fees in USDC from now on"
         case .contract where to.lowercased() == Tempo.exchange: "swap dollars on Tempo's exchange, paying this wallet"
         default: "call the contract \(short(to)) \(net)"
@@ -682,6 +690,8 @@ public enum EVMCall: Equatable, Sendable {
         }
         if case .v4Swap(let swap) = self, let why = UniswapV4.refusal(swap, chainId: chainId) { return why }
         if case .cctpBurn(nil, _, _) = self { return "The CCTP burn mints to an account that isn't an EVM address. ihatecrypto mints only to EVM addresses." }
+        if case .borrow(_, _, let owner) = self, owner.lowercased() != sender.lowercased() { return "The borrow would put the debt on \(owner), not this wallet." }
+        if case .repay(_, _, let owner) = self, owner.lowercased() != sender.lowercased() { return "The repay would pay \(owner)'s debt, not this wallet's." }
         if case .permit2Approve(_, _, let amount, let expiration) = self {
             if Self.unlimited(amount) { return "Unlimited spending through Permit2 — the drainers' main trick. ihatecrypto only approves exact amounts." }
             if expiration > UInt64(Date().timeIntervalSince1970) + 86_400 { return "A Permit2 approval for longer than a day. ihatecrypto approves for the one swap only." }

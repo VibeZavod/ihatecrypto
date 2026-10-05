@@ -519,3 +519,35 @@ func forkSwapsTokenForToken() async throws {
                                             value: 1_001, data: swap, recipients: [])
     }
 }
+
+/// Borrowing on Aave on an anvil fork of Base (Tools/fork7702.sh, TESTS=forkBorrowsAgainstETHAndRepays): 0.01 ETH in as
+/// collateral, a borrow that would leave a health factor under 1.5 refused before anything is signed, 5 USDC borrowed
+/// with the liquidation price of ETH under today's, then the whole debt paid back.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_ANVIL_CHAIN"] == "8453"))
+func forkBorrowsAgainstETHAndRepays() async throws {
+    let env = ProcessInfo.processInfo.environment
+    UserDefaults.standard.set(true, forKey: Executor.batchKey)
+    let rpc = EVMRPC(url: URL(string: env["IHATECRYPTO_ANVIL"]!)!, chainId: 8453)
+    let key = Data(hex: env["IHATECRYPTO_ANVIL_KEY"]!)!
+    let me = try EVMAccount.address(privateKey: key)
+    let journal = Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("forkborrow-\(UUID().uuidString).jsonl"))
+    let e = Executor(wallet: TradeWallet(solana: "", evm: me), signer: ForkSigner(key: key, address: me), journal: journal) { print("·", $0) }
+    let m = AaveV3.Market(chain: "base", chainName: "Base", rpc: rpc, usdc: baseUSDC, provider: AaveV3.baseProvider, pool: AaveV3.basePool, aUSDC: AaveV3.baseAUSDC)
+
+    print(try await e.aaveSupplyETH(m, eth: Decimal(string: "0.01")!))
+    let a = try await e.aaveAccount(m)
+    #expect(a.collateral > 10 && a.debt == 0 && a.available > 5)
+    await #expect(throws: ExecutionError.self) { try await e.aaveBorrow(m, usdc: a.available.rounded(2, .down)) }
+    #expect(try await e.aaveAccount(m).debt == 0)
+
+    let p = try await e.aaveBorrowPreview(m, usdc: 5)
+    let price = a.collateral / Decimal(string: "0.01")!
+    print("collateral \(a.collateral), health after \(p.after ?? -1), liquidation \(p.liquidation ?? -1), ETH ≈ \(price)")
+    #expect((p.after ?? 0) >= 1.5 && (p.liquidation ?? 0) > 0 && (p.liquidation ?? .greatestFiniteMagnitude) < price)
+    print(try await e.aaveBorrow(m, usdc: 5))
+    let b = try await e.aaveAccount(m)
+    #expect(b.debt > Decimal(string: "4.99")! && b.debt < Decimal(string: "5.01")!)
+
+    print(try await e.aaveRepay(m, usdc: nil))
+    #expect(try await e.aaveAccount(m).debt == 0)
+}

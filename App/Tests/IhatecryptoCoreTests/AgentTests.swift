@@ -631,3 +631,19 @@ private final class Script: LLMClient, @unchecked Sendable {
     let c = WalletCommand.swapOn("tempo", from: "USDC", to: "OUSD", amount: 2)
     #expect(WalletCommand.parse(c.summary) == c)
 }
+
+@Test func aaveBorrowingIsParsed() {
+    #expect(WalletCommand.parse("borrow 10 USDC on aave") == .aaveBorrow(10, network: "base"))
+    #expect(WalletCommand.parse("займи 10 USDC в aave на арбитруме") == .aaveBorrow(10, network: "arbitrum"))
+    #expect(WalletCommand.parse("repay all USDC on aave") == .aaveRepay(nil, network: "base"))
+    #expect(WalletCommand.parse("погаси долг на aave") == .aaveRepay(nil, network: "base"))
+    #expect(WalletCommand.parse("repay 3 USDC on aave on base") == .aaveRepay(3, network: "base"))
+    #expect(WalletCommand.parse("supply 0.01 ETH as collateral on aave on base") == .aaveCollateral(Decimal(string: "0.01")!, network: "base"))
+    #expect(WalletCommand.parse("положи 0.01 ETH в залог на aave") == .aaveCollateral(Decimal(string: "0.01")!, network: "base"))
+    // Lending isn't borrowing.
+    #expect(WalletCommand.parse("lend 10 USDC on aave") == .aave(deposit: true, amount: 10, network: "base"))
+    for c in [WalletCommand.aaveBorrow(5, network: "base"), .aaveRepay(nil, network: "arbitrum"), .aaveRepay(2, network: "base"),
+              .aaveCollateral(Decimal(string: "0.02")!, network: "base")] {
+        #expect(WalletCommand.parse(c.summary) == c, "\(c.summary)")
+    }
+}
