@@ -64,22 +64,34 @@ extension Executor {
             try journal.append(.init(chain: "relay", id: quote.requestId, kind: .failed, note: e))
             throw ExecutionError("Hyperliquid rejected the transfer: \(e).")
         }
+        let requestId = quote.requestId
+        let landing: @Sendable () async throws -> String = { [self] in try await withdrawalLanding(requestId, before: before, started: started) }
+        // Inside a chain the next step is signed while this lands on Solana (Landings).
+        if let landings = Self.landings {
+            landings.add("solana") { try await landing() }
+            return "Sent \(Fmt.num(usdc)) USDC from Hyperliquid: ≈ \(Fmt.num(arriving)) lands on Solana in seconds, and what needs it waits for it."
+        }
+        return try await landing()
+    }
+
+    /// A Relay withdrawal from Hyperliquid, sent: Relay's word until it lands on Solana.
+    private func withdrawalLanding(_ requestId: String, before: UInt64, started: Date) async throws -> String {
         while Date().timeIntervalSince(started) < 180 {
-            let status = try await Relay.status(requestId: quote.requestId).status
+            let status = try await Relay.status(requestId: requestId).status
             if status == "success" {
-                try journal.append(.init(chain: "relay", id: quote.requestId, kind: .settled, note: status))
+                try journal.append(.init(chain: "relay", id: requestId, kind: .settled, note: status))
                 let after = try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)
                 let line = "Withdrawal done in \(Int(Date().timeIntervalSince(started))) s: Solana USDC +\(Fmt.num(Decimal(Int64(after) - Int64(before)) / 1_000_000, maxFraction: 6))."
                 report(line)
                 return line
             }
             if ["refund", "failure"].contains(status) {
-                try journal.append(.init(chain: "relay", id: quote.requestId, kind: .failed, note: status))
+                try journal.append(.init(chain: "relay", id: requestId, kind: .failed, note: status))
                 throw ExecutionError("Relay returned \(status): the money should come back to Hyperliquid.")
             }
             try await Task.sleep(for: .seconds(1))
         }
-        throw ExecutionError("Relay didn't finish the withdrawal within 3 minutes. Order \(quote.requestId) is in the journal.")
+        throw ExecutionError("Relay didn't finish the withdrawal within 3 minutes. Order \(requestId) is in the journal.")
     }
 
     /// Jupiter Lend Earn, USDC vault. `usdc: nil` on withdraw = the whole position.
@@ -534,11 +546,19 @@ extension Executor {
         let hash = try await Near.send(signed)
         try journal.append(.init(chain: "near", id: hash, kind: .confirmed, note: "wNEAR to 1Click \(deposit)"))
         try? await OneClick.submitDeposit(txHash: hash, depositAddress: deposit)
-        let started = Date()
-        let s = try await oneClickSettled(deposit, refund: "wNEAR went back to your NEAR account", estimate: quote.timeEstimate)
-        let line = "Sold \(Fmt.num(near, maxFraction: 6)) NEAR for \(Fmt.num(Decimal(string: s.amountOutFormatted ?? "") ?? 0)) USDC in \(Int(Date().timeIntervalSince(started))) s — on \(place). https://nearblocks.io/txns/\(hash)"
-        report(line)
-        return line
+        let started = Date(), estimate = quote.timeEstimate
+        let landing: @Sendable () async throws -> String = { [self] in
+            let s = try await oneClickSettled(deposit, refund: "wNEAR went back to your NEAR account", estimate: estimate)
+            let line = "Sold \(Fmt.num(near, maxFraction: 6)) NEAR for \(Fmt.num(Decimal(string: s.amountOutFormatted ?? "") ?? 0)) USDC in \(Int(Date().timeIntervalSince(started))) s — on \(place). https://nearblocks.io/txns/\(hash)"
+            report(line)
+            return line
+        }
+        // Inside a chain the next step is signed while 1Click swaps and pays (Landings).
+        if let landings = Self.landings {
+            landings.add(net?.key ?? "solana") { try await landing() }
+            return "Sent \(Fmt.num(near, maxFraction: 6)) NEAR to NEAR Intents: ≈ \(Fmt.num(Decimal(string: quote.amountOutFormatted) ?? 0)) USDC lands on \(place) in about a minute, and what needs it waits for it."
+        }
+        return try await landing()
     }
 
     /// Hyperliquid's HLP vault from the main perp balance. Deposits are locked for 4 days; withdraw with nil takes

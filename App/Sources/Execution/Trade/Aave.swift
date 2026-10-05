@@ -294,36 +294,54 @@ extension Executor {
         guard spend - arriving - (topup ?? 0) <= min(max(arriving * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1) else {
             throw ExecutionError("Relay wants \(Fmt.num(spend)) USDC for \(Fmt.num(arriving)) on \(there): more than allowed.")
         }
-        let mint = Relay.Currency.solanaUSDC
-        func landed() async throws -> UInt64 {
-            if hyperliquid { return NSDecimalNumber(decimal: try await Hyperliquid.balance(user: me).withdrawable * 1_000_000).uint64Value }
-            if let dest { return try await dest.rpc.tokenBalance(dest.usdc, owner: me) }
-            return try await rpc.tokenBalance(owner: wallet.solana, mint: mint)
-        }
-        let before = try await landed()
+        let before = try await relayLanded(dest, hyperliquid: hyperliquid)
         let hash = try await approveAndSend(base, token: usdc, spender: depository, units: Decimal(amount), approveNote: "Approve exactly \(show(amount)) USDC to Relay",
                                             to: deposit.to, data: deposit.data, note: "Relay deposit \(show(amount)) USDC on \(net.name)")
         try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "\(net.name) USDC→\(there) \(show(amount)), tx \(hash)"))
+        let requestId = quote.requestId, gas = topup != nil, sent = show(amount)
+        let landing: @Sendable () async throws -> String = { [self] in
+            try await relayLanding(requestId, hash: hash, from: net, to: dest, hyperliquid: hyperliquid, before: before, arriving: arriving,
+                                   sent: sent, stable: stable, there: there, gas: gas)
+        }
+        // Inside a chain the next step is signed while this lands; a step spending where it lands waits for it (Landings).
+        if let landings = Self.landings {
+            landings.add(hyperliquid ? "hyperliquid" : dest?.key ?? "solana") { try await landing() }
+            return "Sent \(sent) USDC from \(net.name) to \(there): ≈ \(Fmt.num(arriving)) \(stable) lands there in seconds, and what needs it waits for it."
+        }
+        return try await landing()
+    }
+
+    /// The USDC at our address where a Relay order from an EVM network lands: Hyperliquid's withdrawable, an EVM
+    /// network's USDC, or Solana's.
+    private func relayLanded(_ dest: EVMNetwork?, hyperliquid: Bool) async throws -> UInt64 {
+        if hyperliquid { return NSDecimalNumber(decimal: try await Hyperliquid.balance(user: wallet.evm).withdrawable * 1_000_000).uint64Value }
+        if let dest { return try await dest.rpc.tokenBalance(dest.usdc, owner: wallet.evm) }
+        return try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)
+    }
+
+    /// A Relay order from an EVM network, signed: Relay's word until it settles, then the USDC on the other side.
+    private func relayLanding(_ requestId: String, hash: String, from net: EVMNetwork, to dest: EVMNetwork?, hyperliquid: Bool, before: UInt64,
+                              arriving: Decimal, sent: String, stable: String, there: String, gas: Bool) async throws -> String {
         let started = Date()
         while Date().timeIntervalSince(started) < 180 {
-            let status = try await Relay.status(requestId: quote.requestId).status
-            if status == "success" { try journal.append(.init(chain: "relay", id: quote.requestId, kind: .settled, note: status)); break }
+            let status = try await Relay.status(requestId: requestId).status
+            if status == "success" { try journal.append(.init(chain: "relay", id: requestId, kind: .settled, note: status)); break }
             if ["refund", "failure"].contains(status) {
-                try journal.append(.init(chain: "relay", id: quote.requestId, kind: .failed, note: status))
+                try journal.append(.init(chain: "relay", id: requestId, kind: .failed, note: status))
                 throw ExecutionError("Relay returned \(status). Check USDC on \(net.name). \(net.explorer)/tx/\(hash)")
             }
             try await Task.sleep(for: .seconds(2))
         }
         let target = before + NSDecimalNumber(decimal: arriving * 990_000).uint64Value
         while Date().timeIntervalSince(started) < 240 {
-            let now = try await landed()
+            let now = try await relayLanded(dest, hyperliquid: hyperliquid)
             if now >= target {
-                return "Moved \(show(amount)) USDC from \(net.name) to \(there) in \(Int(Date().timeIntervalSince(started))) s: \(Fmt.num(arriving)) \(stable) arrived, "
-                    + "\(show(now)) \(stable) on \(there) now." + (topup != nil ? " A little gas came along." : "")
+                return "Moved \(sent) USDC from \(net.name) to \(there) in \(Int(Date().timeIntervalSince(started))) s: \(Fmt.num(arriving)) \(stable) arrived, "
+                    + "\(Fmt.num(Decimal(now) / 1_000_000, maxFraction: 6)) \(stable) on \(there) now." + (gas ? " A little gas came along." : "")
             }
             try await Task.sleep(for: .seconds(2))
         }
-        throw ExecutionError("Relay didn't credit \(there) within 4 minutes. Order \(quote.requestId) is in the journal. \(net.explorer)/tx/\(hash)")
+        throw ExecutionError("Relay didn't credit \(there) within 4 minutes. Order \(requestId) is in the journal. \(net.explorer)/tx/\(hash)")
     }
 
     /// An exact approve when the allowance is short, then a wait until the chain shows it: the next call's dry run
@@ -441,6 +459,9 @@ extension Executor {
 
     /// Set while a gas top-up runs: its own transactions don't start another.
     @TaskLocal static var toppingUp = false
+    /// Set by a chain of moves (Workspace.runSteps): a bridge leg signs and goes on, its landing waited for by the step
+    /// that spends where it lands.
+    @TaskLocal public static var landings: Landings?
 
     /// `usd` of the network's own coin for gas, at our address there: over Relay from Solana's USDC (it rides on half a
     /// dollar of USDC, which arrives too); when Solana is short, Relay swaps the network's own USDC for it on the chain.

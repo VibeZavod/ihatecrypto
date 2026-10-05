@@ -176,3 +176,20 @@ func tempoExchangeQuotes() async throws {
     }
     #expect(try Tempo.swap(Tempo.stables["USDC"]!, Tempo.stables["OUSD"]!, units: 1, minOut: 1).prefix(4).hex == "f8856c0f")
 }
+
+/// A chain's bridge legs land together: waiting for one place leaves the others running, they overlap in time, and a
+/// leg that failed throws when its place is needed.
+@Test(.timeLimit(.minutes(1))) func landingsAreWaitedForByPlace() async throws {
+    let landings = Landings()
+    let started = ContinuousClock.now
+    landings.add("arbitrum") { try await Task.sleep(for: .milliseconds(400)); return "one" }
+    landings.add("arbitrum") { try await Task.sleep(for: .milliseconds(400)); return "two" }
+    landings.add("solana") { throw ExecutionError("Relay returned refund.") }
+    #expect(landings.count(at: "arbitrum") == 2 && landings.count(at: nil) == 3)
+    #expect(try await landings.wait(for: "arbitrum") == ["one", "two"])
+    // Two 0.4 s landings at once, not one after the other.
+    #expect(ContinuousClock.now - started < .milliseconds(750))
+    #expect(landings.count(at: "arbitrum") == 0 && landings.count(at: "solana") == 1)
+    await #expect(throws: ExecutionError.self) { try await landings.wait(for: "solana") }
+    #expect(landings.count(at: nil) == 0)
+}

@@ -99,6 +99,10 @@ extension Workspace {
         thinking = true
         var rest: [String] = []
         var arrived = brought
+        // A confirmed chain signs its bridge legs one after another and lets them land together: each step waits only for
+        // the landings where it spends (Landings), so three bridges take as long as the slowest, not the three in a row.
+        let landings = confirmed ? Landings() : nil
+        var stopped = false
         for (k, step) in steps.enumerated() {
             let command = WalletCommand.parse(step)
             defer { if let c = command, let to = Self.arrives(c) { arrived.insert(to) } }
@@ -109,6 +113,7 @@ extension Workspace {
                 finishedAction = nil
                 chainAhead = (canvasID, Array(steps[(k + 1)...]))
                 showNext(step)
+                if let landings, !(await landed(landings, before: command, step: step)) { stopped = true; break }
                 // Money a move before brought to Solana: this step waits until Solana's balance shows it.
                 if arrived.contains("solana"), let c = command, Self.spends(c) == "solana", let need = Self.solanaUSDC(c) {
                     await waitForDeposit(need, then: step)
@@ -131,10 +136,10 @@ extension Workspace {
                 if let p = pendingAction {
                     pendingAction = nil
                     pendingText = nil
-                    await carryOut(p)
+                    await Executor.$landings.withValue(landings) { await carryOut(p) }
                 } else if let p = pendingAllocation {
                     pendingAllocation = nil
-                    await move(p, confirmed: true)
+                    await Executor.$landings.withValue(landings) { await move(p, confirmed: true) }
                 }
                 if finishedAction?.outcome.ok == false {
                     if k + 1 < steps.count { reply(say("“\(step)” didn’t go through, so the steps after it don’t run.", "«\(step)» не прошёл, поэтому следующие шаги не запускаю.")) }
@@ -165,6 +170,8 @@ extension Workspace {
             }
             break
         }
+        // What's still landing when the chain ends (it ended on a bridge, or stopped) is waited for and said.
+        if let landings, landings.count(at: nil) > 0, !stopped { _ = await landed(landings, before: nil, step: nil) }
         thinking = false
         if confirmed {
             // A step that stopped before its move leaves its «Next» board; the outcome board shows from here.
@@ -237,6 +244,36 @@ extension Workspace {
     }
 
     /// The USDC a step spends on Solana: what it waits for when a move before it brings the money.
+    /// Waits for the legs still landing where `command` spends (all of them for a step that names no place, or at the
+    /// end), the running card saying so; false when one of them failed — said in the chat, and the chain stops there.
+    private func landed(_ landings: Landings, before command: WalletCommand?, step: String?) async -> Bool {
+        let place = command.flatMap(Self.source)
+        guard landings.count(at: place) > 0 else { return true }
+        let waiting = say("Waiting for the moves before to land", "Жду, пока придут деньги с прошлых шагов", "Esperando a que lleguen los pasos anteriores")
+        runningAction = (waiting, step.map { chainSteps(of: [$0]) } ?? [], [], Date())
+        do {
+            // Each landing says how it went, as a move done in one go would have.
+            for line in try await landings.wait(for: place) { reply(line) }
+            return true
+        } catch {
+            reply(say("A move before didn't land, so the steps after it don't run: ", "Деньги с прошлого шага не пришли, дальше не иду: ") + error.localizedDescription)
+            return false
+        }
+    }
+
+    /// Where a step takes its money from: what it spends on, or the place a bridge leg leaves; nil when it names none.
+    static func source(_ c: WalletCommand) -> String? {
+        switch c {
+        case .bridge(let from, _, _), .cctp(let from, _, _), .evmToSolana(let from, _): from
+        case .baseToSolana: "base"
+        case .arbitrumToSolana: "arbitrum"
+        case .robinhoodToSolana: "robinhood"
+        case .withdrawToSolana: "hyperliquid"
+        case .sellNear: "near"
+        default: spends(c)
+        }
+    }
+
     static func solanaUSDC(_ c: WalletCommand) -> Decimal? {
         switch c {
         case .lendDeposit("USDC", let a), .kamino(deposit: true, symbol: "USDC", amount: let a), .hlp(deposit: true, amount: let a), .buy(_, usdc: let a),
