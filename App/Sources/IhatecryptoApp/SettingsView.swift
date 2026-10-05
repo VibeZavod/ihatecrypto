@@ -5,6 +5,7 @@ import LLMCore
 import ServiceManagement
 import SignerAPI
 import SwiftUI
+import TradeExecution
 
 /// Settings occupy the window; the coin and Esc return to the canvas.
 struct SettingsView: View {
@@ -17,6 +18,7 @@ struct SettingsView: View {
     @AppStorage(AppLanguage.key) private var appLanguage = AppLanguage.system.rawValue
     static let tabKey = "settingsTab"
     @AppStorage(SettingsView.tabKey) private var tab = Tab.general
+    @AppStorage(Executor.batchKey) private var batches = false
 
     /// Raw values also serve links from the chat and the networks menu.
     enum Tab: String, CaseIterable {
@@ -433,6 +435,10 @@ struct SettingsView: View {
                     .padding(2).frame(width: 290)
                     .background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
                     .disabled(ws.signerWallet == nil)
+                }
+                SettingsRow("One transaction for approve and swap", icon: "square.stack.3d.up",
+                            info: "On Base, Arbitrum, Ethereum, Polygon and Robinhood, an approve and the swap, deposit or bridge that spends it go out as one transaction under one Touch ID (EIP-7702). For that, from the first such move on a network your wallet there runs the code of an audited account contract (eth-infinitism's Simple7702Account): it takes coins and tokens as before, only you can make it act, and every call in it is checked like a single one. Off: two transactions, two Touch IDs, as before; a network already switched stays so.") {
+                    Toggle("One transaction for approve and swap", isOn: $batches).toggleStyle(AccentSwitch()).labelsHidden()
                 }
             }
         }

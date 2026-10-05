@@ -93,6 +93,21 @@ private let calls = [Batch7702.Call(to: baseUSDC, data: approve), Batch7702.Call
     #expect(deep.warning?.contains("7%") == true)
 }
 
+/// Batching waits for the user's switch (Settings › Wallet, off by default): off, approve and call go as before.
+@Test func batchingIsTheUsersChoiceAndOffByDefault() async {
+    let saved = UserDefaults.standard.object(forKey: Executor.batchKey)
+    defer { UserDefaults.standard.set(saved, forKey: Executor.batchKey) }
+    UserDefaults.standard.removeObject(forKey: Executor.batchKey)
+    let e = Executor(wallet: TradeWallet(solana: "", evm: owner), signer: ForkSigner(key: key, address: owner),
+                     journal: Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("switch-\(UUID().uuidString).jsonl"))) { _ in }
+    #expect(!Executor.batchesOn)
+    #expect(await !e.canBatch(.base))
+    UserDefaults.standard.set(true, forKey: Executor.batchKey)
+    #expect(await e.canBatch(.base))
+    #expect(await e.canBatch(.robinhood))
+    #expect(await !e.canBatch(.tempo))
+}
+
 /// A user operation for ERC-4337's EntryPoint: once delegated, the account runs whatever it says, so it's never signed,
 /// whatever the site names its domain or type.
 @Test func userOperationsAreNeverSigned() throws {
@@ -154,6 +169,7 @@ private struct ForkSigner: TradeSigner {
 @Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_ANVIL"] != nil))
 func forkApproveAndSwapGoAsOneTransaction() async throws {
     let env = ProcessInfo.processInfo.environment
+    UserDefaults.standard.set(true, forKey: Executor.batchKey)   // the user's switch, on for the fork runs
     let chain = UInt64(env["IHATECRYPTO_ANVIL_CHAIN"] ?? "8453")!
     let rpc = EVMRPC(url: URL(string: env["IHATECRYPTO_ANVIL"]!)!, chainId: chain)
     let key = Data(hex: env["IHATECRYPTO_ANVIL_KEY"]!)!
@@ -224,6 +240,7 @@ func forkApproveAndSwapGoAsOneTransaction() async throws {
 @Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_ANVIL_CHAIN"] == "4663"))
 func forkRobinhoodV4SwapIsOneTransaction() async throws {
     let env = ProcessInfo.processInfo.environment
+    UserDefaults.standard.set(true, forKey: Executor.batchKey)   // the user's switch, on for the fork runs
     let rpc = EVMRPC(url: URL(string: env["IHATECRYPTO_ANVIL"]!)!, chainId: 4663)
     let key = Data(hex: env["IHATECRYPTO_ANVIL_KEY"]!)!
     let me = try EVMAccount.address(privateKey: key)
@@ -261,6 +278,7 @@ func forkRobinhoodV4SwapIsOneTransaction() async throws {
 @Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_ANVIL_CHAIN"] == "8453"))
 func forkDepositsGoAsOneTransaction() async throws {
     let env = ProcessInfo.processInfo.environment
+    UserDefaults.standard.set(true, forKey: Executor.batchKey)   // the user's switch, on for the fork runs
     let rpc = EVMRPC(url: URL(string: env["IHATECRYPTO_ANVIL"]!)!, chainId: 8453)
     let key = Data(hex: env["IHATECRYPTO_ANVIL_KEY"]!)!
     let me = try EVMAccount.address(privateKey: key)
@@ -316,6 +334,7 @@ func forkDepositsGoAsOneTransaction() async throws {
 @Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_ANVIL_CHAIN"] == "8453"))
 func forkBaseV4BuyIsOneTransaction() async throws {
     let env = ProcessInfo.processInfo.environment
+    UserDefaults.standard.set(true, forKey: Executor.batchKey)   // the user's switch, on for the fork runs
     let rpc = EVMRPC(url: URL(string: env["IHATECRYPTO_ANVIL"]!)!, chainId: 8453)
     let key = Data(hex: env["IHATECRYPTO_ANVIL_KEY"]!)!
     let me = try EVMAccount.address(privateKey: key)

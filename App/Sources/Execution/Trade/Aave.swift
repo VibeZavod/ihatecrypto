@@ -309,10 +309,15 @@ extension Executor {
         throw ExecutionError("The approve went through but the network doesn't show it yet. Try again in a minute; nothing else was signed.")
     }
 
-    /// Whether calls on this network can go as one EIP-7702 transaction: a network in Batch7702.chains that takes fees in
-    /// its own coin, and a signer that signs batches (not a Ledger).
+    /// Settings › Wallet › «One transaction for approve and swap». Off unless the user turns it on: the first batched move
+    /// on a network leaves the wallet there running the audited batch account's code (EIP-7702), a change they choose.
+    public static let batchKey = "batch7702"
+    public static var batchesOn: Bool { UserDefaults.standard.bool(forKey: batchKey) }
+
+    /// Whether calls on this network can go as one EIP-7702 transaction: the user's switch on, a network in
+    /// Batch7702.chains that takes fees in its own coin, and a signer that signs batches (not a Ledger).
     func canBatch(_ rpc: EVMRPC) -> Bool {
-        signer.signsBatches && Batch7702.chains.contains(rpc.chainId) && EVMNetwork.of(chainId: rpc.chainId)?.feeToken == nil
+        Self.batchesOn && signer.signsBatches && Batch7702.chains.contains(rpc.chainId) && EVMNetwork.of(chainId: rpc.chainId)?.feeToken == nil
     }
 
     /// An exact approve and the call that spends it. Where they can batch (`canBatch`) they go as one transaction under one
