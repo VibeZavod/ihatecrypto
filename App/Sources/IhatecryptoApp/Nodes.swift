@@ -1,4 +1,5 @@
 import EVMChain
+import OneClickKit
 import SolanaChain
 import SwiftUI
 import WalletCore
@@ -74,8 +75,34 @@ nonisolated enum NodeStore {
         return URL(string: String(decoding: data, as: UTF8.self))
     }
 
-    /// At launch: each saved node is the one its network asks first.
-    static func activate() { for net in NodeNetwork.allCases { net.use(load(net)) } }
+    /// At launch: each saved node is the one its network asks first, and 1Click's partner key goes on its requests.
+    static func activate() {
+        for net in NodeNetwork.allCases { net.use(load(net)) }
+        OneClick.key = oneClickKey
+    }
+
+    /// The NEAR Intents partner key (a JWT), in the Keychain beside the nodes; nil removes it. Set, it goes on 1Click's
+    /// requests at once.
+    static var oneClickKey: String? {
+        get {
+            let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "1click",
+                                    kSecReturnData as String: true, kSecMatchLimit as String: kSecMatchLimitOne]
+            var out: CFTypeRef?
+            guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
+            return String(decoding: data, as: UTF8.self)
+        }
+        set {
+            let q: [String: Any] = [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "1click"]
+            SecItemDelete(q as CFDictionary)
+            if let newValue {
+                var add = q
+                add[kSecValueData as String] = Data(newValue.utf8)
+                add[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+                SecItemAdd(add as CFDictionary, nil)
+            }
+            OneClick.key = newValue
+        }
+    }
 
     /// Saves `url` for `net` (nil removes it) and puts it to use at once.
     static func save(_ url: URL?, for net: NodeNetwork) {
@@ -183,6 +210,93 @@ struct NodeSheet: View {
         problem = await net.problem(with: url)
         guard problem == nil else { return }
         NodeStore.save(url, for: net)
+        saved()
+        dismiss()
+    }
+}
+
+/// Settings › General: NEAR Intents' partner key. Without one 1Click adds 0.25% to every quote; with one it charges its
+/// partner fees (0.20%, 0.01% on stablecoin and same-asset routes). Shown only as «set», never the key.
+struct OneClickKeySection: View {
+    @State private var set = NodeStore.oneClickKey != nil
+    @State private var adding = false
+
+    var body: some View {
+        SettingsSection(icon: "key", title: "NEAR Intents key", line: "Lower fees on NEAR and cross-chain swaps through 1Click.") {
+            SettingsGroup {
+                SettingsRow(set ? "NEAR Intents: your partner key" : "NEAR Intents: no key — 0.25% more per swap", icon: "key", logo: "near",
+                            info: "1Click, NEAR Intents' swap service, takes an extra 0.25% from every quote asked without a key. A free partner key at partners.near-intents.org switches it to the partner fees: 0.20%, and 0.01% on stablecoins and the same coin between networks.") {
+                    HStack(spacing: 8) {
+                        if set { Button("Remove") { NodeStore.oneClickKey = nil; set = false } }
+                        Button(set ? "Change…" : "Add your key…") { adding = true }
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $adding) { OneClickKeySheet { set = true } }
+    }
+}
+
+/// Why a partner key, how to get one, and the field; the key is checked with a dry quote before it's kept.
+struct OneClickKeySheet: View {
+    var saved: () -> Void
+    @Environment(\.dismiss) private var dismiss
+    @State private var key = ""
+    @State private var checking = false
+    @State private var problem: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            HStack(spacing: 10) {
+                TokenLogo(name: "near", size: 28).clipShape(RoundedRectangle(cornerRadius: 7))
+                Text("NEAR Intents partner key").font(.ui(20, .bold))
+            }
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Why").font(.ui(13, .semibold))
+                Text("Buying and selling NEAR, and the moves between networks that go through NEAR Intents, are quoted by its 1Click service. Without a key it adds 0.25% to every quote. With a free partner key it charges its partner fees instead: 0.20%, and 0.01% on stablecoins and the same coin between networks.")
+                Text("The key only identifies you to 1Click: it can't move money or sign anything. It's kept in this Mac's Keychain.")
+                    .foregroundStyle(.secondary)
+            }
+            .font(.ui(12.5)).fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Get one in two minutes").font(.ui(13, .semibold))
+                step(1, "Open partners.near-intents.org and sign in with your email — free.")
+                step(2, "In the Partner Dashboard, create an API key and copy the token (a long JWT: eyJ…).")
+                step(3, "Paste it below and press Check and save.")
+                Link("Open partners.near-intents.org", destination: URL(string: "https://partners.near-intents.org")!).font(.ui(12.5))
+            }
+            SecureField("eyJ…", text: $key)
+                .textFieldStyle(.roundedBorder).font(.system(.body, design: .monospaced))
+                .onSubmit { Task { await check() } }
+            if let problem {
+                Label(problem, systemImage: "exclamationmark.triangle").font(.ui(12)).foregroundStyle(Brand.loss)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            HStack {
+                Spacer()
+                if checking { ProgressView().controlSize(.small) }
+                Button("Cancel") { dismiss() }.keyboardShortcut(.cancelAction)
+                Button("Check and save") { Task { await check() } }
+                    .keyboardShortcut(.defaultAction).disabled(checking || key.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }
+        .padding(24).frame(width: 520)
+    }
+
+    private func step(_ n: Int, _ text: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text("\(n)").font(.ui(11, .bold)).frame(width: 18, height: 18).background(Circle().fill(Brand.accent.opacity(0.18)))
+            Text(text).font(.ui(12.5)).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
+        }
+    }
+
+    private func check() async {
+        let token = key.trimmingCharacters(in: .whitespacesAndNewlines)
+        checking = true
+        defer { checking = false }
+        problem = await OneClick.problem(withKey: token)
+        guard problem == nil else { return }
+        NodeStore.oneClickKey = token
         saved()
         dismiss()
     }

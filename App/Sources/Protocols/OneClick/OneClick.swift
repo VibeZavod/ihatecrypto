@@ -5,6 +5,42 @@ import Foundation
 public enum OneClick {
     static let base = "https://1click.chaindefuser.com/v0"
 
+    /// The user's partner key: a JWT from partners.near-intents.org, sent as X-API-Key on every call. Without one 1Click adds
+    /// 0.25% to every quote; with one it charges its partner fees, 0.20% or 0.01% on stablecoin and same-asset routes
+    /// (docs.near-intents.org/resources/fees, 2026-10-05). Set at launch from the Keychain, and from Settings.
+    public static var key: String? {
+        get { lock.withLock { own } }
+        set { lock.withLock { own = newValue.flatMap { $0.isEmpty ? nil : $0 } } }
+    }
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var own: String?
+
+    /// A request to 1Click, with the partner key when there is one.
+    static func request(_ url: URL) -> URLRequest {
+        var r = URLRequest(url: url, timeoutInterval: 30)
+        if let key { r.setValue(key, forHTTPHeaderField: "X-API-Key") }
+        return r
+    }
+
+    /// Why 1Click won't take `key`, or nil: a dry quote (1 USDC, Solana → Base) asked with it. A key it doesn't know
+    /// answers 401 «Invalid token».
+    public static func problem(withKey key: String) async -> String? {
+        var r = URLRequest(url: URL(string: base + "/quote")!, timeoutInterval: 30)
+        r.httpMethod = "POST"
+        r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        r.setValue(key, forHTTPHeaderField: "X-API-Key")
+        r.httpBody = try? JSONSerialization.data(withJSONObject: [
+            "dry": true, "swapType": "EXACT_INPUT", "slippageTolerance": 100, "originAsset": Asset.solanaUSDC, "depositType": "ORIGIN_CHAIN",
+            "destinationAsset": Asset.usdc(onEVM: "base")!, "amount": "1000000", "refundTo": "7WktogJEd2wQ9eH2oWusmcoFTgeYi6rS632UviTBJ2jm",
+            "refundType": "ORIGIN_CHAIN", "recipient": "0x00000000000000000000000000000000000f0a11", "recipientType": "DESTINATION_CHAIN",
+            "deadline": ISO8601DateFormatter().string(from: Date().addingTimeInterval(1800)),
+        ] as [String: Any])
+        guard let (data, response) = try? await URLSession.shared.data(for: r) else { return "1Click didn't answer. Try again in a minute." }
+        let code = (response as? HTTPURLResponse)?.statusCode ?? 0
+        if code == 401 || code == 403 { return "1Click turned the key away (\(code)): copy the whole token from partners.near-intents.org again." }
+        return (200..<300).contains(code) ? nil : OneClickError(data).errorDescription
+    }
+
     public enum Asset {
         public static let solanaSOL = "nep141:sol.omft.near"
         public static let solanaUSDC = "nep141:sol-5ce3bf3a31af18be40ba30f721101b4341690186.omft.near"
@@ -62,7 +98,7 @@ public enum OneClick {
     /// Read back from 1Click itself, so an address slipped in from elsewhere does not match.
     public static func boundRequest(depositAddress: String) async throws -> [String: String] {
         let url = URL(string: "\(base)/status?depositAddress=\(depositAddress)")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await URLSession.shared.data(for: request(url))
         guard let quote = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["quoteResponse"] as? [String: Any],
               let request = quote["quoteRequest"] as? [String: Any] else { throw OneClickError(data) }
         var out: [String: String] = [:]
@@ -86,7 +122,7 @@ public enum OneClick {
 
     public static func status(depositAddress: String) async throws -> Status {
         let url = URL(string: "\(base)/status?depositAddress=\(depositAddress)")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let (data, _) = try await URLSession.shared.data(for: request(url))
         guard let j = try JSONSerialization.jsonObject(with: data) as? [String: Any], let status = j["status"] as? String else {
             throw OneClickError(data)
         }
@@ -97,11 +133,11 @@ public enum OneClick {
     }
 
     static func post(_ path: String, _ body: [String: Any]) async throws -> Data {
-        var request = URLRequest(url: URL(string: base + path)!, timeoutInterval: 30)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        var r = request(URL(string: base + path)!)
+        r.httpMethod = "POST"
+        r.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        r.httpBody = try JSONSerialization.data(withJSONObject: body)
+        let (data, response) = try await URLSession.shared.data(for: r)
         guard (200..<300).contains((response as? HTTPURLResponse)?.statusCode ?? 0) else { throw OneClickError(data) }
         return data
     }

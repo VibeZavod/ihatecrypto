@@ -170,6 +170,7 @@ struct SettingsView: View {
         NoticeSettings()
         keepRunning
         NodesSection()
+        OneClickKeySection()
         about
     }
 
