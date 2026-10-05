@@ -482,6 +482,7 @@ extension Workspace {
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't swap on \(place).") }
                 let prefer = routeWays.removeValue(forKey: Self.wayKey(place, token))
                 reply(try await e.sellOn(net, token, amount: amount, prefer: prefer, keep: keep), note: "\(net.name) · \(prefer == "relay" ? "Relay" : prefer == "uniswap" ? "Uniswap + Relay" : "Relay / Uniswap")")
+            case .sweepDust(let under): reply(try await e.sweepDust(dustTokens(under: under)), note: "Uniswap · dust into USDC")
             case .swapOn(let place, let from, let to, let amount):
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't swap on \(place).") }
                 reply(try await e.swapOn(net, from: from, to: to, amount: amount), note: "\(net.name) · Uniswap")
@@ -663,6 +664,10 @@ extension Workspace {
                 return say("There’s no \(a.symbol) on Solana to sell — nothing was prepared.", "На Solana нет \(a.symbol) — продавать нечего, ничего не готовлю.")
             }
             return lacks(have, asked, "Solana", a.symbol)
+        case .sweepDust(let under):
+            guard dustTokens(under: under).isEmpty else { return nil }
+            return say("No verified token worth $0.20 to \(Fmt.usd(under ?? 5)) on Base, Arbitrum or Polygon — no dust to sweep, nothing was prepared.",
+                       "На Base, Arbitrum и Polygon нет проверенных токенов от $0.20 до \(Fmt.usd(under ?? 5)) — пыли нет, ничего не готовлю.")
         case .sellNear(let asked, _):
             // What a sale keeps on the account while it is sent: storage and prepaid gas (sellNearRoute, intentDepositOverhead).
             let sellable = max(0, near - Decimal(string: "0.09")!)
@@ -672,6 +677,16 @@ extension Workspace {
         default:
             return nil
         }
+    }
+
+    /// What «sweep dust» sells: the verified tokens (a market list prices them) on Base, Arbitrum and Polygon worth from
+    /// $0.20 up to `under` (nil = $5), the most first; the network's own coin stays, it's gas.
+    func dustTokens(under: Decimal?) -> [Executor.Dust] {
+        holdings.filter { Executor.dustNetworks.contains($0.chain) && $0.verified && !$0.native && $0.contract != "native" }
+            .compactMap { h in
+                h.usd.flatMap { u in u >= Decimal(string: "0.2")! && u < (under ?? 5) ? Executor.Dust(chain: h.chain, contract: h.contract, symbol: h.symbol, usd: u) : nil }
+            }
+            .sorted { $0.usd > $1.usd }
     }
 
     /// «Buy the token 0x… for 2 USDC on Robinhood Chain»: the summary as a canvas title.

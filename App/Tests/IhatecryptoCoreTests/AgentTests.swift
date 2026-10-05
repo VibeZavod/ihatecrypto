@@ -532,3 +532,13 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(Holdings.evmTokens("polygon", [item], skip: []).first?.symbol == "USDC.e")
     #expect(Holdings.evmTokens("ethereum", [item], skip: []).first?.symbol == "USDC")   // that address means nothing there
 }
+
+/// «Sweep dust»: the limit when said, $5 when not; a talk about small things isn't one; the summary reads back the same.
+@Test func sweepDustIsACommand() {
+    #expect(WalletCommand.parse("sweep dust") == .sweepDust(under: nil))
+    #expect(WalletCommand.parse("собери пыль до $3") == .sweepDust(under: 3))
+    #expect(WalletCommand.parse("convert small balances to USDC") == .sweepDust(under: nil))
+    #expect(WalletCommand.parse("собери мелочь в USDC") == .sweepDust(under: nil))
+    #expect(WalletCommand.parse("это мелочь, не волнуйся") == nil)
+    for c in [WalletCommand.sweepDust(under: nil), .sweepDust(under: Decimal(string: "2.5")!)] { #expect(WalletCommand.parse(c.summary) == c) }
+}

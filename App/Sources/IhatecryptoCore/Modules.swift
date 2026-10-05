@@ -254,6 +254,7 @@ public struct Modules: Equatable, Sendable {
         case .sendNear, .closeNear: return refusal(network: .near, ru: ru)
         case .sendSol: return refusal(network: .solana, ru: ru)
         case .sendToken(_, _, _, let net): return net.flatMap(ModuleNetwork.init(place:)).flatMap { refusal(network: $0, ru: ru) }
+        case .sweepDust: return isOn(.swaps) ? r(.uniswap) : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
         case .allocate, .rebalance, .claimRewards, .sweepRewards:
             // Each vault is checked by the planner; with the whole kind off there's nothing to plan.
             return isOn(.earn) ? nil : ru ? "\(ModuleKind.earn.name) выключены в Settings › Modules." : "\(ModuleKind.earn.name) is off in Settings › Modules."

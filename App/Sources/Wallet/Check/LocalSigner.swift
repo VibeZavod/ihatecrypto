@@ -179,6 +179,7 @@ func moveMoney(_ text: String) async throws {
     case .sellStock(let symbol, let amount): print(try await executor.sellStock(symbol, amount: amount))
     case .buyOn(let place, let token, let usdc, let from): print(try await executor.buyOn(EVMNetwork.named(place) ?? .base, token, usdc: usdc ?? 1, from: from))
     case .sellOn(let place, let token, let amount, let keep): print(try await executor.sellOn(EVMNetwork.named(place) ?? .base, token, amount: amount, keep: keep))
+    case .sweepDust: throw ExecutionError("Sweeping dust works in the ihatecrypto app, where the portfolio is.")
     case .swapOn(let place, let from, let to, let amount): print(try await executor.swapOn(EVMNetwork.named(place) ?? .base, from: from, to: to, amount: amount))
     case .robinhoodToSolana(let amount): print(try await executor.evmToSolana(.robinhood, usdc: amount))
     case .solanaTo(let place, let amount):

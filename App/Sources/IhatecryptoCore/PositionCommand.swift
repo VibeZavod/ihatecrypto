@@ -199,6 +199,9 @@ public enum WalletCommand: Equatable, Sendable {
     /// `minUSD` or more (never under $5, or the gas eats them), claimed, and each sold for USDC on Solana, or `into` a token
     /// bought with that USDC. Under the floor nothing is signed: a schedule of it just waits.
     case sweepRewards(minUSD: Decimal?, into: String?)
+    /// «sweep dust», «собери пыль»: the verified tokens worth under `under` dollars (nil = $5) on Base, Arbitrum and
+    /// Polygon, each sold for USDC on its own network when the gas takes less than half of it.
+    case sweepDust(under: Decimal?)
 
     public static func parse(_ text: String) -> WalletCommand? {
         // «pay POST https://… {"q": 1}»: the URL and the body kept as written.
@@ -217,6 +220,12 @@ public enum WalletCommand: Equatable, Sendable {
             let usd = (q.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|usdg|\$|долл|dollars?|bucks|бакс)/)?.1)
                 .flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
             return .gas(net, usd: usd)
+        }
+        // Small leftovers into USDC: «sweep dust», «собери пыль до $3», «convert small balances to USDC».
+        if q.contains(/\bdust\b|\bпыль\b|\bпыли\b|собер\w*\s+мелоч\w*|\bsmall\s+balances?\s+(?:in)?to\s+usdc|\bleftovers?\s+(?:in)?to\s+usdc|остатк\w*\s+(?:в|на)\s+usdc/) {
+            let under = q.firstMatch(of: /(?:under|below|less\s+than|<|до|меньше|ниже)\s*\$?\s*(\d+(?:[.,]\d+)?)/)
+                .flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
+            return .sweepDust(under: under)
         }
         // Rewards to claim AND sell: before the plain claim below.
         if q.contains(/\bsweep\s+(?:the\s+|my\s+)?rewards?|\bsell\s+(?:the\s+|my\s+|all\s+)?(?:claimed\s+)?rewards?|(?:прода|обменя|меня)\w*\s+(?:\w+\s+){0,2}?награ/) {
@@ -753,6 +762,7 @@ extension WalletCommand {
         case .gas(let place, let usd): return "add ≈ \(Fmt.usd(usd ?? 1)) of gas on \(Self.placeName(place))"
         case .bridge(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to))" + (to == "robinhood" ? " (arrives as USDG)" : "")
         case .claimRewards: return "claim rewards on Merkl"
+        case .sweepDust(let under): return "sweep dust\(under.map { " under $\(Fmt.num($0))" } ?? "") into USDC on Base, Arbitrum and Polygon"
         case .sweepRewards(let min, let into): return "sweep Merkl rewards once worth \(Fmt.usd(max(min ?? 5, 5))) or more into \(into ?? "USDC")"
         }
     }

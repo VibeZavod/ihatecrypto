@@ -1164,6 +1164,7 @@ extension Workspace {
         case .buyOn(let place, let token, let usdc?, let from): swapRoute(place, token, usdc: usdc, sell: nil, from: from)
         case .sellOn(let place, let token, let amount, let keep): swapRoute(place, token, usdc: nil, sell: amount, keep: keep)
         case .swapOn(let place, let from, let to, let amount): pairRoute(place, from, to, amount)
+        case .sweepDust(let under): dustRoute(under)
         case .sellNear(let asked, let to): sellNearRoute(asked, to: to)
         case .buyNear(let usdc?): buyNearRoute(usdc)
         case .sendNear(let name, let asked): nearOutRoute(to: name, amount: asked, close: false)
@@ -1649,6 +1650,20 @@ extension Workspace {
             way,
             step("sol", "TO · SOLANA", "USDC", "your wallet", .solana),
         ])
+    }
+
+    /// «Sweep dust»: the tokens that go, a step each (eight at most, then how many more), each sold for USDC on its own network.
+    private func dustRoute(_ under: Decimal?) -> MoveRoute {
+        let dust = dustTokens(under: under)
+        let total = dust.reduce(Decimal(0)) { $0 + $1.usd }
+        var steps = dust.prefix(8).map { d in
+            step(ModuleNetwork(place: d.chain)?.logo ?? d.chain, "SELL · \(WalletCommand.placeName(d.chain).uppercased())", d.symbol,
+                 "≈ \(Fmt.usd(d.usd)) → USDC there", RouteFill(rawValue: d.chain) ?? .check)
+        }
+        if dust.count > 8 { steps.append(step("usdc", "AND \(dust.count - 8) MORE", "\(dust.count - 8) tokens", "the same way", .check)) }
+        return MoveRoute(title: "Sweep \(dust.count) token\(dust.count == 1 ? "" : "s") ≈ \(Fmt.usd(total)) into USDC",
+                         footer: "Each verified token worth $0.20 to \(Fmt.usd(under ?? 5)) on Base, Arbitrum and Polygon: quoted on Uniswap first and sold for USDC on its own network with an exact approve, only when the gas takes less than half of it — the rest stays, said by name. Press Confirm.",
+                         steps: steps)
     }
 
     /// One token for another on an EVM network, straight on Uniswap: what goes in (approved exactly, or the network's coin
