@@ -12,7 +12,8 @@ public enum AddressBookCommand: Equatable, Sendable {
 
     public static func parse(_ text: String) -> AddressBookCommand? {
         let q = text.lowercased()
-        if let address = address(in: text), q.contains(/\b(?:save|add|remember|store|keep)\b|сохран|запомн|добав|запиши/) {
+        // An ENS or SNS name is saved as the address it resolves to (AddressBook's save): the name is what the message holds.
+        if let address = address(in: text) ?? domain(in: text), q.contains(/\b(?:save|add|remember|store|keep)\b|сохран|запомн|добав|запиши/) {
             // «… as Bybit on Arbitrum», «… как Bybit в сети base»
             let named = text.firstMatch(of: /(?i)(?:\bas\b|\bcalled\b|\bnamed\b|\bкак\b|под\s+именем)\s+[«"“]?(.+?)[»"”]?(?=\s+(?:on|in|в|на)\s+(?:the\s+)?(?:сети\s+)?(?:solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|ethereum|эфир\w*|hyperliquid|хайперликвид\w*|near|неар\w*|polygon|полигон\w*|robinhood|робин[гх]уд\w*|tempo|темпо\w*)\b|[.,!]?\s*$)/)
             guard let name = named.map({ String($0.1).trimmingCharacters(in: .whitespaces) }), !name.isEmpty, !name.contains(address) else { return nil }
@@ -36,6 +37,17 @@ public enum AddressBookCommand: Equatable, Sendable {
         }
     }
 
+    /// An ENS (vitalik.eth) or SNS (toly.sol) name standing alone in the text, lowercased: the whole word must be plain
+    /// ASCII letters, digits, hyphens and dots — a look-alike letter («vіtalik.eth» with a Cyrillic і) makes it no name.
+    public static func domain(in text: String) -> String? {
+        let words = text.split(whereSeparator: { $0.isWhitespace || "«»\"“”,;!?()".contains($0) })
+            .map { $0.trimmingCharacters(in: CharacterSet(charactersIn: ".:")).lowercased() }
+        return words.first { w in
+            w.wholeMatch(of: /[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*\.eth/) != nil
+                || w.wholeMatch(of: /[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.sol/) != nil
+        }
+    }
+
     public static func network(_ q: String) -> String? {
         // A NEAR account can only be on NEAR; «on near» names it too.
         if q.contains(/\b[0-9a-f]{64}\b|\.near\b|\b(?:on|in|в|на)\s+(?:the\s+)?(?:сети\s+)?(?:near|неар\w*)\b/) { return "near" }
@@ -47,6 +59,8 @@ public enum AddressBookCommand: Equatable, Sendable {
         if q.contains(/\btempo\b|темпо/) { return "tempo" }
         if q.contains(/ethereum|эфир|\beth\s+mainnet/) { return "ethereum" }
         if q.contains(/solana|солан/) { return "solana" }
+        // A name with no network named: an ENS name is an Ethereum address, a .sol name a Solana one.
+        if let name = domain(in: q) { return name.hasSuffix(".sol") ? "solana" : "ethereum" }
         return nil
     }
 }

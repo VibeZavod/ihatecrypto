@@ -472,3 +472,15 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(!press(true) && !press(false))
     #expect(SentHistory.step([], at: nil, draft: "", up: true) != nil)   // nothing sent yet: handled, nothing changes
 }
+
+/// «save vitalik.eth as Vitalik» saves a name to resolve; a look-alike letter makes it no name, and a token or a buy
+/// never reads a name as an address.
+@Test func addressBookTakesENSAndSNSNamesOnlyToSave() {
+    #expect(AddressBookCommand.parse("save vitalik.eth as Vitalik") == .save(address: "vitalik.eth", name: "Vitalik", network: "ethereum"))
+    #expect(AddressBookCommand.parse("сохрани Vitalik.eth как Виталик на base") == .save(address: "vitalik.eth", name: "Виталик", network: "base"))
+    #expect(AddressBookCommand.parse("save toly.sol as Toly") == .save(address: "toly.sol", name: "Toly", network: "solana"))
+    // A Cyrillic «і» in «vіtalik.eth»: not a name at all, so nothing to save.
+    #expect(AddressBookCommand.parse("save vіtalik.eth as Vitalik") == nil)
+    #expect(AddressBookCommand.domain(in: "pay sub.name.eth now") == "sub.name.eth")
+    #expect(AddressBookCommand.address(in: "add token uniswap.eth to favorites") == nil)
+}

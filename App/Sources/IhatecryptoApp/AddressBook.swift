@@ -1,6 +1,8 @@
 import AppKit
+import EVMChain
 import IhatecryptoCore
 import SignerAPI
+import SolanaChain
 import SwiftUI
 import TradeExecution
 import WalletCore
@@ -686,34 +688,60 @@ extension Workspace {
             addressBook[i].favorite = on
             reply(on ? "⭐ “\(addressBook[i].name)” is in your favorites." : "“\(addressBook[i].name)” is no longer a favorite.", note: note)
         case .save(let address, let name, let net):
-            let network: AddressCheck.Network
-            if let net, let n = AddressCheck.Network(rawValue: net) {
-                network = n
-            } else if !address.hasPrefix("0x") {
-                network = .solana
-            } else {
-                reply("Which network is this 0x address on — Ethereum, Arbitrum, Base, Tempo or Hyperliquid? For example “save … as \(name) on Arbitrum”.", note: note)
+            // A name (vitalik.eth, toly.sol) is read on its own chain now, and the address it points at is what's saved:
+            // the name changing hands later moves nothing. The card and Touch ID show that address, whole.
+            if ENS.isName(address) || SNS.isName(address) {
+                Task {
+                    do {
+                        let resolved = ENS.isName(address) ? try await ENS.resolve(address) : try await SNS.resolve(address)
+                        saveFromChat(resolved, name: name, net: net ?? (address.hasSuffix(".sol") ? "solana" : "ethereum"), domain: address, note: note)
+                    } catch {
+                        reply(say("Couldn't read \(address): \(error.localizedDescription) Nothing was saved.",
+                                  "Не получилось прочитать \(address): \(error.localizedDescription) Ничего не сохранено."), note: note)
+                    }
+                }
                 return
             }
-            if let problem = AddressCheck.problem(address, network: network) { reply(problem, note: note); return }
-            if let same = addressBook.first(where: { $0.network == network && $0.address.lowercased() == address.lowercased() }) {
-                reply("Already saved as “\(same.name)”.", note: note)
-                return
-            }
-            let domain = name.split(separator: " ").first.map { $0.lowercased() }
-            pendingAction = .address(SavedAddress(name: name, address: address, network: network, source: "chat"))
-            pendingText = "save “\(name)”"
-            let ends = AddressCheck.ends(address)
+            saveFromChat(address, name: name, net: net, domain: nil, note: note)
+        }
+    }
+
+    /// The save's card for an address — written in the message, or what `domain` (an ENS or SNS name) resolved to.
+    private func saveFromChat(_ address: String, name: String, net: String?, domain: String?, note: String?) {
+        let network: AddressCheck.Network
+        if let net, let n = AddressCheck.Network(rawValue: net) {
+            network = n
+        } else if !address.hasPrefix("0x") {
+            network = .solana
+        } else {
+            reply("Which network is this 0x address on — Ethereum, Arbitrum, Base, Tempo or Hyperliquid? For example “save … as \(name) on Arbitrum”.", note: note)
+            return
+        }
+        if let problem = AddressCheck.problem(address, network: network) { reply(problem, note: note); return }
+        if let same = addressBook.first(where: { $0.network == network && $0.address.lowercased() == address.lowercased() }) {
+            reply("Already saved as “\(same.name)”.", note: note)
+            return
+        }
+        let site = name.split(separator: " ").first.map { $0.lowercased() }
+        var entry = SavedAddress(name: name, address: address, network: network, source: "chat")
+        if let domain { entry.note = "\(domain) — read on-chain \(Date().formatted(.iso8601.year().month().day()))" }
+        pendingAction = .address(entry)
+        pendingText = "save “\(name)”"
+        let ends = AddressCheck.ends(address)
+        if let domain {
+            reply(say("\(domain) points at \(ends.start)…\(ends.end) on \(network.title), read on-chain just now. Check it on the canvas; Save asks for Touch ID with the whole address.",
+                      "\(domain) ведёт на \(ends.start)…\(ends.end) в \(network.title) — прочитано в сети только что. Сверь на холсте; Save спросит Touch ID с полным адресом."), note: note)
+        } else {
             reply(say("Check it on the canvas: \(network.title), starts \(ends.start), ends \(ends.end) — exactly as in your message. Confirm to save.",
                       "Сверь на холсте: \(network.title), начало \(ends.start), конец \(ends.end) — как в твоём сообщении. Подтверди, чтобы сохранить."), note: note)
-            // A logo for a known exchange name, fetched in the background; the entry works without it.
-            if let domain, domain.count > 2 {
-                Task {
-                    guard let image = await AddressIcons.logo(domain: domain + ".com"), let file = AddressIcons.save(image),
-                          case .address(var entry)? = pendingAction, entry.address == address else { return }
-                    entry.icon = .image(file)
-                    pendingAction = .address(entry)
-                }
+        }
+        // A logo for a known exchange name, fetched in the background; the entry works without it.
+        if domain == nil, let site, site.count > 2 {
+            Task {
+                guard let image = await AddressIcons.logo(domain: site + ".com"), let file = AddressIcons.save(image),
+                      case .address(var entry)? = pendingAction, entry.address == address else { return }
+                entry.icon = .image(file)
+                pendingAction = .address(entry)
             }
         }
     }
@@ -731,7 +759,9 @@ struct PendingAddressBoard: View {
                     StatusChip(text: "waiting for your confirmation", tint: Brand.profit)
                 }
                 AddressCard(entry: entry, readOnly: true).frame(width: 320)
-                Label("Taken from your own message and checked for \(entry.network.title). Compare it with the source: Save asks for Touch ID with the whole address on the prompt.",
+                Label(entry.note.isEmpty
+                      ? "Taken from your own message and checked for \(entry.network.title). Compare it with the source: Save asks for Touch ID with the whole address on the prompt."
+                      : "Resolved from \(entry.note.components(separatedBy: " — ").first ?? "") on \(entry.network.title) just now and checked. Save asks for Touch ID with the whole address on the prompt.",
                       systemImage: "checkmark.shield")
                     .font(.ui(10)).foregroundStyle(.secondary).frame(width: 470, alignment: .leading)
                 PendingButtons(confirm: "Save")

@@ -3,6 +3,7 @@ import ExecutionCore
 import Foundation
 import HyperliquidSigning
 import OneClickKit
+import SolanaChain
 import Testing
 import TxGuard
 @testable import TradeExecution
@@ -137,4 +138,24 @@ func oneClickTakesEVMUSDCForNearAndBindsTheDeposit() async throws {
         print("\(key): 5 USDC → \(quote.amountOutFormatted) NEAR, deposit \(deposit.prefix(10))…, ≈ \(quote.timeEstimate ?? -1) s")
     }
     #expect(OneClick.Asset.usdc(onEVM: "polygon") == nil && OneClick.Asset.usdc(onEVM: "robinhood") == nil)
+}
+
+/// ENS's namehash (EIP-137's own example) and which names are read.
+@Test func ensNamehashAndNames() {
+    #expect(ENS.namehash("vitalik.eth").hex == "ee6c4522aab0003e8d14cd40a6af439055fd2577951148c14b6cea9a53475835")
+    #expect(ENS.namehash("eth").hex == "93cdeb708b7545dc668eb9280176169d1c33cfd8ed6f04690a0bcc88a93fc4ae")
+    #expect(ENS.isName("vitalik.eth") && ENS.isName("a-b.sub.eth") && !ENS.isName("vіtalik.eth") && !ENS.isName("-x.eth") && !ENS.isName("x.sol"))
+    #expect(SNS.isName("toly.sol") && !SNS.isName("a.b.sol") && !SNS.isName("toly.eth"))
+}
+
+/// Names read on their own chains (IHATECRYPTO_NET=1): vitalik.eth through the registry and its resolver (as Foundry's
+/// cast resolve-name gives it); a .sol name's account derived here is a Name Service account under the .sol root.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func ensAndSNSNamesResolveOnTheirChains() async throws {
+    #expect(try await ENS.resolve("vitalik.eth") == "0xd8dA6BF26964aF9D7eEd9e03E53415D37aA96045")
+    await #expect(throws: (any Error).self) { try await ENS.resolve("this-name-is-not-registered-ihatecrypto.eth") }
+    let owner = try await SNS.resolve("bonfida.sol")
+    print("bonfida.sol → \(owner)")
+    #expect(owner.count >= 32)
+    await #expect(throws: (any Error).self) { try await SNS.resolve("this-name-is-not-registered-ihatecrypto.sol") }
 }
