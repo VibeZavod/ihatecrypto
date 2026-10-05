@@ -116,7 +116,7 @@ public enum ChatRouter {
       buy <SOL|BTC|ETH|JUP> for N USDC every <day|week|N days> | stop recurring buys
       Jupiter DCA N USDC into <SOL|BTC|ETH|JUP|TICKER> [in K orders] [every <hour|day|week|month|N days> | over N <days|weeks|months>] | cancel Jupiter DCA [<TICKER>] | show Jupiter DCA
       (Jupiter's on-chain DCA: all N goes into an order account of the wallet's own at once and Jupiter's keepers buy each round, even with the app closed; at least 100 USDC and 50 per order; no K = one per 50 USDC. Write it when the user names Jupiter's DCA or wants buys that run on-chain without the app; a plain «buy SOL every week» is the app's own recurring buy above)
-      buy NEAR for N USDC | sell [N] NEAR   (native NEAR on the NEAR account → USDC on Solana; no N = all of it)
+      buy NEAR for N USDC | sell [N] NEAR [for USDC on <base|arbitrum|ethereum>]   (native NEAR on the NEAR account → USDC on Solana, or on that network at our own address; no N = all of it; «продай NEAR в USDC на base» = sell NEAR for USDC on base)
     STOCK TOKENS ON ROBINHOOD CHAIN: buy <COMPANY or TICKER> stock for N USDC | sell <TICKER> stock | move USDG from Robinhood to Solana
     ANY TOKEN BY ITS CONTRACT (Robinhood Chain): buy token <0xCONTRACT> for N USDC | sell [N] tokens <0xCONTRACT>
     TOKENS ON BASE, ARBITRUM, POLYGON AND ETHEREUM (paid where the money is: that network's own USDC when it holds enough — Uniswap there, no
@@ -125,7 +125,7 @@ public enum ChatRouter {
       (write «from» only when the user names where the money comes from: «с арбитрума» = from arbitrum, brought over first in the same move;
       «оставь USDC на base» / «не выводи» on a sale = and keep the USDC there)   (tickers from Uniswap's list: AERO, DEGEN, VIRTUAL, cbBTC, WETH on Base; ARB, GMX, PENDLE, LINK, UNI on Arbitrum; AAVE, LINK, WPOL on Polygon; UNI, PEPE, LDO on Ethereum, where gas varies from cents to dollars)
       buy token <0xCONTRACT> on <base|arbitrum|polygon|ethereum> for N USDC | sell [N] tokens <0xCONTRACT> on <base|arbitrum|polygon|ethereum>
-      swap <N|all> <ETH|TICKER|0xCONTRACT> for <ETH|TICKER|0xCONTRACT> on <base|arbitrum|polygon|ethereum>   (one token for another on that network, straight on Uniswap — no USDC in the middle; ETH is the network's own coin, POL on Polygon; «поменяй 0.01 ETH на AERO на base» = swap 0.01 ETH for AERO on base, «обменяй весь DEGEN на ETH на бейсе» = swap all DEGEN for ETH on base; with USDC on a side it's the buy or sell form above)
+      swap <N|all> <ETH|TICKER|0xCONTRACT> for <ETH|TICKER|0xCONTRACT> on <base|arbitrum|polygon|ethereum>   (one token for another on that network, straight on Uniswap — no USDC in the middle; ETH is the network's own coin, POL on Polygon; «поменяй 0.01 ETH на AERO на base» = swap 0.01 ETH for AERO on base, «обменяй весь DEGEN на ETH на бейсе» = swap all DEGEN for ETH on base; USDC.e is the bridged USDC on Polygon and Arbitrum — «поменяй USDC.e на нормальный USDC на полигоне» = swap all USDC.e for USDC on polygon; with USDC on one side and any other token on the other it's the buy or sell form above)
     ANY SOLANA TOKEN BY ITS MINT (Jupiter; only while Safe search is off): buy token <MINT> for N USDC | sell [N] tokens <MINT>
     EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault") | withdraw [N] <USDC|SOL> from the vault
       deposit N <USDC|SOL> to kamino | withdraw [N] <USDC|SOL> from kamino   (Kamino Lend and Kamino's vaults, deposits made on kamino.com too) | stake N SOL | unstake N JitoSOL

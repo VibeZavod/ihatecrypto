@@ -449,27 +449,55 @@ extension Executor {
         try journal.append(.init(chain: "1click", id: deposit, kind: .signed, note: "USDC→NEAR \(Fmt.num(usdc)) from \(from) to \(account)"))
         if !tx.isEmpty { try? await OneClick.submitDeposit(txHash: tx, depositAddress: deposit) }
         let started = Date()
+        let s = try await oneClickSettled(deposit, refund: "USDC went back to \(from)", estimate: quote.timeEstimate)
+        let line = "Bought \(Fmt.num(Decimal(string: s.amountOutFormatted ?? "") ?? 0, maxFraction: 4)) NEAR for \(Fmt.num(usdc)) USDC from \(from) in \(Int(Date().timeIntervalSince(started))) s — native NEAR on your NEAR account."
+        report(line)
+        return line
+    }
+
+    /// What each of 1Click's states means, said on the running card as it changes.
+    static let oneClickWords = [
+        "PENDING_DEPOSIT": "waiting for the deposit", "KNOWN_DEPOSIT_TX": "deposit sent, waiting for it to land",
+        "INCOMPLETE_DEPOSIT": "the deposit came short: 1Click refunds it", "PROCESSING": "deposit received, swapping",
+        "SUCCESS": "done", "REFUNDED": "refunded", "FAILED": "failed",
+    ]
+
+    /// 1Click's progress on `deposit` until it settles, each new state a line on the running card («1Click · deposit
+    /// received, swapping · 12 s of ≈ 30»), written to the journal at the end. Throws on a refund or a failure, saying
+    /// what went back (`refund`), and after 10 minutes without an end.
+    func oneClickSettled(_ deposit: String, refund: String, estimate: Int?) async throws -> OneClick.Status {
+        let started = Date()
+        var last = ""
         while Date().timeIntervalSince(started) < 600 {
             let s = try await OneClick.status(depositAddress: deposit)
+            if s.status != last {
+                last = s.status
+                let took = Int(Date().timeIntervalSince(started))
+                report("1Click · \(Self.oneClickWords[s.status] ?? s.status.lowercased()) · \(took) s\(estimate.map { " of ≈ \($0)" } ?? "")")
+            }
             if s.isFinal {
                 try journal.append(.init(chain: "1click", id: deposit, kind: s.status == "SUCCESS" ? .settled : .failed, note: s.status))
-                guard s.status == "SUCCESS" else { throw ExecutionError("1Click \(s.status.lowercased()): \(s.refundedFormatted.map { "\($0) USDC went back to \(from)" } ?? "see the journal").") }
-                let line = "Bought \(Fmt.num(Decimal(string: s.amountOutFormatted ?? "") ?? 0, maxFraction: 4)) NEAR for \(Fmt.num(usdc)) USDC from \(from) in \(Int(Date().timeIntervalSince(started))) s — native NEAR on your NEAR account."
-                report(line)
-                return line
+                guard s.status == "SUCCESS" else { throw ExecutionError("1Click \(s.status.lowercased()): \(s.refundedFormatted.map { "\($0) \(refund)" } ?? "see the journal").") }
+                return s
             }
             try await Task.sleep(for: .seconds(3))
         }
         throw ExecutionError("1Click hasn't finished within 10 minutes. The deposit \(deposit) is in the journal; it settles or refunds on its own.")
     }
 
-    /// Native NEAR from the wallet's NEAR account → USDC on our Solana address, through NEAR Intents 1Click (the reverse
-    /// of `buyNear`). nil = all the account can give: its storage stays, and so does what the transaction may need
-    /// (`NearTransaction.intentDepositOverhead`, mostly refunded). The live quote must stay within 1% of the one shown;
-    /// 1Click must have the deposit address bound to our Solana address as recipient and our NEAR account for refunds;
-    /// the signer builds the wrap.near transaction itself from the amount and the deposit address.
-    public func sellNear(amount requested: Decimal?, account: String) async throws -> String {
+    /// Native NEAR from the wallet's NEAR account → USDC through NEAR Intents 1Click (the reverse of `buyNear`), on our
+    /// Solana address or, with `to`, at our own address on that EVM network (Base, Arbitrum, Ethereum). nil = all the
+    /// account can give: its storage stays, and so does what the transaction may need (`NearTransaction.intentDepositOverhead`,
+    /// mostly refunded). The live quote must stay within 1% of the one shown; 1Click must have the deposit address bound to
+    /// our address there as recipient and our NEAR account for refunds; the signer builds the wrap.near transaction itself
+    /// from the amount and the deposit address.
+    public func sellNear(amount requested: Decimal?, account: String, to net: EVMNetwork? = nil) async throws -> String {
         guard account.wholeMatch(of: /[0-9a-f]{64}/) != nil else { throw ExecutionError("That is not a NEAR implicit account.") }
+        let destination = try net.map { n in
+            guard let asset = OneClick.Asset.usdc(onEVM: n.key) else { throw ExecutionError("1Click pays NEAR's USDC on Solana, Base, Arbitrum and Ethereum, not on \(n.name).") }
+            return asset
+        } ?? OneClick.Asset.solanaUSDC
+        let recipient = net == nil ? wallet.solana : wallet.evm, place = net.map { "your address on \($0.name)" } ?? "your Solana address"
         let context = try await Near.txContext(account: account)
         let micro: UInt128 = 1_000_000_000_000_000_000   // 10⁻⁶ NEAR: amounts are whole micro-NEAR
         let storage = UInt128(context.storageBytes) * 10_000_000_000_000_000_000   // 10¹⁹ yocto a byte
@@ -482,11 +510,11 @@ extension Executor {
             throw ExecutionError("\(NearTransaction.near(free)) NEAR can be sold: the account keeps \(NearTransaction.near(keep)) for its storage and the transaction.")
         }
         let near = Decimal(string: NearTransaction.near(yocto)) ?? 0, units = "\(yocto)"
-        let shown = try await OneClick.quote(dry: true, origin: OneClick.Asset.near, destination: OneClick.Asset.solanaUSDC,
-                                             amount: units, refundTo: account, recipient: wallet.solana)
+        let shown = try await OneClick.quote(dry: true, origin: OneClick.Asset.near, destination: destination,
+                                             amount: units, refundTo: account, recipient: recipient)
         var envelope = Envelope.approve(input: near, quotedOutput: Decimal(string: shown.amountOutFormatted) ?? 0)
-        let quote = try await OneClick.quote(dry: false, origin: OneClick.Asset.near, destination: OneClick.Asset.solanaUSDC,
-                                             amount: units, refundTo: account, recipient: wallet.solana)
+        let quote = try await OneClick.quote(dry: false, origin: OneClick.Asset.near, destination: destination,
+                                             amount: units, refundTo: account, recipient: recipient)
         guard let deposit = quote.depositAddress, deposit.wholeMatch(of: /[0-9a-f]{64}/) != nil else {
             throw ExecutionError("1Click gave no NEAR deposit account.")
         }
@@ -497,28 +525,20 @@ extension Executor {
             problems.append("The quote expires in less than 5 minutes.")
         }
         guard problems.isEmpty else { throw ExecutionError("The price moved past what was approved: " + problems.joined(separator: " ")) }
-        let binding = DepositGuard.check(bound: try await OneClick.boundRequest(depositAddress: deposit), recipient: wallet.solana, refundTo: account,
-                                         origin: OneClick.Asset.near, destination: OneClick.Asset.solanaUSDC, amount: units)
+        let binding = DepositGuard.check(bound: try await OneClick.boundRequest(depositAddress: deposit), recipient: recipient, refundTo: account,
+                                         origin: OneClick.Asset.near, destination: destination, amount: units)
         guard binding.ok else { throw ExecutionError("The guard stopped the deposit: " + binding.problems.joined(separator: " ")) }
-        report("NEAR Intents: \(Fmt.num(near, maxFraction: 6)) NEAR → ≈ \(Fmt.num(Decimal(string: quote.amountOutFormatted) ?? 0)) USDC to your Solana address.")
+        report("NEAR Intents: \(Fmt.num(near, maxFraction: 6)) NEAR → ≈ \(Fmt.num(Decimal(string: quote.amountOutFormatted) ?? 0)) USDC to \(place).")
         let signed = try await signer.signNearIntentDeposit(amount: yocto, depositAddress: deposit, nonce: context.nonce, blockHash: context.blockHash)
-        try journal.append(.init(chain: "1click", id: deposit, kind: .signed, note: "NEAR→USDC \(Fmt.num(near, maxFraction: 6)) to \(wallet.solana)"))
+        try journal.append(.init(chain: "1click", id: deposit, kind: .signed, note: "NEAR→USDC \(Fmt.num(near, maxFraction: 6)) to \(recipient)\(net.map { " on \($0.name)" } ?? "")"))
         let hash = try await Near.send(signed)
         try journal.append(.init(chain: "near", id: hash, kind: .confirmed, note: "wNEAR to 1Click \(deposit)"))
         try? await OneClick.submitDeposit(txHash: hash, depositAddress: deposit)
         let started = Date()
-        while Date().timeIntervalSince(started) < 600 {
-            let s = try await OneClick.status(depositAddress: deposit)
-            if s.isFinal {
-                try journal.append(.init(chain: "1click", id: deposit, kind: s.status == "SUCCESS" ? .settled : .failed, note: s.status))
-                guard s.status == "SUCCESS" else { throw ExecutionError("1Click \(s.status.lowercased()): \(s.refundedFormatted.map { "\($0) wNEAR went back to your NEAR account" } ?? "see the journal").") }
-                let line = "Sold \(Fmt.num(near, maxFraction: 6)) NEAR for \(Fmt.num(Decimal(string: s.amountOutFormatted ?? "") ?? 0)) USDC in \(Int(Date().timeIntervalSince(started))) s — on your Solana address. https://nearblocks.io/txns/\(hash)"
-                report(line)
-                return line
-            }
-            try await Task.sleep(for: .seconds(3))
-        }
-        throw ExecutionError("1Click hasn't finished within 10 minutes. The deposit \(deposit) is in the journal; it settles or refunds on its own. https://nearblocks.io/txns/\(hash)")
+        let s = try await oneClickSettled(deposit, refund: "wNEAR went back to your NEAR account", estimate: quote.timeEstimate)
+        let line = "Sold \(Fmt.num(near, maxFraction: 6)) NEAR for \(Fmt.num(Decimal(string: s.amountOutFormatted ?? "") ?? 0)) USDC in \(Int(Date().timeIntervalSince(started))) s — on \(place). https://nearblocks.io/txns/\(hash)"
+        report(line)
+        return line
     }
 
     /// Hyperliquid's HLP vault from the main perp balance. Deposits are locked for 4 days; withdraw with nil takes

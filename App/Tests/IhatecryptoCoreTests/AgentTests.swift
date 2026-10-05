@@ -509,3 +509,26 @@ private final class Script: LLMClient, @unchecked Sendable {
     // Not a swap on an EVM network: Solana has its own forms, and a swap needs its network named.
     #expect(WalletCommand.parse("swap 0.01 ETH for AERO") == nil)
 }
+
+/// A NEAR sale names the network its USDC lands on: Solana by default, Base, Arbitrum or Ethereum when said; the
+/// summaries read back the same.
+@Test func sellNearForUSDCOnANetwork() {
+    #expect(WalletCommand.parse("sell NEAR") == .sellNear(amount: nil))
+    #expect(WalletCommand.parse("sell NEAR for USDC on base") == .sellNear(amount: nil, to: "base"))
+    #expect(WalletCommand.parse("продай 0,5 NEAR в USDC на арбитрум") == .sellNear(amount: Decimal(string: "0.5")!, to: "arbitrum"))
+    #expect(WalletCommand.parse("sell 2 NEAR for USDC on ethereum") == .sellNear(amount: 2, to: "ethereum"))
+    for c in [WalletCommand.sellNear(amount: nil), .sellNear(amount: 2, to: "base"), .sellNear(amount: Decimal(string: "0.5")!, to: "arbitrum")] {
+        #expect(WalletCommand.parse(c.summary) == c)
+    }
+    #expect(WalletCommand.sellNear(amount: 2, to: "base").summary == "sell 2 NEAR from your NEAR account for USDC on Base")
+}
+
+/// Bridged USDC (USDC.e) on Polygon and Arbitrum: named so in the portfolio (both contracts call themselves «USDC»), and
+/// «swap all USDC.e for USDC on polygon» is the sale that keeps Circle's USDC there.
+@Test func bridgedUSDCIsNamedAndSwapped() {
+    #expect(WalletCommand.parse("swap all USDC.e for USDC on polygon") == .sellOn("polygon", token: "USDC.e", amount: nil, keep: true))
+    #expect(WalletCommand.parse("swap 12.5 USDC.e for USDC on arbitrum") == .sellOn("arbitrum", token: "USDC.e", amount: Decimal(string: "12.5")!, keep: true))
+    let item: [String: Any] = ["value": "2500000", "token": ["address_hash": "0x2791Bca1f2de4661ED88A30C99A7a9449Aa84174", "decimals": "6", "symbol": "USDC"]]
+    #expect(Holdings.evmTokens("polygon", [item], skip: []).first?.symbol == "USDC.e")
+    #expect(Holdings.evmTokens("ethereum", [item], skip: []).first?.symbol == "USDC")   // that address means nothing there
+}

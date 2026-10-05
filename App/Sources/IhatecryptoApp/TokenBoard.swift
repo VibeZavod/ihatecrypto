@@ -31,7 +31,10 @@ extension Workspace {
         default: nil
         }
         guard let pair else { return [] }
-        return [("Buy \(symbol)", "cart", pair.buy), ("Sell", "arrow.down.right.circle", pair.sell)]
+        // Bridged USDC: first, the swap for Circle's own on the same network (Uniswap's 0.01% pool).
+        let bridged: [(title: String, icon: String, phrase: String)] = symbol == "USDC.e"
+            ? [("Swap to Circle's USDC", "arrow.triangle.2.circlepath", "swap all USDC.e for USDC on \(chain)")] : []
+        return bridged + [("Buy \(symbol)", "cart", pair.buy), ("Sell", "arrow.down.right.circle", pair.sell)]
     }
 
     /// Hands a token to the chat (the user: «чтобы контекст передавался»): a chip over the field, and the next message

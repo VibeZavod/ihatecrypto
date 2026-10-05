@@ -1164,7 +1164,7 @@ extension Workspace {
         case .buyOn(let place, let token, let usdc?, let from): swapRoute(place, token, usdc: usdc, sell: nil, from: from)
         case .sellOn(let place, let token, let amount, let keep): swapRoute(place, token, usdc: nil, sell: amount, keep: keep)
         case .swapOn(let place, let from, let to, let amount): pairRoute(place, from, to, amount)
-        case .sellNear(let asked): sellNearRoute(asked)
+        case .sellNear(let asked, let to): sellNearRoute(asked, to: to)
         case .buyNear(let usdc?): buyNearRoute(usdc)
         case .sendNear(let name, let asked): nearOutRoute(to: name, amount: asked, close: false)
         case .closeNear(let name): nearOutRoute(to: name, amount: nil, close: true)
@@ -1234,17 +1234,20 @@ extension Workspace {
 
     /// Native NEAR → USDC on Solana through NEAR Intents (1Click); «all» keeps ≈ 0.09 NEAR: storage, and prepaid gas
     /// at NEAR's pessimistic price (NearTransaction.intentDepositOverhead), most of which comes back after the sale.
-    private func sellNearRoute(_ asked: Decimal?) -> MoveRoute {
+    /// NEAR for USDC through 1Click, on Solana or (`to`) at our address on Base, Arbitrum or Ethereum.
+    private func sellNearRoute(_ asked: Decimal?, to: String? = nil) -> MoveRoute {
         let amount = asked ?? max(0, near - Decimal(string: "0.09")!)
         let usd = markets["NEAR"].map { amount * $0.markPx }
-        return MoveRoute(title: "Sell \(Fmt.num(amount, maxFraction: 4)) NEAR for USDC on Solana",
-                         footer: "One NEAR transaction: exactly this NEAR, wrapped and sent to the 1Click deposit address the quote names, checked before signing. USDC arrives on your own Solana address in ≈ 30–40 s. Press Confirm.",
+        let name = to.map(WalletCommand.placeName) ?? "Solana", logo = to.flatMap { ModuleNetwork(place: $0)?.logo } ?? "sol"
+        let fill = to.flatMap { RouteFill(rawValue: $0) } ?? .solana
+        return MoveRoute(title: "Sell \(Fmt.num(amount, maxFraction: 4)) NEAR for USDC on \(name)",
+                         footer: "One NEAR transaction: exactly this NEAR, wrapped and sent to the 1Click deposit address the quote names, checked before signing. USDC arrives at your own address on \(name) in ≈ 30–40 s; the card says each step of 1Click's as it goes. Press Confirm.",
                          steps: [
             step("near", "FROM · NEAR", "\(Fmt.num(amount, maxFraction: 4)) NEAR", usd.map { "≈ \(Fmt.usd($0)) · ≈ 0.09 NEAR stays for storage and gas, most of it back after" } ?? "", .near),
             step("near", "SWAP · NEAR INTENTS", "1Click", "the quote is checked before signing", .relay),
-            step("sol", "ARRIVES · ≈ 30–40 S", "→ Solana", "1Click sends the USDC over", .near),
-            step("sol", "TO · SOLANA", usd.map { "≈ \(Fmt.num($0.rounded(2, .plain))) USDC" } ?? "USDC",
-                 "your own address ✓", .solana),
+            step(logo, "ARRIVES · ≈ 30–40 S", "→ \(name)", "1Click sends the USDC over", .near),
+            step(logo, "TO · \(name.uppercased())", usd.map { "≈ \(Fmt.num($0.rounded(2, .plain))) USDC" } ?? "USDC",
+                 "your own address ✓", fill),
         ])
     }
 

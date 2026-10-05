@@ -160,8 +160,8 @@ func moveMoney(_ text: String) async throws {
     case .buyNear(let usdc):
         _ = try await executor.buyNear(usdc: usdc ?? 0, account: try TestWallet.nearAccount())
         if let b = try? await Near.balance(account: try TestWallet.nearAccount()) { print("NEAR account: \(Fmt.num(b.near, maxFraction: 6)) NEAR, \(Fmt.num(b.wrapped, maxFraction: 6)) wNEAR") }
-    case .sellNear(let amount):
-        print(try await executor.sellNear(amount: amount, account: try TestWallet.nearAccount()))
+    case .sellNear(let amount, let to):
+        print(try await executor.sellNear(amount: amount, account: try TestWallet.nearAccount(), to: to.flatMap(EVMNetwork.named)))
         if let b = try? await Near.balance(account: try TestWallet.nearAccount()) { print("NEAR account: \(Fmt.num(b.near, maxFraction: 6)) NEAR, \(Fmt.num(b.wrapped, maxFraction: 6)) wNEAR") }
     case .aave(let deposit, let amount, let net):
         guard let m = AaveV3.markets.first(where: { $0.chain == net }) else { throw ExecutionError("No Aave market on \(net).") }

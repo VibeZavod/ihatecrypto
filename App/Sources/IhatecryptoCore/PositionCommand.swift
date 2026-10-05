@@ -98,8 +98,9 @@ public enum WalletCommand: Equatable, Sendable {
     /// Native NEAR on the NEAR chain for Solana USDC through NEAR Intents 1Click, to the wallet's own NEAR account;
     /// nil = ask how much.
     case buyNear(usdc: Decimal?)
-    /// Native NEAR from the NEAR account for USDC on the Solana address, through 1Click; nil = all it can give.
-    case sellNear(amount: Decimal?)
+    /// Native NEAR from the NEAR account for USDC, through 1Click; nil = all it can give. `to`: the EVM network the USDC
+    /// arrives on at our own address (Base, Arbitrum, Ethereum: what 1Click pays there), nil = the Solana address.
+    case sellNear(amount: Decimal?, to: String? = nil)
     /// Sell this much of the coin for USDC; nil = all of it (SOL keeps a fee reserve).
     case sell(SpotAsset, amount: Decimal?)
     /// Regular purchases (DCA): `usdc` of the coin every `days` days.
@@ -268,7 +269,7 @@ public enum WalletCommand: Equatable, Sendable {
         }
         // One token for another on an EVM network: «swap 0.01 ETH for AERO on base», «swap all DEGEN to AERO on base»,
         // «поменяй 0.01 ETH на AERO на бейсе». USDC on one side is a buy or a sale there, with the money on that network.
-        if let m = text.firstMatch(of: /(?i)\b(?:swap|exchange|convert|поменя\w*|обменя\w*|свапн\w*|свопн\w*|конверт\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь|всю)\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11})\s+(?:for|to|into|на|в)\s+\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11})\s+(?:on|на|в|во)\s+(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*)\b/) {
+        if let m = text.firstMatch(of: /(?i)\b(?:swap|exchange|convert|поменя\w*|обменя\w*|свапн\w*|свопн\w*|конверт\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь|всю)\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:for|to|into|на|в)\s+\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:on|на|в|во)\s+(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*)\b/) {
             let from = String(m.2), to = String(m.3), place = Self.network(String(m.4)) ?? "base"
             let count = m.1.flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
             if from.lowercased() == "usdc" { return .buyOn(place, token: to, usdc: count, from: place) }
@@ -431,12 +432,15 @@ public enum WalletCommand: Equatable, Sendable {
             let forDollars = q.firstMatch(of: /(?:\bна|\bfor)\s+(\d+(?:[.,]\d+)?)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
             return .buyNear(usdc: amount ?? forDollars)
         }
-        // «продай неар», «sell 0.5 NEAR»: native NEAR to USDC on Solana; no number = all of it.
-        if q.contains(/продай\w*|продать|\bsell\b/), q.contains(/\bnear\b|\bнеар\w*|\bниар\w*|\bнир\b/), SpotAsset.find(q) == nil,
+        // «продай неар», «sell 0.5 NEAR»: native NEAR to USDC on Solana; no number = all of it. Where the USDC lands («for
+        // USDC on ethereum», «… on Solana») names no coin to sell: it's left out of the check for one.
+        if q.contains(/продай\w*|продать|\bsell\b/), q.contains(/\bnear\b|\bнеар\w*|\bниар\w*|\bнир\b/),
+           SpotAsset.find(q.replacing(/\b(?:for|в|за|into)\s+usdc\b.*$/, with: "")) == nil,
            !q.contains(/\b(?:long|short|лонг\w*|шорт\w*|perp\w*)\b/) {
             let coins = q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:near|неар\w*|ниар\w*)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: ".")) }
             if coins == nil, amount != nil { return nil }
-            return .sellNear(amount: coins)
+            // «… for USDC on base», «продай NEAR в USDC на арбитрум»: the network the USDC arrives on; Solana by default.
+            return .sellNear(amount: coins, to: Self.network(in: q))
         }
         if q.contains(/\bкуп\w*|\bbuy\b/), let asset = SpotAsset.find(q) { return .buy(asset, usdc: amount) }
         if q.contains(/продай\w*|продать|\bsell\b/), let asset = SpotAsset.find(q) {
@@ -696,7 +700,7 @@ extension WalletCommand {
         switch self {
         case .buy(let a, let u): return "buy \(a.symbol) for \(n(u)) USDC"
         case .buyNear(let u): return "buy native NEAR for \(n(u)) USDC (to your NEAR account)"
-        case .sellNear(let x): return "sell \(n(x)) NEAR from your NEAR account for USDC on Solana"
+        case .sellNear(let x, let to): return "sell \(n(x)) NEAR from your NEAR account for USDC on \(to.map(Self.placeName) ?? "Solana")"
         case .sell(let a, let x): return "sell \(n(x)) \(a.symbol)"
         case .schedule(let a, let u, let d): return "buy \(a.symbol) for \(Fmt.num(u)) USDC every \(d == 1 ? "day" : d == 7 ? "week" : "\(d) days")"
         case .stopSchedules: return "stop recurring buys"

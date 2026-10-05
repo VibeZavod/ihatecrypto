@@ -2,6 +2,7 @@ import EVMChain
 import ExecutionCore
 import Foundation
 import IhatecryptoCore
+import OneClickKit
 import RelayBridge
 import SolanaChain
 import TxGuard
@@ -203,7 +204,17 @@ extension Executor {
         guard units >= 500_000 else { throw ExecutionError("At least 0.5 USDC: less isn't worth the bridge.") }
         let stable = net.key == "robinhood" ? "USDG" : "USDC"
         let before = try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)
-        try await ensureEVM(net, usdc: before + units)
+        // With gas already there, NEAR Intents' 1Click may land more than Relay: both are quoted, the better one goes.
+        if OneClick.Asset.usdc(onEVM: net.key) != nil, try await net.rpc.balance(wallet.evm) >= net.gasFloor,
+           let relay = try? await Relay.quote(user: wallet.solana, recipient: wallet.evm, originChain: Relay.Chain.solana, destinationChain: net.relayChain,
+                                              originCurrency: Relay.Currency.solanaUSDC, destinationCurrency: net.usdc, amount: units),
+           let relayOut = Decimal(string: relay.amountOutFormatted),
+           let better = await oneClickBeats(from: nil, to: net.key, units: units, relayOut: relayOut) {
+            _ = try await oneClickMove(from: nil, to: net.key, units: units, compared: Decimal(string: better.amountOutFormatted) ?? relayOut,
+                                       label: "\(Fmt.num(usdc)) USDC")
+        } else {
+            try await ensureEVM(net, usdc: before + units)
+        }
         let after = try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)
         return "Moved \(Fmt.num(Decimal(after > before ? after - before : 0) / 1_000_000)) \(stable) to \(net.name): \(Fmt.num(Decimal(after) / 1_000_000)) \(stable) there now. "
             + "Say “move \(stable) from \(net.name) to Solana” to bring it back."
@@ -254,6 +265,14 @@ extension Executor {
         }
         let arriving = Decimal(string: quote.amountOutFormatted) ?? 0
         let spend = Decimal(amount) / 1_000_000
+        // NEAR Intents' 1Click for the same USDC, when it serves both ends and no gas has to come along: the better lands.
+        if !hyperliquid, topup == nil, OneClick.Asset.usdc(onEVM: net.key) != nil, dest == nil || OneClick.Asset.usdc(onEVM: dest!.key) != nil,
+           let better = await oneClickBeats(from: net.key, to: dest?.key, units: amount, relayOut: arriving) {
+            let started = Date()
+            let got = try await oneClickMove(from: net.key, to: dest?.key, units: amount, compared: Decimal(string: better.amountOutFormatted) ?? arriving,
+                                             label: "\(show(amount)) USDC")
+            return "Moved \(show(amount)) USDC from \(net.name) to \(there) through NEAR Intents' 1Click in \(Int(Date().timeIntervalSince(started))) s: \(Fmt.num(got)) USDC arrived."
+        }
         guard spend - arriving - (topup ?? 0) <= min(max(arriving * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1) else {
             throw ExecutionError("Relay wants \(Fmt.num(spend)) USDC for \(Fmt.num(arriving)) on \(there): more than allowed.")
         }

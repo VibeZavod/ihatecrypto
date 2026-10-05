@@ -4,6 +4,7 @@ import Foundation
 import HyperliquidSigning
 import Testing
 @testable import TradeExecution
+import IhatecryptoCore
 import WalletCore
 
 private let me = "0x9858effd232b4033e47d90003d41ec34ecaeda94"
@@ -138,4 +139,18 @@ private struct QuoteOnly: TradeSigner {
     // Coins with any other call still pay its `to`.
     #expect(EVMCall.decode(try UniswapV2.swapExactTokens(amountIn: 1, amountOutMin: 1, path: [baseWETH, aero], to: me, deadline: 1))
         .payees(to: try #require(UniswapV2.on(8453)).router, value: wei, chainId: 8453).count == 1)
+}
+
+/// Live (IHATECRYPTO_NET=1, reads only): USDC.e routes to Circle's USDC on Polygon and Arbitrum through Uniswap, near 1:1.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func bridgedUSDCSwapsForCirclesOnUniswap() async throws {
+    let e = Executor(wallet: TradeWallet(solana: "", evm: "0x00000000000000000000000000000000000f0a11"), signer: QuoteOnly(),
+                     journal: Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("usdce-\(UUID().uuidString).jsonl"))) { _ in }
+    for net in [EVMNetwork.polygon, .arbitrum] {
+        let token = try await e.evmToken("USDC.e", on: net), uni = try #require(UniswapV3.on(net.rpc.chainId))
+        #expect(token.address == Holdings.bridgedUSDC[net.key])
+        let route = try #require(await e.bestUniswap(on: net, uni, from: token.address, to: net.usdc, amountIn: 100_000_000))
+        print("100 USDC.e → USDC on \(net.name): \(route.out) via \(route.title)\(route.impactText)")
+        #expect(route.out > 99_000_000)
+    }
 }

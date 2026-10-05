@@ -88,7 +88,7 @@ let package = Package(
 
         .testTarget(name: "IhatecryptoCoreTests", dependencies: ["IhatecryptoCore", "LLMCore"]),
         .testTarget(name: "DeFiTests", dependencies: ["DeFiYields"]),
-        .testTarget(name: "WalletTests", dependencies: ["WalletCore", "HyperliquidSigning", "SolanaChain", "ExecutionCore", "TxGuard", "EVMChain", "TradeExecution", "SignerAPI", "Ledger", "OneClickKit"]),
+        .testTarget(name: "WalletTests", dependencies: ["WalletCore", "HyperliquidSigning", "SolanaChain", "ExecutionCore", "TxGuard", "EVMChain", "TradeExecution", "SignerAPI", "Ledger", "OneClickKit", "RelayBridge", "IhatecryptoCore"]),
         .testTarget(
             name: "LLMTests",
             dependencies: ["LLMCore", "LLMAPIKey", "LLMOpenRouter", "LLMChatGPT", "LLMClaudeCode", "LLMApple", "LLMCatalog"]

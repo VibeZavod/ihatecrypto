@@ -124,12 +124,17 @@ public enum Holdings {
         return items
     }
 
+    /// Bridged USDC from before Circle issued its own there: both contracts call themselves «USDC», so the portfolio
+    /// names them «USDC.e» (as Uniswap's list does), and offers to swap them for Circle's.
+    public static let bridgedUSDC = ["polygon": "0x2791bca1f2de4661ed88a30c99a7a9449aa84174", "arbitrum": "0xff970a61a04b1ca14834a43f5de4533ebddb5cc8"]
+
     static func evmTokens(_ chain: String, _ items: [[String: Any]], skip: Set<String>) -> [Holding] {
         items.compactMap { item in
             guard let t = item["token"] as? [String: Any], let contract = (t["address_hash"] as? String)?.lowercased(), !skip.contains(contract),
                   let raw = number(item["value"]), raw > 0, let decimals = Int(t["decimals"] as? String ?? "") else { return nil }
             let rate = number(t["exchange_rate"])
-            return Holding(chain: chain, contract: contract, amount: raw / pow(10, decimals), symbol: t["symbol"] as? String ?? "?",
+            return Holding(chain: chain, contract: contract, amount: raw / pow(10, decimals),
+                           symbol: bridgedUSDC[chain] == contract ? "USDC.e" : t["symbol"] as? String ?? "?",
                            icon: (t["icon_url"] as? String).flatMap(URL.init(string:)), price: rate,
                            verified: rate != nil && t["reputation"] as? String != "scam")
         }

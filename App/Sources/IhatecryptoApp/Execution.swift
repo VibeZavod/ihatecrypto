@@ -422,9 +422,13 @@ extension Workspace {
                 guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
                 nearAddress = account
                 reply(try await e.buyNear(usdc: usdc ?? 0, account: account), note: "NEAR Intents · 1Click")
-            case .sellNear(let amount):
+            case .sellNear(let amount, let to):
                 guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
-                reply(try await e.sellNear(amount: amount, account: account), note: "NEAR Intents · 1Click")
+                let net = try to.map { place in
+                    guard let n = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't pay USDC on \(place).") }
+                    return n
+                }
+                reply(try await e.sellNear(amount: amount, account: account, to: net), note: "NEAR Intents · 1Click")
             case .sendNear(let name, let amount):
                 guard let entry = savedAddress(name, on: .near) else { throw ExecutionError("There’s no NEAR address “\(name)” in Addresses.") }
                 try requireConfirmed(entry)
@@ -659,7 +663,7 @@ extension Workspace {
                 return say("There’s no \(a.symbol) on Solana to sell — nothing was prepared.", "На Solana нет \(a.symbol) — продавать нечего, ничего не готовлю.")
             }
             return lacks(have, asked, "Solana", a.symbol)
-        case .sellNear(let asked):
+        case .sellNear(let asked, _):
             // What a sale keeps on the account while it is sent: storage and prepaid gas (sellNearRoute, intentDepositOverhead).
             let sellable = max(0, near - Decimal(string: "0.09")!)
             let amount = asked ?? sellable
