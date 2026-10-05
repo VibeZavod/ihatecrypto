@@ -435,8 +435,8 @@ final class Workspace {
     var reviewedIntent: TradeIntent?
 
     init() {
-        // The user's own Solana node, from the Keychain, before anything reads Solana.
-        SolanaNodeStore.activate()
+        // The user's own nodes, from the Keychain, before anything reads a network.
+        NodeStore.activate()
         restoreLastCanvas()
         // The chat names a contract it knows; it never looks one up itself (a wallet's address isn't DexScreener's business).
         ChatText.tokenName = { [weak self] contract in self.flatMap { $0.favoriteToken(contract)?.symbol ?? $0.tokenNames[contract.lowercased()] } }

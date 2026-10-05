@@ -1,4 +1,4 @@
-import EVMChain
+@testable import EVMChain
 import ExecutionCore
 import Foundation
 import HyperliquidSigning
@@ -188,4 +188,40 @@ func solanaCallsSurviveABadOwnNodeAndTheCheckKeepsOnlyAGoodOne() async throws {
     #expect(await SolanaNodes.problem(with: URL(string: "http://api.mainnet-beta.solana.com")!)?.contains("https") == true)
     #expect(await SolanaNodes.problem(with: URL(string: "https://solana-rpc.publicnode.com")!) != nil)   // no token accounts (403)
     print("invalid Helius key: \(refused ?? "")")
+}
+
+/// The user's own EVM node goes before the app's for its network only; a node made for one URL (a fork) never takes it.
+/// A call a node can't serve, or a key it turns away, goes on to the next node; a revert never does.
+@Test func evmOwnNodesGoFirstOnlyForTheAppsNodes() {
+    let own = URL(string: "https://base-mainnet.g.alchemy.com/v2/x")!
+    defer { EVMNodes.set(nil, for: 8453) }
+    EVMNodes.set(own, for: 8453)
+    #expect(EVMRPC.base.nodes.first == own && EVMRPC.base.nodes.count == 1 + 1 + EVMRPC.base.fallbacks.count)
+    #expect(EVMRPC.arbitrum.nodes.first == EVMRPC.arbitrum.url)
+    let fork = URL(string: "http://127.0.0.1:8547")!
+    #expect(EVMRPC(url: fork, chainId: 8453).nodes == [fork])
+    #expect(EVMRPC.notThisNode("the method eth_simulateV1 does not exist/is not available") == false)   // says nothing of the node
+    #expect(EVMRPC.notThisNode("Method not found") && EVMRPC.notThisNode("Unauthorized: invalid API key") && EVMRPC.notThisNode("Must be authenticated!"))
+    #expect(!EVMRPC.notThisNode("execution reverted: unauthorized"))
+}
+
+/// IHATECRYPTO_NET=1: with the user's Base node down or turning its key away (Alchemy, 401), Base's calls still answer
+/// through the built-in nodes; the check passes the built-in nodes and refuses another network, a bad key and http.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func evmCallsSurviveABadOwnNodeAndTheCheckKeepsOnlyAGoodOne() async throws {
+    defer { EVMNodes.set(nil, for: 8453) }
+    let badKey = URL(string: "https://base-mainnet.g.alchemy.com/v2/ihatecrypto-invalid-key")!
+    for bad in [URL(string: "https://127.0.0.1:9")!, badKey] {
+        EVMNodes.set(bad, for: 8453)
+        #expect(try await EVMRPC.base.quantity("eth_chainId", []) == 8453, "\(bad)")
+        _ = try await EVMRPC.base.fees()
+    }
+    EVMNodes.set(nil, for: 8453)
+    #expect(await EVMNodes.problem(with: URL(string: "https://mainnet.base.org")!, chainId: 8453) == nil)
+    #expect(await EVMNodes.problem(with: URL(string: "https://ethereum-rpc.publicnode.com")!, chainId: 1) == nil)
+    #expect(await EVMNodes.problem(with: URL(string: "https://arb1.arbitrum.io/rpc")!, chainId: 8453)?.contains("network 42161") == true)
+    let refused = await EVMNodes.problem(with: badKey, chainId: 8453)
+    print("bad Alchemy key: \(refused ?? "")")
+    #expect(refused?.contains("turned the key away") == true)
+    #expect(await EVMNodes.problem(with: URL(string: "http://mainnet.base.org")!, chainId: 8453)?.contains("https") == true)
 }
