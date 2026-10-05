@@ -148,7 +148,8 @@ public enum ChatRouter {
       claim rewards   (what Merkl owes the wallet: Morpho's, Aave's and other protocols' rewards on Base, Arbitrum, Ethereum and Polygon)
       sweep rewards [over $N] [into <USDC|TICKER>]   (claim AND sell them for USDC on Solana, only once worth $N (≥ $5); «every hour: sweep rewards over $10 into USDC» = «продавай награды раз в час, когда наберётся $10»)
       rebalance USDC [max N% per protocol]   (moves money ALREADY in vaults to better rates: «переложи», «перекинь депозиты», «перебалансируй», «rebalance». «spread» / «разложи» / «распредели» is only for FREE USDC, on any network)
-    MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from <Base|Arbitrum|Optimism|Polygon|Ethereum|Tempo|HyperEVM> to Solana
+    MOVING MONEY (in every form «all» — «всё», «весь» — means writing the form without N: never a number from earlier in the chat):
+      withdraw N USDC to Solana (from Hyperliquid) | move N USDC from <Base|Arbitrum|Optimism|Polygon|Ethereum|Tempo|HyperEVM> to Solana
       move N USDC from Solana to <Base|Arbitrum|Optimism|Polygon|Ethereum|Robinhood|Tempo|HyperEVM>   (arrives as USDG on Robinhood Chain; HyperEVM is Hyperliquid's EVM, chain 999, gas in HYPE — not the Hyperliquid trading account)
       move N USDC from <Base|Arbitrum|Optimism|Polygon|Ethereum|Robinhood|Tempo|HyperEVM> to <another of them|Hyperliquid>   (straight over Relay, no Solana in between; no N = all of it; NEAR Intents' 1Click or Circle's CCTP is taken instead when it lands more)
       move N USDC from <Base|Arbitrum|Optimism|Polygon|Ethereum> to <another of them> via CCTP   (Circle's burn and mint, only when asked by name: «через CCTP», «via Circle»)

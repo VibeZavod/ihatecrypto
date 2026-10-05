@@ -121,6 +121,7 @@ extension Workspace {
             }
             // The first step reads the balances as they are now: one that can't be paid is said before any card
             // («Move 0 USDC · Ethereum → Arbitrum» was drawn). Later steps wait for the money the ones before bring.
+            if k == 0, !confirmed, TaskRun.automation == nil, let c = WalletCommand.parse(step) { await freshenSource(c) }
             if k == 0, !confirmed, TaskRun.automation == nil, let c = WalletCommand.parse(step), let why = refusalBeforeCard(c) {
                 reply(why)
                 break

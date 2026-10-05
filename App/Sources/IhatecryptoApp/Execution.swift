@@ -625,6 +625,22 @@ extension Workspace {
         }
     }
 
+    /// The USDC a move takes from a network read through Blockscout (Polygon, Ethereum, Tempo, HyperEVM, Optimism), read
+    /// from its node now: Blockscout indexes a few seconds behind, and «move all USDC from Optimism to Solana» two seconds
+    /// after 2 USDC landed there was refused with «Optimism has 0 USDC». Base, Arbitrum and Robinhood are read live anyway.
+    func freshenSource(_ command: WalletCommand) async {
+        let place: String? = switch command {
+        case .evmToSolana(let n, _), .bridge(from: let n, to: _, _), .cctp(from: let n, to: _, _): n
+        case .buyOn(_, _, _, let from?): from
+        default: nil
+        }
+        guard let place, !["base", "arbitrum", "robinhood", "solana"].contains(place), let net = EVMNetwork.named(place), isEVMAddress(hlAddress),
+              let units = try? await net.rpc.tokenBalance(net.usdc, owner: hlAddress) else { return }
+        let fresh = Holdings.dollar(place, contract: net.usdc, amount: Decimal(units) / 1_000_000,
+                                    icon: otherTokens.first { $0.chain == place && $0.contract == net.usdc }?.icon)
+        otherTokens = otherTokens.filter { !($0.chain == place && $0.contract == net.usdc) } + (units > 0 ? [fresh] : [])
+    }
+
     /// A move that can't go through with what the wallet holds is said so at once, instead of a card whose Confirm
     /// could only fail («Sell 0 NEAR»).
     func refusalBeforeCard(_ command: WalletCommand, inChain: Bool = false) -> String? {
