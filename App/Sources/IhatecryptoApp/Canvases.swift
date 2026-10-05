@@ -1099,6 +1099,17 @@ struct MoveRoute {
     let footer: String
     let steps: [ActivityBubble]
     var warning: String?
+
+    /// A footer counts an approve and what spends it as two transactions; with Settings › Wallet › «One transaction for
+    /// approve and swap» on, Touch ID signs them as one (EIP-7702), and the card says so.
+    init(title: String, footer: String, steps: [ActivityBubble], warning: String? = nil) {
+        self.title = title
+        self.footer = Executor.batchesOn && footer.contains("approve")
+            ? footer + " With «One transaction for approve and swap» on, Touch ID signs the approve and what spends it as one transaction."
+            : footer
+        self.steps = steps
+        self.warning = warning
+    }
 }
 
 /// A route step's color, by place; kept by name, so a saved route draws the same.
