@@ -1,5 +1,62 @@
 [
   {
+    "version": "0.4.4",
+    "date": "2026-10-05",
+    "stories": [
+      {
+        "title": "Confirm is a button",
+        "text": "A card waiting for Confirm goes ahead only when you press Confirm. A typed «yes», «do it» or «да» is answered, never signed — so text from a site, a note or a pasted message can't agree for you.",
+        "symbol": "hand.tap.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Money from anywhere",
+        "text": "A buy or a deposit brings the money from wherever it lies — Base, Arbitrum, Ethereum, Hyperliquid, NEAR — in legs under one Confirm, and its card names where each dollar really comes from. NEAR can be bought straight from Base, Arbitrum or Ethereum.",
+        "try": "buy NEAR for 5 USDC",
+        "symbol": "arrow.triangle.merge",
+        "color": "2775CA"
+      },
+      {
+        "title": "Uniswap v4 everywhere",
+        "text": "On Base, Arbitrum, Ethereum and Polygon every swap takes the better of Uniswap v3 and v4, the card shows the price impact, and a deep pool trades within half a percent of its quote. Ethereum's swaps go through MEV Blocker, out of the public mempool.",
+        "symbol": "arrow.left.arrow.right.circle.fill",
+        "color": "FF007A"
+      },
+      {
+        "title": "Buy over time",
+        "text": "Jupiter DCA buys a coin in parts on-chain, with the app closed. Asked to buy over time, the chat offers both ways — Jupiter DCA or the app's own regular buys — each said in a line.",
+        "try": "buy SOL for 100 USDC every week",
+        "symbol": "calendar.badge.clock",
+        "color": "0B7A55"
+      },
+      {
+        "title": "A model on this Mac, in one click",
+        "text": "«On this Mac» installs or updates Ollama, picks a model that fits your Mac's memory, downloads it and starts it. The model menu shows what's already downloaded first.",
+        "symbol": "desktopcomputer",
+        "color": "4615C8"
+      },
+      {
+        "title": "Your own nodes",
+        "text": "Settings › General › Your own nodes: a free node of your own for Solana (Helius) or an EVM network (Alchemy), with the steps to get one. Yours goes first, the built-in nodes stay behind it, and the key stays in this Mac's Keychain.",
+        "symbol": "server.rack",
+        "color": "9945FF"
+      },
+      {
+        "title": "One Touch ID for approve and swap",
+        "text": "Off unless you turn it on, in Settings › Wallet: an approve and the swap, deposit or bridge that spends it go as one transaction (EIP-7702). Your wallet on that network then runs an audited account contract; the switch's ⓘ says what that means.",
+        "symbol": "square.stack.3d.up.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Small things",
+        "text": "«save vitalik.eth as Vitalik» or «save toly.sol as Toly» saves the address the name points at. ↑ and ↓ in the chat walk everything you sent. A Jupiter route that fails before signing gives way to another. Robinhood is just «Robinhood».",
+        "try": "save vitalik.eth as Vitalik",
+        "symbol": "checkmark.seal.fill",
+        "color": "2775CA"
+      }
+    ]
+  },
+  {
     "version": "0.4.3",
     "date": "2026-10-04",
     "stories": [
