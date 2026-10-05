@@ -176,3 +176,39 @@ private func jwt(_ claims: [String: Any]) -> String {
     #expect(error?.message.contains("4,096 tokens") == true)
     #expect(AppleIntelligence.chatRefusal(model: AppleIntelligence.onDevice) != nil && AppleIntelligence.chatRefusal(model: "gpt-6.1-sol") == nil)
 }
+
+/// Claude Code's stream-json, from a stand-in that writes it the way `claude -p` does (2026-10-06): the words reach
+/// `partial` as they come, and the answer is the result event's.
+@Test(.timeLimit(.minutes(1))) func claudeCodeStreamTellsTheWordsAsTheyCome() async throws {
+    let script = FileManager.default.temporaryDirectory.appendingPathComponent("fake-claude-\(UUID().uuidString).sh")
+    try """
+    #!/bin/sh
+    cat > /dev/null
+    echo '{"type":"system","subtype":"init"}'
+    echo '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"thinking_delta","thinking":"hm"}}}'
+    echo '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"one "}}}'
+    sleep 0.2
+    echo '{"type":"stream_event","event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"two"}}}'
+    echo '{"type":"result","is_error":false,"result":"one two"}'
+    """.write(to: script, atomically: true, encoding: .utf8)
+    try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: script.path)
+    final class Seen: @unchecked Sendable { let lock = NSLock(); var texts: [String] = [] }
+    let seen = Seen()
+    let answer = try await ClaudeCodeClient(path: script.path).stream(LLMRequest(model: "m", messages: [LLMMessage(.user, "x")])) { text in
+        seen.lock.withLock { seen.texts.append(text) }
+    }
+    #expect(answer == "one two")
+    #expect(seen.texts == ["one ", "one two"])
+    #expect(ClaudeCodeClient.arguments(LLMRequest(model: "m", messages: []), streaming: true).contains("--include-partial-messages"))
+}
+
+/// Ollama answers through its own API, with a window that holds ihatecrypto's instructions: its OpenAI-style endpoint
+/// stays at 4096 tokens and cut them.
+@Test func ollamaGetsAWideContextWindow() throws {
+    let ollama = try #require(OpenAICompatible.presets.first { $0.info.id == "ollama" })
+    let client = try #require(try ollama.client(nil, save: { _ in }) as? OllamaChatClient)
+    #expect(client.base == "http://localhost:11434")
+    let body = client.body(LLMRequest(model: "qwen3.8:27b", messages: [LLMMessage(.system, "s"), LLMMessage(.user, "u")], wantsJSON: true), stream: true)
+    #expect((body["options"] as? [String: Int])?["num_ctx"] == 16_384)
+    #expect(body["format"] as? String == "json" && body["stream"] as? Bool == true)
+}

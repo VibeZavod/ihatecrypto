@@ -37,15 +37,35 @@ struct ClaudeCodeClient: LLMClient {
     /// Headless, no tools, no MCP, no user settings or hooks, nothing saved to session history.
     /// Our system prompt always replaces Claude Code's own, which would answer as a coding agent.
     /// The prompt goes through stdin so it is not visible in the process list.
-    static func arguments(_ r: LLMRequest) -> [String] {
-        ["-p", "--restricted", "--strict-mcp-config", "--tools", "", "--no-session-persistence",
-         "--output-format", "json", "--model", r.model,
+    /// `streaming`: one JSON event a line, the answer's words as they come (stream-json with partial messages), the result last.
+    static func arguments(_ r: LLMRequest, streaming: Bool = false) -> [String] {
+        ["-p", "--restricted", "--strict-mcp-config", "--tools", "", "--no-session-persistence"]
+        + (streaming ? ["--output-format", "stream-json", "--verbose", "--include-partial-messages"] : ["--output-format", "json"])
+        + ["--model", r.model,
          "--system-prompt", r.system.isEmpty ? "You are an assistant. Answer briefly and to the point." : r.system]
     }
 
     func complete(_ r: LLMRequest) async throws -> String {
         let prompt = r.dialogue.map(\.text).joined(separator: "\n\n")
-        let output = try await Self.run(path, Self.arguments(r), input: prompt)
+        return try Self.result(try await Self.run(path, Self.arguments(r), input: prompt))
+    }
+
+    /// The same answer, its words told to `partial` as Claude Code writes them (text_delta events).
+    func stream(_ r: LLMRequest, partial: @escaping @Sendable (String) -> Void) async throws -> String {
+        let prompt = r.dialogue.map(\.text).joined(separator: "\n\n"), text = Accumulator()
+        let output = try await Self.run(path, Self.arguments(r, streaming: true), input: prompt) { line in
+            guard let j = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any], j["type"] as? String == "stream_event",
+                  let event = j["event"] as? [String: Any], event["type"] as? String == "content_block_delta",
+                  let delta = event["delta"] as? [String: Any], delta["type"] as? String == "text_delta", let words = delta["text"] as? String else { return }
+            partial(text.add(words))
+        }
+        // The result is the last event; a run that wrote none (an old Claude Code) is read as one JSON answer.
+        let last = output.split(separator: 0x0a).last { (try? JSONSerialization.jsonObject(with: Data($0)) as? [String: Any])?["type"] as? String == "result" }
+        return try Self.result(last.map { Data($0) } ?? output)
+    }
+
+    /// The answer in Claude Code's result object, or why there's none.
+    static func result(_ output: Data) throws -> String {
         struct Result: Decodable { let is_error: Bool?; let result: String? }
         guard let result = try? JSONDecoder().decode(Result.self, from: output) else {
             throw LLMError("Claude Code replied unexpectedly: \(String(decoding: output.prefix(200), as: UTF8.self))")
@@ -56,7 +76,9 @@ struct ClaudeCodeClient: LLMClient {
 
     /// A `claude -p` that hangs (a login prompt, a stalled network) would keep the chat busy for good: it is stopped after
     /// two minutes, the ChatGPT client's limit, or as soon as the task waiting for it is cancelled.
-    static func run(_ path: String, _ arguments: [String], input: String, timeout: Duration = .seconds(120)) async throws -> Data {
+    /// `lines`: each line of the output as it comes, besides the whole at the end.
+    static func run(_ path: String, _ arguments: [String], input: String, timeout: Duration = .seconds(120),
+                    lines: (@Sendable (String) -> Void)? = nil) async throws -> Data {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: path)
         process.arguments = arguments
@@ -93,7 +115,7 @@ struct ClaudeCodeClient: LLMClient {
         DispatchQueue.global().async { try? writer.write(contentsOf: Data(input.utf8)); try? writer.close() }
         async let errors = Self.readAll(stderr.fileHandleForReading)
         let data = await withTaskCancellationHandler {
-            await Self.readAll(stdout.fileHandleForReading)
+            await Self.readAll(stdout.fileHandleForReading, lines: lines)
         } onCancel: { kill(pid, SIGTERM) }
         await withCheckedContinuation { (done: CheckedContinuation<Void, Never>) in
             DispatchQueue.global().async { exited.wait(); done.resume() }
@@ -110,12 +132,31 @@ struct ClaudeCodeClient: LLMClient {
         return data
     }
 
-    /// A pipe read to its end on a Dispatch thread.
-    static func readAll(_ handle: FileHandle) async -> Data {
+    /// A pipe read to its end on a Dispatch thread; with `lines`, each line is told as it arrives.
+    static func readAll(_ handle: FileHandle, lines: (@Sendable (String) -> Void)? = nil) async -> Data {
         await withCheckedContinuation { (done: CheckedContinuation<Data, Never>) in
-            DispatchQueue.global().async { done.resume(returning: (try? handle.readToEnd()) ?? Data()) }
+            DispatchQueue.global().async {
+                guard let lines else { done.resume(returning: (try? handle.readToEnd()) ?? Data()); return }
+                var all = Data(), pending = Data()
+                while case let chunk = handle.availableData, !chunk.isEmpty {
+                    all.append(chunk)
+                    pending.append(chunk)
+                    while let end = pending.firstIndex(of: 0x0a) {
+                        lines(String(decoding: pending[pending.startIndex..<end], as: UTF8.self))
+                        pending.removeSubrange(pending.startIndex...end)
+                    }
+                }
+                done.resume(returning: all)
+            }
         }
     }
+}
+
+/// The answer's words so far, added to from the reading thread.
+private final class Accumulator: @unchecked Sendable {
+    private let lock = NSLock()
+    private var text = ""
+    func add(_ words: String) -> String { lock.withLock { text += words; return text } }
 }
 
 /// Whether the watchdog stopped the run, set on a Dispatch thread and read after the wait.
