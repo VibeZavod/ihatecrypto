@@ -250,6 +250,9 @@ public struct Modules: Equatable, Sendable {
             return isOn(.swaps) ? r(.relay, via: ModuleNetwork(place: place).map { [$0] } ?? [])
                 : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
         // One token for another on the network itself: Uniswap there, no bridge.
+        case .swapOn("tempo", _, _, _):
+            return isOn(.swaps) ? refusal(network: .tempo, ru: ru)
+                : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
         case .swapOn(let place, _, _, _):
             return isOn(.swaps) ? r(.uniswap, via: ModuleNetwork(place: place).map { [$0] } ?? [])
                 : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."

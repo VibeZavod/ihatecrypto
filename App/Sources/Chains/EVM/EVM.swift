@@ -192,6 +192,23 @@ public enum Tempo {
 
     /// A fee in a 6-decimal stablecoin's units from gas × price in attodollars: ceil(x / 10¹²).
     public static func feeUnits(_ attodollars: UInt64) -> UInt64 { (attodollars + 999_999_999_999) / 1_000_000_000_000 }
+
+    /// Tempo's own stablecoin exchange (a precompile): an order book between TIP-20 dollars, each pair routed through
+    /// the tokens' quote tokens; a swap pays the caller (tempo.xyz/developers/docs/protocol/exchange, 2026-10-06).
+    public static let exchange = "0xdec0000000000000000000000000000000000000"
+    /// The dollars it trades that ihatecrypto names, 6 decimals each. USDT0 had no liquidity there (2026-10-06).
+    public static let stables = ["USDC": "0x20c000000000000000000000b9537d11c60e8b50", "PATHUSD": "0x20c0000000000000000000000000000000000000",
+                                 "OUSD": "0x20c0000000000000000000006a37da5c996874be", "USDT0": "0x20c00000000000000000000014f22ca97301eb73"]
+
+    /// quoteSwapExactAmountIn(tokenIn, tokenOut, amountIn) → amountOut.
+    public static func quote(_ tokenIn: String, _ tokenOut: String, units: UInt64) throws -> Data {
+        Data([0xe7, 0xc9, 0x8f, 0x1a]) + (try ABI.address(tokenIn)) + (try ABI.address(tokenOut)) + ABI.uint(units)
+    }
+
+    /// swapExactAmountIn(tokenIn, tokenOut, amountIn, minAmountOut): what comes out goes to the caller.
+    public static func swap(_ tokenIn: String, _ tokenOut: String, units: UInt64, minOut: UInt64) throws -> Data {
+        Data([0xf8, 0x85, 0x6c, 0x0f]) + (try ABI.address(tokenIn)) + (try ABI.address(tokenOut)) + ABI.uint(units) + ABI.uint(minOut)
+    }
 }
 
 /// 32-byte ABI words.
@@ -599,6 +616,7 @@ public enum EVMCall: Equatable, Sendable {
         case .nftTransfer(_, let recipient): "send NFTs of \(short(to)) to \(short(recipient)) \(net)"
         case .cctpBurn(let recipient, let domain, let a): "move \(units(a, 6)) USDC \(net) to \(recipient.map(short) ?? "?") on \(CCTP.chainName(domain)) through Circle's CCTP"
         case .contract where to.lowercased() == Tempo.feeManager: "pay Tempo's fees in USDC from now on"
+        case .contract where to.lowercased() == Tempo.exchange: "swap dollars on Tempo's exchange, paying this wallet"
         default: "call the contract \(short(to)) \(net)"
         }
         return value > 0 ? what + ", paying \(coins)" : what
@@ -611,11 +629,12 @@ public enum EVMCall: Equatable, Sendable {
 
     /// Contracts ihatecrypto itself lets spend its tokens on a network: Uniswap's routers (v2, v3, and v4's with Permit2),
     /// Aave's pools, Morpho's vaults, Relay's depository and approval proxy (one address on every network, api.relay.link/chains
-    /// 2026-10-03), Circle's CCTP TokenMessenger. An approve to any other spender needs it approved in person, like a recipient.
+    /// 2026-10-03), Circle's CCTP TokenMessenger, Tempo's exchange. An approve to any other spender needs it approved in person, like a recipient.
     public static func knownSpenders(chainId: UInt64) -> Set<String> {
         var s = ["0x4cd00e387622c35bddb9b4c962c136462338bc31", "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be"]
         s += AaveV3.markets.filter { $0.rpc.chainId == chainId }.map(\.pool) + MorphoVault.vaults.filter { $0.rpc.chainId == chainId }.map(\.address)
         if CCTP.domain(chainId) != nil { s.append(CCTP.tokenMessenger) }
+        if chainId == EVMRPC.tempo.chainId { s.append(Tempo.exchange) }
         if let uni = UniswapV3.on(chainId) { s.append(uni.router) }
         if let v2 = UniswapV2.on(chainId) { s.append(v2.router) }
         if chainId == EVMRPC.robinhood.chainId { s.append(UniswapV3.robinhoodRouter) }

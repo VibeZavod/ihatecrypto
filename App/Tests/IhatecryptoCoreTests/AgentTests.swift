@@ -623,3 +623,11 @@ private final class Script: LLMClient, @unchecked Sendable {
     let c = WalletCommand.cctp(from: "ethereum", to: "base", 250)
     #expect(WalletCommand.parse(c.summary) == c)
 }
+
+@Test func tempoDollarSwapsAreParsed() {
+    #expect(WalletCommand.parse("swap 5 USDC for pathUSD on tempo") == .swapOn("tempo", from: "USDC", to: "pathUSD", amount: 5))
+    #expect(WalletCommand.parse("поменяй весь OUSD на USDC в темпо") == .swapOn("tempo", from: "OUSD", to: "USDC", amount: nil))
+    #expect(WalletCommand.parse("swap 5 USDC for AERO on base") == .buyOn("base", token: "AERO", usdc: 5, from: "base"))
+    let c = WalletCommand.swapOn("tempo", from: "USDC", to: "OUSD", amount: 2)
+    #expect(WalletCommand.parse(c.summary) == c)
+}

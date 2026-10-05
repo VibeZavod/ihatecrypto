@@ -328,9 +328,11 @@ public enum WalletCommand: Equatable, Sendable {
         }
         // One token for another on an EVM network: «swap 0.01 ETH for AERO on base», «swap all DEGEN to AERO on base»,
         // «поменяй 0.01 ETH на AERO на бейсе». USDC on one side is a buy or a sale there, with the money on that network.
-        if let m = text.firstMatch(of: /(?i)\b(?:swap|exchange|convert|поменя\w*|обменя\w*|свапн\w*|свопн\w*|конверт\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь|всю)\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:for|to|into|на|в)\s+\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:on|на|в|во)\s+(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*)\b/) {
+        if let m = text.firstMatch(of: /(?i)\b(?:swap|exchange|convert|поменя\w*|обменя\w*|свапн\w*|свопн\w*|конверт\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь|всю)\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:for|to|into|на|в)\s+\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:on|на|в|во)\s+(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|tempo|темпо\w*)\b/) {
             let from = String(m.2), to = String(m.3), place = Self.network(String(m.4)) ?? "base"
             let count = m.1.flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
+            // Tempo's dollars for one another on its own exchange: USDC on a side is a swap there too.
+            if place == "tempo" { return .swapOn(place, from: from, to: to, amount: count) }
             if from.lowercased() == "usdc" { return .buyOn(place, token: to, usdc: count, from: place) }
             if to.lowercased() == "usdc" { return .sellOn(place, token: from, amount: count, keep: true) }
             return .swapOn(place, from: from, to: to, amount: count)

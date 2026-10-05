@@ -517,6 +517,10 @@ extension Executor {
 
     /// What the card shows while a token-for-token swap waits: «≈ 25.31 AERO · price impact 0.4%», and the route's name.
     public func pairQuote(_ net: EVMNetwork, from a: String, to b: String, amount: Decimal?) async throws -> (gets: String, way: String) {
+        if net.key == "tempo" {
+            let q = try await tempoQuote(from: a, to: b, amount: amount)
+            return ("\(Fmt.num(Decimal(q.out) / 1_000_000, maxFraction: 6)) \(q.to)", "Tempo's exchange")
+        }
         let p = try await pairSwap(net, from: a, to: b, amount: amount)
         let scale = Decimal(sign: .plus, exponent: p.tokenOut.decimals, significand: 1)
         let out = p.route?.out ?? p.units
@@ -528,6 +532,7 @@ extension Executor {
     /// network's own coin goes into a v4 pool of it as the call's value, or is wrapped first (its WETH, one transaction);
     /// it comes out of such a pool as coins, or is unwrapped after. nil amount = all of it (of the coin, all but the fees).
     public func swapOn(_ net: EVMNetwork, from a: String, to b: String, amount: Decimal?) async throws -> String {
+        if net.key == "tempo" { return try await tempoSwap(from: a, to: b, amount: amount) }
         let p = try await pairSwap(net, from: a, to: b, amount: amount)
         guard let uni = UniswapV3.on(net.rpc.chainId), let weth = UniswapV2.on(net.rpc.chainId)?.weth else { throw ExecutionError("No Uniswap on \(net.name).") }
         let rpc = net.rpc, me = wallet.evm

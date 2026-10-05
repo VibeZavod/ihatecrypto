@@ -164,3 +164,15 @@ func sendsAcrossAreQuoted() async throws {
     #expect((Decimal(string: btc.quote.amountInFormatted) ?? 0) > 1 && (Decimal(string: usdt.quote.amountInFormatted) ?? 0) >= 20)
     await #expect(throws: (any Error).self) { try await e.acrossQuote("ETH", amount: 1, network: "bitcoin", to: "bc1quc8z9y2dmpe2qztdw4zh0ucr7g5p8gw6x3c8ph") }
 }
+
+/// Live (IHATECRYPTO_NET=1, quotes only): Tempo's own exchange prices USDC → pathUSD and → OUSD within a few basis points.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func tempoExchangeQuotes() async throws {
+    let rpc = EVMRPC.tempo
+    for to in ["PATHUSD", "OUSD"] {
+        let out = ABI.uint(in: try await rpc.read(Tempo.exchange, try Tempo.quote(Tempo.stables["USDC"]!, Tempo.stables[to]!, units: 10_000_000)), word: 0) ?? 0
+        print("Tempo exchange: 10 USDC → \(Decimal(out) / 1_000_000) \(to)")
+        #expect(out > 9_900_000 && out <= 10_000_000)
+    }
+    #expect(try Tempo.swap(Tempo.stables["USDC"]!, Tempo.stables["OUSD"]!, units: 1, minOut: 1).prefix(4).hex == "f8856c0f")
+}

@@ -102,6 +102,8 @@ public enum BlockCatalog {
               example: "move 2 USDC from Solana to Tempo", fill: "tempo", logo: "tempo"),
         Block(group: "Tempo", label: "SEND · ON TEMPO", title: "Send on Tempo", form: "send N USDC to NAME saved on Tempo · fee ≈ $0.001 in USDC",
               example: "send 5 USDC to Mom", fill: "tempo", logo: "tempo"),
+        Block(group: "Tempo", label: "SWAP · ON TEMPO", title: "Swap dollars", form: "swap N USDC for pathUSD or OUSD on tempo · Tempo's own exchange, ≈ 1–2 bp",
+              example: "swap 1 USDC for pathUSD on tempo", fill: "tempo", logo: "tempo"),
         Block(group: "Tempo", label: "EVERY MONTH · 1ST", title: "Monthly transfer", form: "every month on the 1st…28th [at HH:MM]: send N USDC to NAME",
               example: "every month on the 1st at 10:00: send 20 USDC to Mom", fill: "tempo", logo: "tempo"),
         Block(group: "Tempo", label: "PAY · WEB SEARCH", title: "Search the web", form: "Brave Search · $0.035 a search · web, news, images, video",

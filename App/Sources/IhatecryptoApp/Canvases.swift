@@ -1708,6 +1708,18 @@ extension Workspace {
         let name = WalletCommand.placeName(place)
         let fill = RouteFill(rawValue: place) ?? .check
         let logo = ModuleNetwork(place: place)?.logo ?? place
+        if place == "tempo" {
+            // Dollars for dollars on Tempo's own exchange: an exact approve, the swap, fees out of the USDC.
+            let quoted = swapQuote.flatMap { q in q.command == .swapOn(place, from: from, to: to, amount: amount) ? q.ways : nil }
+            let moving = "\(amount.map { Fmt.num($0) } ?? "all") \(from.uppercased() == "PATHUSD" ? "pathUSD" : from.uppercased())"
+            return MoveRoute(title: "Swap \(moving) → \(to.uppercased() == "PATHUSD" ? "pathUSD" : to.uppercased()) on Tempo",
+                             footer: "An exact approve to Tempo's own exchange, then the swap at no less than 0.1% under its quote, paying only this wallet; "
+                                + "Tempo's fees come out of the USDC, a tenth of a cent each. Press Confirm.",
+                             steps: [step(logo, "FROM · TEMPO", moving, "on Tempo", fill),
+                                     approve(moving, for: "Tempo's exchange", logo: logo, fill),
+                                     step(logo, "SWAP · TEMPO'S EXCHANGE", to.uppercased() == "PATHUSD" ? "pathUSD" : to.uppercased(),
+                                          quoted.map { $0.first.map { "≈ \($0.gets)" } ?? "no liquidity now · asked again every 30 s" } ?? "quoting…", fill)])
+        }
         func label(_ t: String) -> String { t.hasPrefix("0x") ? tokenSymbol(t) ?? "\(t.prefix(6))…\(t.suffix(4))" : t.uppercased() }
         let coin = EVMNetwork.named(place)?.gasCoin ?? "ETH"
         let coinIn = from.uppercased() == coin, coinOut = to.uppercased() == coin
