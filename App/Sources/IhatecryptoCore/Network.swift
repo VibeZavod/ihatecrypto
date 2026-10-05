@@ -115,8 +115,8 @@ public enum Hyperliquid {
 // MARK: - Solana (public RPC)
 
 public enum Solana {
-    // ponytail: public mainnet RPC is rate-limited; add a user-chosen RPC field when it starts failing.
-    static let rpc = "https://api.mainnet-beta.solana.com"
+    /// The user's own node when set in Settings, else the public one (SolanaNodes).
+    static var rpc: String { SolanaNodes.urls[0].absoluteString }
     static let usdcMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
 
     public struct Balance: Sendable, Equatable {

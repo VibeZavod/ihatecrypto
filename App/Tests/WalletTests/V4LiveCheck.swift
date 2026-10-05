@@ -159,3 +159,33 @@ func ensAndSNSNamesResolveOnTheirChains() async throws {
     #expect(owner.count >= 32)
     await #expect(throws: (any Error).self) { try await SNS.resolve("this-name-is-not-registered-ihatecrypto.sol") }
 }
+
+/// The user's own Solana node goes first and the public one after it; none set, only the public one.
+@Test func solanaNodesPutTheUsersOwnFirst() {
+    let saved = SolanaNodes.custom
+    defer { SolanaNodes.custom = saved }
+    SolanaNodes.custom = nil
+    #expect(SolanaNodes.urls == [SolanaNodes.publicNode] && SolanaRPC().url == SolanaNodes.publicNode)
+    let own = URL(string: "https://mainnet.helius-rpc.com/?api-key=x")!
+    SolanaNodes.custom = own
+    #expect(SolanaNodes.urls == [own, SolanaNodes.publicNode] && SolanaRPC().url == own)
+}
+
+/// IHATECRYPTO_NET=1: a node of one's own that is down, or refuses its key (Helius, 401), hands the call to the public
+/// node; the check keeps only an https Solana mainnet node that answers token accounts by owner.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func solanaCallsSurviveABadOwnNodeAndTheCheckKeepsOnlyAGoodOne() async throws {
+    let saved = SolanaNodes.custom
+    defer { SolanaNodes.custom = saved }
+    for bad in ["https://127.0.0.1:9", "https://mainnet.helius-rpc.com/?api-key=00000000-0000-0000-0000-000000000000"] {
+        SolanaNodes.custom = URL(string: bad)!
+        #expect(try await SolanaRPC().call("getGenesisHash", []) as? String == SolanaNodes.mainnetGenesis, "\(bad)")
+    }
+    #expect(await SolanaNodes.problem(with: SolanaNodes.publicNode) == nil)
+    let refused = await SolanaNodes.problem(with: URL(string: "https://mainnet.helius-rpc.com/?api-key=00000000-0000-0000-0000-000000000000")!)
+    #expect(refused?.contains("turned the key away") == true)
+    #expect(await SolanaNodes.problem(with: URL(string: "https://api.devnet.solana.com")!)?.contains("another Solana network") == true)
+    #expect(await SolanaNodes.problem(with: URL(string: "http://api.mainnet-beta.solana.com")!)?.contains("https") == true)
+    #expect(await SolanaNodes.problem(with: URL(string: "https://solana-rpc.publicnode.com")!) != nil)   // no token accounts (403)
+    print("invalid Helius key: \(refused ?? "")")
+}

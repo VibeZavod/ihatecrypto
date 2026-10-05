@@ -4,21 +4,33 @@ import WalletCore
 
 /// Solana JSON-RPC: only what sending and confirming a transaction needs.
 public struct SolanaRPC: Sendable {
+    /// The node asked first.
     public let url: URL
+    /// Made for one node (a check, a test): no other is asked.
+    let pinned: Bool
 
-    // ponytail: the public endpoint is rate-limited; a user-chosen RPC comes with the settings field.
-    public init(url: URL = URL(string: "https://api.mainnet-beta.solana.com")!) { self.url = url }
+    /// SolanaNodes, read at each call: the user's own node first when set, the public one after it.
+    public init() { (url, pinned) = (SolanaNodes.urls[0], false) }
+    public init(url: URL) { (self.url, pinned) = (url, true) }
 
     public func call(_ method: String, _ params: [Any]) async throws -> Any {
-        var request = URLRequest(url: url, timeoutInterval: 30)
+        let nodes = pinned ? [url] : SolanaNodes.urls
+        var attempt = 0
+        var request = URLRequest(url: nodes[0], timeoutInterval: 30)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: ["jsonrpc": "2.0", "id": 1, "method": method, "params": params])
         // The public RPC answers 429 under bursts and drops a connection now and then: backed-off retries (RPCRetry),
-        // then a clear error. A resent transaction is the same one (its signature), so sends retry too.
-        return try await RPCRetry.run { try await URLSession.shared.data(for: request) } answer: { data, status in
+        // each to the next node, then a clear error. A resent transaction is the same one (its signature), so sends
+        // retry too. The user's node refusing its key (401, 403: expired, over its plan) passes the call to the next.
+        return try await RPCRetry.run {
+            request.url = nodes[attempt % nodes.count]
+            attempt += 1
+            return try await URLSession.shared.data(for: request)
+        } answer: { data, status in
             guard (200..<300).contains(status) else {
-                throw RPCRetry.Again(status == 429 || status >= 500, WalletError("Solana RPC \(method): HTTP \(status) \(String(decoding: data.prefix(120), as: UTF8.self))"))
+                let next = (status == 401 || status == 403) && nodes.count > 1
+                throw RPCRetry.Again(status == 429 || status >= 500 || next, WalletError("Solana RPC \(method): HTTP \(status) \(String(decoding: data.prefix(120), as: UTF8.self))"))
             }
             guard let reply = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else {
                 throw WalletError("Solana RPC \(method): response isn't JSON: \(String(decoding: data.prefix(120), as: UTF8.self))")
@@ -254,5 +266,28 @@ extension SolanaTransaction {
         }
         guard message.count + 65 <= 1232 else { throw WalletError("The transaction is over 1232 bytes") }
         return message
+    }
+}
+
+extension SolanaNodes {
+    /// Why `url` can't be the wallet's Solana node, or nil: https only; Solana mainnet (its genesis hash); and token
+    /// accounts by owner answered — the call free public nodes turn away (publicnode: 403), which balances and moves need.
+    public static func problem(with url: URL) async -> String? {
+        guard url.scheme == "https", url.host != nil else { return "A node's address starts with https://." }
+        let node = SolanaRPC(url: url)
+        do {
+            guard let genesis = try await node.call("getGenesisHash", []) as? String else { return "The node didn't answer like a Solana node." }
+            guard genesis == mainnetGenesis else { return "That node is on another Solana network (devnet or testnet), not mainnet." }
+            _ = try await node.call("getTokenAccountsByOwner", ["11111111111111111111111111111111",
+                                                                ["programId": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"], ["encoding": "jsonParsed"]])
+            _ = try await node.call("getLatestBlockhash", [["commitment": "confirmed"]])
+            return nil
+        } catch {
+            let why = error.localizedDescription
+            if why.contains("HTTP 401") || why.contains("HTTP 403") {
+                return "The node turned the key away (\(why.contains("HTTP 401") ? "401" : "403")): copy the whole address again, api-key included — or this plan doesn't serve these calls."
+            }
+            return "The node didn't answer: \(why)"
+        }
     }
 }

@@ -167,6 +167,7 @@ struct SettingsView: View {
         }
         NoticeSettings()
         keepRunning
+        SolanaNodeSection()
         about
     }
 
