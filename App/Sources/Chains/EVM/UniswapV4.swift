@@ -157,11 +157,32 @@ public enum UniswapV4 {
                     takeCurrency: takeCurrency, takeMin: takeMin, deadline: deadline)
     }
 
+    /// Whether a swap may run through the pool's hooks contract: a pool without one; or a hook Uniswap's registry marks as a
+    /// vanilla swap on this network (vanillaHooks: once allowed, the swap goes as in a pool without hooks), whose address —
+    /// which carries its permissions — takes no delta from a swap, in a pool whose fee isn't set by the hook.
+    public static func allowsHooks(_ key: PoolKey, chainId: UInt64) -> Bool {
+        guard key.hasHooks else { return true }
+        return key.fee & dynamicFee == 0 && !takesSwapDelta(key.hooks) && vanillaHooks[chainId]?.contains(key.hooks) == true
+    }
+
+    /// LPFeeLibrary.DYNAMIC_FEE_FLAG in a pool's fee: its hook sets the fee each swap.
+    static let dynamicFee: UInt32 = 0x800000
+
+    /// Hooks.BEFORE_SWAP_RETURNS_DELTA (bit 3) or AFTER_SWAP_RETURNS_DELTA (bit 2) in the address's low bits: the hook may take
+    /// part of what a swap pays or gets. The PoolManager calls a hook only for the permissions its address carries.
+    static func takesSwapDelta(_ hooks: String) -> Bool {
+        guard let low = UInt16(hooks.suffix(4), radix: 16) else { return true }
+        return low & 0b1100 != 0
+    }
+
     /// Why the signer must not sign this swap, or nil: it pays from and to this wallet by construction (SETTLE_ALL and
     /// TAKE_ALL use the caller), so what's left is that it pays and takes the pool's own currencies, the most it may take
-    /// is what goes in, something must come out, and no hooks contract runs in the middle.
-    public static func refusal(_ s: Swap) -> String? {
-        if s.key.hasHooks { return "The Uniswap v4 pool runs a hooks contract (\(s.key.hooks)): ihatecrypto swaps only in pools without one." }
+    /// is what goes in, something must come out, and no hooks contract runs in the middle but one `allowsHooks` vouches
+    /// for on `chainId` (none without it).
+    public static func refusal(_ s: Swap, chainId: UInt64? = nil) -> String? {
+        if s.key.hasHooks, !(chainId.map { allowsHooks(s.key, chainId: $0) } ?? false) {
+            return "The Uniswap v4 pool runs a hooks contract (\(s.key.hooks)) that isn't on Uniswap's list of hooks that swap like a pool without one: ihatecrypto doesn't swap there."
+        }
         if s.settleCurrency.lowercased() != s.currencyIn { return "The swap would pay in \(s.settleCurrency), not the pool's \(s.currencyIn)." }
         if s.takeCurrency.lowercased() != s.currencyOut { return "The swap would take \(s.takeCurrency), not the pool's \(s.currencyOut)." }
         if s.settleMax != s.amountIn { return "The swap may take more than it swaps (\(s.settleMax) vs \(s.amountIn))." }

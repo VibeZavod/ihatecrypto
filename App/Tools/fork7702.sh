@@ -10,7 +10,7 @@ NET=${NET:-base}
 case $NET in
   base)      FORK=${FORK_URL:-https://mainnet.base.org}; USDC=0x833589fcd6edb6e08f4c7c32d4f71b54bda02913
              QUOTER=0x3d4e44eb1374240ce5f1b871ab261cd16335b76a; WETH=0x4200000000000000000000000000000000000006
-             TEST="forkApproveAndSwapGoAsOneTransaction forkDepositsGoAsOneTransaction forkBaseV4BuyIsOneTransaction" ;;
+             TEST="forkApproveAndSwapGoAsOneTransaction forkDepositsGoAsOneTransaction forkBaseV4BuyIsOneTransaction forkV4SwapThroughAVouchedHook" ;;
   arbitrum)  FORK=${FORK_URL:-https://arb1.arbitrum.io/rpc}; USDC=0xaf88d065e77c8cc2239327c5edb3a432268e5831
              QUOTER=0x61ffe014ba17989e743c5f6cb21bf9697530b21e; WETH=0x82af49447d8a07e3bd95bd0d56f35241523fbab1; TEST=forkApproveAndSwapGoAsOneTransaction ;;
   ethereum)  FORK=${FORK_URL:-https://ethereum-rpc.publicnode.com}; USDC=0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48
@@ -50,6 +50,9 @@ else
     cast call 0xA238Dd80C259a72e81d7e4664a9801593F98d1c5 "getReserveData(address)" $USDC --rpc-url $RPC >/dev/null 2>&1 || true
     cast call 0xee8f4ec5672f09119b96ab6fb59c27e1b7e44b61 "totalAssets()(uint256)" --rpc-url $RPC >/dev/null 2>&1 || true
     cast call 0xee8f4ec5672f09119b96ab6fb59c27e1b7e44b61 "maxDeposit(address)(uint256)" "$ME" --rpc-url $RPC >/dev/null 2>&1 || true
+    # The PRQUANGD/WETH pool behind Doppler's hook, for the vouched-hook run
+    cast call 0x0d5e0f971ed27fbff6c2837bf31316121532048d "quoteExactInputSingle(((address,address,uint24,int24,address),bool,uint128,bytes))(uint256,uint256)" \
+      "((0x112f133ae3a57bcc79b21a6319fecc2e5cedd862,$WETH,40000,10,0x892d3c2b4abeaaf67d52a7b29783e2161b7cad40),false,100000000000000,0x)" --rpc-url $RPC >/dev/null 2>&1 || true
   fi
 fi
 echo "$NET fork $(cast block-number --rpc-url $RPC) · $ME · $(cast call $USDC 'balanceOf(address)(uint256)' "$ME" --rpc-url $RPC) units"

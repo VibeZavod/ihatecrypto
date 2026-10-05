@@ -144,7 +144,7 @@ private struct ForkSigner: TradeSigner {
     func signEVM(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64, to: String, data: Data,
                  recipients: [String]) async throws -> Data {
         let call = EVMCall.decode(data)
-        if let why = call.refusal(sender: address) ?? Batch7702.selfCall(to: to, data: data, owner: address) { throw ExecutionError(why) }
+        if let why = call.refusal(sender: address, chainId: chainId) ?? Batch7702.selfCall(to: to, data: data, owner: address) { throw ExecutionError(why) }
         if let payee = call.payees(to: to, value: 0, chainId: chainId).first(where: { $0.lowercased() != address.lowercased() }) { throw ExecutionError("pays \(payee)") }
         return try EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee, gasLimit: gasLimit,
                                   to: to, value: 0, data: data).signed(privateKey: key).raw
@@ -402,4 +402,48 @@ func forkV2BuysAndSellsPEPE() async throws {
     await #expect(throws: (any Error).self) {
         try await ForkSigner(key: key, address: me).signEVM(chainId: 1, nonce: 0, maxPriorityFee: 1, maxFee: 1, gasLimit: 100_000, to: v2.router, data: theirs, recipients: [])
     }
+}
+
+/// A v4 pool with a hook Uniswap's registry vouches for, on an anvil fork of Base (NET=base Tools/fork7702.sh): Doppler's
+/// UniswapV4MulticurveInitializerHook (afterSwap only observes), the PRQUANGD/WETH pool. Its key read the way the executor
+/// reads it (PositionManager has none: the Initialize event on Base's Blockscout), then 0.0001 WETH swapped through it by
+/// the executor's v4Swap as one type-4 transaction, signed under the signer's rules for Base. The same pool with a hook the
+/// registry doesn't list is refused before anything is signed.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_ANVIL_CHAIN"] == "8453"))
+func forkV4SwapThroughAVouchedHook() async throws {
+    let env = ProcessInfo.processInfo.environment
+    UserDefaults.standard.set(true, forKey: Executor.batchKey)   // the user's switch, on for the fork runs
+    let rpc = EVMRPC(url: URL(string: env["IHATECRYPTO_ANVIL"]!)!, chainId: 8453)
+    let key = Data(hex: env["IHATECRYPTO_ANVIL_KEY"]!)!
+    let me = try EVMAccount.address(privateKey: key)
+    let weth = "0x4200000000000000000000000000000000000006", token = "0x112f133ae3a57bcc79b21a6319fecc2e5cedd862"
+    let id = "0xc37ed370d35fef114571b5788820e89bc80f408ee552ffde5f664a8f1463d065"
+    let journal = Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("forkhook-\(UUID().uuidString).jsonl"))
+    let e = Executor(wallet: TradeWallet(solana: "", evm: me), signer: ForkSigner(key: key, address: me), journal: journal) { print("·", $0) }
+    // The key from Base itself, as the executor finds it; it hashes back to the id and its hook may run there.
+    let poolKey = try #require(await Executor.v4Key(id, chainId: 8453))
+    #expect(poolKey.id == id && poolKey.hooks == "0x892d3c2b4abeaaf67d52a7b29783e2161b7cad40" && poolKey.hasHooks)
+    #expect(UniswapV4.allowsHooks(poolKey, chainId: 8453))
+    // 0.001 WETH for this wallet on the fork: WETH9 keeps balances at slot 3.
+    let slot = "0x" + Keccak.hash256(try ABI.address(me) + ABI.uint(3)).hex
+    _ = try await rpc.call("anvil_setStorageAt", [weth, slot, "0x" + String(format: "%064llx", 1_000_000_000_000_000)])
+    let units: Decimal = 100_000_000_000_000
+    let zeroForOne = weth == poolKey.currency0
+    let quoted = try #require(await e.v4Quote(poolKey, zeroForOne: zeroForOne, amount: units, rpc: rpc))
+    print("0.0001 WETH → \(quoted) PRQUANGD through the vouched hook")
+    let nonce0 = try await rpc.nonce(me), before = try await e.balance(token, on: rpc)
+    let hash = try await e.v4Swap((poolKey, zeroForOne, quoted), tokenIn: weth, units: units, minOut: (quoted * Decimal(string: "0.97")!).whole,
+                                  what: "0.0001 WETH", note: "Buy PRQUANGD on Uniswap v4", rpc: rpc)
+    let type = ((try await rpc.call("eth_getTransactionReceipt", [hash])) as? [String: Any])?["type"] as? String
+    #expect(type == "0x4")
+    #expect(try await e.balance(token, on: rpc) - before >= (quoted * Decimal(string: "0.97")!).whole)
+    // The same pool behind a hook the registry doesn't list: refused at signing, the nonce untouched.
+    let nonce1 = try await rpc.nonce(me)
+    #expect(nonce1 > nonce0)
+    let unlisted = UniswapV4.PoolKey(currency0: poolKey.currency0, currency1: poolKey.currency1, fee: poolKey.fee, tickSpacing: poolKey.tickSpacing,
+                                     hooks: "0x1111111111111111111111111111111111110080")
+    await #expect(throws: (any Error).self) {
+        _ = try await e.v4Swap((unlisted, zeroForOne, quoted), tokenIn: weth, units: units, minOut: 1, what: "0.0001 WETH", note: "Buy", rpc: rpc)
+    }
+    #expect(try await rpc.nonce(me) == nonce1)
 }

@@ -15,7 +15,7 @@ func v4FindsTheAIPoolAndQuotesIt() async throws {
     let ai = "0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18", usdg = EVMRPC.robinhoodUSDG
     // Among AI/USDG's hookless pools, the one checked on-chain on 2026-10-01 (fee 2300, spacing 23).
     let keys = await Executor.v4Pools(usdg, ai)
-    #expect(keys.allSatisfy { !$0.hasHooks } && !keys.isEmpty)
+    #expect(keys.allSatisfy { UniswapV4.allowsHooks($0, chainId: 4663) } && !keys.isEmpty)
     let key = try #require(keys.first { $0.id == "0x7aebd80541bfaaf23dbb6e99ce13d4d31c1a84c91414f971eadbff7db5f85995" })
     #expect(key.fee == 2300 && key.tickSpacing == 23)
     let answer = try await EVMRPC.robinhood.read(UniswapV4.robinhoodQuoter, try UniswapV4.quoteExactInputSingle(key, zeroForOne: false, amount: 299_850_000))
@@ -76,7 +76,7 @@ func v4FindsAndQuotesPoolsOnBaseAndEthereum() async throws {
                      journal: Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("v4live-\(UUID().uuidString).jsonl"))) { _ in }
     for (net, token) in [(EVMNetwork.base, "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf"), (.ethereum, "0x2260fac5e5542a773aa44fbcfedf7c193bc2c599")] {
         let route = try #require(await e.v4Route(net.usdc, token, amountIn: 100_000_000, rpc: net.rpc), "no v4 pool on \(net.name)")
-        #expect(!route.key.hasHooks && route.out > 0)
+        #expect(UniswapV4.allowsHooks(route.key, chainId: net.rpc.chainId) && route.out > 0)
         let uni = try #require(UniswapV3.on(net.rpc.chainId))
         // The two are quoted again inside: the better of that moment's v3 and v4 (a block apart, they may differ a little).
         let best = try #require(await e.bestUniswap(on: net, uni, from: net.usdc, to: token, amountIn: 100_000_000))

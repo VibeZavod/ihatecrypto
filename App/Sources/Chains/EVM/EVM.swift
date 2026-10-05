@@ -607,15 +607,16 @@ public enum EVMCall: Equatable, Sendable {
         return out
     }
 
-    /// Why this must not be signed, or nil. `sender` is the user's own address.
-    public func refusal(sender: String) -> String? {
+    /// Why this must not be signed, or nil. `sender` is the user's own address; `chainId` the network, which lets a v4 swap
+    /// run a hook Uniswap's registry vouches for there (UniswapV4.allowsHooks): without it, no hook at all.
+    public func refusal(sender: String, chainId: UInt64? = nil) -> String? {
         if case .swap(let recipient) = self, recipient.lowercased() != sender.lowercased() {
             return "The swap would pay \(recipient), not this wallet."
         }
         if case .lending(let beneficiary) = self, beneficiary.lowercased() != sender.lowercased() {
             return "The lending pool would credit \(beneficiary), not this wallet."
         }
-        if case .v4Swap(let swap) = self, let why = UniswapV4.refusal(swap) { return why }
+        if case .v4Swap(let swap) = self, let why = UniswapV4.refusal(swap, chainId: chainId) { return why }
         if case .permit2Approve(_, _, let amount, let expiration) = self {
             if Self.unlimited(amount) { return "Unlimited spending through Permit2 — the drainers' main trick. ihatecrypto only approves exact amounts." }
             if expiration > UInt64(Date().timeIntervalSince1970) + 86_400 { return "A Permit2 approval for longer than a day. ihatecrypto approves for the one swap only." }

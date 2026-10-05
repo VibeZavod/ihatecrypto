@@ -300,7 +300,7 @@ final class Browser {
     /// Decodes, names the token, simulates the balance changes and estimates gas. Problems mean «do not sign».
     func evmReview(to: String, value: UInt64, data: Data, from: String, rpc: EVMRPC) async -> EVMReview {
         let call = EVMCall.decode(data)
-        var problems = call.refusal(sender: from).map { [$0] } ?? []
+        var problems = call.refusal(sender: from, chainId: rpc.chainId).map { [$0] } ?? []
         var lines: [String] = []
         // The same payees the signer checks: each foreign one needs the tick here and Touch ID there.
         let recipients = Array(Set(call.payees(to: to, value: value, chainId: rpc.chainId).map { $0.lowercased() }.filter { $0 != from.lowercased() })).sorted()

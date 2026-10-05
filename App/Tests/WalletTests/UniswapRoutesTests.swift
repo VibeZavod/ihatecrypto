@@ -76,3 +76,36 @@ private struct QuoteOnly: TradeSigner {
                  recipients: [String]) async throws -> Data { throw ExecutionError("no") }
     func signNearIntentDeposit(amount: UInt128, depositAddress: String, nonce: UInt64, blockHash: Data) async throws -> Data { throw ExecutionError("no") }
 }
+
+/// v4 hooks: a pool may run one only when Uniswap's registry vouches for it on that network (vanillaHooks), its address
+/// takes no swap delta and the pool's fee isn't the hook's; the signer applies the same rule, and none at all without the
+/// network.
+@Test func v4HooksOnlyFromTheRegistryOnTheirOwnNetwork() throws {
+    // One the registry lists on Base only: the same address on another network is another contract, maybe not a vanilla one.
+    let elsewhere = UniswapV4.vanillaHooks.filter { $0.key != 8453 }.values.reduce(Set<String>()) { $0.union($1) }
+    let listed = try #require(UniswapV4.vanillaHooks[8453]?.sorted().first { !elsewhere.contains($0) })
+    func key(_ hooks: String, fee: UInt32 = 3000) -> UniswapV4.PoolKey {
+        UniswapV4.PoolKey(currency0: baseUSDC, currency1: aero, fee: fee, tickSpacing: 60, hooks: hooks)
+    }
+    #expect(UniswapV4.allowsHooks(key("0x0000000000000000000000000000000000000000"), chainId: 8453))
+    #expect(UniswapV4.allowsHooks(key(listed), chainId: 8453))
+    #expect(!UniswapV4.allowsHooks(key(listed, fee: 0x800000), chainId: 8453))           // the hook would set the fee
+    #expect(!UniswapV4.allowsHooks(key(listed), chainId: 42161) && !UniswapV4.allowsHooks(key(listed), chainId: 1))
+    #expect(!UniswapV4.allowsHooks(key("0x1111111111111111111111111111111111110080"), chainId: 8453))   // not in the registry
+    // The permission bits in a hook's address: bit 3 and bit 2 let it take part of a swap.
+    #expect(UniswapV4.takesSwapDelta("0x00000000000000000000000000000000000000c8") && UniswapV4.takesSwapDelta("0x0000000000000000000000000000000000000044"))
+    #expect(!UniswapV4.takesSwapDelta("0x0000000000000000000000000000000000000080") && UniswapV4.takesSwapDelta("0xzz"))
+    // Every listed hook on every network passes the same rules the generator applied.
+    for (chain, hooks) in UniswapV4.vanillaHooks {
+        #expect(!hooks.isEmpty, "network \(chain)")
+        for h in hooks { #expect(h.count == 42 && h == h.lowercased() && !UniswapV4.takesSwapDelta(h)) }
+    }
+    // The signer: the app's own swap through that pool signs on Base, not elsewhere, and not without the network.
+    let swap = try UniswapV4.execute(key(listed), zeroForOne: true, amountIn: 1_000_000, amountOutMinimum: 1, deadline: 1)
+    #expect(EVMCall.decode(swap).refusal(sender: me, chainId: 8453) == nil)
+    #expect(EVMCall.decode(swap).refusal(sender: me, chainId: 1)?.contains("hooks") == true)
+    #expect(EVMCall.decode(swap).refusal(sender: me)?.contains("hooks") == true)
+    let unlisted = try UniswapV4.execute(key("0x1111111111111111111111111111111111110080"), zeroForOne: true, amountIn: 1, amountOutMinimum: 1, deadline: 1)
+    #expect(EVMCall.decode(unlisted).refusal(sender: me, chainId: 8453)?.contains("hooks") == true)
+    #expect(!Batch7702.problems([.init(to: UniswapV4.on(8453)!.router, data: unlisted)], owner: me, chainId: 8453).isEmpty)
+}

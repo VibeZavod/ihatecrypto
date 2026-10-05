@@ -55,7 +55,7 @@ public enum Batch7702 {
         for c in calls {
             if Data(hex: c.to)?.count != 20 { out.append("Not an address: \(c.to).") }
             if let why = selfCall(to: c.to, data: c.data, owner: owner) { out.append(why) }
-            if let why = EVMCall.decode(c.data).refusal(sender: owner) { out.append(why) }
+            if let why = EVMCall.decode(c.data).refusal(sender: owner, chainId: chainId) { out.append(why) }
         }
         return out
     }

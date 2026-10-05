@@ -60,8 +60,8 @@ extension Executor {
     }
 
     /// The v4 pool for tokenIn → tokenOut on `rpc`'s network and what it gives for `amountIn`; nil when there's none
-    /// without hooks.
-    /// Every hookless pool of the pair is quoted for this amount and the one that gives most is taken: the deepest isn't
+    /// without hooks, or with hooks Uniswap's registry vouches for (UniswapV4.allowsHooks).
+    /// Every such pool of the pair is quoted for this amount and the one that gives most is taken: the deepest isn't
     /// always the best price (AI/USDG on Robinhood has five).
     func v4Route(_ tokenIn: String, _ tokenOut: String, amountIn: Decimal, rpc: EVMRPC = .robinhood) async -> V4Route? {
         var best: V4Route?
@@ -87,7 +87,8 @@ extension Executor {
         await v4Pools(a, b, chainId: chainId).first
     }
 
-    /// The pair's hookless v4 pools among its five deepest, the deepest first.
+    /// The pair's v4 pools among its five deepest whose hooks may run (none, or vouched for: UniswapV4.allowsHooks), the
+    /// deepest first.
     static func v4Pools(_ a: String, _ b: String, chainId: UInt64 = 4663) async -> [UniswapV4.PoolKey] {
         guard let net = EVMNetwork.of(chainId: chainId), UniswapV4.on(chainId) != nil else { return [] }
         let pair = Set([a.lowercased(), b.lowercased()])
@@ -104,7 +105,7 @@ extension Executor {
         .sorted { depth($0) > depth($1) }.compactMap { ($0["pairAddress"] as? String)?.lowercased() }
         var keys: [UniswapV4.PoolKey] = []
         for id in ids.prefix(5) {
-            if let key = await v4Key(id, chainId: chainId), key.id == id, !key.hasHooks { keys.append(key) }
+            if let key = await v4Key(id, chainId: chainId), key.id == id, UniswapV4.allowsHooks(key, chainId: chainId) { keys.append(key) }
         }
         return keys
     }
