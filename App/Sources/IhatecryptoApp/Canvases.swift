@@ -2004,6 +2004,7 @@ extension Workspace {
         case "robinhood": robinhood?.usdg
         case "tempo": tempoUSDC
         case "hyperevm": hyperevmUSDC
+        case "optimism": optimismUSDC
         case "hyperliquid": hl?.withdrawable
         default: nil
         }

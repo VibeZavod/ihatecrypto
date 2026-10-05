@@ -180,6 +180,7 @@ extension AddressCheck.Network {
         case .tempo: "tempo"
         case .polygon: "pol"
         case .hyperevm: "hyperevm"
+        case .optimism: "op"
         case .bitcoin: "btc"
         case .zcash: "zec"
         case .tron: "trx"
@@ -721,7 +722,7 @@ extension Workspace {
         } else if !address.hasPrefix("0x") {
             network = .solana
         } else {
-            reply("Which network is this 0x address on — Ethereum, Arbitrum, Base, Polygon, Tempo, HyperEVM or Hyperliquid? For example “save … as \(name) on Arbitrum”.", note: note)
+            reply("Which network is this 0x address on — Ethereum, Arbitrum, Base, Optimism, Polygon, Tempo, HyperEVM or Hyperliquid? For example “save … as \(name) on Arbitrum”.", note: note)
             return
         }
         if let problem = AddressCheck.problem(address, network: network) { reply(problem, note: note); return }
@@ -807,7 +808,7 @@ extension Workspace {
     /// changed in the file outside ihatecrypto doesn't pass.
     func isConfirmed(_ e: SavedAddress) -> Bool {
         if wallets.contains(where: { $0.solana == e.address || $0.evm?.lowercased() == e.address.lowercased() }) { return true }
-        let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo", "hyperliquid", "hyperevm"]
+        let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo", "hyperliquid", "hyperevm", "optimism"]
         return confirmedAddresses.contains { c in
             c.memo == e.memo && (evm.contains(c.network) && evm.contains(e.network.rawValue)
                 ? c.same(name: e.name, network: c.network, address: e.address) : c.same(name: e.name, network: e.network.rawValue, address: e.address))
@@ -837,7 +838,7 @@ extension Workspace {
     /// else where the entry is saved. A 0x address saved on one EVM network is the same address on another; Solana's
     /// and the EVM networks' don't mix, and NEAR or Hyperliquid have their own forms.
     func tokenRecipient(_ name: String, network: String?) throws -> (entry: SavedAddress, network: String) {
-        let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo", "hyperevm"]
+        let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo", "hyperevm", "optimism"]
         guard let entry = savedEntry(name, network: network) else {
             throw ExecutionError("There’s no “\(name)” in Addresses. Save it there first, then send by its name.")
         }
@@ -881,7 +882,7 @@ extension Workspace {
     /// that can receive on the network named comes first; a 0x address on one EVM network is the same on another.
     func savedEntry(_ name: String, network: String?) -> SavedAddress? {
         let key = name.lowercased()
-        let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo", "hyperevm"]
+        let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo", "hyperevm", "optimism"]
         func fits(_ e: SavedAddress) -> Bool {
             guard let network else { return true }
             return e.network.rawValue == network || (evm.contains(network) && (evm.contains(e.network.rawValue) || e.network == .hyperliquid))
@@ -914,7 +915,7 @@ extension Workspace {
         // The network the message names wins, Ethereum mainnet too (the user's call, 2026-10-01: «мне пофиг что дорого»).
         // A 0x address saved on one EVM network is the same address on another; the card says it was saved elsewhere.
         if let net = network.flatMap(AddressCheck.Network.init(rawValue:)), net != entry.network {
-            let evm: Set<AddressCheck.Network> = [.base, .arbitrum, .ethereum, .polygon, .robinhood, .tempo, .hyperliquid, .hyperevm]
+            let evm: Set<AddressCheck.Network> = [.base, .arbitrum, .ethereum, .polygon, .robinhood, .tempo, .hyperliquid, .hyperevm, .optimism]
             guard evm.contains(net), evm.contains(entry.network) else {
                 reply(say("“\(entry.name)” is a \(entry.network.title) address: it can't receive on \(net.title).",
                           "«\(entry.name)» — адрес в \(entry.network.title), в \(net.title) он получить не может."), note: note)
@@ -962,6 +963,7 @@ extension Workspace {
             case .polygon: .polygon(entry.address)
             case .base: .base(entry.address)
             case .hyperevm: .hyperevm(entry.address)
+            case .optimism: .optimism(entry.address)
             case .near: throw ExecutionError("USDC doesn't go to a NEAR account.")
             case .bitcoin, .zcash, .tron, .xrp, .dogecoin, .sui: throw ExecutionError("\(entry.network.title) is reached through NEAR Intents: “send <amount> <coin> to \(entry.name)”.")
             }

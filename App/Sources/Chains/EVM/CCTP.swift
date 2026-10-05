@@ -16,8 +16,8 @@ public enum CCTP {
     public static let fast: UInt32 = 1000
 
     /// CCTP's domain for an EVM chain id; nil where ihatecrypto doesn't use it.
-    public static func domain(_ chainId: UInt64) -> UInt32? { [1: 0, 42161: 3, 8453: 6, 137: 7][chainId] }
-    public static func chainName(_ domain: UInt32) -> String { [0: "Ethereum", 3: "Arbitrum", 6: "Base", 7: "Polygon", 5: "Solana"][domain] ?? "domain \(domain)" }
+    public static func domain(_ chainId: UInt64) -> UInt32? { [1: 0, 10: 2, 42161: 3, 8453: 6, 137: 7][chainId] }
+    public static func chainName(_ domain: UInt32) -> String { [0: "Ethereum", 2: "Optimism", 3: "Arbitrum", 6: "Base", 7: "Polygon", 5: "Solana"][domain] ?? "domain \(domain)" }
 
     /// depositForBurnWithHook(amount, destinationDomain, mintRecipient, burnToken, destinationCaller 0, maxFee, fast, hook).
     public static func burn(units: UInt64, to domain: UInt32, recipient: String, usdc: String, maxFee: UInt64) throws -> Data {

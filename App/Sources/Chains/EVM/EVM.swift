@@ -119,7 +119,7 @@ public struct EVMTransaction: Sendable {
     /// (≈ $2; a call costs a tenth of a cent at 0.1 gwei).
     public static let feeCap: [UInt64: UInt64] = [1: 50_000_000_000_000_000, 42161: 10_000_000_000_000_000, 8453: 10_000_000_000_000_000,
                                                   4663: 10_000_000_000_000_000, 137: 10_000_000_000_000_000_000, 4217: 10_000_000_000_000_000_000,
-                                                  999: 20_000_000_000_000_000]
+                                                  999: 20_000_000_000_000_000, 10: 10_000_000_000_000_000]
 
     /// Why the signer won't sign this fee, or nil: past the network's cap, or past 64 bits.
     public var feeProblem: String? {
@@ -342,17 +342,23 @@ public struct EVMRPC: Sendable {
     /// Circle's native USDC on HyperEVM, 6 decimals: the one Relay delivers (its /chains, 2026-10-06).
     public static let hyperevmUSDC = "0xb88339cb7199b77e23db6e890353e22632ba630f"
 
+    /// Optimism (OP Mainnet), gas in ETH at ≈ 0.001 gwei plus its L1 data fee; drpc, then Optimism's own node (2026-10-06).
+    public static let optimism = EVMRPC(url: URL(string: "https://optimism.drpc.org")!, chainId: 10,
+                                        fallbacks: [URL(string: "https://mainnet.optimism.io")!], followsSettings: true)
+    /// Circle's native USDC on Optimism, the one Relay delivers.
+    public static let optimismUSDC = "0x0b2c639c533813f4aa9d7837caf62653d097ff85"
+
     /// The only networks the signer signs for: the app's signing process and the CLI check the same list.
-    public static let signable: Set<UInt64> = [1, 137, 42161, 8453, 4663, 4217, 999]
+    public static let signable: Set<UInt64> = [1, 137, 42161, 8453, 4663, 4217, 999, 10]
 
     /// The networks by name, for what the signer says it signs.
     public static let names: [UInt64: String] = [1: "Ethereum", 137: "Polygon", 42161: "Arbitrum", 8453: "Base", 4663: "Robinhood Chain", 4217: "Tempo",
-                                                 999: "HyperEVM"]
+                                                 999: "HyperEVM", 10: "Optimism"]
     /// What a network's fees and `value` are counted in: Polygon's POL, HyperEVM's HYPE, Tempo's dollars (it has no coin), else ETH.
     public static func coin(_ chainId: UInt64) -> String { chainId == 137 ? "POL" : chainId == 999 ? "HYPE" : chainId == 4217 ? "USD" : "ETH" }
     /// The dollars ihatecrypto moves, by contract: their symbol for the Touch ID prompt; all have 6 decimals.
     public static let dollars: [String: String] = [baseUSDC: "USDC", arbitrumUSDC: "USDC", polygonUSDC: "USDC", ethereumUSDC: "USDC",
-                                                   tempoUSDC: "USDC", robinhoodUSDG: "USDG", hyperevmUSDC: "USDC"]
+                                                   tempoUSDC: "USDC", robinhoodUSDG: "USDG", hyperevmUSDC: "USDC", optimismUSDC: "USDC"]
 
     /// eth_call: the raw return value.
     public func read(_ to: String, _ data: Data) async throws -> Data {

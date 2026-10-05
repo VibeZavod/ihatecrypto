@@ -20,7 +20,7 @@ public enum BlockCatalog {
         public var automatic = false
     }
 
-    public static let groups = ["Trade", "Triggers", "Move money", "Buy and sell", "Earn", "Tempo", "HyperEVM"]
+    public static let groups = ["Trade", "Triggers", "Move money", "Buy and sell", "Earn", "Tempo", "HyperEVM", "Optimism"]
 
     public static let all: [Block] = [
         Block(group: "Trade", label: "OPEN LONG · HYPERLIQUID", title: "Long or short", form: "long|short ASSET · risk $N · stop N% · take N% · leverage Nx",
@@ -39,7 +39,7 @@ public enum BlockCatalog {
         Block(group: "Triggers", label: "LATER · SCHEDULE", title: "Later or on repeat", form: "in N days: … · at HH:MM: … · every week: … · every month on the 1st: …",
               example: "in 1 week: rebalance USDC", fill: "check", logo: nil),
 
-        Block(group: "Move money", label: "BRIDGE · RELAY", title: "Between networks", form: "move N USDC between Solana, Base, Arbitrum, Polygon, Ethereum, Robinhood, Tempo, HyperEVM — any two, straight",
+        Block(group: "Move money", label: "BRIDGE · RELAY", title: "Between networks", form: "move N USDC between Solana, Base, Arbitrum, Polygon, Ethereum, Robinhood, Tempo, HyperEVM, Optimism — any two, straight",
               example: "move 5 USDC from Solana to Base", fill: "relay", logo: "relay"),
         Block(group: "Move money", label: "GAS · TOP UP", title: "Gas on any network", form: "add gas on Base|Arbitrum|Polygon|Ethereum|Robinhood for N USDC · moves top it up by themselves",
               example: "add gas on robinhood for 1 USDC", fill: "robinhood", logo: "eth"),
@@ -89,12 +89,22 @@ public enum BlockCatalog {
         // back on Solana, and brings ≈ 0.0016 HYPE of gas along the way there).
         Block(group: "HyperEVM", label: "BRIDGE · TO HYPEREVM", title: "USDC to HyperEVM", form: "move N USDC from Solana to HyperEVM · HYPE for gas comes along",
               example: "move 2 USDC from Solana to HyperEVM", fill: "hyperevm", logo: "hyperevm"),
-        Block(group: "HyperEVM", label: "BACK · TO SOLANA", title: "USDC back to Solana", form: "move N USDC from HyperEVM to Solana · no N = all of it",
+        Block(group: "HyperEVM", label: "BACK · HYPEREVM → SOLANA", title: "USDC back to Solana", form: "move N USDC from HyperEVM to Solana · no N = all of it",
               example: "move all USDC from HyperEVM to Solana", fill: "hyperevm", logo: "hyperevm"),
         Block(group: "HyperEVM", label: "GAS · HYPE", title: "HYPE for gas", form: "add gas on HyperEVM [for $N] · ≈ $0.001 a transaction",
               example: "add gas on hyperevm", fill: "hyperevm", logo: "hyperevm"),
         Block(group: "HyperEVM", label: "SEND · ON HYPEREVM", title: "Send on HyperEVM", form: "send N USDC to NAME on HyperEVM · a saved 0x address",
               example: "send 5 USDC to Mom on hyperevm", fill: "hyperevm", logo: "hyperevm"),
+
+        // Optimism: an OP Stack network beside Base; its USDC in and out over Relay or Circle's CCTP, ETH for its gas.
+        Block(group: "Optimism", label: "BRIDGE · TO OPTIMISM", title: "USDC to Optimism", form: "move N USDC from Solana to Optimism · ETH for gas comes along",
+              example: "move 2 USDC from Solana to Optimism", fill: "relay", logo: "op"),
+        Block(group: "Optimism", label: "BACK · OPTIMISM → SOLANA", title: "USDC back to Solana", form: "move N USDC from Optimism to Solana · no N = all of it",
+              example: "move all USDC from Optimism to Solana", fill: "relay", logo: "op"),
+        Block(group: "Optimism", label: "CCTP · BASE", title: "To Base by Circle", form: "move N USDC from Optimism to Base via CCTP · Circle burns and mints",
+              example: "move 100 USDC from Optimism to Base via CCTP", fill: "relay", logo: "op"),
+        Block(group: "Optimism", label: "SEND · ON OPTIMISM", title: "Send on Optimism", form: "send N USDC to NAME on Optimism · a saved 0x address",
+              example: "send 5 USDC to Mom on optimism", fill: "relay", logo: "op"),
 
         // Tempo: its money moves, then services paid per request in USDC there (MPP). Each example is a real endpoint
         // from mpp.dev's directory with the body its docs give, priced live by its 402 (2026-09-30); the card shows the price

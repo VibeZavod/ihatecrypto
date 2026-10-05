@@ -59,7 +59,11 @@ public struct EVMNetwork: Sendable {
                                             explorer: "https://hyperevmscan.io", gasFloor: 500_000_000_000_000, topupUSD: Decimal(string: "0.15")!,
                                             gasCoin: "HYPE")
 
-    public static let all = [base, arbitrum, robinhood, polygon, ethereum, tempo, hyperevm]
+    /// Optimism: an OP Stack network like Base, its calls cents of ETH; the same floor and top-up.
+    public static let optimism = EVMNetwork(name: "Optimism", key: "optimism", rpc: .optimism, usdc: EVMRPC.optimismUSDC, relayChain: Relay.Chain.optimism,
+                                            explorer: "https://optimistic.etherscan.io", gasFloor: 5_000_000_000_000, topupUSD: Decimal(string: "0.03")!)
+
+    public static let all = [base, arbitrum, robinhood, polygon, ethereum, tempo, hyperevm, optimism]
 
     /// What to leave for fees when everything goes: a cent pays ten Tempo calls.
     // ponytail: fixed cent; read the base fee if Tempo's fees ever pass $0.001 a call.

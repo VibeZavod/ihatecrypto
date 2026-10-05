@@ -24,6 +24,7 @@ extension Executor {
         case ethereum(String)
         case polygon(String)
         case hyperevm(String)
+        case optimism(String)
     }
 
     public func sendUSDC(_ amount: Decimal, to destination: Destination, label: String) async throws -> String {
@@ -39,6 +40,7 @@ extension Executor {
         case .ethereum(let recipient): return try await sendEVMUSDC(units, on: .ethereum, to: recipient, label: label)
         case .polygon(let recipient): return try await sendEVMUSDC(units, on: .polygon, to: recipient, label: label)
         case .hyperevm(let recipient): return try await sendEVMUSDC(units, on: .hyperevm, to: recipient, label: label)
+        case .optimism(let recipient): return try await sendEVMUSDC(units, on: .optimism, to: recipient, label: label)
         }
     }
 

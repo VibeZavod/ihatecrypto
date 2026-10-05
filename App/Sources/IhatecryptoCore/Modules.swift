@@ -4,7 +4,7 @@ import Foundation
 /// also from the chat). A protocol works only while it, its kind and every network it needs are on. Off means the
 /// assistant never plans a move through it; money already there still shows.
 public enum ModuleNetwork: String, CaseIterable, Sendable {
-    case solana, hyperliquid, base, near, arbitrum, robinhood, polygon, ethereum, tempo, hyperevm
+    case solana, hyperliquid, base, near, arbitrum, robinhood, polygon, ethereum, tempo, hyperevm, optimism
 
     public var name: String {
         switch self {
@@ -18,6 +18,7 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .ethereum: "Ethereum"
         case .tempo: "Tempo"
         case .hyperevm: "HyperEVM"
+        case .optimism: "Optimism"
         }
     }
 
@@ -41,6 +42,7 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .ethereum: "Aave · Morpho · mainnet gas varies"
         case .tempo: "USDC transfers · pay for services (MPP) · fees in USDC"
         case .hyperevm: "USDC in and out · HYPE for gas"
+        case .optimism: "USDC in and out · Circle's CCTP"
         }
     }
 
@@ -57,6 +59,7 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .ethereum: "eth"
         case .tempo: "tempo"
         case .hyperevm: "hyperevm"
+        case .optimism: "op"
         }
     }
 }
@@ -142,7 +145,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
         case .hlPerps: "BTC, ETH, SOL and more"
         case .jupiterDCA: "Solana · on-chain buys over time, from 100 USDC"
         case .xyz: "Oil, metals, stocks"
-        case .relay: "Solana ⇄ Base · Arbitrum · Polygon · Ethereum · Robinhood · Tempo · HyperEVM"
+        case .relay: "Solana ⇄ Base · Arbitrum · Polygon · Ethereum · Robinhood · Tempo · HyperEVM · Optimism"
         case .uniswap: "Robinhood · Base · Arbitrum"
         case .aave: "Base · Arbitrum · Polygon · Ethereum"
         case .morpho: "Base · Arbitrum · Ethereum"

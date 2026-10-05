@@ -17,6 +17,7 @@ public enum Relay {
         public static let polygon: UInt64 = 137
         public static let tempo: UInt64 = 4217
         public static let hyperevm: UInt64 = 999
+        public static let optimism: UInt64 = 10
     }
 
     /// Relay's depository on Hyperliquid (protocol.v2.depository in /chains, checked 2026-09-25).

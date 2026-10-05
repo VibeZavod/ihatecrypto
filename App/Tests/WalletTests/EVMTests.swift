@@ -201,7 +201,7 @@ import WalletCore
 
 @Test func signableNetworks() {
     // Polygon, Ethereum and Tempo join Base, Arbitrum and Robinhood Chain; nothing else is signed.
-    #expect(EVMRPC.signable == [1, 137, 42161, 8453, 4663, 4217, 999])
+    #expect(EVMRPC.signable == [1, 137, 42161, 8453, 4663, 4217, 999, 10])
     #expect(EVMRPC.polygon.chainId == 137 && EVMRPC.ethereum.chainId == 1)
 }
 

@@ -425,6 +425,7 @@ final class Workspace {
     /// USDC on Tempo, read with the other networks' tokens: what pays for services (MPP) and Tempo transfers.
     var tempoUSDC: Decimal? { heldUSDC("tempo", EVMRPC.tempoUSDC) }
     var hyperevmUSDC: Decimal? { heldUSDC("hyperevm", EVMRPC.hyperevmUSDC) }
+    var optimismUSDC: Decimal? { heldUSDC("optimism", EVMRPC.optimismUSDC) }
     /// Robinhood Chain at our EVM address: USDG, ETH for gas, the Stock Tokens bought through ihatecrypto (StocksUI.swift).
     /// A tuple isn't Equatable, so @Observable would redraw on every refresh's assignment: the setter skips an unchanged one.
     var robinhood: (usdg: Decimal, eth: Decimal, stocks: [StockHolding])? {
@@ -1322,7 +1323,7 @@ final class Workspace {
             if b.usdc > 0 { c.balances.append("Base \(Fmt.num(b.usdc)) USDC idle") }
         }
         // The other EVM networks too: without them «send from Ethereum» read as «there's nothing there».
-        for net in ["arbitrum", "ethereum", "polygon", "tempo", "hyperevm"] {
+        for net in ["arbitrum", "ethereum", "polygon", "tempo", "hyperevm", "optimism"] {
             if let u = usdc(on: net), u > 0 { c.balances.append("\(WalletCommand.placeName(net)) \(Fmt.num(u)) USDC idle") }
         }
         for p in lendingElsewhere where p.usdc > 0 { c.balances.append("\(p.place) \(Fmt.num(p.usdc)) USDC") }
@@ -1564,11 +1565,12 @@ final class Workspace {
         async let robinhood = evm ? await Holdings.evm("robinhood", address: me, native: false, skip: [EVMRPC.robinhoodUSDG]) : []
         async let tempo = evm ? await Holdings.evm("tempo", address: me, native: false, skip: []) : []
         async let hyperevm = evm ? await Holdings.evm("hyperevm", address: me, native: false, skip: []) : []
+        async let optimism = evm ? await Holdings.evm("optimism", address: me, native: true, skip: []) : []
         async let spot = evm ? await Holdings.hyperliquidSpot(user: me) : []
         async let near = nearAccount != nil ? await Holdings.near(account: nearAccount ?? "") : []
         // A network that didn't answer keeps its tokens from the last read instead of dropping out of the total.
         let read: [(chain: String, tokens: [Holding]?)] = [("base", await base), ("arbitrum", await arbitrum), ("ethereum", await ethereum),
-                                                           ("polygon", await polygon), ("robinhood", await robinhood), ("tempo", await tempo), ("hyperevm", await hyperevm), ("hyperliquid", await spot),
+                                                           ("polygon", await polygon), ("robinhood", await robinhood), ("tempo", await tempo), ("hyperevm", await hyperevm), ("optimism", await optimism), ("hyperliquid", await spot),
                                                            ("near", await near)]
         _ = await (lending, protocols)
         guard me == hlAddress, nearAccount == nearAddress else { return }   // another wallet since: its own read follows

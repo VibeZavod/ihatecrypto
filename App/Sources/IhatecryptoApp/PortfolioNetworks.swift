@@ -82,7 +82,7 @@ extension Workspace {
             lines = idle(robinhood?.usdg, "USDG") + gas(robinhood?.eth, "ETH")
         case .near:
             lines = near > 0 ? [NetworkLine(kind: .held, logo: "near", title: "NEAR", detail: "native NEAR", usd: nearUSD, amount: "\(Fmt.num(near, maxFraction: 4)) NEAR")] : []
-        case .ethereum, .polygon:
+        case .ethereum, .polygon, .optimism:
             lines = elsewhere
         // Their USDC and coins are tokens on the card (Holdings.tempo, Holdings.hyperevm).
         case .hyperliquid, .tempo, .hyperevm:
@@ -154,6 +154,7 @@ struct NetworkCard: View {
         case .near: (Color(light: 0xE6FBF3, dark: 0x0E2A20), Color(light: 0x05785A, dark: 0x00EC97), Color(hex: 0x00C08B))
         case .tempo: (Color(light: 0xF1F2F5, dark: 0x22252C), Color(light: 0x5F6470, dark: 0xC5CAD3), Color(hex: 0x8A8F98))
         case .hyperevm: (Color(light: 0xE9F6F2, dark: 0x10261F), Color(light: 0x0E4D3F, dark: 0x8FE3CC), Color(light: 0x0E4D3F, dark: 0x5FD3B7))
+        case .optimism: (Color(light: 0xFFEDEE, dark: 0x2E1416), Color(light: 0xC2020F, dark: 0xFF8A92), Color(hex: 0xFF0420))
         }
     }
 

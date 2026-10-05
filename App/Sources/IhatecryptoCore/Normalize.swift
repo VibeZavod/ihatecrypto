@@ -148,14 +148,14 @@ public enum ChatRouter {
       claim rewards   (what Merkl owes the wallet: Morpho's, Aave's and other protocols' rewards on Base, Arbitrum, Ethereum and Polygon)
       sweep rewards [over $N] [into <USDC|TICKER>]   (claim AND sell them for USDC on Solana, only once worth $N (≥ $5); «every hour: sweep rewards over $10 into USDC» = «продавай награды раз в час, когда наберётся $10»)
       rebalance USDC [max N% per protocol]   (moves money ALREADY in vaults to better rates: «переложи», «перекинь депозиты», «перебалансируй», «rebalance». «spread» / «разложи» / «распредели» is only for FREE USDC, on any network)
-    MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from <Base|Arbitrum|Polygon|Ethereum|Tempo|HyperEVM> to Solana
-      move N USDC from Solana to <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo|HyperEVM>   (arrives as USDG on Robinhood Chain; HyperEVM is Hyperliquid's EVM, chain 999, gas in HYPE — not the Hyperliquid trading account)
-      move N USDC from <Base|Arbitrum|Polygon|Ethereum|Robinhood|Tempo|HyperEVM> to <another of them|Hyperliquid>   (straight over Relay, no Solana in between; no N = all of it; NEAR Intents' 1Click or Circle's CCTP is taken instead when it lands more)
-      move N USDC from <Base|Arbitrum|Polygon|Ethereum> to <another of them> via CCTP   (Circle's burn and mint, only when asked by name: «через CCTP», «via Circle»)
+    MOVING MONEY: withdraw N USDC to Solana (from Hyperliquid) | move N USDC from <Base|Arbitrum|Optimism|Polygon|Ethereum|Tempo|HyperEVM> to Solana
+      move N USDC from Solana to <Base|Arbitrum|Optimism|Polygon|Ethereum|Robinhood|Tempo|HyperEVM>   (arrives as USDG on Robinhood Chain; HyperEVM is Hyperliquid's EVM, chain 999, gas in HYPE — not the Hyperliquid trading account)
+      move N USDC from <Base|Arbitrum|Optimism|Polygon|Ethereum|Robinhood|Tempo|HyperEVM> to <another of them|Hyperliquid>   (straight over Relay, no Solana in between; no N = all of it; NEAR Intents' 1Click or Circle's CCTP is taken instead when it lands more)
+      move N USDC from <Base|Arbitrum|Optimism|Polygon|Ethereum> to <another of them> via CCTP   (Circle's burn and mint, only when asked by name: «через CCTP», «via Circle»)
       borrow N USDC on Aave [on <base|arbitrum|polygon|ethereum>]   (a loan against what they supplied on Aave there; ihatecrypto keeps the health factor at 1.5 or more and the card says at which ETH price it would be liquidated; «займи 10 USDC в aave» = borrow 10 USDC on Aave on base)
       repay <N|all> USDC on Aave [on <network>]   (pays the loan back from the USDC there; «погаси долг на aave» = repay all USDC on Aave on base)
       supply N ETH as collateral on Aave [on <network>]   (ETH to borrow against; «положи 0.01 ETH в залог на aave» = supply 0.01 ETH as collateral on Aave on base)
-      add gas on <Base|Arbitrum|Polygon|Ethereum|Robinhood|HyperEVM> [for N USDC]   (that network's own coin for fees, over Relay; no N = $1. Gas is never a dead end:
+      add gas on <Base|Arbitrum|Optimism|Polygon|Ethereum|Robinhood|HyperEVM> [for N USDC]   (that network's own coin for fees, over Relay; no N = $1. Gas is never a dead end:
       a move short of it tops it up by itself, so «not enough ETH» is fixed with this form, never refused)
       send N USDC to <NAME from the address book> [on <network the user names — any, Ethereum mainnet too; they decide about the fee>] | top up (where to send money into ihatecrypto)
       send N NEAR to <NAME from the address book> | send all NEAR to <NAME> | close the NEAR account into <NAME>
@@ -205,7 +205,7 @@ public enum ChatRouter {
     Tempo (USDC for transfers and for paying services per request, MPP; fees come out of the USDC, no gas coin); \
     HyperEVM (Hyperliquid's EVM network, chain 999: USDC and HYPE for its gas — not the Hyperliquid trading account). \
     Ethereum's gas runs from cents to dollars by the hour (the gas lookup says today's); «spread»/«rebalance» weigh it by themselves.
-    How money moves: Solana ⇄ Base, Arbitrum, Polygon, Ethereum, Robinhood Chain, Tempo and HyperEVM over Relay, and between any two of those EVM \
+    How money moves: Solana ⇄ Base, Arbitrum, Optimism, Polygon, Ethereum, Robinhood Chain, Tempo and HyperEVM over Relay, and between any two of those EVM \
     networks straight over Relay too (Base → Robinhood Chain: one move, no stop on Solana), and from any of them straight to \
     Hyperliquid; Hyperliquid → Solana; a trade plan brings its USDC to Hyperliquid by itself — from Solana, or straight from an \
     EVM network that has it when Solana is short, gas there included — so never put a move before a trade; NEAR ⇄ Solana USDC through NEAR Intents (buy NEAR / sell NEAR); every vault is entered and left \

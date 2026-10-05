@@ -1507,7 +1507,7 @@ struct HoldingRow: View {
     let shown: Bool
     @State private var hover = false
     /// A network's logo by Holding.chain (the P/L board's rows).
-    static let chainLogos = ["base": "base", "arbitrum": "arb", "ethereum": "eth", "polygon": "pol", "robinhood": "robinhood", "hyperliquid": "hype", "near": "near", "tempo": "tempo", "hyperevm": "hyperevm"]
+    static let chainLogos = ["base": "base", "arbitrum": "arb", "ethereum": "eth", "polygon": "pol", "robinhood": "robinhood", "hyperliquid": "hype", "near": "near", "tempo": "tempo", "hyperevm": "hyperevm", "optimism": "op"]
 
     var body: some View {
         HStack(spacing: 8) {
