@@ -1,3 +1,4 @@
+import ExecutionCore
 import IhatecryptoCore
 import SwiftUI
 
@@ -96,6 +97,7 @@ struct NetworkCards: View {
         let present = Set([ws.solana != nil ? ModuleNetwork.solana : nil, ws.hl != nil ? .hyperliquid : nil].compactMap { $0 })
         let order = PortfolioSplit.networkCards(held, present: present)
         VStack(spacing: 10) {
+            if !ws.inTransit.isEmpty { InTransit(entries: ws.inTransit) }
             ForEach(order.cards, id: \.self) { NetworkCard(network: $0, usd: held[$0] ?? 0) }
             if !order.folded.isEmpty {
                 Button { withAnimation(.snappy) { unfolded.toggle() } } label: {
@@ -302,5 +304,38 @@ struct NetworkLineRow: View {
         } else {
             row
         }
+    }
+}
+
+/// Money between networks: each bridge order signed and not landed yet (Journal.inTransit), with how long it's been on
+/// its way; it leaves the list once its bridge says it settled or went back.
+struct InTransit: View {
+    let entries: [Journal.Entry]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Label("In transit", systemImage: "arrow.triangle.swap").font(.ui(12, .semibold))
+            ForEach(entries, id: \.id) { e in
+                HStack(spacing: 8) {
+                    TokenLogo(name: e.chain == "1click" ? "near" : "relay", size: 18)
+                    VStack(alignment: .leading, spacing: 0) {
+                        Text(Self.what(e.note)).font(.ui(11.5)).lineLimit(1)
+                        Text("\(e.chain == "1click" ? "NEAR Intents" : "Relay") · on its way \(Self.since(e.at))").font(.ui(9.5)).foregroundStyle(.secondary)
+                    }
+                }
+                .help("Signed at \(Fmt.date(e.at)); it shows here until the bridge says it landed or went back. Order \(e.id)")
+            }
+        }
+        .padding(.horizontal, 11).padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent.opacity(0.5)))
+    }
+
+    /// The journal's note without its transaction: «Base USDC→Solana 5, tx 0x…» → «Base USDC→Solana 5».
+    static func what(_ note: String) -> String { note.components(separatedBy: ", tx ").first ?? note }
+
+    static func since(_ at: Date, now: Date = Date()) -> String {
+        let minutes = Int(now.timeIntervalSince(at) / 60)
+        return minutes < 1 ? "for under a minute" : minutes < 60 ? "for \(minutes) min" : "for \(minutes / 60) h \(minutes % 60) min"
     }
 }

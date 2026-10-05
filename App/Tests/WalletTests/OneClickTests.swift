@@ -93,3 +93,31 @@ private struct OneClickQuoteOnly: TradeSigner {
     #expect(Executor.oneClickEdge(200) == Decimal(string: "0.10")!)
     #expect(Executor.oneClickEdge(1000) == Decimal(string: "0.5")!)
 }
+
+/// Money in transit: bridge orders (Relay's, 1Click's) signed and not settled, within a day, newest first; swaps and
+/// settled or failed orders are not.
+@Test func journalKnowsWhatIsInTransit() throws {
+    let journal = Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("transit-\(UUID().uuidString).jsonl"))
+    let now = Date()
+    try journal.append(.init(at: now.addingTimeInterval(-600), chain: "relay", id: "r1", kind: .signed, note: "Base USDC→Solana 5, tx 0xabc"))
+    try journal.append(.init(at: now.addingTimeInterval(-500), chain: "relay", id: "r2", kind: .signed, note: "Arbitrum USDC→Base 3"))
+    try journal.append(.init(at: now.addingTimeInterval(-400), chain: "relay", id: "r2", kind: .settled, note: "success"))
+    try journal.append(.init(at: now.addingTimeInterval(-300), chain: "1click", id: "dep", kind: .signed, note: "USDC→NEAR 1.5 from Solana"))
+    try journal.append(.init(at: now.addingTimeInterval(-200), chain: "base", id: "0xswap", kind: .signed, note: "Swap"))
+    try journal.append(.init(at: now.addingTimeInterval(-90_000), chain: "relay", id: "old", kind: .signed, note: "two days ago"))
+    #expect(try journal.inTransit(now: now).map(\.id) == ["dep", "r1"])
+}
+
+/// Live (IHATECRYPTO_NET=1, a scratch journal): an order the app never heard the end of — a Relay swap that settled on
+/// 2026-10-04 — is asked of Relay, its end written, and it leaves «in transit»; a fresh one stays.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func transitResolvesAnOrderThatLandedMeanwhile() async throws {
+    let journal = Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("resolve-\(UUID().uuidString).jsonl"))
+    let now = Date()
+    try journal.append(.init(at: now.addingTimeInterval(-3_600), chain: "relay", id: "0x1791142867bd8d3585900c66c5bb90ed01078e0281434af0e9c15e3dee99ef30", kind: .signed, note: "Robinhood USDG→AI"))
+    try journal.append(.init(at: now.addingTimeInterval(-30), chain: "relay", id: "0xfresh", kind: .signed, note: "Base USDC→Solana 1"))
+    let e = Executor(wallet: TradeWallet(solana: "", evm: ""), signer: OneClickQuoteOnly(), journal: journal) { _ in }
+    let left = await e.resolveTransit(now: now)
+    #expect(left.map(\.id) == ["0xfresh"])
+    #expect(try journal.entries().last?.kind == .settled)
+}

@@ -414,6 +414,8 @@ final class Workspace {
     var base: (usdc: Decimal, aave: Decimal, morpho: Decimal, eth: Decimal)?
     /// USDC on Arbitrum at our EVM address (money in transit or left from a transfer).
     var arbitrumUSDC: Decimal?
+    /// Bridge orders on their way (Executor.resolveTransit): shown above the network cards until they land.
+    var inTransit: [Journal.Entry] = []
     /// USDC on Tempo, read with the other networks' tokens: what pays for services (MPP) and Tempo transfers.
     var tempoUSDC: Decimal? { heldUSDC("tempo", EVMRPC.tempoUSDC) }
     /// Robinhood Chain at our EVM address: USDG, ETH for gas, the Stock Tokens bought through ihatecrypto (StocksUI.swift).
@@ -1525,6 +1527,12 @@ final class Workspace {
         _ = await (m, s, h, b, r, t)
         // Not waited for: a spammed address takes many pages, and the balances above shouldn't sit behind it.
         if !holdingsLoading { Task { await loadHoldings() } }
+        if let w = previewWallet {
+            Task {
+                let open = await executor(w).resolveTransit()
+                if open != inTransit { inTransit = open }
+            }
+        }
         await refreshQuote()
         guard same() else { return }
         updatedAt = Date()
