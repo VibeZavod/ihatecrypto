@@ -456,7 +456,7 @@ extension Executor {
     }
 
     /// What each of 1Click's states means, said on the running card as it changes.
-    static let oneClickWords = [
+    public static let oneClickWords = [
         "PENDING_DEPOSIT": "waiting for the deposit", "KNOWN_DEPOSIT_TX": "deposit sent, waiting for it to land",
         "INCOMPLETE_DEPOSIT": "the deposit came short: 1Click refunds it", "PROCESSING": "deposit received, swapping",
         "SUCCESS": "done", "REFUNDED": "refunded", "FAILED": "failed",

@@ -126,6 +126,32 @@ extension Executor {
         return "Sent \(Fmt.num(Decimal(string: s.amountOutFormatted ?? "") ?? amount, maxFraction: 9)) \(symbol.uppercased()) to «\(label)» for \(Fmt.num(cost)) USDC from \(from), through NEAR Intents, in \(Int(Date().timeIntervalSince(started))) s."
     }
 
+    /// A deposit address on a network ihatecrypto has no wallet on — Sui, Bitcoin, TRON… — for about `amount` of `symbol`
+    /// sent there from an exchange or another wallet: 1Click swaps what arrives into USDC on Solana, to this wallet.
+    /// Nothing is signed. The address is 1Click's, checked to be bound (DepositGuard) to our Solana address, the assets and
+    /// the amount; any deposit from the quote's minimum is taken (FLEX_INPUT) for an hour. A refund goes to the wallet's
+    /// NEAR Intents account (`nearAccount`, its own NEAR key) — ihatecrypto has no address of the user's there.
+    // ponytail: getting a refund out of NEAR Intents isn't built; it waits in that account, under the wallet's NEAR key.
+    public func receiveAcross(_ symbol: String, amount: Decimal, network: String, nearAccount: String)
+        async throws -> (deposit: String, quote: OneClick.Quote, minimum: Decimal) {
+        guard let asset = OneClick.Asset.across[network]?.first(where: { $0.symbol == symbol.uppercased() }) else {
+            throw ExecutionError("NEAR Intents doesn't take \(symbol.uppercased()) on \(AddressCheck.Network(rawValue: network)?.title ?? network).")
+        }
+        guard nearAccount.wholeMatch(of: /[0-9a-f]{64}/) != nil else { throw ExecutionError("A refund needs the wallet's NEAR account, and it has none.") }
+        let units = (amount * Decimal(sign: .plus, exponent: asset.decimals, significand: 1)).whole
+        guard units > 0 else { throw ExecutionError("\(Fmt.num(amount)) \(asset.symbol) is less than its smallest unit.") }
+        let quote = try await OneClick.quote(dry: false, origin: asset.id, destination: OneClick.Asset.solanaUSDC, amount: "\(units)",
+                                             refundTo: nearAccount, recipient: wallet.solana, flexible: true, refundToIntents: true, minutes: 60)
+        guard let deposit = quote.depositAddress else { throw ExecutionError("1Click gave no deposit address.") }
+        let binding = DepositGuard.check(bound: try await OneClick.boundRequest(depositAddress: deposit), recipient: wallet.solana, refundTo: nearAccount,
+                                         origin: asset.id, destination: OneClick.Asset.solanaUSDC, amount: "\(units)")
+        guard binding.ok else { throw ExecutionError("The guard refused 1Click's address: " + binding.problems.joined(separator: " ")) }
+        try journal.append(.init(chain: "1click", id: deposit, kind: .signed,
+                                 note: "Receive: \(AddressCheck.Network(rawValue: network)?.title ?? network) \(asset.symbol)→Solana USDC \(Fmt.num(amount))"))
+        let minimum = (Decimal(string: quote.minAmountIn ?? "") ?? units) / Decimal(sign: .plus, exponent: asset.decimals, significand: 1)
+        return (deposit, quote, minimum)
+    }
+
     /// What 1Click must land beyond Relay to be taken: 10 cents, or 0.05% of a bigger move.
     static func oneClickEdge(_ usdc: Decimal) -> Decimal { max(Decimal(string: "0.10")!, usdc * Decimal(string: "0.0005")!) }
 }

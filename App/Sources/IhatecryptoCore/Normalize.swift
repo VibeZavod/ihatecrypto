@@ -157,6 +157,7 @@ public enum ChatRouter {
       send N SOL to <NAME from the address book>
       send <N|all> <TICKER, 0xCONTRACT or MINT> on <solana|base|arbitrum|polygon|ethereum|robinhood|tempo> to <NAME from the address book>
       send <N> <BTC|ZEC|TRX|USDT|XRP|DOGE|SUI|USDC> [on <bitcoin|zcash|tron|xrp|dogecoin|sui>] to <NAME from the address book>   (a coin on a network ihatecrypto has no wallet on, bought with USDC on the way through NEAR Intents and paid to that saved address — an exchange's deposit address; «отправь 0.001 BTC на Binance» = send 0.001 BTC to Binance, «20 USDT в троне на Binance» = send 20 USDT on tron to Binance; the address is saved first: «save bc1q… as Binance BTC», «save T… as Binance USDT on tron», an XRP exchange address with its destination tag as the memo)
+      receive <N> <SUI|USDC|BTC|ZEC|USDT|TRX|XRP|DOGE> from <sui|bitcoin|zcash|tron|xrp|dogecoin>   (money coming in from a network ihatecrypto has no wallet on: NEAR Intents opens a deposit address there for an hour and what arrives lands as USDC on Solana; «получи 50 USDC с Sui» = receive 50 USDC from sui, «хочу завести 0.01 BTC с биткоина» = receive 0.01 BTC from bitcoin)
         (any token the wallet holds, AS IT IS, on that same network — no swap, no bridge: memecoins, stock tokens (AI, TSLA…), Morpho's,
         Aave's and Jupiter Lend's shares (gtUSDCp, aBasUSDC, jlUSDC), Token-2022 tokens; ETH or POL itself needs N. «переведи все RAY на Bybit»
         = send all RAY on solana to Bybit; «скинь все токены на новый кошелёк» is one such command per token, joined by " then ")

@@ -599,3 +599,18 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(AddressBookCommand.parse("save 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC as BTC vault on base")
             == .save(address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", name: "BTC vault", network: "base"))
 }
+
+@Test func receivingFromNetworksWithoutAWalletIsParsed() {
+    #expect(WalletCommand.parse("receive 50 USDC from Sui") == .receiveAcross(network: "sui", token: "USDC", amount: 50))
+    #expect(WalletCommand.parse("получи 0.01 BTC с биткоина") == .receiveAcross(network: "bitcoin", token: "BTC", amount: Decimal(string: "0.01")!))
+    #expect(WalletCommand.parse("top up 20 from tron") == .receiveAcross(network: "tron", token: "USDT", amount: 20))
+    #expect(WalletCommand.parse("receive SUI from sui") == .receiveAcross(network: "sui", token: "SUI", amount: nil))
+    #expect(WalletCommand.parse("receive SUI from sui")?.amountQuestion != nil)
+    // Our own networks keep their forms.
+    #expect(WalletCommand.parse("bring 5 USDC from base to solana") != .receiveAcross(network: "base", token: "USDC", amount: 5))
+    #expect(WalletCommand.parse("how do I top up") == .receive)
+    for c in [WalletCommand.receiveAcross(network: "sui", token: "USDC", amount: 50), .receiveAcross(network: "xrp", token: "XRP", amount: 30),
+              .receiveAcross(network: "dogecoin", token: "DOGE", amount: 100)] {
+        #expect(WalletCommand.parse(c.summary) == c, "\(c.summary)")
+    }
+}

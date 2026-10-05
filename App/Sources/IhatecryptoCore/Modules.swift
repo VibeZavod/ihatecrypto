@@ -253,7 +253,7 @@ public struct Modules: Equatable, Sendable {
         case .crossSwap(_, let from, _, let to, _):
             return isOn(.swaps) ? r(.relay, via: [from, to].compactMap(ModuleNetwork.init(place:)))
                 : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
-        case .buyNear, .sellNear: return r(.oneClick)
+        case .buyNear, .sellNear, .receiveAcross: return r(.oneClick)
         case .sendNear, .closeNear: return refusal(network: .near, ru: ru)
         case .sendSol: return refusal(network: .solana, ru: ru)
         case .sendToken(_, _, _, let net): return net.flatMap(ModuleNetwork.init(place:)).flatMap { refusal(network: $0, ru: ru) }

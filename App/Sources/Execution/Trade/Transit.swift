@@ -15,8 +15,10 @@ extension Executor {
             var end: (kind: Journal.Entry.Kind, status: String)?
             if entry.chain == "relay", let s = try? await Relay.status(requestId: entry.id).status {
                 if s == "success" { end = (.settled, s) } else if ["refund", "failure"].contains(s) { end = (.failed, s) }
-            } else if entry.chain == "1click", let s = try? await OneClick.status(depositAddress: entry.id), s.isFinal {
-                end = (s.status == "SUCCESS" ? .settled : .failed, s.status)
+            } else if entry.chain == "1click", let s = try? await OneClick.status(depositAddress: entry.id) {
+                if s.isFinal { end = (s.status == "SUCCESS" ? .settled : .failed, s.status) }
+                // A receiving address nobody sent to by its hour's deadline is over.
+                else if s.status == "PENDING_DEPOSIT", entry.note.hasPrefix("Receive:"), now.timeIntervalSince(entry.at) > 65 * 60 { end = (.expired, "nothing came by the deadline") }
             }
             if let end { try? journal.append(.init(chain: entry.chain, id: entry.id, kind: end.kind, note: "\(end.status) (seen later)")) }
             else { left.append(entry) }

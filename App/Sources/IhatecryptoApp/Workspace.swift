@@ -189,6 +189,8 @@ final class Workspace {
     var showReceive = false
     /// Bumped after a revoke: the approvals board reads them again.
     var approvalsChanged = 0
+    /// «receive 50 USDC from Sui»: 1Click's deposit address there, on the canvas (ReceiveAcrossBoard).
+    var acrossDeposit: AcrossDeposit?
     /// A market's price chart on the canvas (Modules.swift).
     var chart: ChartState?
     /// The day's biggest movers on the canvas.

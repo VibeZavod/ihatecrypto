@@ -498,6 +498,7 @@ extension Workspace {
             case .swapOn(let place, let from, let to, let amount):
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't swap on \(place).") }
                 reply(try await e.swapOn(net, from: from, to: to, amount: amount), note: "\(net.name) · Uniswap")
+            case .receiveAcross: break   // no card: the deposit address goes on the canvas (prepareReceiveAcross)
             case .crossSwap(let a, let from, let b, let to, let amount):
                 reply(try await e.crossSwap(a, on: from, for: b, on: to, amount: amount),
                       note: "Relay · \(WalletCommand.placeName(from)) → \(WalletCommand.placeName(to))")

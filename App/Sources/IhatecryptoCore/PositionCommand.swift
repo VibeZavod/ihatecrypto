@@ -1,4 +1,5 @@
 import Foundation
+import WalletCore
 
 /// What the user can say about a position that is already open («стоп в безубыток», «закрой половину»).
 /// Deterministic like the plan parser; only checked while a position or order exists.
@@ -181,6 +182,10 @@ public enum WalletCommand: Equatable, Sendable {
     /// A token on one network for a token on another through Relay, one signature: «swap 0.1 SOL on Solana for ETH on
     /// Arbitrum». Places are «solana» or an EVM network's key; nil amount = all of a token.
     case crossSwap(from: String, on: String, to: String, at: String, amount: Decimal?)
+    /// Money coming in from a network ihatecrypto has no wallet on — «receive 50 USDC from Sui», «получи 0.01 BTC с
+    /// биткоина»: 1Click's deposit address there, what arrives swapped into USDC on Solana. `network` is the address
+    /// book's («sui», «bitcoin», «tron», «xrp», «dogecoin», «zcash»); nil amount = ask.
+    case receiveAcross(network: String, token: String, amount: Decimal?)
     /// Sell a Stock Token for USDG on Robinhood Chain; nil = all of it.
     case sellStock(symbol: String, amount: Decimal?)
     /// USDG on Robinhood Chain back to Solana as USDC; nil = everything.
@@ -397,6 +402,15 @@ public enum WalletCommand: Equatable, Sendable {
         }
         if !fromSolana, q.contains(/robinhood|робин[гх]уд/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .robinhoodToSolana(amount)
+        }
+        // From a network ihatecrypto has no wallet on, through 1Click: «receive 50 USDC from Sui», «получи 0.01 BTC с
+        // биткоина», «top up 20 USDT from tron». The coin left unsaid is the network's own (USDT on TRON).
+        if let m = text.firstMatch(of: /(?i)\b(?:receive|get|bring|deposit|top\s*up|получи\w*|прими\w*|пополн\w*|заведи|завести)\b(?:\s+(?:me|мне))?(?:\s+(\d+(?:[.,]\d+)?))?(?:\s+(btc|zec|trx|usdt|xrp|doge|sui|usdc))?\s+(?:from|с|со|из)\s+(?:the\s+)?(sui|суи|bitcoin|биткоин\w*|btc|zcash|zec|tron|трон\w*|xrp|ripple|рипл\w*|dogecoin|doge|додж\w*)\b/) {
+            let w = String(m.3).lowercased()
+            let network = w.hasPrefix("su") || w.hasPrefix("су") ? "sui" : w.hasPrefix("bit") || w.hasPrefix("бит") || w == "btc" ? "bitcoin"
+                : w.hasPrefix("z") ? "zcash" : w.hasPrefix("tr") || w.hasPrefix("тр") ? "tron" : w.hasPrefix("do") || w.hasPrefix("до") ? "dogecoin" : "xrp"
+            let token = m.2.map { String($0).uppercased() } ?? ["sui": "SUI", "bitcoin": "BTC", "zcash": "ZEC", "tron": "USDT", "xrp": "XRP", "dogecoin": "DOGE"][network]!
+            return .receiveAcross(network: network, token: token, amount: m.1.flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) })
         }
         // Topping ihatecrypto up from outside: a deposit with no place to put it, or asking for our address.
         let place = q.contains(/хранилищ|vault|jupiter|jupyter|джупитер|юпитер|kamino|камино|aave|ааве|morpho|морфо|hlp|хлп|\blend|лендинг|стейк|stake/)
@@ -658,6 +672,7 @@ extension WalletCommand {
         case .buyOn(let place, let t, nil, _): "For how many USDC should I buy \(t) on \(Self.placeName(place))?"
         case .stake(nil): "How much SOL to stake?"
         case .solanaTo(let place, nil): "How many USDC should I move from Solana to \(Self.placeName(place))?"
+        case .receiveAcross(let net, let t, nil): "How much \(t) will you send from \(AddressCheck.Network(rawValue: net)?.title ?? net)?"
         default: nil
         }
     }
@@ -685,6 +700,7 @@ extension WalletCommand {
         case .buyOn(let place, let t, _, let from): .buyOn(place, token: t, usdc: amount, from: from)
         case .stake: .stake(amount)
         case .solanaTo(let place, _): .solanaTo(place, amount)
+        case .receiveAcross(let net, let t, _): .receiveAcross(network: net, token: t, amount: amount)
         default: self
         }
     }
@@ -803,6 +819,8 @@ extension WalletCommand {
         case .swapOn(let place, let a, let b, let x):
             func name(_ t: String) -> String { t.hasPrefix("0x") ? t : t.uppercased() }
             return "swap \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(name(a)) for \(name(b)) on \(Self.placeName(place))"
+        case .receiveAcross(let net, let t, let x):
+            return "receive \(x.map { NSDecimalNumber(decimal: $0).stringValue + " " } ?? "")\(t) from \(AddressCheck.Network(rawValue: net)?.title ?? net) as USDC on Solana"
         case .crossSwap(let a, let from, let b, let to, let x):
             func name(_ t: String) -> String { t.hasPrefix("0x") ? t : t.uppercased() }
             return "swap \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(name(a)) on \(Self.placeName(from)) for \(name(b)) on \(Self.placeName(to))"

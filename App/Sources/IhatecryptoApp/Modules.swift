@@ -285,7 +285,7 @@ struct PlaceDetailBoard: View {
     var body: some View {
         // A board per token: another token opened here starts clean, without the last one's badge, market or chart.
         if let token = TokenBoard.parse(place) { TokenBoard(chain: token.chain, address: token.address).id(place) }
-        else if place == "approvals" { ApprovalsBoard() } else { board }
+        else if place == "approvals" { ApprovalsBoard() } else if place == "receive-across" { ReceiveAcrossBoard() } else { board }
     }
 
     private var board: some View {

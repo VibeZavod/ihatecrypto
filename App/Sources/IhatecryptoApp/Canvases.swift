@@ -2289,6 +2289,8 @@ extension Workspace {
             reply(say(question, "Сколько? Напиши число.") + amountHint(command), note: note)
             return
         }
+        // Nothing to sign: 1Click's deposit address goes on the canvas at once.
+        if case .receiveAcross(let net, let token, let amount?) = command { await prepareReceiveAcross(net, token, amount, note: note); return }
         // Jupiter's DCA: the swaps when none were named, and Jupiter's own minimums before a card that would fail.
         if case .jupiterDCA(let a, let u?, let o, let e) = command {
             let orders = o ?? WalletCommand.jupiterDCAOrders(for: u)

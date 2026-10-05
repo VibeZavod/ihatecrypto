@@ -89,13 +89,16 @@ public enum OneClick {
     /// `dry: false` issues a deposit address. `refundTo` and `recipient` must be the user's own addresses then.
     public static func quote(
         dry: Bool, exactOutput: Bool = false, origin: String, destination: String, amount: String,
-        refundTo: String, recipient: String, slippageBps: Int = 100
+        refundTo: String, recipient: String, slippageBps: Int = 100,
+        // A deposit someone else sends (`receiveAcross`): any amount from the quote's minimum, a longer deadline, and the
+        // refund to a NEAR Intents account when there's no address of ours on the origin network.
+        flexible: Bool = false, refundToIntents: Bool = false, minutes: Double = 30
     ) async throws -> Quote {
-        let deadline = ISO8601DateFormatter().string(from: Date().addingTimeInterval(30 * 60))
+        let deadline = ISO8601DateFormatter().string(from: Date().addingTimeInterval(minutes * 60))
         let data = try await post("/quote", [
-            "dry": dry, "swapType": exactOutput ? "EXACT_OUTPUT" : "EXACT_INPUT", "slippageTolerance": slippageBps,
+            "dry": dry, "swapType": flexible ? "FLEX_INPUT" : exactOutput ? "EXACT_OUTPUT" : "EXACT_INPUT", "slippageTolerance": slippageBps,
             "originAsset": origin, "depositType": "ORIGIN_CHAIN", "destinationAsset": destination, "amount": amount,
-            "refundTo": refundTo, "refundType": "ORIGIN_CHAIN", "recipient": recipient, "recipientType": "DESTINATION_CHAIN",
+            "refundTo": refundTo, "refundType": refundToIntents ? "INTENTS" : "ORIGIN_CHAIN", "recipient": recipient, "recipientType": "DESTINATION_CHAIN",
             "deadline": deadline, "quoteWaitingTimeMs": 3000,
         ])
         guard let q = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["quote"] as? [String: Any],
