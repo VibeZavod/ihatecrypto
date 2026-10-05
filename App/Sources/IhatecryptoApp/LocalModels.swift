@@ -164,7 +164,46 @@ enum OllamaInstaller {
     }
 }
 
+/// Claude Code, for the Claude-subscription option: Anthropic's own installer (claude.ai/install.sh, served from
+/// downloads.claude.ai; into ~/.local/bin, no admin rights), then its sign-in, which runs in a terminal. Checked 2026-10-06.
+enum ClaudeCodeInstaller {
+    static func install(step: @escaping @MainActor (String) -> Void) async throws {
+        await step("Downloading Claude Code's installer…")
+        let (script, response) = try await URLSession.shared.download(from: URL(string: "https://claude.ai/install.sh")!)
+        defer { try? FileManager.default.removeItem(at: script) }
+        // Only Anthropic's: the redirect must stay on claude.ai's hosts.
+        guard let host = response.url?.host, host == "claude.ai" || host.hasSuffix(".claude.ai") else {
+            throw LLMError("The installer didn't come from claude.ai — nothing was installed.")
+        }
+        await step("Installing Claude Code…")
+        try await OllamaInstaller.run("/bin/bash", [script.path, "stable"])
+    }
+
+    /// Opens Terminal on `claude auth login`: the browser sign-in Anthropic's CLI runs itself.
+    static func signIn(_ path: String) throws {
+        let command = FileManager.default.temporaryDirectory.appending(path: "claude-sign-in.command")
+        try "#!/bin/zsh\n'\(path)' auth login\necho\necho 'Done — go back to ihatecrypto.'\n".write(to: command, atomically: true, encoding: .utf8)
+        try FileManager.default.setAttributes([.posixPermissions: 0o755], ofItemAtPath: command.path)
+        NSWorkspace.shared.open(command)
+    }
+}
+
 extension Workspace {
+    /// Installs Claude Code for the Claude-subscription option, then connects to it; the chat says how it went.
+    func installClaudeCode() async {
+        guard claudeCodeInstall == nil else { return }
+        claudeCodeInstall = "…"
+        defer { claudeCodeInstall = nil }
+        do {
+            try await ClaudeCodeInstaller.install { [weak self] text in self?.claudeCodeInstall = text }
+            if provider.existingLogin() != nil { useExistingLogin() }
+            reply(say("Claude Code is installed. Sign in to your Claude account with «Sign in in Terminal» in Settings › Models.",
+                      "Claude Code установлен. Войди в аккаунт Claude кнопкой «Sign in in Terminal» в Settings › Models."))
+        } catch {
+            reply(say("Claude Code wasn't installed: ", "Claude Code не установился: ") + error.localizedDescription)
+        }
+    }
+
     /// Installs or updates Ollama to its newest release from the bar, the menu or the onboarding; the chat says how it went.
     func installOllama() async {
         guard ollamaInstall == nil else { return }

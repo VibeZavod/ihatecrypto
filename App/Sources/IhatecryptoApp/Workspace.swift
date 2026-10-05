@@ -359,6 +359,8 @@ final class Workspace {
     /// Ollama's newest release, read once a launch; and what installing it is doing right now (nil = not running).
     var ollamaLatest: String?
     var ollamaInstall: String?
+    /// What installing Claude Code is doing now; nil when it isn't.
+    var claudeCodeInstall: String?
     /// Ollama was installed or updated this launch: Homebrew's may stay a patch behind GitHub's, and asking again would loop.
     @ObservationIgnored var ollamaUpdated = false
     /// The recurring buy the two ways were offered for: picking «in the app» brings it back and it goes ahead.

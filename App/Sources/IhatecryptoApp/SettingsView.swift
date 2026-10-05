@@ -875,6 +875,14 @@ struct ModelSection: View {
             if let label = info.existingLoginLabel, ws.provider.existingLogin() != nil {
                 Button(label) { ws.useExistingLogin() }
             }
+            // Claude Code: installed from here when it's missing, signed in from a terminal once it's there.
+            if info.id == "claude-code" {
+                if case .external(let path)? = ws.provider.existingLogin() {
+                    Button("Sign in in Terminal") { try? ClaudeCodeInstaller.signIn(path) }
+                } else {
+                    Button(ws.claudeCodeInstall ?? "Install Claude Code") { Task { await ws.installClaudeCode() } }.disabled(ws.claudeCodeInstall != nil)
+                }
+            }
             if let label = info.signInLabel {
                 Button(label) { Task { await ws.signIn() } }.disabled(ws.llmBusy)
             }
