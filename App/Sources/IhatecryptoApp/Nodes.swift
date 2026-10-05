@@ -9,7 +9,8 @@ nonisolated enum NodeNetwork: String, CaseIterable, Identifiable {
 
     var id: String { rawValue }
     var title: String { self == .robinhood ? "Robinhood" : rawValue.capitalized }
-    var logo: String { self == .solana ? "sol" : rawValue }
+    /// The bundle's image names: sol.png, arb.png, eth.svg, pol.png.
+    var logo: String { [.solana: "sol", .arbitrum: "arb", .ethereum: "eth", .polygon: "pol"][self] ?? rawValue }
     var chainId: UInt64? { [.base: 8453, .arbitrum: 42161, .ethereum: 1, .polygon: 137, .robinhood: 4663][self] }
 
     /// The node in use now, when it's the user's own.
