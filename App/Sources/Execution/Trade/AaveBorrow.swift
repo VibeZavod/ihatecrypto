@@ -43,6 +43,17 @@ extension Executor {
         return AaveAccount(collateral: usd(0), debt: usd(1), available: usd(2), threshold: (ABI.decimal(in: d, word: 3) ?? 0) / 10_000)
     }
 
+    /// The account once its debt shows a change from `before`: a node a block behind answered the old one right after the
+    /// receipt («Paid back 0 USDC… debt $1.00» for a repay that had gone through). Ten seconds at most.
+    func aaveAccount(_ m: AaveV3.Market, changedFrom before: AaveAccount) async throws -> AaveAccount {
+        var now = try await aaveAccount(m)
+        for _ in 0..<10 where now.debt == before.debt {
+            try await Task.sleep(for: .seconds(1))
+            now = try await aaveAccount(m)
+        }
+        return now
+    }
+
     /// ETH supplied there, by its aToken, and its price on Aave's oracle; nil without any.
     func aaveETHCollateral(_ m: AaveV3.Market) async throws -> (amount: Decimal, price: Decimal)? {
         guard let weth = UniswapV2.on(m.rpc.chainId)?.weth,
@@ -85,9 +96,9 @@ extension Executor {
         let before = try await m.rpc.tokenBalance(m.usdc, owner: wallet.evm)
         let hash = try await sendEVM(m.rpc, to: m.pool, data: try AaveV3.borrow(asset: m.usdc, amount: units, onBehalfOf: wallet.evm),
                                      note: "Borrow \(Fmt.num(usdc)) USDC on Aave on \(m.chainName)")
+        let now = try await aaveAccount(m, changedFrom: p.now)
         let got = (Decimal(try await m.rpc.tokenBalance(m.usdc, owner: wallet.evm)) - Decimal(before)) / 1_000_000
-        let now = try await aaveAccount(m)
-        return "Borrowed \(Fmt.num(got)) USDC on Aave on \(m.chainName): health factor \(now.health.map { Fmt.num($0, maxFraction: 2) } ?? "∞")"
+        return "Borrowed \(Fmt.num(max(got, 0) > 0 ? got : usdc)) USDC on Aave on \(m.chainName): health factor \(now.health.map { Fmt.num($0, maxFraction: 2) } ?? "∞")"
             + (p.liquidation.map { ", liquidation if ETH ≤ \(Fmt.usd($0))" } ?? "") + ", debt \(Fmt.usd(now.debt)). Say “repay all USDC on Aave” to pay it back. "
             + "\(EVMNetwork.of(chainId: m.rpc.chainId)?.explorer ?? "")/tx/\(hash)"
     }
@@ -102,7 +113,7 @@ extension Executor {
         guard owed > 0 else { throw ExecutionError("No USDC debt on Aave on \(m.chainName).") }
         let units = usdc.map { min(($0 * 1_000_000).rounded(0, .down), owed) } ?? owed
         let approve = usdc == nil ? (owed + owed / 1000 + 10).whole : units
-        let held = Decimal(try await m.rpc.tokenBalance(m.usdc, owner: wallet.evm))
+        let held = Decimal(try await m.rpc.tokenBalance(m.usdc, owner: wallet.evm)), was = try await aaveAccount(m)
         guard held >= approve else {
             throw ExecutionError("\(Fmt.num(held / 1_000_000)) USDC on \(m.chainName); paying back \(Fmt.num(approve / 1_000_000)) needs it there first. Nothing was signed.")
         }
@@ -110,8 +121,9 @@ extension Executor {
                                             to: m.pool, data: try AaveV3.repay(asset: m.usdc, amount: usdc == nil ? nil : NSDecimalNumber(decimal: units).uint64Value,
                                                                                 onBehalfOf: wallet.evm),
                                             note: "Repay \(usdc == nil ? "all the" : Fmt.num(units / 1_000_000)) USDC debt on Aave on \(m.chainName)")
-        let now = try await aaveAccount(m)
-        return "Paid back \(Fmt.num((held - Decimal(try await m.rpc.tokenBalance(m.usdc, owner: wallet.evm))) / 1_000_000)) USDC on Aave on \(m.chainName): "
+        let now = try await aaveAccount(m, changedFrom: was)
+        // Aave counts the debt in dollars on its oracle (USDC ≈ $0.9999): said as dollars.
+        return "Paid back \(Fmt.usd(max(was.debt - now.debt, 0))) of the USDC debt on Aave on \(m.chainName): "
             + (now.debt > 0 ? "debt \(Fmt.usd(now.debt)), health factor \(now.health.map { Fmt.num($0, maxFraction: 2) } ?? "∞")." : "no debt left.")
             + " \(EVMNetwork.of(chainId: m.rpc.chainId)?.explorer ?? "")/tx/\(hash)"
     }
