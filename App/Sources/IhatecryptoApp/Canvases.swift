@@ -1164,13 +1164,19 @@ extension Workspace {
         case .buyOn(let place, let token, let usdc?, let from): swapRoute(place, token, usdc: usdc, sell: nil, from: from)
         case .sellOn(let place, let token, let amount, let keep): swapRoute(place, token, usdc: nil, sell: amount, keep: keep)
         case .swapOn(let place, let from, let to, let amount): pairRoute(place, from, to, amount)
+        case .crossSwap(let a, let from, let b, let to, let amount): crossRoute(a, from, b, to, amount)
         case .sweepDust(let under): dustRoute(under)
+        case .revokeApproval(let place, let token, let spender, let permit2): revokeRoute(place, token, spender, permit2)
+        case .hlSpotBuy(let symbol, let usdc?): hlSpotRoute(symbol, usdc: usdc, sell: nil)
+        case .hlSpotSell(let symbol, let amount): hlSpotRoute(symbol, usdc: nil, sell: amount)
         case .sellNear(let asked, let to): sellNearRoute(asked, to: to)
         case .buyNear(let usdc?): buyNearRoute(usdc)
         case .sendNear(let name, let asked): nearOutRoute(to: name, amount: asked, close: false)
         case .closeNear(let name): nearOutRoute(to: name, amount: nil, close: true)
         case .sendSol(let name, let amount): solOutRoute(to: name, amount: amount)
-        case .sendToken(let name, let token, let amount, let network): tokenOutRoute(to: name, token: token, amount: amount, network: network)
+        case .sendToken(let name, let token, let amount, let network):
+            if let r = try? acrossRecipient(name, token: token, network: network) { acrossRoute(command, r, amount) }
+            else { tokenOutRoute(to: name, token: token, amount: amount, network: network) }
         case .pay: payRoute(command)
         case .bridge(let from, let to, let amount): bridgeRoute(from, to, amount)
         case .gas(let place, let usd): gasRoute(place, usd ?? 1)
@@ -1652,6 +1658,34 @@ extension Workspace {
         ])
     }
 
+    /// A spot order on Hyperliquid: the spot USDC (topped up from perp when short), the IOC order within 1% of the mid, what lands.
+    private func hlSpotRoute(_ symbol: String, usdc: Decimal?, sell: Decimal?) -> MoveRoute {
+        let logo = TokenLogo.name(forAsset: symbol) ?? "hyperliquid"
+        if let usdc {
+            return MoveRoute(title: "Buy \(symbol) · \(Fmt.num(usdc)) USDC on Hyperliquid spot",
+                             footer: "One spot order on Hyperliquid's book, IOC within 1% of the mid; the spot USDC comes from your perp balance first when short (one more signature of yours). The exchange takes orders from 10 USDC. Press Confirm.",
+                             steps: [step("hyperliquid", "FROM · HYPERLIQUID", "\(Fmt.num(usdc)) USDC", "spot balance · perp tops it up when short", .hyperliquid),
+                                     step(logo, "BUY · SPOT ORDER", symbol, "IOC · at most 1% over the mid", .hyperliquid),
+                                     step(logo, "TO · SPOT BALANCE", symbol, "on Hyperliquid, yours ✓", .hyperliquid)])
+        }
+        return MoveRoute(title: "Sell \(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(symbol) on Hyperliquid spot",
+                         footer: "One spot order on Hyperliquid's book, IOC within 1% of the mid; the USDC lands on your spot balance. The exchange takes orders from 10 USDC. Press Confirm.",
+                         steps: [step(logo, "FROM · SPOT BALANCE", "\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(symbol)", "on Hyperliquid", .hyperliquid),
+                                 step(logo, "SELL · SPOT ORDER", "→ USDC", "IOC · at most 1% under the mid", .hyperliquid),
+                                 step("usdc", "TO · SPOT USDC", "USDC", "on Hyperliquid, yours ✓", .hyperliquid)])
+    }
+
+    /// One approval set to zero: the token, who may spend it now, and that nothing is spent.
+    private func revokeRoute(_ place: String, _ token: String, _ spender: String, _ permit2: Bool) -> MoveRoute {
+        let name = WalletCommand.placeName(place), fill = RouteFill(rawValue: place) ?? .check
+        let symbol = tokenSymbol(token) ?? "\(token.prefix(6))…\(token.suffix(4))"
+        let who = EVMNetwork.named(place).flatMap { Executor.spenderName(spender, chainId: $0.rpc.chainId) } ?? "\(spender.prefix(6))…\(spender.suffix(4))"
+        return MoveRoute(title: "Revoke \(who)'s approval of \(symbol) on \(name)",
+                         footer: "One \(name) transaction: \(permit2 ? "Permit2's own approve" : "the token's approve") set to zero for \(spender). Nothing is spent and nobody gains a right; only the gas is paid. Press Confirm.",
+                         steps: [step(ModuleNetwork(place: place)?.logo ?? place, "TOKEN · \(name.uppercased())", symbol, permit2 ? "through Permit2" : "its own approve", fill),
+                                 step("shield", "REVOKE · TO ZERO", who, "\(spender.prefix(6))…\(spender.suffix(4)) can't spend it after", .check)])
+    }
+
     /// «Sweep dust»: the tokens that go, a step each (eight at most, then how many more), each sold for USDC on its own network.
     private func dustRoute(_ under: Decimal?) -> MoveRoute {
         let dust = dustTokens(under: under)
@@ -1687,6 +1721,52 @@ extension Workspace {
             + (coinOut ? " \(coin) comes out as itself, or is unwrapped after." : "") + " Press Confirm."
         return MoveRoute(title: "Swap \(moving) → \(label(to)) on \(name)", footer: footer, steps: steps,
                          warning: to.hasPrefix("0x") ? "A token by its contract is anyone’s coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose." : nil)
+    }
+
+    /// A token on one network for one on another through Relay: what goes out, an exact approve for a token on an EVM
+    /// network, Relay's swap across with what arrives once quoted (Executor.crossQuoteText), and the wallet's own address
+    /// where it lands.
+    private func crossRoute(_ a: String, _ from: String, _ b: String, _ to: String, _ amount: Decimal?) -> MoveRoute {
+        let fromName = WalletCommand.placeName(from), toName = WalletCommand.placeName(to)
+        func fill(_ p: String) -> RouteFill { RouteFill(rawValue: p) ?? .check }
+        func logo(_ p: String) -> String { ModuleNetwork(place: p)?.logo ?? p }
+        func label(_ t: String) -> String { t.hasPrefix("0x") ? tokenSymbol(t) ?? "\(t.prefix(6))…\(t.suffix(4))" : t.uppercased() }
+        let coinIn = a.uppercased() == (from == "solana" ? "SOL" : EVMNetwork.named(from)?.gasCoin ?? "ETH")
+        let quote = swapQuote.flatMap { $0.command == .crossSwap(from: a, on: from, to: b, at: to, amount: amount) ? $0.ways : nil }
+        let moving = "\(amount.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label(a))"
+        var steps = [step(logo(from), "FROM · \(fromName.uppercased())", moving, coinIn ? "your \(label(a)) · its fees stay" : "on \(fromName)", fill(from))]
+        if from != "solana", !coinIn { steps.append(approve(moving, for: "Relay", logo: "relay", fill(from))) }
+        steps.append(step("relay", "SWAP ACROSS · RELAY", label(b),
+                          quote.map { $0.first.map { "≈ \($0.gets) · \($0.way)" } ?? "no quote now · asked again every 30 s" } ?? "quoting…", .relay))
+        steps.append(step(logo(to), "TO · \(toName.uppercased())", label(b), "your own address there", fill(to)))
+        let footer = "One signature on \(fromName): Relay's solver swaps on the way and pays \(label(b)) to your own address on \(toName), usually within seconds. "
+            + "If more than 3% (or 15 cents) of the value would be lost, nothing is signed."
+            + (from != "solana" && coinIn ? " The \(label(a)) goes to Relay's depository: Touch ID allows that address the first time." : "")
+            + (from != "solana" && !coinIn ? " An exact approve to Relay comes first, in the same transaction where the network allows." : "")
+            + " Press Confirm."
+        return MoveRoute(title: "Swap \(moving) on \(fromName) → \(label(b)) on \(toName)", footer: footer, steps: steps)
+    }
+
+    /// A coin to a saved address on a network only NEAR Intents reaches: the USDC it costs and where from (once quoted),
+    /// 1Click's swap for exactly that much, and the saved address.
+    private func acrossRoute(_ command: WalletCommand, _ r: (entry: SavedAddress, symbol: String, address: String), _ amount: Decimal?) -> MoveRoute {
+        let ends = AddressCheck.ends(r.entry.address), title = r.entry.network.title
+        let quote = swapQuote.flatMap { $0.command == command ? $0.ways : nil }
+        let what = "\(amount.map { Fmt.num($0, maxFraction: 9) } ?? "?") \(r.symbol)"
+        let from = quote?.first?.way ?? "Solana"
+        let steps = [
+            step(from == "Solana" ? "sol" : ModuleNetwork(place: from.lowercased())?.logo ?? "usdc", "FROM · \(from.uppercased())", "USDC",
+                 quote.map { $0.first.map { "\($0.gets) · the rest comes back" } ?? "no quote now · asked again every 30 s" } ?? "quoting…", RouteFill(rawValue: from.lowercased()) ?? .solana),
+            step("near", "SWAP · NEAR INTENTS", what, "exactly this much arrives", .check),
+            step(r.entry.network.logo, "TO · \(r.entry.label?.uppercased() ?? "SAVED ADDRESS")", r.entry.name, "\(ends.start) … \(ends.end) · \(title)", .check),
+        ]
+        let warning = r.entry.network == .xrp && r.entry.memo.isEmpty
+            ? "An exchange's XRP address needs its destination tag: without it the exchange can't credit you. Save the tag as this address's memo first."
+            : r.entry.lastSent == nil ? "First transfer to this address. Sending a small test amount first is the safe habit." : nil
+        return MoveRoute(title: "Send \(what) to \(r.entry.name)",
+                         footer: "NEAR Intents' 1Click turns USDC into \(r.symbol) on \(title) and pays this saved address exactly \(what); what's left of the USDC comes back. "
+                            + "Its deposit address is fresh: Touch ID allows it before anything is sent. Press Confirm.",
+                         steps: steps, warning: warning)
     }
 
     static func wayName(_ way: String) -> String { way == "relay" ? "Relay swap" : "Relay + Uniswap" }
@@ -1726,6 +1806,10 @@ extension Workspace {
         case .buyStock(let s, let u?): await quoteStock(command, s, usdc: u, sell: nil); return
         case .sellStock(let s, let a): await quoteStock(command, s, usdc: nil, sell: a); return
         case .swapOn(let p, let a, let b, let x): await quotePair(command, p, a, b, x); return
+        case .crossSwap(let a, let from, let b, let to, let x): await quoteCross(command, a, from, b, to, x); return
+        case .sendToken(let name, let token, let x?, let network):
+            if let r = try? acrossRecipient(name, token: token, network: network) { await quoteAcross(command, r.symbol, x, r.entry.network.rawValue, r.address) }
+            return
         default: return
         }
         var from: String?, keep = false
@@ -1747,6 +1831,37 @@ extension Workspace {
         guard let wallet = previewWallet, let net = EVMNetwork.named(place) else { return }
         while !Task.isCancelled {
             let q = try? await executor(wallet).pairQuote(net, from: from, to: to, amount: amount)
+            guard !Task.isCancelled else { return }
+            if let q { swapQuote = (command, [(q.way, q.gets, 0)]) }
+            else if swapQuote?.command != command { swapQuote = (command, []) }
+            try? await Task.sleep(for: .seconds(30))
+        }
+    }
+
+    /// A coin to an address on a network only NEAR Intents reaches: what it costs in USDC and where that comes from, again
+    /// every 30 s.
+    private func quoteAcross(_ command: WalletCommand, _ symbol: String, _ amount: Decimal, _ network: String, _ address: String) async {
+        guard let wallet = previewWallet else { return }
+        while !Task.isCancelled {
+            let q = try? await executor(wallet).acrossQuote(symbol, amount: amount, network: network, to: address)
+            guard !Task.isCancelled else { return }
+            if let q {
+                // What it's worth there, and what 1Click and the network keep: a small BTC send loses a fifth to fees.
+                let cost = Decimal(string: q.quote.amountInFormatted) ?? 0, worth = q.quote.amountOutUSD
+                let fees = worth.map { cost - $0 }.map { $0 > 0 ? " · fees ≈ \(Fmt.usd($0)) (\(Fmt.num($0 / cost * 100, maxFraction: 0))%)" : "" } ?? ""
+                let time = q.quote.timeEstimate.map { $0 >= 120 ? " · ≈ \($0 / 60) min" : " · ≈ \($0) s" } ?? ""
+                swapQuote = (command, [(q.source?.name ?? "Solana", "≈ \(Fmt.num(cost)) USDC for \(worth.map(Fmt.usd) ?? "?") of it\(fees)\(time)", 0)])
+            }
+            else if swapQuote?.command != command { swapQuote = (command, []) }
+            try? await Task.sleep(for: .seconds(30))
+        }
+    }
+
+    /// A swap between networks: Relay's quote, again every 30 s.
+    private func quoteCross(_ command: WalletCommand, _ a: String, _ from: String, _ b: String, _ to: String, _ amount: Decimal?) async {
+        guard let wallet = previewWallet else { return }
+        while !Task.isCancelled {
+            let q = try? await executor(wallet).crossQuoteText(a, on: from, for: b, on: to, amount: amount)
             guard !Task.isCancelled else { return }
             if let q { swapQuote = (command, [(q.way, q.gets, 0)]) }
             else if swapQuote?.command != command { swapQuote = (command, []) }
@@ -2131,6 +2246,12 @@ extension Workspace {
         if case .pay = command { await preparePayment(command, note: note); return }
         if case .claimRewards = command { await prepareClaim(command, note: note); return }
         if case .sweepRewards = command { await prepareClaim(command, note: note); return }
+        if case .showApprovals = command {
+            withAnimation(StudioView.spring) { detail = "approvals" }
+            reply(say("Your token approvals are on the canvas: who may still spend what, on each network. Revoke sets one to zero.",
+                      "Разрешения на холсте: кто ещё может тратить твои токены, по сетям. Revoke обнуляет одно."), note: note)
+            return
+        }
         if case .receive = command {
             withAnimation(StudioView.spring) { showReceive = true }
             let sol = isSolanaAddress(solanaAddress) ? "Solana \(AddressCheck.ends(solanaAddress).start) … \(AddressCheck.ends(solanaAddress).end)" : nil
@@ -2138,8 +2259,14 @@ extension Workspace {
                       "Твои адреса на холсте\(sol.map { " — \($0) для USDC и SOL (рекомендую)" } ?? ""), и Base для USDC и ETH. ihatecrypto не может сам забрать деньги: отправь их туда с биржи или другого кошелька, именно в этой сети. Они появятся примерно через 30 с, и я скажу, когда придут. Чтобы положить уже имеющиеся деньги в хранилище, скажи «положи 1 USDC в Jupiter»."), note: note)
             return
         }
-        if case .sendToken(let name, _, _, let network) = command {
-            do { _ = try tokenRecipient(name, network: network) } catch { reply(error.localizedDescription, note: note); return }
+        if case .sendToken(let name, let token, let amount, let network) = command {
+            do {
+                if try acrossRecipient(name, token: token, network: network) != nil {
+                    guard amount != nil else { throw ExecutionError("Say how much \(token.uppercased()): there's none in this wallet to send all of — it's bought with USDC on the way.") }
+                } else {
+                    _ = try tokenRecipient(name, network: network)
+                }
+            } catch { reply(error.localizedDescription, note: note); return }
         }
         let recipient: (name: String, network: AddressCheck.Network)? = switch command {
         case .sendNear(let name, _), .closeNear(let name): (name, .near)

@@ -542,3 +542,60 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(WalletCommand.parse("это мелочь, не волнуйся") == nil)
     for c in [WalletCommand.sweepDust(under: nil), .sweepDust(under: Decimal(string: "2.5")!)] { #expect(WalletCommand.parse(c.summary) == c) }
 }
+
+/// The approvals board and a revoke: English and Russian, Permit2's said, the summary reads back the same.
+@Test func approvalsAreShownAndRevoked() {
+    #expect(WalletCommand.parse("show approvals") == .showApprovals)
+    #expect(WalletCommand.parse("мои разрешения") == .showApprovals)
+    #expect(WalletCommand.parse("кому я дал разрешения на мои токены?") == .showApprovals)
+    let token = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913", spender = "0x2626664c2603336e57b271c5c0b26f421741e481"
+    let revoke = WalletCommand.revokeApproval("base", token: token, spender: spender, permit2: false)
+    #expect(WalletCommand.parse("revoke the approval of \(token) to \(spender) on base") == revoke)
+    #expect(WalletCommand.parse("отзови разрешение \(token) для \(spender) на base") == revoke)
+    let viaPermit2 = WalletCommand.revokeApproval("arbitrum", token: token, spender: spender, permit2: true)
+    for c in [revoke, viaPermit2] { #expect(WalletCommand.parse(c.summary) == c) }
+}
+
+/// Hyperliquid's spot book: a buy for dollars, a sale of coins or all of it; a leveraged trade isn't spot; summaries read back.
+@Test func hyperliquidSpotIsParsed() {
+    #expect(WalletCommand.parse("buy HYPE on hyperliquid spot for 10 USDC") == .hlSpotBuy(symbol: "HYPE", usdc: 10))
+    #expect(WalletCommand.parse("купи HYPE на споте хайперликвида за 15$") == .hlSpotBuy(symbol: "HYPE", usdc: 15))
+    #expect(WalletCommand.parse("sell all HYPE spot") == .hlSpotSell(symbol: "HYPE", amount: nil))
+    #expect(WalletCommand.parse("sell 2.5 HYPE on hyperliquid spot") == .hlSpotSell(symbol: "HYPE", amount: Decimal(string: "2.5")!))
+    #expect(WalletCommand.parse("long HYPE spot price 30") != .hlSpotBuy(symbol: "HYPE", usdc: nil))
+    for c in [WalletCommand.hlSpotBuy(symbol: "HYPE", usdc: 12), .hlSpotSell(symbol: "PURR", amount: nil), .hlSpotSell(symbol: "HYPE", amount: 3)] {
+        #expect(WalletCommand.parse(c.summary) == c)
+    }
+}
+
+@Test func crossNetworkSwapIsParsed() {
+    #expect(WalletCommand.parse("swap 0.1 SOL on Solana for ETH on Arbitrum") == .crossSwap(from: "SOL", on: "solana", to: "ETH", at: "arbitrum", amount: Decimal(string: "0.1")!))
+    #expect(WalletCommand.parse("обменяй 0.1 SOL на ETH в арбитруме") == .crossSwap(from: "SOL", on: "solana", to: "ETH", at: "arbitrum", amount: Decimal(string: "0.1")!))
+    #expect(WalletCommand.parse("swap all AERO on base for SOL on solana") == .crossSwap(from: "AERO", on: "base", to: "SOL", at: "solana", amount: nil))
+    #expect(WalletCommand.parse("поменяй 5 AERO с бейса на ARB в арбитруме") == .crossSwap(from: "AERO", on: "base", to: "ARB", at: "arbitrum", amount: 5))
+    // One network is a swap there; USDC for USDC is a bridge; ETH with no network named stays the swap on that network.
+    #expect(WalletCommand.parse("swap 0.01 ETH for AERO on base") == .swapOn("base", from: "ETH", to: "AERO", amount: Decimal(string: "0.01")!))
+    #expect(WalletCommand.parse("поменяй 0.01 ETH на AERO на бейсе") == .swapOn("base", from: "ETH", to: "AERO", amount: Decimal(string: "0.01")!))
+    #expect(WalletCommand.parse("swap 5 USDC on base for USDC on arbitrum") == .bridge(from: "base", to: "arbitrum", 5))
+    for c in [WalletCommand.crossSwap(from: "SOL", on: "solana", to: "ETH", at: "arbitrum", amount: Decimal(string: "0.01")!),
+              .crossSwap(from: "AERO", on: "base", to: "SOL", at: "solana", amount: nil),
+              .crossSwap(from: "USDC", on: "robinhood", to: "ETH", at: "base", amount: 3)] {
+        #expect(WalletCommand.parse(c.summary) == c)
+    }
+}
+
+@Test func sendsToNetworksOnlyNearIntentsReachesAreParsed() {
+    #expect(WalletCommand.parse("send 0.0005 BTC to Binance") == .sendToken(name: "Binance", token: "BTC", amount: Decimal(string: "0.0005")!, network: nil))
+    #expect(WalletCommand.parse("send 20 USDT on tron to Binance") == .sendToken(name: "Binance", token: "USDT", amount: 20, network: "tron"))
+    #expect(WalletCommand.parse("send 20 USDC on sui to Sui wallet") == .sendToken(name: "Sui wallet", token: "USDC", amount: 20, network: "sui"))
+    #expect(WalletCommand.parse("отправь 30 XRP на Bitstamp") == .sendToken(name: "Bitstamp", token: "XRP", amount: 30, network: nil))
+    #expect(AddressBookCommand.parse("save bc1quc8z9y2dmpe2qztdw4zh0ucr7g5p8gw6x3c8ph as Binance BTC")
+            == .save(address: "bc1quc8z9y2dmpe2qztdw4zh0ucr7g5p8gw6x3c8ph", name: "Binance BTC", network: "bitcoin"))
+    #expect(AddressBookCommand.parse("save TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t as Binance USDT on tron")
+            == .save(address: "TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", name: "Binance USDT", network: "tron"))
+    #expect(AddressBookCommand.parse("save rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh as Bitstamp XRP")
+            == .save(address: "rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh", name: "Bitstamp XRP", network: "xrp"))
+    // A 0x address keeps its own network, a ticker in its name notwithstanding.
+    #expect(AddressBookCommand.parse("save 0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC as BTC vault on base")
+            == .save(address: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", name: "BTC vault", network: "base"))
+}

@@ -614,8 +614,9 @@ public enum EVMCall: Equatable, Sendable {
         var out = value > 0 && !returnsCoins(to: to, value: value, chainId: chainId) ? [to] : []
         switch self {
         case .transfer(let r, _), .nftTransfer(_, let r): out.append(r)
-        case .approve(let s, _), .increaseAllowance(let s, _), .permit2Approve(_, let s, _, _):
-            if !Self.knownSpenders(chainId: chainId).contains(s.lowercased()) { out.append(s) }
+        // An approve of zero — a revoke — gives nobody anything: no one to allow for it.
+        case .approve(let s, let a), .increaseAllowance(let s, let a), .permit2Approve(_, let s, let a, _):
+            if a.contains(where: { $0 != 0 }), !Self.knownSpenders(chainId: chainId).contains(s.lowercased()) { out.append(s) }
         default: break
         }
         return out

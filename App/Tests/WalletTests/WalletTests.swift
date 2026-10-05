@@ -179,3 +179,26 @@ private func order(_ kind: HLOrder.Kind, cloid: String? = nil) throws -> MsgPack
     let ends = AddressCheck.ends("EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v")
     #expect(ends.start == "EPjF Wdd5" && ends.end == "ZwyT Dt1v")
 }
+
+/// Addresses on the networks only NEAR Intents reaches, read off their chains (2026-10-06): each passes on its own
+/// network, a changed character or the wrong network doesn't. X-addresses match xrpl-py's.
+@Test func oneClickNetworksCheckAddresses() {
+    let good: [(String, AddressCheck.Network)] = [
+        ("37jKPSmbEGwgfacCr2nayn1wTaqMAbA94Z", .bitcoin), ("1LPVgEAh74DD7WGT5b13N7Na5MgWZ8A8zU", .bitcoin),
+        ("bc1quc8z9y2dmpe2qztdw4zh0ucr7g5p8gw6x3c8ph", .bitcoin), ("bc1pn6e0k0mlrfverhs6feqwudnayjm8jp5sz2ydk4cyr8yxvkl905ksx5e5xu", .bitcoin),
+        ("D5jrHvLYhUucceZZfEzJjXBmhoRFyLqVJ3", .dogecoin), ("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6t", .tron), ("TNXoiAJ3dct8Fjg4M9fkLFh9S2v9TXc32G", .tron),
+        ("t1YZippCk5nR5ehXsvLYjvhnygwdCbU1tXX", .zcash), ("rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh", .xrp),
+        ("XVLhHMPHU98es4dbozjVtdWzVrDjtV18pX8yuPT7y4xaEHi", .xrp),
+        ("0x0000000000000000000000000000000000000000000000000000000000000002", .sui),
+    ]
+    for (a, n) in good { #expect(AddressCheck.problem(a, network: n) == nil, "\(a) on \(n)") }
+    let bad: [(String, AddressCheck.Network)] = [
+        ("37jKPSmbEGwgfacCr2nayn1wTaqMAbA94a", .bitcoin), ("bc1quc8z9y2dmpe2qztdw4zh0ucr7g5p8gw6x3c8pj", .bitcoin),
+        ("bc1pn6e0k0mlrfverhs6feqwudnayjm8jp5sz2ydk4cyr8yxvkl905ksx5e5xv", .bitcoin), ("D5jrHvLYhUucceZZfEzJjXBmhoRFyLqVJ3", .bitcoin),
+        ("TR7NHqjeKQxGTCi8q8ZY4pL8otSzgjLj6u", .tron), ("1LPVgEAh74DD7WGT5b13N7Na5MgWZ8A8zU", .tron),
+        ("rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTi", .xrp), ("t1YZippCk5nR5ehXsvLYjvhnygwdCbU1tXY", .zcash), ("0x02", .sui),
+    ]
+    for (a, n) in bad { #expect(AddressCheck.problem(a, network: n) != nil, "\(a) on \(n)") }
+    #expect(AddressCheck.xAddress("rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh", tag: 12345) == "XVPcpSm47b1CZkf5AkKM9a84dQHe3mTAxgxfLw2qYoe7Boa")
+    #expect(AddressCheck.xAddress("rGWrZyQqhTp9Xu7G5Pkayo7bXjH4k4QYpf", tag: 4_294_967_295) == "XVLhHMPHU98es4dbozjVtdWzVrDjtV18pX8yuPT7y4xaEHi")
+}

@@ -1,6 +1,7 @@
 import AppKit
 import EVMChain
 import IhatecryptoCore
+import OneClickKit
 import SignerAPI
 import SolanaChain
 import SwiftUI
@@ -178,6 +179,12 @@ extension AddressCheck.Network {
         case .near: "near"
         case .tempo: "tempo"
         case .polygon: "pol"
+        case .bitcoin: "btc"
+        case .zcash: "zec"
+        case .tron: "trx"
+        case .xrp: "xrp"
+        case .dogecoin: "doge"
+        case .sui: "sui"
         }
     }
 }
@@ -849,6 +856,26 @@ extension Workspace {
         return (entry, net)
     }
 
+    /// A saved address on a network only NEAR Intents reaches (Bitcoin, Zcash, TRON, XRP, Dogecoin, Sui), the coin it
+    /// gets there and the address 1Click pays: an XRP account with a numeric memo becomes its X-address, the tag inside.
+    /// nil for an address ihatecrypto sends to itself.
+    func acrossRecipient(_ name: String, token: String, network: String?) throws -> (entry: SavedAddress, symbol: String, address: String)? {
+        guard let entry = savedEntry(name, network: network), let assets = OneClick.Asset.across[entry.network.rawValue] else { return nil }
+        guard let asset = assets.first(where: { $0.symbol == token.uppercased() }) else {
+            throw ExecutionError("“\(entry.name)” is a \(entry.network.title) address: NEAR Intents pays \(assets.map(\.symbol).joined(separator: " or ")) there.")
+        }
+        var address = entry.address
+        if !entry.memo.isEmpty {
+            guard entry.network == .xrp, let tag = UInt32(entry.memo.trimmingCharacters(in: .whitespaces)), let x = AddressCheck.xAddress(entry.address, tag: tag) else {
+                throw ExecutionError("“\(entry.name)” needs a memo, and NEAR Intents can't add one on \(entry.network.title) — send it from the exchange's app instead.")
+            }
+            address = x
+        }
+        if let off = Modules.current.refusal(.oneClick, ru: modulesRussian) { throw ExecutionError(off) }
+        try requireConfirmed(entry)
+        return (entry, asset.symbol, address)
+    }
+
     /// The entry a name means. One name can be saved on several networks («Automation» on Solana and on Base): the one
     /// that can receive on the network named comes first; a 0x address on one EVM network is the same on another.
     func savedEntry(_ name: String, network: String?) -> SavedAddress? {
@@ -873,6 +900,13 @@ extension Workspace {
         }
         guard entry.network != .near else {
             reply("“\(entry.name)” is a NEAR account: ihatecrypto sends it NEAR, not USDC — e.g. “send 0.1 NEAR to \(entry.name)”.", note: note)
+            return
+        }
+        // Bitcoin, TRON, Sui…: NEAR Intents pays out there, in the coin named.
+        if let assets = OneClick.Asset.across[entry.network.rawValue] {
+            let usdc = assets.contains { $0.symbol == "USDC" }
+            reply(say("“\(entry.name)” is a \(entry.network.title) address: NEAR Intents delivers there — say “send \(usdc ? "\(Fmt.num(amount)) USDC on \(entry.network.rawValue)" : "<amount> \(assets[0].symbol)") to \(entry.name)”.",
+                      "«\(entry.name)» — адрес в \(entry.network.title): туда доставляет NEAR Intents — скажи «send \(usdc ? "\(Fmt.num(amount)) USDC on \(entry.network.rawValue)" : "<сумма> \(assets[0].symbol)") to \(entry.name)»."), note: note)
             return
         }
         do { try requireConfirmed(entry) } catch { reply(error.localizedDescription, note: note); return }
@@ -927,6 +961,7 @@ extension Workspace {
             case .polygon: .polygon(entry.address)
             case .base: .base(entry.address)
             case .near: throw ExecutionError("USDC doesn't go to a NEAR account.")
+            case .bitcoin, .zcash, .tron, .xrp, .dogecoin, .sui: throw ExecutionError("\(entry.network.title) is reached through NEAR Intents: “send <amount> <coin> to \(entry.name)”.")
             }
             let text = try await executor(wallet).sendUSDC(amount, to: destination, label: entry.name)
             if let i = addressBook.firstIndex(where: { $0.id == entry.id }) { addressBook[i].lastSent = Date() }

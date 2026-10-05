@@ -154,3 +154,38 @@ func bridgedUSDCSwapsForCirclesOnUniswap() async throws {
         #expect(route.out > 99_000_000)
     }
 }
+
+/// A revoke — an approve of zero, the token's or Permit2's — gives nobody anything: the signer asks no one to be allowed for it;
+/// anything above zero to an unknown spender still needs that.
+@Test func signerLetsARevokeGoWithoutAnApproval() throws {
+    let stranger = "0x1111111111111111111111111111111111111111"
+    #expect(EVMCall.decode(try ERC20.approve(spender: stranger, units: 0)).payees(to: baseUSDC, value: 0, chainId: 8453).isEmpty)
+    #expect(EVMCall.decode(try ERC20.approve(spender: stranger, units: 1)).payees(to: baseUSDC, value: 0, chainId: 8453) == [stranger])
+    let p2zero = try UniswapV4.permit2Approve(token: baseUSDC, spender: stranger, amount: 0, expiration: 0)
+    #expect(EVMCall.decode(p2zero).payees(to: UniswapV4.permit2, value: 0, chainId: 8453).isEmpty)
+    #expect(EVMCall.decode(p2zero).refusal(sender: me, chainId: 8453) == nil)
+}
+
+/// Live (IHATECRYPTO_NET=1, reads only, public data): the approvals the test wallet and the main wallet still have,
+/// read from each network's Blockscout and the chain; every one listed is above zero.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func approvalsAreReadOnEveryNetwork() async throws {
+    for owner in ["0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC", "0x90F79bf6EB2c4f870365E785982E1f101E93b906"] {
+        let e = Executor(wallet: TradeWallet(solana: "", evm: owner), signer: QuoteOnly(),
+                         journal: Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("appr-\(UUID().uuidString).jsonl"))) { _ in }
+        let read = await e.approvals()
+        print("\(owner.prefix(8)): \(read.list.count) approvals, unread \(read.unread)")
+        for a in read.list.prefix(10) { print("  ", a.chain, a.symbol, "→", a.spenderName ?? a.spender, a.unlimited ? "UNLIMITED" : "\(a.amount)", a.permit2 ? "Permit2" : "") }
+        #expect(read.list.allSatisfy { $0.amount > 0 })
+    }
+}
+
+/// The approvals finder reads 7702 batches back into their calls: what executeBatch wrote comes back the same, and an
+/// input that isn't one is nil.
+@Test func batchCallsReadBack() throws {
+    let calls = [Batch7702.Call(to: "0x940181a94a35a4569e4529a3cdfb74e38fd98631", data: try ERC20.approve(spender: "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be", units: 5)),
+                 Batch7702.Call(to: "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be", data: Data([1, 2, 3, 4, 5]))]
+    #expect(Batch7702.calls(in: try Batch7702.executeBatch(calls)) == calls)
+    #expect(Batch7702.calls(in: Data([0x34, 0xfc, 0xd5, 0xbe, 0])) == nil)
+    #expect(Batch7702.calls(in: try ERC20.approve(spender: "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be", units: 5)) == nil)
+}

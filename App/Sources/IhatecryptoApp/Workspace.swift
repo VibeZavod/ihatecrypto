@@ -187,6 +187,8 @@ final class Workspace {
     var awaitingAmount: WalletCommand?
     /// The «Top up ihatecrypto» board on the canvas: our addresses and how balances update.
     var showReceive = false
+    /// Bumped after a revoke: the approvals board reads them again.
+    var approvalsChanged = 0
     /// A market's price chart on the canvas (Modules.swift).
     var chart: ChartState?
     /// The day's biggest movers on the canvas.

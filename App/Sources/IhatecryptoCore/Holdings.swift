@@ -30,7 +30,7 @@ public struct Holding: Sendable, Identifiable, Equatable {
 public enum Holdings {
     // Blockscout turns away clients that don't look like a browser (403 on Robinhood Chain's instance).
     static let browser = ["User-Agent": "Mozilla/5.0 (Macintosh; Intel Mac OS X 14_0) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Safari/605.1.15"]
-    static let blockscout = ["base": "base.blockscout.com", "arbitrum": "arbitrum.blockscout.com", "polygon": "polygon.blockscout.com",
+    public static let blockscout = ["base": "base.blockscout.com", "arbitrum": "arbitrum.blockscout.com", "polygon": "polygon.blockscout.com",
                              "ethereum": "eth.blockscout.com", "robinhood": "robinhoodchain.blockscout.com"]
     static let ethIcon = URL(string: "https://assets.coingecko.com/coins/images/279/small/ethereum.png")
 

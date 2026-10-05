@@ -58,6 +58,17 @@ public enum OneClick {
             default: nil
             }
         }
+
+        /// What 1Click pays out on networks ihatecrypto has no wallet on, by the address book's network (/v0/tokens,
+        /// 2026-10-06): the asset, its ticker and decimals.
+        public static let across: [String: [(symbol: String, id: String, decimals: Int)]] = [
+            "bitcoin": [("BTC", "nep141:btc.omft.near", 8)],
+            "zcash": [("ZEC", "nep141:zec.omft.near", 8)],
+            "tron": [("USDT", "nep141:tron-d28a265909efecdcee7c5028585214ea0b96f015.omft.near", 6), ("TRX", "nep141:tron.omft.near", 6)],
+            "xrp": [("XRP", "nep141:xrp.omft.near", 6)],
+            "dogecoin": [("DOGE", "nep141:doge.omft.near", 8)],
+            "sui": [("SUI", "nep141:sui.omft.near", 9), ("USDC", "nep141:sui-c1b81ecaf27933252d31a963bc5e9458f13c18ce.omft.near", 6)],
+        ]
     }
 
     public struct Quote: Sendable {
@@ -70,6 +81,9 @@ public enum OneClick {
         public let minAmountOut: String?
         public let deadline: String?
         public let timeEstimate: Int?
+        /// What goes in and what comes out, in dollars as 1Click prices them: their gap is its fee and the network's.
+        public var amountInUSD: Decimal?
+        public var amountOutUSD: Decimal?
     }
 
     /// `dry: false` issues a deposit address. `refundTo` and `recipient` must be the user's own addresses then.
@@ -90,7 +104,8 @@ public enum OneClick {
             depositAddress: q["depositAddress"] as? String, amountIn: amountIn,
             amountInFormatted: q["amountInFormatted"] as? String ?? amountIn, minAmountIn: q["minAmountIn"] as? String,
             amountOutFormatted: q["amountOutFormatted"] as? String ?? "?", minAmountOut: q["minAmountOut"] as? String,
-            deadline: q["deadline"] as? String, timeEstimate: (q["timeEstimate"] as? NSNumber)?.intValue
+            deadline: q["deadline"] as? String, timeEstimate: (q["timeEstimate"] as? NSNumber)?.intValue,
+            amountInUSD: (q["amountInUsd"] as? String).flatMap { Decimal(string: $0) }, amountOutUSD: (q["amountOutUsd"] as? String).flatMap { Decimal(string: $0) }
         )
     }
 

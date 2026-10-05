@@ -40,6 +40,25 @@ public enum Batch7702 {
         return Data([0x34, 0xfc, 0xd5, 0xbe]) + ABI.uint(32) + ABI.uint(UInt64(calls.count)) + offsets + tuples.reduce(Data(), +)
     }
 
+    /// The calls of an executeBatch input, read back; nil when it isn't one (or isn't well formed).
+    public static func calls(in data: Data) -> [Call]? {
+        guard data.prefix(4) == Data([0x34, 0xfc, 0xd5, 0xbe]) else { return nil }
+        let body = Data(data.dropFirst(4))
+        func word(_ at: Int) -> Int? {
+            guard at >= 0, at + 32 <= body.count, body[at..<at + 24].allSatisfy({ $0 == 0 }) else { return nil }
+            return Int(body[at + 24..<at + 32].reduce(UInt64(0)) { $0 << 8 | UInt64($1) })
+        }
+        guard let array = word(0), let count = word(array), count <= 64 else { return nil }
+        var out: [Call] = []
+        for i in 0..<count {
+            guard let offset = word(array + 32 + 32 * i) else { return nil }
+            let tuple = array + 32 + offset
+            guard tuple + 96 <= body.count, let at = word(tuple + 64), let length = word(tuple + at), tuple + at + 32 + length <= body.count else { return nil }
+            out.append(Call(to: "0x" + body[tuple + 12..<tuple + 32].hex, data: Data(body[tuple + at + 32..<tuple + at + 32 + length])))
+        }
+        return out
+    }
+
     /// keccak256(0x05 ‖ rlp([chainId, delegate, nonce])): what the key signs to let its address run `delegate`'s code.
     public static func authorizationDigest(chainId: UInt64, nonce: UInt64) -> Data {
         Keccak.hash256(Data([0x05]) + RLP.list([.uint(chainId), .bytes(Data(hex: delegate)!), .uint(nonce)]).encoded)

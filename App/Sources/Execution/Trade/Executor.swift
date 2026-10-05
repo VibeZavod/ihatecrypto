@@ -154,6 +154,8 @@ public actor Executor {
         public var chain: UInt64 = Relay.Chain.hyperliquid
         /// Part of the fee that is Hyperliquid's one-time charge for opening the account; 0 for an existing one.
         public var opening: Decimal = 0
+        /// The journal's words for the order, when it isn't Solana's USDC (a cross-network swap).
+        public var note: String?
     }
 
     /// Everything the user confirms: what will be signed, in order, and what it does to each balance.
@@ -605,7 +607,7 @@ public actor Executor {
 
     // MARK: Hyperliquid
 
-    private func nonce() -> UInt64 {
+    func nonce() -> UInt64 {
         lastNonce = max(UInt64(Date().timeIntervalSince1970 * 1000), lastNonce + 1)
         return lastNonce
     }
@@ -727,7 +729,9 @@ public actor Executor {
                            lastValid: lastValid, spend: spend, arriving: arriving, feesUSD: quote.feesUSD, chain: chain, opening: opening), changes)
     }
 
-    func sendBridge(_ b: BridgeStep) async throws {
+    /// Returns the Solana transaction's signature.
+    @discardableResult
+    func sendBridge(_ b: BridgeStep) async throws -> String {
         let signed = try await signer.signSolana(b.unsigned, accounts: b.accounts, recipients: [], tokenOwners: b.tokenOwners)
         guard signed.count == b.unsigned.count, signed.subdata(in: 65..<signed.count) == b.unsigned.subdata(in: 65..<b.unsigned.count) else {
             throw ExecutionError("What was signed isn't what was checked.")
@@ -735,7 +739,7 @@ public actor Executor {
         let signature = Base58.encode(signed.subdata(in: 1..<65))
         let toHyperliquid = b.chain == Relay.Chain.hyperliquid
         let hlBefore = toHyperliquid ? try await Hyperliquid.balance(user: wallet.evm).withdrawable : 0
-        try journal.append(.init(chain: "relay", id: b.requestId, kind: .signed, note: "Solana USDC→\(toHyperliquid ? "Hyperliquid" : "chain \(b.chain)"), tx \(signature)"))
+        try journal.append(.init(chain: "relay", id: b.requestId, kind: .signed, note: "\(b.note ?? "Solana USDC→\(toHyperliquid ? "Hyperliquid" : "chain \(b.chain)")"), tx \(signature)"))
         try journal.append(.init(chain: "solana", id: signature, kind: .signed, note: "Relay deposit \(b.requestId); valid until block \(b.lastValid)"))
         let started = Date()
         _ = try await rpc.send(signed)
@@ -764,13 +768,13 @@ public actor Executor {
             try await Task.sleep(for: .seconds(1))
         }
         // An EVM destination: the caller waits for the tokens on its own chain.
-        guard toHyperliquid else { return }
+        guard toHyperliquid else { return signature }
         // Wait for the credit itself: the trade needs it on the balance, not just in Relay's status.
         let target = hlBefore + b.arriving * Decimal(string: "0.99")!
         while Date().timeIntervalSince(started) < 240 {
             if try await Hyperliquid.balance(user: wallet.evm).withdrawable >= target {
                 report("Bridge done in \(Int(Date().timeIntervalSince(started))) s: \(Fmt.num(b.arriving)) USDC on Hyperliquid. https://solscan.io/tx/\(signature)")
-                return
+                return signature
             }
             try await Task.sleep(for: .seconds(1))
         }

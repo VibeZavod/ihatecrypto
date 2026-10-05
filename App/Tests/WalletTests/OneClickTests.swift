@@ -121,3 +121,46 @@ func transitResolvesAnOrderThatLandedMeanwhile() async throws {
     #expect(left.map(\.id) == ["0xfresh"])
     #expect(try journal.entries().last?.kind == .settled)
 }
+
+/// A spot token's USDC pair from spotMeta's lists: asset 10000 + the pair's index, its key in allMids, its size decimals.
+@Test func hyperliquidSpotPairFromItsLists() throws {
+    let tokens: [[String: Any]] = [["name": "USDC", "index": 0, "szDecimals": 8], ["name": "PURR", "index": 1, "szDecimals": 0], ["name": "HYPE", "index": 150, "szDecimals": 2]]
+    let universe: [[String: Any]] = [["tokens": [1, 0], "index": 0, "name": "PURR/USDC"], ["tokens": [150, 0], "index": 107, "name": "@107"]]
+    #expect(try Executor.spotPair("hype", tokens: tokens, universe: universe) == Executor.SpotPair(asset: 10_107, key: "@107", symbol: "HYPE", szDecimals: 2))
+    #expect(try Executor.spotPair("PURR", tokens: tokens, universe: universe).asset == 10_000)
+    #expect(throws: (any Error).self) { try Executor.spotPair("DOGE", tokens: tokens, universe: universe) }
+}
+
+/// Live (IHATECRYPTO_NET=1, reads only): HYPE's USDC pair and its price on Hyperliquid's spot book now.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func hyperliquidSpotHasHYPE() async throws {
+    let pair = try await Executor.spotPair("HYPE"), mid = try await Executor.spotMid(pair)
+    print("HYPE spot: asset \(pair.asset), \(pair.key), szDecimals \(pair.szDecimals), mid \(mid)")
+    #expect(pair.asset >= 10_000 && mid > 1)
+}
+
+/// Live (IHATECRYPTO_NET=1, quotes only): Relay's cross-network swaps for the test wallet — SOL on Solana for ETH on
+/// Arbitrum, and back — with the checks that run before anything is signed.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func crossNetworkSwapsAreQuoted() async throws {
+    let e = Executor(wallet: TradeWallet(solana: "7WktogJEd2wQ9eH2oWusmcoFTgeYi6rS632UviTBJ2jm", evm: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"),
+                     signer: OneClickQuoteOnly(), journal: Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("x\(UUID()).jsonl"))) { _ in }
+    let there = try await e.crossQuoteText("SOL", on: "solana", for: "ETH", on: "arbitrum", amount: Decimal(string: "0.01")!)
+    print("0.01 SOL → Arbitrum:", there)
+    #expect(there.gets.contains("ETH"))
+    // All of a coin is never asked: its fees come out of it.
+    await #expect(throws: (any Error).self) { try await e.crossQuoteText("SOL", on: "solana", for: "ETH", on: "base", amount: nil) }
+}
+
+/// Live (IHATECRYPTO_NET=1, dry quotes only): what 0.0001 BTC to a real Bitcoin address and 20 USDT on TRON cost in
+/// USDC from the test wallet, and that a coin 1Click doesn't pay there is refused.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_NET"] == "1"))
+func sendsAcrossAreQuoted() async throws {
+    let e = Executor(wallet: TradeWallet(solana: "7WktogJEd2wQ9eH2oWusmcoFTgeYi6rS632UviTBJ2jm", evm: "0x3C44CdDdB6a900fa2b585dd299e03d12FA4293BC"),
+                     signer: OneClickQuoteOnly(), journal: Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("a\(UUID()).jsonl"))) { _ in }
+    let btc = try await e.acrossQuote("BTC", amount: Decimal(string: "0.0001")!, network: "bitcoin", to: "bc1quc8z9y2dmpe2qztdw4zh0ucr7g5p8gw6x3c8ph")
+    let usdt = try await e.acrossQuote("USDT", amount: 20, network: "tron", to: "TNXoiAJ3dct8Fjg4M9fkLFh9S2v9TXc32G")
+    print("0.0001 BTC costs \(btc.quote.amountInFormatted) USDC from \(btc.source?.name ?? "Solana") in ≈ \(btc.quote.timeEstimate ?? 0) s; 20 USDT on TRON costs \(usdt.quote.amountInFormatted)")
+    #expect((Decimal(string: btc.quote.amountInFormatted) ?? 0) > 1 && (Decimal(string: usdt.quote.amountInFormatted) ?? 0) >= 20)
+    await #expect(throws: (any Error).self) { try await e.acrossQuote("ETH", amount: 1, network: "bitcoin", to: "bc1quc8z9y2dmpe2qztdw4zh0ucr7g5p8gw6x3c8ph") }
+}

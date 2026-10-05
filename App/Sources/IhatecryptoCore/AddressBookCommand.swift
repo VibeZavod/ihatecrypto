@@ -15,7 +15,7 @@ public enum AddressBookCommand: Equatable, Sendable {
         // An ENS or SNS name is saved as the address it resolves to (AddressBook's save): the name is what the message holds.
         if let address = address(in: text) ?? domain(in: text), q.contains(/\b(?:save|add|remember|store|keep)\b|сохран|запомн|добав|запиши/) {
             // «… as Bybit on Arbitrum», «… как Bybit в сети base»
-            let named = text.firstMatch(of: /(?i)(?:\bas\b|\bcalled\b|\bnamed\b|\bкак\b|под\s+именем)\s+[«"“]?(.+?)[»"”]?(?=\s+(?:on|in|в|на)\s+(?:the\s+)?(?:сети\s+)?(?:solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|ethereum|эфир\w*|hyperliquid|хайперликвид\w*|near|неар\w*|polygon|полигон\w*|robinhood|робин[гх]уд\w*|tempo|темпо\w*)\b|[.,!]?\s*$)/)
+            let named = text.firstMatch(of: /(?i)(?:\bas\b|\bcalled\b|\bnamed\b|\bкак\b|под\s+именем)\s+[«"“]?(.+?)[»"”]?(?=\s+(?:on|in|в|на)\s+(?:the\s+)?(?:сети\s+)?(?:solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|ethereum|эфир\w*|hyperliquid|хайперликвид\w*|near|неар\w*|polygon|полигон\w*|robinhood|робин[гх]уд\w*|tempo|темпо\w*|bitcoin|биткоин\w*|zcash|tron|трон\w*|xrp|ripple|dogecoin|doge|sui)\b|[.,!]?\s*$)/)
             guard let name = named.map({ String($0.1).trimmingCharacters(in: .whitespaces) }), !name.isEmpty, !name.contains(address) else { return nil }
             return .save(address: address, name: name, network: network(q))
         }
@@ -28,7 +28,15 @@ public enum AddressBookCommand: Equatable, Sendable {
 
     /// The address as the user wrote it: a 0x one, or a base58 one that mixes cases and digits like real Solana keys.
     public static func address(in text: String) -> String? {
+        // Sui's 0x and 64 hex before an EVM address's 40; a Bitcoin bc1…; an XRP X-address (tag inside).
+        if let m = text.firstMatch(of: /\b0x[0-9a-fA-F]{64}\b/) { return String(m.0) }
         if let m = text.firstMatch(of: evm) { return String(m.0) }
+        if let m = text.firstMatch(of: /(?i)\bbc1[02-9ac-hj-np-z]{8,87}\b/) { return String(m.0) }
+        if let m = text.firstMatch(of: /\bX[1-9A-HJ-NP-Za-km-z]{46}\b/) { return String(m.0) }
+        // Bitcoin's, Dogecoin's, TRON's, Zcash's and XRP's base58 ones are shorter than Solana's.
+        if let s = text.matches(of: /\b[1-9A-HJ-NP-Za-km-z]{25,35}\b/).map({ String($0.0) }).first(where: { s in
+            s.contains(where: \.isNumber) && s.contains(where: \.isUppercase) && s.contains(where: \.isLowercase) && s.first.map("13DT9Atr".contains) == true
+        }) { return s }
         // NEAR: a 64-hex implicit account, or a named one ending in .near.
         if let m = text.firstMatch(of: /\b[0-9a-f]{64}\b/) { return String(m.0) }
         if let m = text.firstMatch(of: /\b[a-z0-9_-]+(?:\.[a-z0-9_-]+)*\.near\b/) { return String(m.0) }
@@ -51,6 +59,15 @@ public enum AddressBookCommand: Equatable, Sendable {
     public static func network(_ q: String) -> String? {
         // A NEAR account can only be on NEAR; «on near» names it too.
         if q.contains(/\b[0-9a-f]{64}\b|\.near\b|\b(?:on|in|в|на)\s+(?:the\s+)?(?:сети\s+)?(?:near|неар\w*)\b/) { return "near" }
+        // The networks only NEAR Intents reaches, named or by the address's shape; never for a 0x one of 40 hex.
+        if !q.contains(/\b0x[0-9a-f]{40}\b/) {
+            if q.contains(/\bbc1[02-9ac-hj-np-z]{8,}|\bbitcoin\b|биткоин|\bbtc\b/) { return "bitcoin" }
+            if q.contains(/\bzcash\b|\bzec\b|зкеш|зкэш/) { return "zcash" }
+            if q.contains(/\btron\b|трон|\btrx\b|trc-?20/) { return "tron" }
+            if q.contains(/\bxrp\b|ripple|рипл/) { return "xrp" }
+            if q.contains(/\bdoge\b|dogecoin|додж/) { return "dogecoin" }
+            if q.contains(/\bsui\b|\b0x[0-9a-f]{64}\b/) { return "sui" }
+        }
         if q.contains(/\bbase\b|бейс/) { return "base" }
         if q.contains(/arbitrum|арбитрум/) { return "arbitrum" }
         if q.contains(/hyperliquid|хайперликвид/) { return "hyperliquid" }

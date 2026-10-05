@@ -3,6 +3,7 @@ import ExecutionCore
 import Foundation
 import IhatecryptoCore
 import OneClickKit
+import RelayBridge
 import TxGuard
 import WalletCore
 
@@ -63,6 +64,66 @@ extension Executor {
         report("Relay lands ≈ \(Fmt.num(relayOut, maxFraction: 4)) USDC, NEAR Intents' 1Click ≈ \(Fmt.num(out, maxFraction: 4))\(q.timeEstimate.map { " in ≈ \($0) s" } ?? ""): taking "
                + (better ? "1Click — it allows its fresh deposit address by Touch ID first." : "Relay\(out > relayOut ? " (1Click's \(Fmt.usd(out - relayOut)) more isn't worth another Touch ID and the wait)" : "")."))
         return better ? q : nil
+    }
+
+    /// What sending `amount` of `symbol` on a network ihatecrypto has no wallet on costs in USDC, and where that USDC comes
+    /// from: Solana, or an EVM network 1Click takes USDC from when Solana is short (nearSource). Dry: nothing is issued.
+    public func acrossQuote(_ symbol: String, amount: Decimal, network: String, to recipient: String)
+        async throws -> (quote: OneClick.Quote, asset: String, units: Decimal, source: EVMNetwork?) {
+        guard let asset = OneClick.Asset.across[network]?.first(where: { $0.symbol == symbol.uppercased() }) else {
+            throw ExecutionError("NEAR Intents doesn't pay out \(symbol.uppercased()) on \(AddressCheck.Network(rawValue: network)?.title ?? network).")
+        }
+        let units = (amount * Decimal(sign: .plus, exponent: asset.decimals, significand: 1)).whole
+        guard units > 0 else { throw ExecutionError("\(Fmt.num(amount)) \(asset.symbol) is less than its smallest unit.") }
+        let solanaQuote = try await OneClick.quote(dry: true, exactOutput: true, origin: OneClick.Asset.solanaUSDC, destination: asset.id,
+                                                   amount: "\(units)", refundTo: wallet.solana, recipient: recipient)
+        let cost = Decimal(string: solanaQuote.amountInFormatted) ?? 0
+        let onSolana = Decimal(try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
+        let idle = Dictionary(await idleUSDC().map { ($0.net.key, $0.usdc) }, uniquingKeysWith: +)
+        guard let src = Self.nearSource(usdc: cost, onSolana: onSolana, held: { idle[$0] }), let origin = OneClick.Asset.usdc(onEVM: src.key) else {
+            guard onSolana >= cost else {
+                throw ExecutionError("\(Fmt.num(amount)) \(asset.symbol) costs ≈ \(Fmt.num(cost)) USDC; Solana has \(Fmt.num(onSolana)) and no network 1Click takes USDC from has that much. Nothing was signed.")
+            }
+            return (solanaQuote, asset.id, units, nil)
+        }
+        let q = try await OneClick.quote(dry: true, exactOutput: true, origin: origin, destination: asset.id, amount: "\(units)", refundTo: wallet.evm, recipient: recipient)
+        return (q, asset.id, units, src)
+    }
+
+    /// `amount` of a coin on a network ihatecrypto has no wallet on — BTC, ZEC, TRX or USDT on TRON, XRP, DOGE, SUI — to
+    /// a saved address there, paid in USDC through 1Click: exact output, so the address gets `amount` and 1Click returns
+    /// what's left of the USDC sent. The live quote must stay within 1% of the one compared, and 1Click itself must have
+    /// the deposit address bound to this recipient, our refund address, the assets and the amount before anything is sent.
+    /// The USDC goes to 1Click's fresh deposit address, which the signer asks to allow in person.
+    public func sendAcross(_ symbol: String, amount: Decimal, network: String, to recipient: String, label: String) async throws -> String {
+        let (shown, asset, units, src) = try await acrossQuote(symbol, amount: amount, network: network, to: recipient)
+        let origin = src.flatMap { OneClick.Asset.usdc(onEVM: $0.key) } ?? OneClick.Asset.solanaUSDC
+        let refundTo = src == nil ? wallet.solana : wallet.evm
+        let quote = try await OneClick.quote(dry: false, exactOutput: true, origin: origin, destination: asset, amount: "\(units)",
+                                             refundTo: refundTo, recipient: recipient)
+        guard let deposit = quote.depositAddress, let sendUnits = UInt64(quote.amountIn), sendUnits > 0 else { throw ExecutionError("1Click gave no deposit address. Nothing was sent.") }
+        let cost = Decimal(sendUnits) / 1_000_000, shownCost = Decimal(string: shown.amountInFormatted) ?? 0
+        guard cost <= shownCost * Decimal(string: "1.01")! + Decimal(string: "0.01")! else {
+            throw ExecutionError("1Click now wants \(Fmt.num(cost)) USDC, more than the \(Fmt.num(shownCost)) quoted. Nothing was sent.")
+        }
+        let binding = DepositGuard.check(bound: try await OneClick.boundRequest(depositAddress: deposit), recipient: recipient, refundTo: refundTo,
+                                         origin: origin, destination: asset, amount: "\(units)")
+        guard binding.ok else { throw ExecutionError("The guard stopped the deposit: " + binding.problems.joined(separator: " ")) }
+        let from = src?.name ?? "Solana", what = "\(Fmt.num(amount, maxFraction: 9)) \(symbol.uppercased())"
+        report("NEAR Intents: \(Fmt.num(cost)) USDC from \(from) → \(what) to «\(label)»; what isn't used comes back.")
+        let tx: String
+        if let src {
+            try await ensureEVM(src, usdc: sendUnits)
+            tx = try await sendEVM(src.rpc, to: src.usdc, data: try ERC20.transfer(to: deposit, amount: sendUnits),
+                                   note: "Send \(Fmt.num(cost)) USDC to the 1Click deposit for \(what)", recipients: [deposit])
+        } else {
+            tx = String(try await sendSolanaUSDC(sendUnits, to: deposit, label: "the 1Click deposit").split(separator: "/").last ?? "")
+        }
+        try journal.append(.init(chain: "1click", id: deposit, kind: .signed, note: "\(from) USDC→\(what) to \(label)"))
+        if !tx.isEmpty { try? await OneClick.submitDeposit(txHash: tx, depositAddress: deposit) }
+        let started = Date()
+        let s = try await oneClickSettled(deposit, refund: "USDC went back to \(from)", estimate: quote.timeEstimate)
+        return "Sent \(Fmt.num(Decimal(string: s.amountOutFormatted ?? "") ?? amount, maxFraction: 9)) \(symbol.uppercased()) to «\(label)» for \(Fmt.num(cost)) USDC from \(from), through NEAR Intents, in \(Int(Date().timeIntervalSince(started))) s."
     }
 
     /// What 1Click must land beyond Relay to be taken: 10 cents, or 0.05% of a bigger move.

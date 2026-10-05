@@ -122,7 +122,9 @@ extension Workspace {
         case .yields, .receive, .stopSchedules: []
         case .hlp: ["evm"]
         case .withdrawToSolana, .aave, .morpho, .baseToSolana, .arbitrumToSolana, .evmToSolana, .robinhoodToSolana, .solanaTo, .buyStock, .sellStock, .buyOn, .sellOn, .pay, .claimRewards, .sweepRewards: ["evm", "solana"]
-        case .bridge, .swapOn, .sweepDust: ["evm"]
+        case .bridge, .swapOn, .sweepDust, .revokeApproval, .hlSpotBuy, .hlSpotSell: ["evm"]
+        case .showApprovals: []
+        case .crossSwap(_, let from, _, let to, _): Array(Set([from, to].map { $0 == "solana" ? "solana" : "evm" })).sorted()
         case .gas: ["evm", "solana"]
         case .sendNear, .closeNear: ["near"]
         case .buyNear, .sellNear: ["solana", "near"]

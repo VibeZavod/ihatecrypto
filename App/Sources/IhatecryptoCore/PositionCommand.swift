@@ -178,6 +178,9 @@ public enum WalletCommand: Equatable, Sendable {
     /// One token for another on that network, straight on Uniswap (v2, v3 or v4, the best), no USDC in the middle; either
     /// side may be the network's own coin (ETH, POL). nil amount = all of `from`.
     case swapOn(String, from: String, to: String, amount: Decimal?)
+    /// A token on one network for a token on another through Relay, one signature: «swap 0.1 SOL on Solana for ETH on
+    /// Arbitrum». Places are «solana» or an EVM network's key; nil amount = all of a token.
+    case crossSwap(from: String, on: String, to: String, at: String, amount: Decimal?)
     /// Sell a Stock Token for USDG on Robinhood Chain; nil = all of it.
     case sellStock(symbol: String, amount: Decimal?)
     /// USDG on Robinhood Chain back to Solana as USDC; nil = everything.
@@ -202,6 +205,14 @@ public enum WalletCommand: Equatable, Sendable {
     /// «sweep dust», «собери пыль»: the verified tokens worth under `under` dollars (nil = $5) on Base, Arbitrum and
     /// Polygon, each sold for USDC on its own network when the gas takes less than half of it.
     case sweepDust(under: Decimal?)
+    /// «show approvals», «мои разрешения»: who may still spend which token, on every EVM network — a board, nothing signed.
+    /// A token on Hyperliquid's spot book (HYPE…) for USDC on HyperCore's spot balance; nil = ask how much.
+    case hlSpotBuy(symbol: String, usdc: Decimal?)
+    /// Sells it there for USDC; nil = all that's free.
+    case hlSpotSell(symbol: String, amount: Decimal?)
+    case showApprovals
+    /// Sets one approval to zero: the token's own approve(spender, 0), or Permit2's (`permit2`).
+    case revokeApproval(String, token: String, spender: String, permit2: Bool)
 
     public static func parse(_ text: String) -> WalletCommand? {
         // «pay POST https://… {"q": 1}»: the URL and the body kept as written.
@@ -220,6 +231,15 @@ public enum WalletCommand: Equatable, Sendable {
             let usd = (q.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|usdg|\$|долл|dollars?|bucks|бакс)/)?.1)
                 .flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
             return .gas(net, usd: usd)
+        }
+        // One approval to zero: «revoke the approval of 0x… to 0x… on base [through permit2]», «отзови разрешение 0x… для 0x… на base».
+        if let m = text.firstMatch(of: /(?i)\b(?:revoke|cancel|отзов\w*|отмен\w*)\s+(?:the\s+)?(?:approval|разрешени\w*)\s+(?:of|на|для)?\s*(0x[0-9a-fA-F]{40})\s+(?:to|для|у)\s+(0x[0-9a-fA-F]{40})\s+(?:on|на|в)\s+(base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|robinhood|робинхуд\w*)\b/) {
+            let permit2 = text.range(of: "permit2", options: .caseInsensitive) != nil
+            return .revokeApproval(Self.network(String(m.3)) ?? "base", token: String(m.1).lowercased(), spender: String(m.2).lowercased(), permit2: permit2)
+        }
+        // The approvals board: «show approvals», «мои разрешения», «кому я дал разрешения», «revoke approvals».
+        if q.contains(/\b(?:show\s+|my\s+|list\s+|check\s+|revoke\s+)?(?:token\s+)?approvals\b|\ballowances\b|(?:мои|покажи|проверь|какие)\s+(?:\w+\s+)?разрешени\w*|кому\s+(?:я\s+)?(?:дал|выдал)\w*\s+разрешени|апрув\w*/) {
+            return .showApprovals
         }
         // Small leftovers into USDC: «sweep dust», «собери пыль до $3», «convert small balances to USDC».
         if q.contains(/\bdust\b|\bпыль\b|\bпыли\b|собер\w*\s+мелоч\w*|\bsmall\s+balances?\s+(?:in)?to\s+usdc|\bleftovers?\s+(?:in)?to\s+usdc|остатк\w*\s+(?:в|на)\s+usdc/) {
@@ -240,6 +260,17 @@ public enum WalletCommand: Equatable, Sendable {
         }
         let amount = (q.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|usdg|\$|долл|dollars?|bucks|бакс)/)?.1)
             .flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
+        // Hyperliquid's spot book: «buy HYPE on hyperliquid spot for 10 USDC», «sell all HYPE spot», «купи HYPE на споте за 15$».
+        if q.contains(/\bspot\b|\bспот\w*/), !q.contains(/\b(?:long|short|perp\w*|лонг\w*|шорт\w*)\b/) {
+            if let m = q.firstMatch(of: /(?:\bbuy|купи\w*)\s+\$?([a-z][a-z0-9]{1,9})\b/), !["spot", "on", "for"].contains(String(m.1)) {
+                return .hlSpotBuy(symbol: String(m.1).uppercased(), usdc: amount)
+            }
+            if let m = q.firstMatch(of: /(?:\bsell|прода\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь)\s+)?\$?([a-z][a-z0-9]{1,9})\b/), !["spot", "on"].contains(String(m.2)) {
+                let count = m.1.flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
+                if count == nil, amount != nil { return nil }   // a sale in dollars names no count of coins
+                return .hlSpotSell(symbol: String(m.2).uppercased(), amount: count)
+            }
+        }
         // «положи 1 в джупитер»: a bare number is the amount of a deposit or a withdrawal when nothing else is
         // (not for buys: «buy 0.1 SOL» is coins, not dollars).
         let bare = q.firstMatch(of: /(?:^|[^\w.,])(\d+(?:[.,]\d+)?)(?![\d.,]*\s*(?:%|x\b|х\b|×|r\b))/)
@@ -275,6 +306,18 @@ public enum WalletCommand: Equatable, Sendable {
         if q.contains(/доходност|где\s+(?:лучше\s+)?держать|куда\s+(?:лучше\s+)?(?:положить|вложить|деть)|\bapy\b|ставк[иа]\s+(?:по\s+)?депозит|where\s+(?:to|should\s+i|can\s+i)\s+(?:keep|put|park|hold)|best\s+(?:rates?|yields?)|\byields?\b/) {
             let sol = q.contains(/\bsol\b|солан|\bсол\b|solana/), usd = q.contains(/usdc|стейбл|доллар|stable/)
             return .yields(sol && usd ? nil : sol ? "SOL" : usd ? "USDC" : q.contains(/usdt/) ? "USDT" : nil)
+        }
+        // A token on one network for one on another, through Relay: «swap 0.1 SOL on Solana for ETH on Arbitrum», «swap all
+        // AERO on base for SOL on solana», «обменяй 0.1 SOL на ETH в арбитруме» (SOL comes from Solana). USDC for USDC is
+        // a bridge; a swap on one network is the rule below.
+        if let m = text.firstMatch(of: /(?i)\b(?:swap|exchange|convert|поменя\w*|обменя\w*|свапн\w*|свопн\w*|конверт\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь|всю)\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:(?:on|from|in|на|в|во|с|со)\s+(solana|солан\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|robinhood|робинхуд\w*)(?:\s+chain)?\s+)?(?:for|to|into|на|в)\s+\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:on|in|at|на|в|во)\s+(solana|солан\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|robinhood|робинхуд\w*)\b/) {
+            func place(_ w: Substring) -> String { w.lowercased().hasPrefix("sol") || w.lowercased().hasPrefix("сол") ? "solana" : Self.network(String(w)) ?? "base" }
+            let a = String(m.2), b = String(m.4), to = place(m.5)
+            if let from = m.3.map(place) ?? (a.uppercased() == "SOL" ? "solana" : nil), from != to {
+                let count = m.1.flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
+                if a.uppercased() == "USDC", b.uppercased() == "USDC" { return from == "solana" ? .solanaTo(to, count) : .bridge(from: from, to: to, count) }
+                return .crossSwap(from: a, on: from, to: b, at: to, amount: count)
+            }
         }
         // One token for another on an EVM network: «swap 0.01 ETH for AERO on base», «swap all DEGEN to AERO on base»,
         // «поменяй 0.01 ETH на AERO на бейсе». USDC on one side is a buy or a sale there, with the money on that network.
@@ -401,11 +444,13 @@ public enum WalletCommand: Equatable, Sendable {
         }
         // «send all RAY on solana to Bybit», «отправь 1973 AI в робинхуде на New wallet»: any token, as it is, to a saved
         // address. SOL with a number, NEAR, and USDC with a number but no network keep their own forms below.
-        if let m = text.firstMatch(of: /(?i)^\s*(?:send|transfer|отправь\w*|переведи|перевести|скинь|кинь)\s+(all|весь|всё|все|\d+(?:[.,]\d+)?)\s+(?:(?:the|my|мои|мой|моих)\s+)?\$?(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|[A-Za-z][A-Za-z0-9._-]{0,19})(?:\s+tokens?)?(?:\s+(?:on|in|в|на|по)\s+(?:the\s+)?(?:сети\s+)?(solana|солан\w*|base|бейс\w*|бейз\w*|баз[еыау]|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфир\w*|mainnet|robinhood|робин[гх]уд\w*|tempo|темпо\w*)(?:\s+(?:network|chain|сети))?)?\s+(?:to|на|для)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/) {
+        if let m = text.firstMatch(of: /(?i)^\s*(?:send|transfer|отправь\w*|переведи|перевести|скинь|кинь)\s+(all|весь|всё|все|\d+(?:[.,]\d+)?)\s+(?:(?:the|my|мои|мой|моих)\s+)?\$?(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|[A-Za-z][A-Za-z0-9._-]{0,19})(?:\s+tokens?)?(?:\s+(?:on|in|в|на|по)\s+(?:the\s+)?(?:сети\s+)?(solana|солан\w*|base|бейс\w*|бейз\w*|баз[еыау]|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфир\w*|mainnet|robinhood|робин[гх]уд\w*|tempo|темпо\w*|bitcoin|биткоин\w*|zcash|tron|трон\w*|xrp|ripple|dogecoin|sui)(?:\s+(?:network|chain|сети))?)?\s+(?:to|на|для)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/) {
             let amount = Decimal(string: String(m.1).replacingOccurrences(of: ",", with: "."))
             let token = String(m.2), t = token.uppercased(), name = String(m.4).trimmingCharacters(in: .whitespaces)
             let network = m.3.map { w -> String in
                 let s = String(w).lowercased()
+                let across = ["bitcoin": "bitcoin", "биткоин": "bitcoin", "zcash": "zcash", "tron": "tron", "трон": "tron", "xrp": "xrp", "ripple": "xrp", "dogecoin": "dogecoin", "sui": "sui"]
+                if let a = across.first(where: { s.hasPrefix($0.key) })?.value { return a }
                 return s.hasPrefix("sol") || s.hasPrefix("сол") ? "solana" : s.hasPrefix("баз") ? "base" : Self.network(s) ?? s
             }
             let stable = t == "USDC" || t == "USDG"
@@ -414,7 +459,8 @@ public enum WalletCommand: Equatable, Sendable {
             let place = name.lowercased().wholeMatch(of: /(?:the\s+)?(?:solana|солан\w*|hyperliquid|хайперликвид\w*|base|бейс\w*|aave|kamino|hlp|vault|jupiter\w*|morpho)/) != nil
             if !ownForm, !place, !["MONEY", "FUNDS", "EVERYTHING", "IT", "THEM", "TOKENS"].contains(t),
                !name.lowercased().contains(/0x[0-9a-f]{6}/), name.count <= 40 {
-                if stable, let amount { return .sendTo(name: name, amount: amount, network: network) }
+                // USDC on a network only NEAR Intents reaches (Sui) goes as a token through it.
+                if stable, let amount, !["bitcoin", "zcash", "tron", "xrp", "dogecoin", "sui"].contains(network ?? "") { return .sendTo(name: name, amount: amount, network: network) }
                 return .sendToken(name: name, token: token, amount: amount, network: network)
             }
         }
@@ -757,11 +803,19 @@ extension WalletCommand {
         case .swapOn(let place, let a, let b, let x):
             func name(_ t: String) -> String { t.hasPrefix("0x") ? t : t.uppercased() }
             return "swap \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(name(a)) for \(name(b)) on \(Self.placeName(place))"
+        case .crossSwap(let a, let from, let b, let to, let x):
+            func name(_ t: String) -> String { t.hasPrefix("0x") ? t : t.uppercased() }
+            return "swap \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(name(a)) on \(Self.placeName(from)) for \(name(b)) on \(Self.placeName(to))"
         case .solanaTo(let place, let x): return "move \(n(x)) USDC from Solana to \(Self.placeName(place))"
         case .pay(let method, let url, _): return "pay for \(method) \(url) in USDC on Tempo"
         case .gas(let place, let usd): return "add ≈ \(Fmt.usd(usd ?? 1)) of gas on \(Self.placeName(place))"
         case .bridge(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to))" + (to == "robinhood" ? " (arrives as USDG)" : "")
         case .claimRewards: return "claim rewards on Merkl"
+        case .hlSpotBuy(let s, let u): return "buy \(s) on Hyperliquid spot for \(n(u)) USDC"
+        case .hlSpotSell(let s, let x): return "sell \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(s) on Hyperliquid spot"
+        case .showApprovals: return "show my token approvals"
+        case .revokeApproval(let place, let token, let spender, let permit2):
+            return "revoke the approval of \(token) to \(spender) on \(Self.placeName(place))" + (permit2 ? " through Permit2" : "")
         case .sweepDust(let under): return "sweep dust\(under.map { " under $\(Fmt.num($0))" } ?? "") into USDC on Base, Arbitrum and Polygon"
         case .sweepRewards(let min, let into): return "sweep Merkl rewards once worth \(Fmt.usd(max(min ?? 5, 5))) or more into \(into ?? "USDC")"
         }

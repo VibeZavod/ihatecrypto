@@ -446,6 +446,11 @@ extension Workspace {
                 try requireConfirmed(entry)
                 reply(try await e.sendSOL(amount, to: entry.address, label: entry.name), note: "Solana")
                 markSent(entry)
+            case .sendToken(let name, let token, let amount?, let network) where (try? acrossRecipient(name, token: token, network: network)) != nil:
+                guard let r = try acrossRecipient(name, token: token, network: network) else { break }
+                reply(try await e.sendAcross(r.symbol, amount: amount, network: r.entry.network.rawValue, to: r.address, label: r.entry.name),
+                      note: "NEAR Intents · \(r.entry.network.title)")
+                markSent(r.entry)
             case .sendToken(let name, let token, let amount, let network):
                 let (entry, net) = try tokenRecipient(name, network: network)
                 reply(try await e.sendToken(token, amount: amount, on: net, to: entry.address, label: entry.name),
@@ -482,10 +487,20 @@ extension Workspace {
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't swap on \(place).") }
                 let prefer = routeWays.removeValue(forKey: Self.wayKey(place, token))
                 reply(try await e.sellOn(net, token, amount: amount, prefer: prefer, keep: keep), note: "\(net.name) · \(prefer == "relay" ? "Relay" : prefer == "uniswap" ? "Uniswap + Relay" : "Relay / Uniswap")")
+            case .hlSpotBuy(let symbol, let usdc): reply(try await e.hlSpot(buy: true, symbol: symbol, usdc: usdc, amount: nil), note: "Hyperliquid · spot")
+            case .hlSpotSell(let symbol, let amount): reply(try await e.hlSpot(buy: false, symbol: symbol, usdc: nil, amount: amount), note: "Hyperliquid · spot")
+            case .showApprovals: detail = "approvals"   // shown without a card (Canvases: before the card)
+            case .revokeApproval(let place, let token, let spender, let permit2):
+                guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't revoke on \(place).") }
+                reply(try await e.revokeApproval(net, token: token, spender: spender, permit2: permit2), note: "\(net.name) · approvals")
+                approvalsChanged += 1
             case .sweepDust(let under): reply(try await e.sweepDust(dustTokens(under: under)), note: "Uniswap · dust into USDC")
             case .swapOn(let place, let from, let to, let amount):
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't swap on \(place).") }
                 reply(try await e.swapOn(net, from: from, to: to, amount: amount), note: "\(net.name) · Uniswap")
+            case .crossSwap(let a, let from, let b, let to, let amount):
+                reply(try await e.crossSwap(a, on: from, for: b, on: to, amount: amount),
+                      note: "Relay · \(WalletCommand.placeName(from)) → \(WalletCommand.placeName(to))")
             case .robinhoodToSolana(let amount): reply(try await e.evmToSolana(.robinhood, usdc: amount), note: "Relay · Robinhood → Solana")
             case .solanaTo(let place, let amount):
                 // Never a guess: a network the app doesn't know gets nothing.

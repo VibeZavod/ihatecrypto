@@ -179,8 +179,14 @@ func moveMoney(_ text: String) async throws {
     case .sellStock(let symbol, let amount): print(try await executor.sellStock(symbol, amount: amount))
     case .buyOn(let place, let token, let usdc, let from): print(try await executor.buyOn(EVMNetwork.named(place) ?? .base, token, usdc: usdc ?? 1, from: from))
     case .sellOn(let place, let token, let amount, let keep): print(try await executor.sellOn(EVMNetwork.named(place) ?? .base, token, amount: amount, keep: keep))
+    case .hlSpotBuy(let symbol, let usdc): print(try await executor.hlSpot(buy: true, symbol: symbol, usdc: usdc ?? 10, amount: nil))
+    case .hlSpotSell(let symbol, let amount): print(try await executor.hlSpot(buy: false, symbol: symbol, usdc: nil, amount: amount))
+    case .showApprovals: for a in await executor.approvals().list { print(a.chain, a.symbol, a.spenderName ?? a.spender, a.unlimited ? "unlimited" : "\(a.amount)", a.permit2 ? "Permit2" : "") }
+    case .revokeApproval(let place, let token, let spender, let permit2):
+        print(try await executor.revokeApproval(EVMNetwork.named(place) ?? .base, token: token, spender: spender, permit2: permit2))
     case .sweepDust: throw ExecutionError("Sweeping dust works in the ihatecrypto app, where the portfolio is.")
     case .swapOn(let place, let from, let to, let amount): print(try await executor.swapOn(EVMNetwork.named(place) ?? .base, from: from, to: to, amount: amount))
+    case .crossSwap(let a, let from, let b, let to, let amount): print(try await executor.crossSwap(a, on: from, for: b, on: to, amount: amount))
     case .robinhoodToSolana(let amount): print(try await executor.evmToSolana(.robinhood, usdc: amount))
     case .solanaTo(let place, let amount):
         guard let n = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't move money to \(place).") }
