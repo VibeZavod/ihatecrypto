@@ -1163,6 +1163,7 @@ extension Workspace {
         case .buyStock(let symbol, let usdc?): stockRoute(symbol, usdc)
         case .buyOn(let place, let token, let usdc?, let from): swapRoute(place, token, usdc: usdc, sell: nil, from: from)
         case .sellOn(let place, let token, let amount, let keep): swapRoute(place, token, usdc: nil, sell: amount, keep: keep)
+        case .swapOn(let place, let from, let to, let amount): pairRoute(place, from, to, amount)
         case .sellNear(let asked): sellNearRoute(asked)
         case .buyNear(let usdc?): buyNearRoute(usdc)
         case .sendNear(let name, let asked): nearOutRoute(to: name, amount: asked, close: false)
@@ -1595,7 +1596,7 @@ extension Workspace {
             ?? (from != "solana" && (self.usdc(on: place) ?? 0) >= u) } ?? false)
         if here {
             let gets = quoted?.first { $0.way == "here" }?.gets
-            let moving = usdc.map { "\(Fmt.num($0)) USDC" } ?? "\(sell.map { Fmt.num($0) } ?? "all") \(label)"
+            let moving = usdc.map { "\(Fmt.num($0)) USDC" } ?? "\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label)"
             let start: [ActivityBubble] = if let src {
                 [step(ModuleNetwork(place: src)?.logo ?? src, "FROM · \(WalletCommand.placeName(src).uppercased())", moving,
                       self.usdc(on: src).map { "free there: \(Fmt.num($0)) USDC" } ?? "USDC there", RouteFill(rawValue: src) ?? .relay),
@@ -1614,7 +1615,7 @@ extension Workspace {
                     step(logo, "BUY · UNISWAP ON \(name.uppercased())", label, gets.map { "≈ \($0)" } ?? "at the pool price", fill),
                 ], warning: token.hasPrefix("0x") ? "A token by its contract is anyone’s coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose." : nil)
             }
-            return MoveRoute(title: "Sell \(sell.map { Fmt.num($0) } ?? "all") \(label) on \(name) → USDC on \(name)", footer: footer, steps: start + [
+            return MoveRoute(title: "Sell \(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label) on \(name) → USDC on \(name)", footer: footer, steps: start + [
                 approve(moving, for: "Uniswap", logo: "uni", fill),
                 step("usdc", "TO · USDC ON \(name.uppercased())", gets.map { "≈ \($0)" } ?? "USDC", "stays on \(name) · your own address ✓", fill),
             ])
@@ -1639,12 +1640,35 @@ extension Workspace {
                 step(logo, "BUY · ON \(name.uppercased())", label, "at the best price found", fill),
             ], warning: token.hasPrefix("0x") ? "A token by its contract is anyone’s coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose." : nil)
         }
-        return MoveRoute(title: "Sell \(sell.map { Fmt.num($0) } ?? "all") \(label) on \(name) → Solana", footer: footer, steps: [
-            step(logo, "FROM · \(name.uppercased())", "\(sell.map { Fmt.num($0) } ?? "all") \(label)", "\(EVMNetwork.named(place)?.gasCoin ?? "ETH") for gas comes along when there’s none", fill),
-        ] + (viaUniswap ? [approve("\(sell.map { Fmt.num($0) } ?? "all") \(label)", for: "Uniswap", logo: "uni", fill)] : []) + [
+        return MoveRoute(title: "Sell \(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label) on \(name) → Solana", footer: footer, steps: [
+            step(logo, "FROM · \(name.uppercased())", "\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label)", "\(EVMNetwork.named(place)?.gasCoin ?? "ETH") for gas comes along when there’s none", fill),
+        ] + (viaUniswap ? [approve("\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label)", for: "Uniswap", logo: "uni", fill)] : []) + [
             way,
             step("sol", "TO · SOLANA", "USDC", "your wallet", .solana),
         ])
+    }
+
+    /// One token for another on an EVM network, straight on Uniswap: what goes in (approved exactly, or the network's coin
+    /// itself), the swap with the version and what comes out once quoted (Executor.pairQuote), paying only this wallet.
+    private func pairRoute(_ place: String, _ from: String, _ to: String, _ amount: Decimal?) -> MoveRoute {
+        let name = WalletCommand.placeName(place)
+        let fill = RouteFill(rawValue: place) ?? .check
+        let logo = ModuleNetwork(place: place)?.logo ?? place
+        func label(_ t: String) -> String { t.hasPrefix("0x") ? tokenSymbol(t) ?? "\(t.prefix(6))…\(t.suffix(4))" : t.uppercased() }
+        let coin = EVMNetwork.named(place)?.gasCoin ?? "ETH"
+        let coinIn = from.uppercased() == coin, coinOut = to.uppercased() == coin
+        let quoted = swapQuote.flatMap { q in q.command == .swapOn(place, from: from, to: to, amount: amount) ? q.ways.first : nil }
+        // A token amount as written: 0.0001 ETH read «0 ETH» at two places.
+        let moving = "\(amount.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label(from))"
+        var steps = [step(logo, "FROM · \(name.uppercased())", moving, coinIn ? "your \(coin) · its fees stay" : "on \(name)", fill)]
+        if !coinIn { steps.append(approve(moving, for: "Uniswap", logo: "uni", fill)) }
+        steps.append(step("uni", "SWAP · \((quoted?.way ?? "Uniswap").uppercased()) ON \(name.uppercased())", label(to),
+                          quoted.map { "≈ \($0.gets)" } ?? "the best of v2, v3 and v4", fill))
+        let footer = "One swap on \(name), no USDC in the middle: the best of Uniswap v2, v3 and v4, at most 0.5–3% under its quote by the price impact, paying only this wallet."
+            + (coinIn ? " \(coin) goes in as itself into a v4 pool of it, else wrapped into W\(coin) first (one more transaction)." : " An exact approve first.")
+            + (coinOut ? " \(coin) comes out as itself, or is unwrapped after." : "") + " Press Confirm."
+        return MoveRoute(title: "Swap \(moving) → \(label(to)) on \(name)", footer: footer, steps: steps,
+                         warning: to.hasPrefix("0x") ? "A token by its contract is anyone’s coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose." : nil)
     }
 
     static func wayName(_ way: String) -> String { way == "relay" ? "Relay swap" : "Relay + Uniswap" }
@@ -1683,6 +1707,7 @@ extension Workspace {
         case .sellOn(let p, let t, let a, _): (place, token, usdc, sell) = (p, t, nil, a)
         case .buyStock(let s, let u?): await quoteStock(command, s, usdc: u, sell: nil); return
         case .sellStock(let s, let a): await quoteStock(command, s, usdc: nil, sell: a); return
+        case .swapOn(let p, let a, let b, let x): await quotePair(command, p, a, b, x); return
         default: return
         }
         var from: String?, keep = false
@@ -1694,6 +1719,18 @@ extension Workspace {
             guard !Task.isCancelled else { return }
             // A failed quote keeps the last good one.
             if let ways, !ways.isEmpty { swapQuote = (command, ways) }
+            else if swapQuote?.command != command { swapQuote = (command, []) }
+            try? await Task.sleep(for: .seconds(30))
+        }
+    }
+
+    /// A token-for-token swap: Uniswap's best route quoted while the card waits, again every 30 s; nothing is signed.
+    private func quotePair(_ command: WalletCommand, _ place: String, _ from: String, _ to: String, _ amount: Decimal?) async {
+        guard let wallet = previewWallet, let net = EVMNetwork.named(place) else { return }
+        while !Task.isCancelled {
+            let q = try? await executor(wallet).pairQuote(net, from: from, to: to, amount: amount)
+            guard !Task.isCancelled else { return }
+            if let q { swapQuote = (command, [(q.way, q.gets, 0)]) }
             else if swapQuote?.command != command { swapQuote = (command, []) }
             try? await Task.sleep(for: .seconds(30))
         }

@@ -28,6 +28,10 @@ public protocol TradeSigner: Sendable {
     /// `calls` as one EIP-7702 transaction from and to the wallet (Batch7702); each call is held to signEVM's rules.
     func signEVMBatch(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                       calls: [Batch7702.Call], recipients: [String]) async throws -> Data
+    /// A contract call carrying `value` wei of the network's own coin: the signer lets it go only where the coins come back
+    /// to this wallet (EVMCall.returnsCoins: a wrap into the network's WETH, a v4 swap of native ETH), or to `recipients`.
+    func signEVMPayable(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
+                        to: String, value: UInt64, data: Data, recipients: [String]) async throws -> Data
     /// The network's own coin (ETH, POL): `value` wei to `to`, which must be among `recipients`; no calldata.
     func signEVMTransfer(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                          to: String, value: UInt64, recipients: [String]) async throws -> Data
@@ -49,6 +53,10 @@ extension TradeSigner {
     public func signEVMTransfer(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                                 to: String, value: UInt64, recipients: [String]) async throws -> Data {
         throw ExecutionError("Sending a network's own coin is signed in the ihatecrypto app.")
+    }
+    public func signEVMPayable(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
+                               to: String, value: UInt64, data: Data, recipients: [String]) async throws -> Data {
+        throw ExecutionError("This signer doesn't send the network's own coin into a contract: swap from its wrapped token (WETH) instead.")
     }
     public func signNearTransfer(amount: UInt128, receiver: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data {
         throw ExecutionError("NEAR transfers are signed in the ihatecrypto app.")

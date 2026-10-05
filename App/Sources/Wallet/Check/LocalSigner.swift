@@ -60,6 +60,19 @@ struct LocalSigner: TradeSigner {
                                   gasLimit: gasLimit, to: to, value: 0, data: data).signed(privateKey: keys.evm).raw
     }
 
+    /// The same rules with coins sent along: they may only come back to this wallet (a wrap, a native v4 swap) or go to `recipients`.
+    func signEVMPayable(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64, to: String, value: UInt64,
+                        data: Data, recipients: [String]) async throws -> Data {
+        guard EVMRPC.signable.contains(chainId) else { throw ExecutionError("Not signing for network \(chainId).") }
+        let call = EVMCall.decode(data)
+        if let refusal = call.refusal(sender: wallet.evm, chainId: chainId) ?? Batch7702.selfCall(to: to, data: data, owner: wallet.evm) { throw ExecutionError(refusal) }
+        if let payee = call.payees(to: to, value: value, chainId: chainId).first(where: { p in !(recipients + [wallet.evm]).contains { $0.lowercased() == p.lowercased() } }) {
+            throw ExecutionError("Coins or tokens would go to \(payee).")
+        }
+        return try EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee,
+                                  gasLimit: gasLimit, to: to, value: value, data: data).signed(privateKey: keys.evm).raw
+    }
+
     var signsBatches: Bool { true }
 
     /// The same batch rules as the signing process: each call's own rules, no call into the wallet, payees approved.
@@ -166,6 +179,7 @@ func moveMoney(_ text: String) async throws {
     case .sellStock(let symbol, let amount): print(try await executor.sellStock(symbol, amount: amount))
     case .buyOn(let place, let token, let usdc, let from): print(try await executor.buyOn(EVMNetwork.named(place) ?? .base, token, usdc: usdc ?? 1, from: from))
     case .sellOn(let place, let token, let amount, let keep): print(try await executor.sellOn(EVMNetwork.named(place) ?? .base, token, amount: amount, keep: keep))
+    case .swapOn(let place, let from, let to, let amount): print(try await executor.swapOn(EVMNetwork.named(place) ?? .base, from: from, to: to, amount: amount))
     case .robinhoodToSolana(let amount): print(try await executor.evmToSolana(.robinhood, usdc: amount))
     case .solanaTo(let place, let amount):
         guard let n = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't move money to \(place).") }

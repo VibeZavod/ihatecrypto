@@ -109,3 +109,33 @@ private struct QuoteOnly: TradeSigner {
     #expect(EVMCall.decode(unlisted).refusal(sender: me, chainId: 8453)?.contains("hooks") == true)
     #expect(!Batch7702.problems([.init(to: UniswapV4.on(8453)!.router, data: unlisted)], owner: me, chainId: 8453).isEmpty)
 }
+
+/// Coins sent with a call: the network's WETH wraps them back to this wallet, a v4 swap of native ETH takes exactly its
+/// input; anything else with coins pays its `to`, which the signer then refuses unless approved. WETH's withdraw reads
+/// as an unwrap; the prompt says what goes in once.
+@Test func signerLetsCoinsGoOnlyBackToThisWallet() throws {
+    let wrap = Data([0xd0, 0xe3, 0x0d, 0xb0]), wei: UInt64 = 1_000_000_000_000_000
+    #expect(EVMCall.decode(wrap) == .wrap)
+    #expect(EVMCall.decode(wrap).payees(to: baseWETH, value: wei, chainId: 8453).isEmpty)
+    #expect(EVMCall.decode(wrap).payees(to: aero, value: wei, chainId: 8453) == [aero])              // not this network's WETH
+    #expect(EVMCall.decode(wrap).payees(to: baseWETH, value: wei, chainId: 42161) == [baseWETH])     // Base's WETH on Arbitrum
+    #expect(EVMCall.decode(wrap).summary(chainId: 8453, to: baseWETH, value: wei) == "wrap 0.001 ETH into WETH on Base")
+    let unwrap = Data([0x2e, 0x1a, 0x7d, 0x4d]) + ABI.uint(wei)
+    #expect(EVMCall.decode(unwrap) == .unwrap(amount: ABI.uint(wei)))
+    #expect(EVMCall.decode(unwrap).payees(to: baseWETH, value: 0, chainId: 8453).isEmpty)
+    #expect(EVMCall.decode(unwrap).summary(chainId: 8453, to: baseWETH, value: 0).hasPrefix("unwrap 0.001 WETH"))
+    // A v4 swap of native ETH through Base's Universal Router: exactly its input, nothing more, nowhere else.
+    let router = try #require(UniswapV4.on(8453)).router
+    let native = UniswapV4.PoolKey(currency0: UniswapV4.native, currency1: aero, fee: 3000, tickSpacing: 60, hooks: UniswapV4.native)
+    let ethIn = try UniswapV4.execute(native, zeroForOne: true, amountIn: Decimal(wei), amountOutMinimum: 1, deadline: 1)
+    #expect(EVMCall.decode(ethIn).payees(to: router, value: wei, chainId: 8453).isEmpty)
+    #expect(EVMCall.decode(ethIn).payees(to: router, value: wei + 1, chainId: 8453) == [router])
+    #expect(EVMCall.decode(ethIn).payees(to: aero, value: wei, chainId: 8453) == [aero])
+    #expect(EVMCall.decode(ethIn).summary(chainId: 8453, to: router, value: wei) == "swap 0.001 ETH on Uniswap v4 on Base, paying this wallet")
+    // Coins with a swap that pays in a token: the router would keep them.
+    let tokenIn = try UniswapV4.execute(native, zeroForOne: false, amountIn: Decimal(wei), amountOutMinimum: 1, deadline: 1)
+    #expect(EVMCall.decode(tokenIn).payees(to: router, value: wei, chainId: 8453) == [router])
+    // Coins with any other call still pay its `to`.
+    #expect(EVMCall.decode(try UniswapV2.swapExactTokens(amountIn: 1, amountOutMin: 1, path: [baseWETH, aero], to: me, deadline: 1))
+        .payees(to: try #require(UniswapV2.on(8453)).router, value: wei, chainId: 8453).count == 1)
+}

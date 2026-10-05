@@ -353,6 +353,10 @@ final class Browser {
             lines.append("Lending pool call (Aave supply or withdraw) crediting \(b.lowercased() == from.lowercased() ? "this wallet" : b).")
         case .claim(let users):
             lines.append("Merkl rewards claim paying \(users.allSatisfy { $0.lowercased() == from.lowercased() } ? "this wallet" : users.joined(separator: ", ")).")
+        case .wrap:
+            lines.append("Wrap \(Fmt.num(Decimal(value) / 1_000_000_000_000_000_000, maxFraction: 8)) \(native) into its token at \(to)\((EVMCall.wrap.payees(to: to, value: value, chainId: rpc.chainId).isEmpty ? ", the network's own WETH" : " — not this network's WETH")).")
+        case .unwrap(let a):
+            lines.append("Unwrap \(amount(a, 18)) of the token at \(to) into \(native).")
         case .contract(let selector):
             lines.append("Contract call \(to), function \(selector)\(value > 0 ? ", with \(Fmt.num(Decimal(value) / 1_000_000_000_000_000_000, maxFraction: 8)) \(native)" : "").")
         }

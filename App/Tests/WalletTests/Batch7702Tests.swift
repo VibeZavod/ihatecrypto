@@ -150,6 +150,16 @@ private struct ForkSigner: TradeSigner {
                                   to: to, value: 0, data: data).signed(privateKey: key).raw
     }
 
+    /// Coins sent along, under the signing process's rules: only back to this wallet (a wrap, a native v4 swap).
+    func signEVMPayable(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64, to: String, value: UInt64,
+                        data: Data, recipients: [String]) async throws -> Data {
+        let call = EVMCall.decode(data)
+        if let why = call.refusal(sender: address, chainId: chainId) ?? Batch7702.selfCall(to: to, data: data, owner: address) { throw ExecutionError(why) }
+        if let payee = call.payees(to: to, value: value, chainId: chainId).first(where: { $0.lowercased() != address.lowercased() }) { throw ExecutionError("pays \(payee)") }
+        return try EVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFeePerGas: maxPriorityFee, maxFeePerGas: maxFee, gasLimit: gasLimit,
+                                  to: to, value: value, data: data).signed(privateKey: key).raw
+    }
+
     func signEVMBatch(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                       calls: [Batch7702.Call], recipients: [String]) async throws -> Data {
         if let why = Batch7702.problems(calls, owner: address, chainId: chainId).first { throw ExecutionError(why) }
@@ -446,4 +456,66 @@ func forkV4SwapThroughAVouchedHook() async throws {
         _ = try await e.v4Swap((unlisted, zeroForOne, quoted), tokenIn: weth, units: units, minOut: 1, what: "0.0001 WETH", note: "Buy", rpc: rpc)
     }
     #expect(try await rpc.nonce(me) == nonce1)
+}
+
+/// One token for another on an anvil fork of Base (NET=base Tools/fork7702.sh), through the executor's own swapOn on a copy
+/// of Base whose node is the fork: ETH → AERO (a v4 pool of ETH itself, or wrapped first, whichever gives more) and all
+/// of it back to ETH; USDC → DEGEN → AERO without ETH; ETH ↔ WETH as a wrap and an unwrap. No WETH is left behind, and the
+/// signer's rules refuse coins sent to anything but the network's WETH or a v4 swap of them.
+@Test(.enabled(if: ProcessInfo.processInfo.environment["IHATECRYPTO_ANVIL_CHAIN"] == "8453"))
+func forkSwapsTokenForToken() async throws {
+    let env = ProcessInfo.processInfo.environment
+    UserDefaults.standard.set(true, forKey: Executor.batchKey)   // the user's switch, on for the fork runs
+    let rpc = EVMRPC(url: URL(string: env["IHATECRYPTO_ANVIL"]!)!, chainId: 8453)
+    let key = Data(hex: env["IHATECRYPTO_ANVIL_KEY"]!)!
+    let me = try EVMAccount.address(privateKey: key)
+    let b = EVMNetwork.base
+    let net = EVMNetwork(name: b.name, key: b.key, rpc: rpc, usdc: b.usdc, relayChain: b.relayChain, explorer: b.explorer, gasFloor: b.gasFloor, topupUSD: b.topupUSD)
+    let weth = "0x4200000000000000000000000000000000000006", aero = "0x940181a94a35a4569e4529a3cdfb74e38fd98631"
+    let degen = "0x4ed4e862860bed51a9570b96d89af5e1b0efefed"
+    let journal = Journal(url: FileManager.default.temporaryDirectory.appendingPathComponent("forkpair-\(UUID().uuidString).jsonl"))
+    let e = Executor(wallet: TradeWallet(solana: "", evm: me), signer: ForkSigner(key: key, address: me), journal: journal) { print("·", $0) }
+    func held(_ t: String) async throws -> Decimal { try await e.balance(t, on: rpc) }
+    let weth0 = try await held(weth)
+
+    // 1. ETH → AERO.
+    let eth0 = try await rpc.balance(me)
+    print(try await e.swapOn(net, from: "ETH", to: "AERO", amount: Decimal(string: "0.001")!))
+    let aero1 = try await held(aero)
+    #expect(aero1 > 0)
+    #expect(try await rpc.balance(me) < eth0 - 1_000_000_000_000_000 + 1)            // the 0.001 ETH and the fees
+    #expect(try await held(weth) == weth0)                                          // nothing left wrapped
+    // 2. All the AERO back to ETH.
+    let eth1 = try await rpc.balance(me)
+    print(try await e.swapOn(net, from: "AERO", to: "ETH", amount: nil))
+    #expect(try await held(aero) == 0)
+    #expect(try await rpc.balance(me) > eth1)
+    #expect(try await held(weth) == weth0)                                          // unwrapped, or never wrapped
+    // 3. Token for token without the coin: 2 USDC → DEGEN, then all the DEGEN → AERO.
+    let usdc0 = try await rpc.tokenBalance(net.usdc, owner: me)
+    print(try await e.swapOn(net, from: "USDC", to: degen, amount: 2))
+    #expect(try await rpc.tokenBalance(net.usdc, owner: me) == usdc0 - 2_000_000)
+    #expect(try await held(degen) > 0)
+    print(try await e.swapOn(net, from: degen, to: "AERO", amount: nil))
+    #expect(try await held(degen) == 0)
+    #expect(try await held(aero) > 0)
+    // 4. ETH ↔ WETH: a wrap, then an unwrap of all of it.
+    print(try await e.swapOn(net, from: "ETH", to: "WETH", amount: Decimal(string: "0.0005")!))
+    #expect(try await held(weth) == weth0 + 500_000_000_000_000)
+    print(try await e.swapOn(net, from: "WETH", to: "ETH", amount: nil))
+    #expect(try await held(weth) == 0)
+    // 5. Coins sent with a call go only into the network's WETH or a v4 swap of them, exactly its input.
+    let signer = ForkSigner(key: key, address: me)
+    await #expect(throws: (any Error).self) {
+        _ = try await signer.signEVMPayable(chainId: 8453, nonce: 0, maxPriorityFee: 1, maxFee: 1, gasLimit: 100_000, to: aero, value: 1,
+                                            data: Data([0xd0, 0xe3, 0x0d, 0xb0]), recipients: [])
+    }
+    let native = UniswapV4.PoolKey(currency0: UniswapV4.native, currency1: aero, fee: 3000, tickSpacing: 60, hooks: UniswapV4.native)
+    let swap = try UniswapV4.execute(native, zeroForOne: true, amountIn: 1_000, amountOutMinimum: 1, deadline: 9_999_999_999)
+    _ = try await signer.signEVMPayable(chainId: 8453, nonce: 0, maxPriorityFee: 1, maxFee: 1, gasLimit: 100_000, to: UniswapV4.on(8453)!.router,
+                                        value: 1_000, data: swap, recipients: [])
+    await #expect(throws: (any Error).self) {
+        _ = try await signer.signEVMPayable(chainId: 8453, nonce: 0, maxPriorityFee: 1, maxFee: 1, gasLimit: 100_000, to: UniswapV4.on(8453)!.router,
+                                            value: 1_001, data: swap, recipients: [])
+    }
 }

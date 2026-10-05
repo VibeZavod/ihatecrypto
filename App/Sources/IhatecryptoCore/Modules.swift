@@ -246,6 +246,10 @@ public struct Modules: Equatable, Sendable {
         case .buyOn(let place, _, _, _), .sellOn(let place, _, _, _):
             return isOn(.swaps) ? r(.relay, via: ModuleNetwork(place: place).map { [$0] } ?? [])
                 : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
+        // One token for another on the network itself: Uniswap there, no bridge.
+        case .swapOn(let place, _, _, _):
+            return isOn(.swaps) ? r(.uniswap, via: ModuleNetwork(place: place).map { [$0] } ?? [])
+                : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
         case .buyNear, .sellNear: return r(.oneClick)
         case .sendNear, .closeNear: return refusal(network: .near, ru: ru)
         case .sendSol: return refusal(network: .solana, ru: ru)

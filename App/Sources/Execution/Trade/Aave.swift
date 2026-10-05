@@ -341,8 +341,11 @@ extension Executor {
     /// there, the journal written before sending.
     /// `batch`: these calls instead, as one EIP-7702 transaction from and to the wallet (`to` and `data` unused); the dry
     /// run sees the wallet already running Batch7702.delegate, and the gas limit adds the authorization's own.
-    func sendEVM(_ rpc: EVMRPC, to: String, data: Data, note: String, recipients: [String] = [], batch: [Batch7702.Call]? = nil) async throws -> String {
+    /// `value`: wei of the network's coin sent with the call (a wrap, a native v4 swap); never with `batch`.
+    func sendEVM(_ rpc: EVMRPC, to: String, data: Data, note: String, recipients: [String] = [], batch: [Batch7702.Call]? = nil,
+                 value: UInt64 = 0) async throws -> String {
         guard let net = EVMNetwork.of(chainId: rpc.chainId) else { throw ExecutionError("ihatecrypto doesn't move money on network \(rpc.chainId). Nothing was signed.") }
+        guard value == 0 || (batch == nil && net.feeToken == nil) else { throw ExecutionError("Coins go only with a single call on a network that pays its fees in them. Nothing was signed.") }
         if let token = net.feeToken, to.lowercased() != Tempo.feeManager {
             // Only a plain transfer of the fee coin pays its fee in that coin by itself.
             let paysInToken = if case .transfer = EVMCall.decode(data) { to.lowercased() == token } else { false }
@@ -351,7 +354,7 @@ extension Executor {
         let estimate = if let batch {
             try await rpc.estimateGas(from: wallet.evm, to: wallet.evm, value: 0, data: try Batch7702.executeBatch(batch), runningCodeOf: Batch7702.delegate)
         } else {
-            try await rpc.estimateGas(from: wallet.evm, to: to, value: 0, data: data)
+            try await rpc.estimateGas(from: wallet.evm, to: to, value: value, data: data)
         }
         let (tip, maxFee) = try await rpc.fees()
         let gasLimit = estimate + estimate / 4 + (batch == nil ? 0 : Batch7702.authorizationGas)
@@ -360,8 +363,12 @@ extension Executor {
                 throw ExecutionError("Not enough \(net.gasCoin) on \(net.name) for the fee: \(note).")
             }
         } else {
-            // Short of gas is never a dead end: a top-up of three times what this call may cost comes over first.
+            // Short of gas is never a dead end: a top-up of three times what this call may cost comes over first. Coins sent
+            // with the call are the user's amount: when they and the fee don't fit, it's said, not topped up.
             let fee = gasLimit * maxFee
+            if value > 0, fee + value > (try await rpc.balance(wallet.evm)) {
+                throw ExecutionError("\(Fmt.num(Decimal(value) / 1e18, maxFraction: 8)) \(net.gasCoin) and the fee don't both fit in the \(net.gasCoin) on \(net.name): \(note). Nothing was signed.")
+            }
             if fee > (try await rpc.balance(wallet.evm)) {
                 // A top-up that itself runs short (Relay's swap for gas with none there) stops instead of looping.
                 guard !Self.toppingUp else { throw ExecutionError("Not enough \(net.gasCoin) on \(net.name) even to buy gas there: \(note). Top up Solana's USDC and try again.") }
@@ -376,6 +383,9 @@ extension Executor {
         let raw = if let batch {
             try await signer.signEVMBatch(chainId: rpc.chainId, nonce: nonce, maxPriorityFee: tip, maxFee: maxFee, gasLimit: gasLimit, calls: batch,
                                           recipients: recipients)
+        } else if value > 0 {
+            try await signer.signEVMPayable(chainId: rpc.chainId, nonce: nonce, maxPriorityFee: tip, maxFee: maxFee, gasLimit: gasLimit, to: to,
+                                            value: value, data: data, recipients: recipients)
         } else {
             try await signer.signEVM(chainId: rpc.chainId, nonce: nonce, maxPriorityFee: tip, maxFee: maxFee, gasLimit: gasLimit, to: to, data: data,
                                      recipients: recipients)

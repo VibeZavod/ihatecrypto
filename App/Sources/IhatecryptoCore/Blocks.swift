@@ -57,6 +57,8 @@ public enum BlockCatalog {
               example: "Jupiter DCA 100 USDC into SOL in 2 orders every day", fill: "jupiter", logo: "jup"),
         Block(group: "Buy and sell", label: "BUY · ON BASE", title: "Base and Arbitrum", form: "buy TICKER on base|arbitrum for N USDC · Relay or Uniswap, the better",
               example: "buy AERO on base for 2 USDC", fill: "base", logo: "base"),
+        Block(group: "Buy and sell", label: "SWAP · UNISWAP", title: "Token for token", form: "swap N ETH|TICKER for TICKER on base|arbitrum|ethereum|polygon · straight, no USDC in the middle",
+              example: "swap 0.001 ETH for AERO on base", fill: "base", logo: "uni"),
         Block(group: "Buy and sell", label: "BUY · ROBINHOOD CHAIN", title: "Stock tokens", form: "buy TSLA, NVDA, SpaceX… stock for N USDC",
               example: "buy TSLA stock for 2 USDC", fill: "robinhood", logo: "robinhood"),
         Block(group: "Buy and sell", label: "SWAP · NEAR INTENTS", title: "NEAR", form: "buy NEAR for N USDC · sell NEAR",

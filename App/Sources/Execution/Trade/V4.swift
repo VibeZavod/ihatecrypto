@@ -92,7 +92,8 @@ extension Executor {
     static func v4Pools(_ a: String, _ b: String, chainId: UInt64 = 4663) async -> [UniswapV4.PoolKey] {
         guard let net = EVMNetwork.of(chainId: chainId), UniswapV4.on(chainId) != nil else { return [] }
         let pair = Set([a.lowercased(), b.lowercased()])
-        let token = a.lowercased() == net.usdc.lowercased() ? b : a
+        // DexScreener lists a token's pools: the side that's neither the dollar nor the network's coin (UniswapV4.native).
+        let token = [a, b].first { ![net.usdc.lowercased(), UniswapV4.native].contains($0.lowercased()) } ?? a
         guard let url = URL(string: "https://api.dexscreener.com/token-pairs/v1/\(net.key)/\(token)"),
               let (data, _) = try? await URLSession.shared.data(for: URLRequest(url: url, timeoutInterval: 15)),
               let pairs = (try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] else { return [] }
@@ -168,6 +169,12 @@ extension Executor {
         }
         let now = UInt64(Date().timeIntervalSince1970)
         let swap = try UniswapV4.execute(route.key, zeroForOne: route.zeroForOne, amountIn: units, amountOutMinimum: minOut, deadline: now + 600)
+        // The network's own coin goes in as the call's value: no approve, nothing for Permit2 (the signer lets the coins go
+        // only into this swap, exactly its input: EVMCall.returnsCoins).
+        if tokenIn.lowercased() == UniswapV4.native {
+            guard units > 0, units <= Decimal(UInt64.max) else { throw ExecutionError("At most 18 \(EVMRPC.coin(rpc.chainId)) at once. Nothing was signed.") }
+            return try await sendEVM(rpc, to: router, data: swap, note: note, value: NSDecimalNumber(decimal: units).uint64Value)
+        }
         // The three as one transaction where it batches: the approve to Permit2, Permit2's to the router, the swap.
         if canBatch(rpc) {
             var calls: [Batch7702.Call] = []

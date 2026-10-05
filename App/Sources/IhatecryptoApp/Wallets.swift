@@ -122,7 +122,7 @@ extension Workspace {
         case .yields, .receive, .stopSchedules: []
         case .hlp: ["evm"]
         case .withdrawToSolana, .aave, .morpho, .baseToSolana, .arbitrumToSolana, .evmToSolana, .robinhoodToSolana, .solanaTo, .buyStock, .sellStock, .buyOn, .sellOn, .pay, .claimRewards, .sweepRewards: ["evm", "solana"]
-        case .bridge: ["evm"]
+        case .bridge, .swapOn: ["evm"]
         case .gas: ["evm", "solana"]
         case .sendNear, .closeNear: ["near"]
         case .buyNear, .sellNear: ["solana", "near"]

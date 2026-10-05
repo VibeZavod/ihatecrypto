@@ -484,3 +484,28 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(AddressBookCommand.domain(in: "pay sub.name.eth now") == "sub.name.eth")
     #expect(AddressBookCommand.address(in: "add token uniswap.eth to favorites") == nil)
 }
+
+/// One token for another on an EVM network, straight: English and Russian, a contract, all of it; USDC on a side is the
+/// buy or the sale there, with the money on that network. The summaries read back the same.
+@Test func swapOneTokenForAnotherOnANetwork() {
+    let aero = "0x940181a94A35A4569E4529A3CDfB74e38FD98631"
+    let eth = WalletCommand.swapOn("base", from: "ETH", to: "AERO", amount: Decimal(string: "0.01")!)
+    #expect(WalletCommand.parse("swap 0.01 ETH for AERO on base") == eth)
+    #expect(WalletCommand.parse("swap 0.01 ETH to AERO on Base.") == eth)
+    #expect(WalletCommand.parse("поменяй 0.01 ETH на AERO на бейсе") == eth)
+    #expect(WalletCommand.parse("обменяй 0,01 ETH на AERO в base") == eth)
+    #expect(WalletCommand.parse(eth.summary) == eth && eth.summary == "swap 0.01 ETH for AERO on Base")
+    let all = WalletCommand.swapOn("ethereum", from: "PEPE", to: "ETH", amount: nil)
+    #expect(WalletCommand.parse("swap all PEPE for ETH on ethereum") == all)
+    #expect(WalletCommand.parse("обменяй весь PEPE на ETH в эфириуме") == all)
+    #expect(WalletCommand.parse(all.summary) == all)
+    let contract = WalletCommand.swapOn("base", from: "DEGEN", to: aero, amount: 1500)
+    #expect(WalletCommand.parse("swap 1500 DEGEN for \(aero) on base") == contract)
+    #expect(WalletCommand.parse(contract.summary) == contract)
+    #expect(WalletCommand.parse("swap 2 POL for AAVE on polygon") == .swapOn("polygon", from: "POL", to: "AAVE", amount: 2))
+    // USDC on a side: the buy or the sale, paid and kept on that network.
+    #expect(WalletCommand.parse("swap 5 USDC for AERO on base") == .buyOn("base", token: "AERO", usdc: 5, from: "base"))
+    #expect(WalletCommand.parse("swap all AERO for USDC on base") == .sellOn("base", token: "AERO", amount: nil, keep: true))
+    // Not a swap on an EVM network: Solana has its own forms, and a swap needs its network named.
+    #expect(WalletCommand.parse("swap 0.01 ETH for AERO") == nil)
+}

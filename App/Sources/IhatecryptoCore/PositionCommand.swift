@@ -174,6 +174,9 @@ public enum WalletCommand: Equatable, Sendable {
     case buyOn(String, token: String, usdc: Decimal?, from: String? = nil)
     /// Such a token back to USDC on Solana, the better way again; nil = all of it. `keep`: the USDC stays on that network.
     case sellOn(String, token: String, amount: Decimal?, keep: Bool = false)
+    /// One token for another on that network, straight on Uniswap (v2, v3 or v4, the best), no USDC in the middle; either
+    /// side may be the network's own coin (ETH, POL). nil amount = all of `from`.
+    case swapOn(String, from: String, to: String, amount: Decimal?)
     /// Sell a Stock Token for USDG on Robinhood Chain; nil = all of it.
     case sellStock(symbol: String, amount: Decimal?)
     /// USDG on Robinhood Chain back to Solana as USDC; nil = everything.
@@ -262,6 +265,15 @@ public enum WalletCommand: Equatable, Sendable {
         if q.contains(/доходност|где\s+(?:лучше\s+)?держать|куда\s+(?:лучше\s+)?(?:положить|вложить|деть)|\bapy\b|ставк[иа]\s+(?:по\s+)?депозит|where\s+(?:to|should\s+i|can\s+i)\s+(?:keep|put|park|hold)|best\s+(?:rates?|yields?)|\byields?\b/) {
             let sol = q.contains(/\bsol\b|солан|\bсол\b|solana/), usd = q.contains(/usdc|стейбл|доллар|stable/)
             return .yields(sol && usd ? nil : sol ? "SOL" : usd ? "USDC" : q.contains(/usdt/) ? "USDT" : nil)
+        }
+        // One token for another on an EVM network: «swap 0.01 ETH for AERO on base», «swap all DEGEN to AERO on base»,
+        // «поменяй 0.01 ETH на AERO на бейсе». USDC on one side is a buy or a sale there, with the money on that network.
+        if let m = text.firstMatch(of: /(?i)\b(?:swap|exchange|convert|поменя\w*|обменя\w*|свапн\w*|свопн\w*|конверт\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь|всю)\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11})\s+(?:for|to|into|на|в)\s+\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11})\s+(?:on|на|в|во)\s+(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*)\b/) {
+            let from = String(m.2), to = String(m.3), place = Self.network(String(m.4)) ?? "base"
+            let count = m.1.flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
+            if from.lowercased() == "usdc" { return .buyOn(place, token: to, usdc: count, from: place) }
+            if to.lowercased() == "usdc" { return .sellOn(place, token: from, amount: count, keep: true) }
+            return .swapOn(place, from: from, to: to, amount: count)
         }
         // A token on a named network: «buy AERO on base for 5 USDC», «sell all DEGEN on base», «buy BONK on solana for 5
         // USDC», «купи ARB на арбитруме на 5$», «buy token 0x… on arbitrum for 3 USDC».
@@ -728,6 +740,10 @@ extension WalletCommand {
             return "buy \(t.hasPrefix("0x") ? "the token \(t)" : t.uppercased()) on \(Self.placeName(place)) for \(n(u)) USDC" + (from.map { " from \(Self.placeName($0))" } ?? "")
         case .sellOn(let place, let t, let x, let keep):
             return "sell \(n(x)) \(t.hasPrefix("0x") ? "of the token \(t)" : t.uppercased()) on \(Self.placeName(place)) " + (keep ? "and keep the USDC there" : "for USDC on Solana")
+        // The amount without grouping, the contracts whole: the text parses back to the same swap.
+        case .swapOn(let place, let a, let b, let x):
+            func name(_ t: String) -> String { t.hasPrefix("0x") ? t : t.uppercased() }
+            return "swap \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(name(a)) for \(name(b)) on \(Self.placeName(place))"
         case .solanaTo(let place, let x): return "move \(n(x)) USDC from Solana to \(Self.placeName(place))"
         case .pay(let method, let url, _): return "pay for \(method) \(url) in USDC on Tempo"
         case .gas(let place, let usd): return "add ≈ \(Fmt.usd(usd ?? 1)) of gas on \(Self.placeName(place))"

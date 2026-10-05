@@ -82,6 +82,14 @@ nonisolated struct XPCTradeSigner: TradeSigner {
         return raw
     }
 
+    func signEVMPayable(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
+                        to: String, value: UInt64, data: Data, recipients: [String]) async throws -> Data {
+        let reply = try await Self.signing { try await send(.signEVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFee: maxPriorityFee, maxFee: maxFee,
+                                                                      gasLimit: gasLimit, to: to, value: value, data: data, recipients: recipients)) }
+        guard reply.ok, let raw = reply.signedRaw else { throw ExecutionError(Self.reason(reply)) }
+        return raw
+    }
+
     func signEVMTransfer(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                          to: String, value: UInt64, recipients: [String]) async throws -> Data {
         let reply = try await Self.signing { try await send(.signEVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFee: maxPriorityFee, maxFee: maxFee,
@@ -470,6 +478,9 @@ extension Workspace {
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't swap on \(place).") }
                 let prefer = routeWays.removeValue(forKey: Self.wayKey(place, token))
                 reply(try await e.sellOn(net, token, amount: amount, prefer: prefer, keep: keep), note: "\(net.name) · \(prefer == "relay" ? "Relay" : prefer == "uniswap" ? "Uniswap + Relay" : "Relay / Uniswap")")
+            case .swapOn(let place, let from, let to, let amount):
+                guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't swap on \(place).") }
+                reply(try await e.swapOn(net, from: from, to: to, amount: amount), note: "\(net.name) · Uniswap")
             case .robinhoodToSolana(let amount): reply(try await e.evmToSolana(.robinhood, usdc: amount), note: "Relay · Robinhood → Solana")
             case .solanaTo(let place, let amount):
                 // Never a guess: a network the app doesn't know gets nothing.

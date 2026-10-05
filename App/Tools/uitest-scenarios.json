@@ -600,5 +600,20 @@
       "pending_name": "Vitalik",
       "reply_contains": "6045"
     }
+  },
+  {
+    "name": "one token for another on a network → a straight Uniswap card, no USDC in the middle",
+    "send": [
+      "поменяй 0.0001 ETH на AERO на base"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "command_contains": "swapOn",
+      "steps": [
+        "BASE",
+        "SWAP"
+      ],
+      "title_contains": "AERO"
+    }
   }
 ]

@@ -12,6 +12,8 @@ public enum UniswapV4 {
     public static let robinhoodQuoter = "0x8dc178efb8111bb0973dd9d722ebeff267c98f94"
     public static let robinhoodRouter = "0x8876789976decbfcbbbe364623c63652db8c0904"
     public static let permit2 = "0x000000000022d473030f116ddee9f6b43ac78ba3"
+    /// The currency v4 pools name the network's own coin by (ETH, POL): paid with the call's value, taken as coins.
+    public static let native = "0x0000000000000000000000000000000000000000"
 
     /// A network's PoolManager, V4Quoter, Universal Router and PositionManager (whose poolKeys names a pool's key), and the
     /// Blockscout that reads the PoolManager's whole log.

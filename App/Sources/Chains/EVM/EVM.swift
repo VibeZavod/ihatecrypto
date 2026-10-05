@@ -506,6 +506,10 @@ public enum EVMCall: Equatable, Sendable {
     case nftTransfer(from: String, to: String)
     /// Aave's approveDelegation or Morpho Blue's setAuthorization: `to` may borrow against, or manage, this wallet's positions.
     case delegation(to: String, granted: Bool)
+    /// WETH9.deposit(): the coins sent with it come back to the sender as the wrapped token.
+    case wrap
+    /// WETH9.withdraw(amount): that much of the wrapped token back to the sender as the coin.
+    case unwrap(amount: Data)
     case contract(selector: String)
 
     public static func decode(_ data: Data) -> EVMCall {
@@ -539,6 +543,8 @@ public enum EVMCall: Equatable, Sendable {
         case "42842e0e", "b88d4fde", "f242432a", "2eb2c2d6": if let f = address(0), let t = address(1) { return .nftTransfer(from: f, to: t) }
         case "c04a8a10": if let d = address(0), let a = word(1) { return .delegation(to: d, granted: a.contains { $0 != 0 }) }
         case "eecea000": if let d = address(0), let b = word(1) { return .delegation(to: d, granted: b.contains { $0 != 0 }) }
+        case "d0e30db0": return .wrap
+        case "2e1a7d4d": if let a = word(0) { return .unwrap(amount: a) }
         default: break
         }
         return .contract(selector: "0x" + selector)
@@ -560,6 +566,12 @@ public enum EVMCall: Equatable, Sendable {
         func amount(_ word: Data, of token: String) -> String {
             EVMRPC.dollars[token.lowercased()].map { "\(units(word, 6)) \($0)" } ?? "\(units(word, 0)) units of the token \(short(token))"
         }
+        // Coins that go into a wrap or a native swap are its input, not a payment: said once, in the sentence.
+        switch self {
+        case .wrap: return "wrap \(coins) into W\(EVMRPC.coin(chainId)) \(net)"
+        case .v4Swap where value > 0: return "swap \(coins) on Uniswap v4 \(net), paying this wallet"
+        default: break
+        }
         let what = switch self {
         case .transfer(let recipient, let a): "send \(amount(a, of: to)) to \(short(recipient)) \(net)"
         case .approve(let spender, let a): "let \(short(spender)) spend exactly \(amount(a, of: to)) \(net)"
@@ -567,6 +579,7 @@ public enum EVMCall: Equatable, Sendable {
         case .swap: "swap on Uniswap \(net), paying this wallet"
         case .v4Swap: "swap on Uniswap v4 \(net), paying this wallet"
         case .permit2Approve(let token, let spender, let a, _): "let \(short(spender)) spend exactly \(amount(a, of: token)) through Permit2 \(net)"
+        case .unwrap(let a): "unwrap \(units(a, 18)) W\(EVMRPC.coin(chainId)) of \(short(to)) into \(EVMRPC.coin(chainId)) \(net)"
         case .vault(_, let owner): "\(owner == nil ? "deposit into" : "withdraw from") the vault \(short(to)) \(net)"
         case .lending: "use the lending pool \(short(to)) \(net), for this wallet"
         case .nftTransfer(_, let recipient): "send NFTs of \(short(to)) to \(short(recipient)) \(net)"
@@ -594,10 +607,11 @@ public enum EVMCall: Equatable, Sendable {
         return Set(s.map { $0.lowercased() })
     }
 
-    /// Who gets money, or the right to spend it, from this call: `to` when it carries coins, a token's or NFT's recipient, and
-    /// a spender that isn't one of `knownSpenders`. The signer signs only when each is the wallet's own or approved in person.
+    /// Who gets money, or the right to spend it, from this call: `to` when it carries coins (unless they come straight back,
+    /// `returnsCoins`), a token's or NFT's recipient, and a spender that isn't one of `knownSpenders`. The signer signs only
+    /// when each is the wallet's own or approved in person.
     public func payees(to: String, value: UInt64, chainId: UInt64) -> [String] {
-        var out = value > 0 ? [to] : []
+        var out = value > 0 && !returnsCoins(to: to, value: value, chainId: chainId) ? [to] : []
         switch self {
         case .transfer(let r, _), .nftTransfer(_, let r): out.append(r)
         case .approve(let s, _), .increaseAllowance(let s, _), .permit2Approve(_, let s, _, _):
@@ -605,6 +619,18 @@ public enum EVMCall: Equatable, Sendable {
         default: break
         }
         return out
+    }
+
+    /// Coins sent with this call that come back to the sender, so `to` isn't paid: a wrap by the network's own WETH (the one
+    /// Uniswap's v2 router uses there), or a v4 swap of the network's coin through its Universal Router whose input is exactly
+    /// that value (SETTLE_ALL in the zero currency; the router keeps nothing over, TAKE_ALL pays the caller).
+    func returnsCoins(to: String, value: UInt64, chainId: UInt64) -> Bool {
+        switch self {
+        case .wrap: to.lowercased() == UniswapV2.on(chainId)?.weth
+        case .v4Swap(let s): to.lowercased() == UniswapV4.on(chainId)?.router && s.currencyIn == UniswapV4.native
+            && s.amountIn == Decimal(value) && s.settleMax == s.amountIn
+        default: false
+        }
     }
 
     /// Why this must not be signed, or nil. `sender` is the user's own address; `chainId` the network, which lets a v4 swap
