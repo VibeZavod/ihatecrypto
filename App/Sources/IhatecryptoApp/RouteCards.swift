@@ -52,7 +52,7 @@ enum StepKind: Equatable {
     }
 
     /// «TO · SOLANA» lands in one of the user's own places; «TO · TEST» is a saved address, someone else's or another wallet.
-    private static let places = ["SOLANA", "BASE", "ARBITRUM", "HYPERLIQUID", "ROBINHOOD", "NEAR", "USDC", "USDG", "POLYGON", "ETHEREUM", "TEMPO"]
+    private static let places = ["SOLANA", "BASE", "ARBITRUM", "HYPERLIQUID", "ROBINHOOD", "NEAR", "USDC", "USDG", "POLYGON", "ETHEREUM", "TEMPO", "HYPEREVM"]
 }
 
 /// Where a step is: waiting for Confirm, done, the one a running move is on (or waiting for Touch ID there), still
@@ -108,6 +108,7 @@ extension RouteFill {
         case .robinhood: Color(light: 0x3A4A00, dark: 0xC9F24B)
         case .near: Color(light: 0x10231C, dark: 0x97FCE4)
         case .tempo: Color(light: 0x111111, dark: 0xE8E8E8)
+        case .hyperevm: Color(light: 0x0E2B26, dark: 0x8FE3CC)
         }
     }
 }

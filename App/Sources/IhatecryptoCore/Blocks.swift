@@ -20,7 +20,7 @@ public enum BlockCatalog {
         public var automatic = false
     }
 
-    public static let groups = ["Trade", "Triggers", "Move money", "Buy and sell", "Earn", "Tempo"]
+    public static let groups = ["Trade", "Triggers", "Move money", "Buy and sell", "Earn", "Tempo", "HyperEVM"]
 
     public static let all: [Block] = [
         Block(group: "Trade", label: "OPEN LONG · HYPERLIQUID", title: "Long or short", form: "long|short ASSET · risk $N · stop N% · take N% · leverage Nx",
@@ -39,7 +39,7 @@ public enum BlockCatalog {
         Block(group: "Triggers", label: "LATER · SCHEDULE", title: "Later or on repeat", form: "in N days: … · at HH:MM: … · every week: … · every month on the 1st: …",
               example: "in 1 week: rebalance USDC", fill: "check", logo: nil),
 
-        Block(group: "Move money", label: "BRIDGE · RELAY", title: "Between networks", form: "move N USDC between Solana, Base, Arbitrum, Polygon, Ethereum, Robinhood, Tempo — any two, straight",
+        Block(group: "Move money", label: "BRIDGE · RELAY", title: "Between networks", form: "move N USDC between Solana, Base, Arbitrum, Polygon, Ethereum, Robinhood, Tempo, HyperEVM — any two, straight",
               example: "move 5 USDC from Solana to Base", fill: "relay", logo: "relay"),
         Block(group: "Move money", label: "GAS · TOP UP", title: "Gas on any network", form: "add gas on Base|Arbitrum|Polygon|Ethereum|Robinhood for N USDC · moves top it up by themselves",
               example: "add gas on robinhood for 1 USDC", fill: "robinhood", logo: "eth"),
@@ -82,6 +82,17 @@ public enum BlockCatalog {
               example: "every day: sweep rewards over $10 into USDC", fill: "morpho", logo: "usdc"),
         Block(group: "Earn", label: "INTO · BEST RATES", title: "The best rates", form: "spread N USDC across the best rates · rebalance USDC",
               example: "spread USDC across the best rates", fill: "jupiter", logo: "usdc"),
+
+        // HyperEVM: Hyperliquid's EVM, its money in and out over Relay, HYPE for its gas (2026-10-06: Relay lands 1.98 of 2 USDC
+        // back on Solana, and brings ≈ 0.0016 HYPE of gas along the way there).
+        Block(group: "HyperEVM", label: "BRIDGE · TO HYPEREVM", title: "USDC to HyperEVM", form: "move N USDC from Solana to HyperEVM · HYPE for gas comes along",
+              example: "move 2 USDC from Solana to HyperEVM", fill: "hyperevm", logo: "hyperevm"),
+        Block(group: "HyperEVM", label: "BACK · TO SOLANA", title: "USDC back to Solana", form: "move N USDC from HyperEVM to Solana · no N = all of it",
+              example: "move all USDC from HyperEVM to Solana", fill: "hyperevm", logo: "hyperevm"),
+        Block(group: "HyperEVM", label: "GAS · HYPE", title: "HYPE for gas", form: "add gas on HyperEVM [for $N] · ≈ $0.001 a transaction",
+              example: "add gas on hyperevm", fill: "hyperevm", logo: "hyperevm"),
+        Block(group: "HyperEVM", label: "SEND · ON HYPEREVM", title: "Send on HyperEVM", form: "send N USDC to NAME on HyperEVM · a saved 0x address",
+              example: "send 5 USDC to Mom on hyperevm", fill: "hyperevm", logo: "hyperevm"),
 
         // Tempo: its money moves, then services paid per request in USDC there (MPP). Each example is a real endpoint
         // from mpp.dev's directory with the body its docs give, priced live by its 402 (2026-09-30); the card shows the price

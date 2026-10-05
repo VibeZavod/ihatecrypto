@@ -15,7 +15,7 @@ public enum AddressBookCommand: Equatable, Sendable {
         // An ENS or SNS name is saved as the address it resolves to (AddressBook's save): the name is what the message holds.
         if let address = address(in: text) ?? domain(in: text), q.contains(/\b(?:save|add|remember|store|keep)\b|сохран|запомн|добав|запиши/) {
             // «… as Bybit on Arbitrum», «… как Bybit в сети base»
-            let named = text.firstMatch(of: /(?i)(?:\bas\b|\bcalled\b|\bnamed\b|\bкак\b|под\s+именем)\s+[«"“]?(.+?)[»"”]?(?=\s+(?:on|in|в|на)\s+(?:the\s+)?(?:сети\s+)?(?:solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|ethereum|эфир\w*|hyperliquid|хайперликвид\w*|near|неар\w*|polygon|полигон\w*|robinhood|робин[гх]уд\w*|tempo|темпо\w*|bitcoin|биткоин\w*|zcash|tron|трон\w*|xrp|ripple|dogecoin|doge|sui)\b|[.,!]?\s*$)/)
+            let named = text.firstMatch(of: /(?i)(?:\bas\b|\bcalled\b|\bnamed\b|\bкак\b|под\s+именем)\s+[«"“]?(.+?)[»"”]?(?=\s+(?:on|in|в|на)\s+(?:the\s+)?(?:сети\s+)?(?:solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|ethereum|эфир\w*|hyperliquid|хайперликвид\w*|near|неар\w*|polygon|полигон\w*|robinhood|робин[гх]уд\w*|tempo|темпо\w*|hyperevm|bitcoin|биткоин\w*|zcash|tron|трон\w*|xrp|ripple|dogecoin|doge|sui)\b|[.,!]?\s*$)/)
             guard let name = named.map({ String($0.1).trimmingCharacters(in: .whitespaces) }), !name.isEmpty, !name.contains(address) else { return nil }
             return .save(address: address, name: name, network: network(q))
         }
@@ -70,6 +70,7 @@ public enum AddressBookCommand: Equatable, Sendable {
         }
         if q.contains(/\bbase\b|бейс/) { return "base" }
         if q.contains(/arbitrum|арбитрум/) { return "arbitrum" }
+        if q.contains(/hyperevm|hyper\s+evm|хайперевм|гиперевм/) { return "hyperevm" }
         if q.contains(/hyperliquid|хайперликвид/) { return "hyperliquid" }
         if q.contains(/polygon|полигон/) { return "polygon" }
         if q.contains(/robinhood|робин[гх]уд/) { return "robinhood" }

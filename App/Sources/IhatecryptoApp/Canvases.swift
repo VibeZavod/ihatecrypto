@@ -1114,7 +1114,7 @@ struct MoveRoute {
 
 /// A route step's color, by place; kept by name, so a saved route draws the same.
 enum RouteFill: String, Codable, Hashable, Sendable {
-    case solana, relay, hyperliquid, hlp, jupiter, kamino, jito, aave, morpho, base, arbitrum, robinhood, near, tempo
+    case solana, relay, hyperliquid, hlp, jupiter, kamino, jito, aave, morpho, base, arbitrum, robinhood, near, tempo, hyperevm
     /// A plan's checks and its result: no place of their own, a grey card.
     case check
 
@@ -1139,6 +1139,7 @@ enum RouteFill: String, Codable, Hashable, Sendable {
         case .robinhood: Color(hex: 0x3A4A00)
         case .near: Color(hex: 0x10231C)
         case .tempo: Color(hex: 0x111111)
+        case .hyperevm: Color(hex: 0x0E2B26)
         case .check: Color(light: 0xF7F7F8, dark: 0x26262B)
         }
     }
@@ -1942,6 +1943,7 @@ extension Workspace {
         case "arbitrum": arbitrumUSDC
         case "robinhood": robinhood?.usdg
         case "tempo": tempoUSDC
+        case "hyperevm": hyperevmUSDC
         case "hyperliquid": hl?.withdrawable
         default: nil
         }
@@ -1971,7 +1973,7 @@ extension Workspace {
     private func bridgeRoute(_ from: String, _ to: String, _ amount: Decimal?, cctp: Bool = false) -> MoveRoute {
         let a = WalletCommand.placeName(from), b = WalletCommand.placeName(to), stable = to == "robinhood" ? "USDG" : "USDC"
         let have = usdc(on: from), moving = amount.map { min($0, have ?? $0) } ?? have
-        func fill(_ place: String) -> RouteFill { ["base": .base, "arbitrum": .arbitrum, "robinhood": .robinhood, "tempo": .tempo, "hyperliquid": .hyperliquid][place] ?? .relay }
+        func fill(_ place: String) -> RouteFill { RouteFill(rawValue: place) ?? .relay }
         let shown = moving.map { Fmt.num($0) } ?? "all"
         return MoveRoute(title: "Move \(shown) USDC · \(a) → \(b)",
                          footer: (cctp ? "Circle's CCTP: an exact approve and the burn on \(a) (one transaction where it batches); Circle mints on \(b) itself, "
@@ -1993,13 +1995,13 @@ extension Workspace {
     private func outRoute(to place: String, amount: Decimal) -> MoveRoute {
         let name = WalletCommand.placeName(place)
         let stable = place == "robinhood" ? "USDG" : "USDC"
-        let there = place == "base" ? base?.usdc : place == "arbitrum" ? arbitrumUSDC : place == "tempo" ? tempoUSDC : robinhood?.usdg
-        let fill: RouteFill = place == "base" ? .base : place == "arbitrum" ? .arbitrum : place == "tempo" ? .tempo : .robinhood
+        let there = place == "robinhood" ? robinhood?.usdg : usdc(on: place)
+        let fill = RouteFill(rawValue: place) ?? .relay
         return MoveRoute(title: "Move \(Fmt.num(amount)) USDC · Solana → \(name)",
                          footer: "One Solana signature for the Relay bridge, checked and simulated before it’s signed; it pays only your own address on \(name). Press Confirm.",
                          steps: [
             step("sol", "FROM · SOLANA", solana.map { "\(Fmt.num($0.usdc)) → \(Fmt.num(max(0, $0.usdc - amount)))" } ?? "\(Fmt.num(amount)) USDC", "USDC on Solana", .solana),
-            step("relay", "BRIDGE · RELAY", "\(Fmt.num(amount)) USDC", place == "tempo" ? "a few seconds · fees there come out of the USDC" : "a few seconds · + ETH for gas when there's none", .relay),
+            step("relay", "BRIDGE · RELAY", "\(Fmt.num(amount)) USDC", place == "tempo" ? "a few seconds · fees there come out of the USDC" : "a few seconds · + \(EVMNetwork.named(place)?.gasCoin ?? "ETH") for gas when there's none", .relay),
             step(ModuleNetwork(place: place)?.logo ?? place, "TO · \(name.uppercased())", there.map { "\(Fmt.num($0)) → \(Fmt.num($0 + amount)) \(stable)" } ?? "\(Fmt.num(amount)) \(stable)",
                  "your own address ✓", fill),
         ])

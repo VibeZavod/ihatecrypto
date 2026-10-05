@@ -84,7 +84,8 @@ extension Workspace {
             lines = near > 0 ? [NetworkLine(kind: .held, logo: "near", title: "NEAR", detail: "native NEAR", usd: nearUSD, amount: "\(Fmt.num(near, maxFraction: 4)) NEAR")] : []
         case .ethereum, .polygon:
             lines = elsewhere
-        case .hyperliquid, .tempo:
+        // Their USDC and coins are tokens on the card (Holdings.tempo, Holdings.hyperevm).
+        case .hyperliquid, .tempo, .hyperevm:
             lines = []
         }
         return lines.sorted { $0.usd > $1.usd }
@@ -152,6 +153,7 @@ struct NetworkCard: View {
         case .polygon: (Color(light: 0xF3EDFF, dark: 0x221A36), Color(light: 0x6B32C9, dark: 0xC4A7FF), Color(hex: 0x8247E5))
         case .near: (Color(light: 0xE6FBF3, dark: 0x0E2A20), Color(light: 0x05785A, dark: 0x00EC97), Color(hex: 0x00C08B))
         case .tempo: (Color(light: 0xF1F2F5, dark: 0x22252C), Color(light: 0x5F6470, dark: 0xC5CAD3), Color(hex: 0x8A8F98))
+        case .hyperevm: (Color(light: 0xE9F6F2, dark: 0x10261F), Color(light: 0x0E4D3F, dark: 0x8FE3CC), Color(hex: 0x0E2B26))
         }
     }
 

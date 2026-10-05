@@ -201,7 +201,7 @@ import WalletCore
 
 @Test func signableNetworks() {
     // Polygon, Ethereum and Tempo join Base, Arbitrum and Robinhood Chain; nothing else is signed.
-    #expect(EVMRPC.signable == [1, 137, 42161, 8453, 4663, 4217])
+    #expect(EVMRPC.signable == [1, 137, 42161, 8453, 4663, 4217, 999])
     #expect(EVMRPC.polygon.chainId == 137 && EVMRPC.ethereum.chainId == 1)
 }
 
@@ -351,7 +351,9 @@ import WalletCore
     #expect(tx(1, 570_000, 80_000_000_000).feeText == "up to 0.0456 ETH")
     #expect(tx(42161, 10_000_000, 1_000_000_000_000).feeProblem != nil)        // 10 ETH of fees
     #expect(tx(137, UInt64.max, 2).feeProblem != nil)                          // overflows
-    #expect(tx(999, 21_000, 1).feeProblem != nil)                              // not a network ihatecrypto signs for
+    #expect(tx(56, 21_000, 1).feeProblem != nil)                               // not a network ihatecrypto signs for
+    #expect(tx(999, 200_000, 100_000_000).feeProblem == nil)                   // a HyperEVM call at 0.1 gwei
+    #expect(tx(999, 10_000_000, 100_000_000_000).feeProblem != nil)            // 1 HYPE of fees
 }
 
 // S10: offsets a page sets can't crash the app or the signer.

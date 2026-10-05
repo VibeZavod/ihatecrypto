@@ -1,5 +1,6 @@
 import Foundation
 import LLMCore
+import RelayBridge
 
 /// A token the wallet holds, on any network, beyond the balances the app reads one by one (USDC, lending positions,
 /// stock tokens…). Found by listing the address on each network; priced where a market knows it.
@@ -41,6 +42,7 @@ public enum Holdings {
     /// nil when the network couldn't be read in full: the caller keeps what it had instead of showing a shorter list.
     public static func evm(_ chain: String, address: String, native: Bool, skip: Set<String>) async -> [Holding]? {
         if chain == "tempo" { return await tempo(address) }
+        if chain == "hyperevm" { return await hyperevm(address) }
         guard let host = blockscout[chain] else { return [] }
         async let pages = tokenPages(host, address: address)
         async let account: [String: Any]?? = native
@@ -99,6 +101,36 @@ public enum Holdings {
             let units = hex.dropFirst(2).reduce(Decimal(0)) { $0 * 16 + Decimal(Int(String($1), radix: 16) ?? 0) }
             if units > 0 {
                 out.append(Holding(chain: "tempo", contract: contract, amount: units / 1_000_000, symbol: symbol, icon: URL(string: icon), price: 1, verified: true))
+            }
+        }
+        return out
+    }
+
+    /// HyperEVM, read from its node (its explorers have no API ihatecrypto can use): HYPE itself, USDC — what Relay
+    /// brings — USD₮0 and WHYPE, HYPE priced by Relay, with the icons Relay publishes (its /chains, 2026-10-06). nil when
+    /// the node didn't answer.
+    static let hyperevmTokens = [("0xb88339cb7199b77e23db6e890353e22632ba630f", "USDC", 6, "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png"),
+                                 ("0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb", "USD₮0", 6, "https://coin-images.coingecko.com/coins/images/53705/large/usdt0.jpg"),
+                                 ("0x5555555555555555555555555555555555555555", "WHYPE", 18, "https://coin-images.coingecko.com/coins/images/54469/large/_UP3jBsi_400x400.jpg")]
+    static let hypeIcon = URL(string: "https://assets.coingecko.com/coins/images/50882/standard/hyperliquid.jpg")
+    static func hyperevm(_ address: String) async -> [Holding]? {
+        let owner = address.lowercased().replacingOccurrences(of: "0x", with: "")
+        guard owner.count == 40 else { return [] }
+        let node = "https://hyperliquid.drpc.org"
+        func quantity(_ call: [String: Any]) async -> Decimal? {
+            guard let hex = (await retrying({ json(try await HTTP.post(node, json: call)) as? [String: Any] }))?["result"] as? String else { return nil }
+            return hex.dropFirst(2).reduce(Decimal(0)) { $0 * 16 + Decimal(Int(String($1), radix: 16) ?? 0) }
+        }
+        let price = (try? await Relay.nativePrice(chainId: Relay.Chain.hyperevm)) ?? nil
+        guard let wei = await quantity(["jsonrpc": "2.0", "id": 1, "method": "eth_getBalance", "params": [address, "latest"]]) else { return nil }
+        var out: [Holding] = []
+        if wei > 0 { out.append(Holding(chain: "hyperevm", contract: "native", amount: wei / pow(10, 18), symbol: "HYPE", icon: hypeIcon, price: price, verified: true, native: true)) }
+        for (contract, symbol, decimals, icon) in hyperevmTokens {
+            guard let units = await quantity(["jsonrpc": "2.0", "id": 1, "method": "eth_call",
+                                              "params": [["to": contract, "data": "0x70a08231" + String(repeating: "0", count: 24) + owner], "latest"]]) else { return nil }
+            if units > 0 {
+                out.append(Holding(chain: "hyperevm", contract: contract, amount: units / pow(10, decimals), symbol: symbol, icon: URL(string: icon),
+                                   price: symbol == "WHYPE" ? price : 1, verified: true))
             }
         }
         return out

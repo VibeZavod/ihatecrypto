@@ -53,7 +53,13 @@ public struct EVMNetwork: Sendable {
                                          explorer: "https://explore.tempo.xyz", gasFloor: 0, topupUSD: 0, gasCoin: "USDC",
                                          feeToken: EVMRPC.tempoUSDC)
 
-    public static let all = [base, arbitrum, robinhood, polygon, ethereum, tempo]
+    /// HyperEVM: HYPE at ≈ $95 pays 0.1 gwei, ≈ $0.001 a call (2026-10-06); 0.0005 HYPE covers dozens, and Relay's $0.15
+    /// top-up lands ≈ 0.0016 above it.
+    public static let hyperevm = EVMNetwork(name: "HyperEVM", key: "hyperevm", rpc: .hyperevm, usdc: EVMRPC.hyperevmUSDC, relayChain: Relay.Chain.hyperevm,
+                                            explorer: "https://hyperevmscan.io", gasFloor: 500_000_000_000_000, topupUSD: Decimal(string: "0.15")!,
+                                            gasCoin: "HYPE")
+
+    public static let all = [base, arbitrum, robinhood, polygon, ethereum, tempo, hyperevm]
 
     /// What to leave for fees when everything goes: a cent pays ten Tempo calls.
     // ponytail: fixed cent; read the base fee if Tempo's fees ever pass $0.001 a call.

@@ -115,9 +115,11 @@ public struct EVMTransaction: Sendable {
     /// The most gas × max fee per gas may come to, per network, in its smallest unit: far above a real fee, so only a
     /// broken or hostile request reaches it. Ethereum 0.05 ETH (≈ $150; a 570k-gas Morpho deposit at a 43 gwei base fee),
     /// Arbitrum, Base and Robinhood Chain 0.01 ETH (≈ $30; their calls cost cents), Polygon 10 POL (≈ $3, ten times a call
-    /// at 1000 gwei; 64 bits of wei hold 18 POL at most), Tempo $10 (its fees are counted in attodollars).
+    /// at 1000 gwei; 64 bits of wei hold 18 POL at most), Tempo $10 (its fees are counted in attodollars), HyperEVM 0.02 HYPE
+    /// (≈ $2; a call costs a tenth of a cent at 0.1 gwei).
     public static let feeCap: [UInt64: UInt64] = [1: 50_000_000_000_000_000, 42161: 10_000_000_000_000_000, 8453: 10_000_000_000_000_000,
-                                                  4663: 10_000_000_000_000_000, 137: 10_000_000_000_000_000_000, 4217: 10_000_000_000_000_000_000]
+                                                  4663: 10_000_000_000_000_000, 137: 10_000_000_000_000_000_000, 4217: 10_000_000_000_000_000_000,
+                                                  999: 20_000_000_000_000_000]
 
     /// Why the signer won't sign this fee, or nil: past the network's cap, or past 64 bits.
     public var feeProblem: String? {
@@ -315,16 +317,25 @@ public struct EVMRPC: Sendable {
     /// «Bridged USDC (Stargate)», 6 decimals: the USDC Relay delivers and MPP services charge in.
     public static let tempoUSDC = "0x20c000000000000000000000b9537d11c60e8b50"
 
+    /// HyperEVM, Hyperliquid's EVM (chain 999), gas in HYPE at 0.1 gwei: drpc first (the official node allows 100 calls a
+    /// minute an address), then Hyperliquid's own and Hypurrscan's; each served fees and estimates (checked 2026-10-06).
+    public static let hyperevm = EVMRPC(url: URL(string: "https://hyperliquid.drpc.org")!, chainId: 999,
+                                        fallbacks: [URL(string: "https://rpc.hyperliquid.xyz/evm")!, URL(string: "https://rpc.hypurrscan.io")!],
+                                        followsSettings: true)
+    /// Circle's native USDC on HyperEVM, 6 decimals: the one Relay delivers (its /chains, 2026-10-06).
+    public static let hyperevmUSDC = "0xb88339cb7199b77e23db6e890353e22632ba630f"
+
     /// The only networks the signer signs for: the app's signing process and the CLI check the same list.
-    public static let signable: Set<UInt64> = [1, 137, 42161, 8453, 4663, 4217]
+    public static let signable: Set<UInt64> = [1, 137, 42161, 8453, 4663, 4217, 999]
 
     /// The networks by name, for what the signer says it signs.
-    public static let names: [UInt64: String] = [1: "Ethereum", 137: "Polygon", 42161: "Arbitrum", 8453: "Base", 4663: "Robinhood Chain", 4217: "Tempo"]
-    /// What a network's fees and `value` are counted in: Polygon's POL, Tempo's dollars (it has no coin), else ETH.
-    public static func coin(_ chainId: UInt64) -> String { chainId == 137 ? "POL" : chainId == 4217 ? "USD" : "ETH" }
+    public static let names: [UInt64: String] = [1: "Ethereum", 137: "Polygon", 42161: "Arbitrum", 8453: "Base", 4663: "Robinhood Chain", 4217: "Tempo",
+                                                 999: "HyperEVM"]
+    /// What a network's fees and `value` are counted in: Polygon's POL, HyperEVM's HYPE, Tempo's dollars (it has no coin), else ETH.
+    public static func coin(_ chainId: UInt64) -> String { chainId == 137 ? "POL" : chainId == 999 ? "HYPE" : chainId == 4217 ? "USD" : "ETH" }
     /// The dollars ihatecrypto moves, by contract: their symbol for the Touch ID prompt; all have 6 decimals.
     public static let dollars: [String: String] = [baseUSDC: "USDC", arbitrumUSDC: "USDC", polygonUSDC: "USDC", ethereumUSDC: "USDC",
-                                                   tempoUSDC: "USDC", robinhoodUSDG: "USDG"]
+                                                   tempoUSDC: "USDC", robinhoodUSDG: "USDG", hyperevmUSDC: "USDC"]
 
     /// eth_call: the raw return value.
     public func read(_ to: String, _ data: Data) async throws -> Data {
