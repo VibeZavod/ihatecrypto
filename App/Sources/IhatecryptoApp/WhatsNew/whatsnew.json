@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.5.2",
+    "date": "2026-10-06",
+    "stories": [
+      {
+        "title": "The best model your Mac can run",
+        "text": "«On this Mac» picks by your Mac's memory: Gemma 4 12B on 16–24 GB, Gemma 4 26B on 32 GB — 9 of 10 in the chat's exam at 5.4 seconds an answer — Gemma 4 31B from 36 GB, and NVIDIA's Nemotron 3 Super from 192 GB. The model menu marks the one that fits yours.",
+        "symbol": "cpu",
+        "color": "0B7A55"
+      }
+    ]
+  },
+  {
     "version": "0.5.1",
     "date": "2026-10-06",
     "stories": [
