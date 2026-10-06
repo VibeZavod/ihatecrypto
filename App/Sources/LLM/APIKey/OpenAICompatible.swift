@@ -32,9 +32,13 @@ public struct OpenAICompatible: LLMProvider {
         .init(info: ProviderInfo(id: "gemini", name: "Google Gemini API", kind: .apiKey, defaultModel: "gemini-3.8-flash",
                                  note: "Key from Google AI Studio.", takesKey: true, models: ["gemini-3.8-flash"]),
               baseURL: "https://generativelanguage.googleapis.com/v1beta/openai"),
-        .init(info: ProviderInfo(id: "ollama", name: "Ollama on this Mac", kind: .local, defaultModel: "qwen3.8:27b",
-                                 note: "No network or key. Download the model first: ollama pull qwen3.8:27b (or gemma4:12b for less memory).",
-                                 models: ["qwen3.8:27b", "gemma4:12b"]),
+        // The biggest first: the app takes the first that fits this Mac's memory (OllamaModels.fits). The chat's exam
+        // here (2026-10-06, 32 GB Mac): gemma4:26b 9/10 at 5.4 s, gemma4:12b 8/10 at 8.4 s (nimble:9b 8/10, gpt-oss:20b
+        // 6/10 at 16.5 s — it can't stop thinking). gemma4:31b (≥ 36 GB) and nemotron-3-super:120b (≥ 192 GB, strong in
+        // other languages) don't fit this one and aren't tested.
+        .init(info: ProviderInfo(id: "ollama", name: "Ollama on this Mac", kind: .local, defaultModel: "gemma4:26b",
+                                 note: "No network or key. The app downloads the biggest model that fits this Mac's memory.",
+                                 models: ["nemotron-3-super:120b", "gemma4:31b", "gemma4:26b", "gemma4:12b"]),
               baseURL: "http://localhost:11434/v1"),
         .init(info: ProviderInfo(id: "lmstudio", name: "LM Studio on this Mac", kind: .local, defaultModel: "",
                                  note: "No network or key. Start the server in LM Studio and pick a model from the list."),

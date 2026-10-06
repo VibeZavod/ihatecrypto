@@ -3000,7 +3000,8 @@ struct ChatModelMenu: View {
 
     /// What a model row says: recommended, the memory a model on this Mac takes, and how it did in the chat's exam.
     private func details(_ info: ProviderInfo, _ id: String) -> String? {
-        let parts = [id == info.defaultModel ? "recommended" : nil,
+        // On this Mac: the biggest model that fits its memory, not one name for every Mac.
+        let parts = [id == (info.kind == .local ? ws.localPick ?? info.defaultModel : info.defaultModel) ? "recommended" : nil,
                      info.kind == .local ? ws.modelSizes[id].map { "≈ \(Fmt.num(Decimal($0 * 1.2), maxFraction: 0)) GB memory" } : nil,
                      ws.score(info.id, id).map { ($0.good ? "✓ " : "⚠︎ ") + $0.short }].compactMap { $0 }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")

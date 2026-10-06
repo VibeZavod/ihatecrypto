@@ -19,7 +19,9 @@ enum OllamaModels {
     static var memoryGB: Double { Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824 }
 
     /// A model fits when it and its working memory take at most ~70% of the Mac's: the rest is macOS and the app.
-    static func fits(sizeGB: Double) -> Bool { sizeGB * 1.2 <= memoryGB * 0.7 }
+    /// Sizes are decimal GB (the registry's bytes / 10⁹) and memory is GiB: a 32 GB Mac has 34.4 of them, which
+    /// gemma4:26b (18.7 GB) fits — it missed by 0.08 when the two were compared as one unit.
+    static func fits(sizeGB: Double) -> Bool { sizeGB * 1.2 <= memoryGB * 1.073_741_824 * 0.7 }
 
     /// The download size, GB, from the registry's manifest («gemma4:12b» → 8.0); nil when the registry doesn't know it.
     static func sizeGB(_ model: String) async -> Double? {
@@ -273,11 +275,15 @@ extension Workspace {
         let have = (liveModels["ollama"] ?? []).filter { LLMCatalog.chatRefusal(model: $0) == nil }
         if have.contains(model) { useLocal(model); return }
         if let first = have.first { useLocal(first); return }
-        let suggested = LLMCatalog.provider(id: "ollama")?.info.models ?? []
-        guard let pick = suggested.first(where: { m in modelSizes[m].map(OllamaModels.fits(sizeGB:)) ?? false }) ?? suggested.last else { return }
+        guard let pick = localPick ?? LLMCatalog.provider(id: "ollama")?.info.models.last else { return }
         model = pick
         await downloadModel(pick)
         if liveModels["ollama"]?.contains(pick) == true { useLocal(pick) }
+    }
+
+    /// The biggest suggested model that fits this Mac's memory (the list goes biggest first); nil until the sizes are read.
+    var localPick: String? {
+        (LLMCatalog.provider(id: "ollama")?.info.models ?? []).first { m in modelSizes[m].map(OllamaModels.fits(sizeGB:)) ?? false }
     }
 
     var localState: LocalState {
@@ -292,7 +298,10 @@ extension Workspace {
     /// Use or Download.
     var ollamaChoices: [String] {
         let have = (liveModels["ollama"] ?? []).filter { LLMCatalog.chatRefusal(model: $0) == nil }
-        return have + (LLMCatalog.provider(id: "ollama")?.info.models ?? []).filter { !have.contains($0) }
+        let rest = (LLMCatalog.provider(id: "ollama")?.info.models ?? []).filter { !have.contains($0) }
+        // The ones this Mac can run before those too big for it: the list goes biggest first.
+        let fits = { (m: String) in self.modelSizes[m].map(OllamaModels.fits(sizeGB:)) ?? true }
+        return have + rest.filter(fits) + rest.filter { !fits($0) }
     }
 
     func useLocal(_ model: String) {

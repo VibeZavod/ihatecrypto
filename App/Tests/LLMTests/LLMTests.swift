@@ -208,7 +208,10 @@ private func jwt(_ claims: [String: Any]) -> String {
     let ollama = try #require(OpenAICompatible.presets.first { $0.info.id == "ollama" })
     let client = try #require(try ollama.client(nil, save: { _ in }) as? OllamaChatClient)
     #expect(client.base == "http://localhost:11434")
-    let body = client.body(LLMRequest(model: "qwen3.8:27b", messages: [LLMMessage(.system, "s"), LLMMessage(.user, "u")], wantsJSON: true), stream: true)
+    let body = client.body(LLMRequest(model: "gemma4:26b", messages: [LLMMessage(.system, "s"), LLMMessage(.user, "u")], wantsJSON: true), stream: true)
     #expect((body["options"] as? [String: Int])?["num_ctx"] == 16_384)
     #expect(body["format"] as? String == "json" && body["stream"] as? Bool == true)
+    // No thinking before the JSON: Gemma 4 12B took 117 s an answer with it, 8.4 s without.
+    #expect(body["think"] as? Bool == false)
+    #expect(client.body(LLMRequest(model: "gpt-oss:20b", messages: [], wantsJSON: true), stream: true, think: true)["think"] == nil)
 }
