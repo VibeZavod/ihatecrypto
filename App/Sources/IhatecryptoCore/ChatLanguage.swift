@@ -67,25 +67,35 @@ public enum SentHistory {
     }
 }
 
-/// «$SOL» in the chat's field names a token: the field draws it as a chip with the token's logo, and what's sent reads
-/// «SOL». «$5» stays dollars: a mention starts with a letter, at the start of a word.
+/// «$SOL» in the chat's field names a token, and so does «$0x…» (a contract) or «$<mint>»: the field draws it as a chip
+/// with the token's logo (a contract's from its market), and what's sent reads «SOL» or the address. «$5» stays dollars:
+/// a mention starts with a letter or is an address, at the start of a word.
 public enum TokenMentions {
     /// The mentions a space or a mark has closed: «$SO» still being typed at the end stays text. Each one's range
-    /// («$SOL») and ticker («SOL»).
+    /// («$SOL») and token («SOL», or the contract or mint as written).
     public static func find(_ text: String) -> [(range: Range<String.Index>, ticker: String)] {
-        text.matches(of: /\$([A-Za-z][A-Za-z0-9]{0,11})(?=[\s,.;:!?)»"'])/).compactMap { m in
+        text.matches(of: /\$(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|[A-Za-z][A-Za-z0-9]{0,11})(?=[\s,.;:!?)»"'])/).compactMap { m in
             startsWord(text, at: m.range.lowerBound) ? (m.range, String(m.output.1)) : nil
         }
     }
 
-    /// What's sent: every mention as its ticker, the last one too; dollars stay.
+    /// What's sent: every mention as its ticker or address, the last one too; dollars stay.
     public static func plain(_ text: String) -> String {
         var out = text
-        for m in text.matches(of: /\$([A-Za-z][A-Za-z0-9]{0,11})(?![A-Za-z0-9])/).reversed() where startsWord(text, at: m.range.lowerBound) {
+        for m in text.matches(of: /\$(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|[A-Za-z][A-Za-z0-9]{0,11})(?![A-Za-z0-9])/).reversed()
+        where startsWord(text, at: m.range.lowerBound) {
             out.replaceSubrange(m.range, with: m.output.1)
         }
         return out
     }
+
+    /// A contract or a mint rather than a ticker.
+    public static func isAddress(_ token: String) -> Bool {
+        token.wholeMatch(of: /0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/) != nil
+    }
+
+    /// The contracts and mints mentioned, to look up.
+    public static func addresses(_ text: String) -> [String] { find(text).map(\.ticker).filter(isAddress) }
 
     private static func startsWord(_ text: String, at i: String.Index) -> Bool {
         i == text.startIndex || text[text.index(before: i)].isWhitespace || "(«\"'".contains(text[text.index(before: i)])

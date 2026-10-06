@@ -2457,9 +2457,13 @@ private struct ChatComposer: View {
         .onChange(of: ws.draft) { pick = 0; keyedRow = nil }
         // A model on this Mac: whether its server answers and has it, before a field is offered.
         .task(id: ws.providerID) { if ws.provider.info.kind == .local { await ws.refreshLocalModels() } }
-        // A contract or mint typed after «@»: asked once, for the list above the field.
+        // A contract or mint typed after «@» or «$»: asked once, for the list above the field.
         .task(id: ComposerSuggestion.mentionedAddress(ws.draft, caret: caret)) {
             if let address = ComposerSuggestion.mentionedAddress(ws.draft, caret: caret) { await ws.lookUpContract(address) }
+        }
+        // A «$0x…» chip anywhere in the text (pasted whole): its symbol and picture.
+        .task(id: TokenMentions.addresses(ws.draft)) {
+            for address in TokenMentions.addresses(ws.draft) { await ws.lookUpContract(address) }
         }
         // Whatever was heard goes into the field when listening ends (Done, or the recognizer stopping by itself);
         // the person reads it and sends it.
@@ -2571,9 +2575,15 @@ private struct ChatComposer: View {
                         .padding(.vertical, ComposerField.inset.height).padding(.leading, 5)
                         .allowsHitTesting(false)
                 }
-                ComposerField(text: Bindable(ws).draft, caret: $caretAt, moveCaret: $caretRequest, onKey: key) { ticker in
-                    ws.holdings.first { $0.symbol.caseInsensitiveCompare(ticker) == .orderedSame }?.icon
-                        ?? ws.favoriteTokens.first { $0.symbol.caseInsensitiveCompare(ticker) == .orderedSame }?.image
+                ComposerField(text: Bindable(ws).draft, caret: $caretAt, moveCaret: $caretRequest, onKey: key,
+                              known: TokenMentions.addresses(ws.draft).filter { ws.contractLookups[$0] != nil }.count) { token in
+                    // «$0x…» or «$<mint>»: the market's symbol and picture (looked up below), short until then.
+                    if TokenMentions.isAddress(token) {
+                        let found = ws.contractLookups[token]?.first
+                        return (found?.symbol ?? "\(token.prefix(5))…\(token.suffix(4))", found?.imageURL)
+                    }
+                    return (nil, ws.holdings.first { $0.symbol.caseInsensitiveCompare(token) == .orderedSame }?.icon
+                        ?? ws.favoriteTokens.first { $0.symbol.caseInsensitiveCompare(token) == .orderedSame }?.image)
                 }
             }
             Button { Task { await ws.voice.start() } } label: {
@@ -2688,10 +2698,10 @@ struct ComposerSuggestion: Identifiable, Equatable {
         return (draft[start..<end], String(draft[..<start]), String(draft[end...]))
     }
 
-    /// The contract or mint typed after «@» in the word at the caret, as typed (a mint's case matters).
+    /// The contract or mint typed after «@» or «$» in the word at the caret, as typed (a mint's case matters).
     static func mentionedAddress(_ draft: String, caret: Int?) -> String? {
         let w = word(draft, caret: caret).text
-        guard w.hasPrefix("@") else { return nil }
+        guard w.hasPrefix("@") || w.hasPrefix("$") else { return nil }
         let address = String(w.dropFirst())
         return address.wholeMatch(of: /0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}/) != nil ? address : nil
     }
@@ -2712,6 +2722,22 @@ struct ComposerSuggestion: Identifiable, Equatable {
                 .filter { q.isEmpty || "\($0.title) \($0.group) \($0.example)".lowercased().contains(q) }
                 .map { row("square.grid.2x2", $0.title, $0.example, put: $0.example, logo: $0.logo) }
         }
+        // A contract or mint after «@» or «$»: one row per network it trades on, the deepest pool first. «$» puts
+        // «$0x… » in, drawn as the token's chip with its market's picture; «@» the bare address.
+        if let address = mentionedAddress(draft, caret: caret) {
+            let dollar = w.text.hasPrefix("$"), put = (dollar ? "$" : "") + address
+            let short = "\(address.prefix(6))…\(address.suffix(4))"
+            guard let found = ws.contractLookups[address] else { return [row("magnifyingglass", short, "looking it up…", put: put, space: dollar)] }
+            guard !found.isEmpty else { return [row("questionmark.circle", short, "no market knows it", put: put, space: dollar)] }
+            var chains = Set<String>()
+            return found.filter { chains.insert($0.chain).inserted }.map { t in
+                let net = ModuleNetwork(place: t.chain)
+                let detail = [t.name, net?.name ?? t.chain.capitalized, t.priceUSD.map { Fmt.usd($0) }, t.liquidityUSD.map { "liquidity \(Fmt.usd($0))" }]
+                    .compactMap { $0 }.joined(separator: " · ")
+                return row("circle.dotted", t.symbol, detail, put: (dollar ? "$" : "") + t.address, space: dollar,
+                           logo: t.imageURL == nil ? net?.logo : nil, image: t.imageURL)
+            }
+        }
         // «$» lists the tokens: what the wallet holds first, then the usual ones and the favorites. «$5» is dollars.
         if w.text.hasPrefix("$"), !(w.text.dropFirst().first?.isNumber ?? false) {
             let q = w.text.dropFirst().lowercased()
@@ -2724,19 +2750,6 @@ struct ComposerSuggestion: Identifiable, Equatable {
         }
         guard w.text.hasPrefix("@") else { return [] }
         let q = w.text.dropFirst().lowercased()
-        if let address = mentionedAddress(draft, caret: caret) {
-            let short = "\(address.prefix(6))…\(address.suffix(4))"
-            guard let found = ws.contractLookups[address] else { return [row("magnifyingglass", short, "looking it up…", put: address)] }
-            guard !found.isEmpty else { return [row("questionmark.circle", short, "no market knows it", put: address)] }
-            // One row per network it trades on, the deepest pool first.
-            var chains = Set<String>()
-            return found.filter { chains.insert($0.chain).inserted }.map { t in
-                let net = ModuleNetwork(place: t.chain)
-                let detail = [t.name, net?.name ?? t.chain.capitalized, t.priceUSD.map { Fmt.usd($0) }, t.liquidityUSD.map { "liquidity \(Fmt.usd($0))" }]
-                    .compactMap { $0 }.joined(separator: " · ")
-                return row("circle.dotted", t.symbol, detail, put: t.address, logo: t.imageURL == nil ? net?.logo : nil, image: t.imageURL)
-            }
-        }
         let names = ws.addressBook.map { row("person.crop.circle", $0.name, $0.network.title, put: $0.name, logo: $0.network.logo) }
             + ws.favoriteTokens.map { row("star", $0.symbol, "\($0.name) · \($0.chainTitle)", put: $0.symbol, logo: $0.image == nil ? $0.chainLogo : nil, image: $0.image) }
         return names.filter { q.isEmpty || $0.title.lowercased().contains(q) }

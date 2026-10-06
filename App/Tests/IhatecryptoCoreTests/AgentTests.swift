@@ -484,6 +484,13 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(text[TokenMentions.find(text)[0].range] == "$SOL")
     #expect(TokenMentions.plain(text) == "buy SOL for $5 then sell eth")
     #expect(TokenMentions.plain("купи $JUP на $3") == "купи JUP на $3")
+    // A contract or a mint after «$» is the token too; what's sent is the address as written.
+    let evm = "0x4200000000000000000000000000000000000006", mint = "JUPyiwrYJFskUPiHa7hkeR8VUtAeFoSYbKedZNsDvCN"
+    #expect(TokenMentions.find("buy $\(evm) on base").map(\.ticker) == [evm])
+    #expect(TokenMentions.find("buy $\(mint), now").map(\.ticker) == [mint])
+    #expect(TokenMentions.addresses("swap $SOL for $\(mint) ") == [mint])
+    #expect(TokenMentions.plain("buy $\(evm)") == "buy \(evm)")
+    #expect(!TokenMentions.isAddress("SOL") && TokenMentions.isAddress(evm))
 }
 
 /// «save vitalik.eth as Vitalik» saves a name to resolve; a look-alike letter makes it no name, and a token or a buy

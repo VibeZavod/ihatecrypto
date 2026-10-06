@@ -14,8 +14,11 @@ struct ComposerField: NSViewRepresentable {
     var maxLines = 8
     /// Return, ↑, ↓, Tab, Esc: true when the composer took the key.
     var onKey: (Key) -> Bool
-    /// A token's picture on the network when the app has no logo of its own for it (TokenLogo).
-    var icon: (String) -> URL?
+    /// How many of the contracts in the text are looked up: a change draws their chips again, now with a name.
+    var known = 0
+    /// What a chip shows for a token: its name (nil: the ticker as written) and its picture on the network, used when the
+    /// app has no logo of its own for it (TokenLogo). A contract's comes from its market (TokenLookup).
+    var face: (String) -> (label: String?, icon: URL?)
 
     enum Key { case submit, up, down, tab, escape }
 
@@ -57,7 +60,9 @@ struct ComposerField: NSViewRepresentable {
 
     func updateNSView(_ scroll: NSScrollView, context: Context) {
         let c = context.coordinator
+        let looked = c.parent.known != known
         c.parent = self
+        if looked, c.draft() == text { c.redraw() }
         if c.draft() != text {
             c.show(text, caret: moveCaret ?? text.utf16.count)
         } else if let at = moveCaret {
@@ -240,7 +245,7 @@ struct ComposerField: NSViewRepresentable {
 
         private func logo(_ ticker: String) -> NSImage? {
             if let own = TokenLogo.image(ticker.lowercased()) { return own }
-            guard let url = parent.icon(ticker) else { return nil }
+            guard let url = parent.face(ticker).icon else { return nil }
             if let hit = Self.pictures[url] { return hit }
             if Self.asked.insert(url).inserted {
                 Task { [weak self] in
@@ -257,7 +262,9 @@ struct ComposerField: NSViewRepresentable {
         /// The ticker on a pill of the accent's tint, the logo on a white disc at its start.
         private func chip(_ ticker: String) -> NSTextAttachment {
             let font = ComposerField.font
-            let label = ticker.uppercased() as NSString
+            // A ticker in capitals; a contract by its market's symbol as written, or short while it's looked up. Its
+            // picture is the market's only: a look-alike calling itself USDC never gets the app's USDC logo.
+            let label = (parent.face(ticker).label ?? ticker.uppercased()) as NSString
             let bold = NSFont(descriptor: font.fontDescriptor.addingAttributes([.traits: [NSFontDescriptor.TraitKey.weight: NSFont.Weight.semibold]]),
                               size: font.pointSize - 1) ?? font
             let ink: [NSAttributedString.Key: Any] = [.font: bold, .foregroundColor: NSColor.labelColor]
