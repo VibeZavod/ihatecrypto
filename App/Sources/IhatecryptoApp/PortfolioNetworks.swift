@@ -110,15 +110,17 @@ struct NetworkCards: View {
                         // The name on its own line, the networks as logos under it: beside four logos in the narrow
                         // frame the name broke in two and the list of names ended in «Arbitrum ·…».
                         VStack(alignment: .leading, spacing: 4) {
-                            Text("Other networks").font(.ui(12, .semibold)).lineLimit(1)
+                            Text("Other networks").font(.ui(12, .semibold)).lineLimit(1).fixedSize()
                             // Side by side, each on its disc: overlapped, Tempo's «T» and HyperEVM's mark ran together.
-                            HStack(spacing: 4) {
-                                ForEach(order.folded.prefix(6), id: \.self) { TokenLogo(name: $0.logo, size: 16, round: true) }
-                                if order.folded.count > 6 {
-                                    Text("+\(order.folded.count - 6)").font(.ui(10, .semibold)).foregroundStyle(.secondary)
+                            // Five at most, or the row outgrew the name and cut it to «Other ne…».
+                            HStack(spacing: 3) {
+                                ForEach(order.folded.prefix(5), id: \.self) { TokenLogo(name: $0.logo, size: 14, round: true) }
+                                if order.folded.count > 5 {
+                                    Text("+\(order.folded.count - 5)").font(.ui(10, .semibold)).foregroundStyle(.secondary).fixedSize()
                                 }
                             }
                         }
+                        .layoutPriority(1)
                         Spacer(minLength: 4)
                         Text(Fmt.usd(order.folded.reduce(0) { $0 + (held[$1] ?? 0) })).font(.ui(12, .bold)).monospacedDigit().fixedSize()
                         Image(systemName: unfolded ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)

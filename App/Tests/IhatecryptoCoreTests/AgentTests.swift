@@ -473,6 +473,19 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(SentHistory.step([], at: nil, draft: "", up: true) != nil)   // nothing sent yet: handled, nothing changes
 }
 
+/// «$SOL» is a token once closed by a space or a mark; «$5» is dollars; what's sent reads «SOL».
+@Test func dollarMentionsNameTokens() {
+    #expect(TokenMentions.find("buy $SOL for 2 USDC").map(\.ticker) == ["SOL"])
+    #expect(TokenMentions.find("swap $sol, then $eth.").map(\.ticker) == ["sol", "eth"])
+    #expect(TokenMentions.find("buy $SO").isEmpty)              // still being typed
+    #expect(TokenMentions.find("pay $5 now").isEmpty)
+    #expect(TokenMentions.find("a$SOL ").isEmpty)
+    let text = "buy $SOL for $5 then sell $eth"
+    #expect(text[TokenMentions.find(text)[0].range] == "$SOL")
+    #expect(TokenMentions.plain(text) == "buy SOL for $5 then sell eth")
+    #expect(TokenMentions.plain("купи $JUP на $3") == "купи JUP на $3")
+}
+
 /// «save vitalik.eth as Vitalik» saves a name to resolve; a look-alike letter makes it no name, and a token or a buy
 /// never reads a name as an address.
 @Test func addressBookTakesENSAndSNSNamesOnlyToSave() {

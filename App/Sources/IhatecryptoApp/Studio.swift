@@ -2152,14 +2152,9 @@ private struct ChatActions: View {
     @Environment(Workspace.self) private var ws
 
     var body: some View {
-        if let text = ws.pendingText {
-            // The move is drawn on the canvas, step by step: the button only says what it does.
-            Button { Task { await ws.pressConfirm() } } label: { primary("Confirm") }
-                .buttonStyle(.plain).disabled(ws.executing).padding(.bottom, 4)
-                .help(text).accessibilityLabel("Confirm: \(text)")
-        } else if ws.pendingAllocation != nil {
-            Button { Task { await ws.pressConfirm() } } label: { primary("Sign") }
-                .buttonStyle(.plain).disabled(ws.executing).padding(.bottom, 4)
+        if ws.pendingText != nil || ws.pendingAllocation != nil {
+            // A move waiting for Confirm: its Cancel and Confirm are in the field (ChatComposer.waitingBar).
+            EmptyView()
         } else if ws.managesPosition, ws.positions.contains(where: { $0.coin == ws.intent.asset }) {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 6) {
@@ -2368,27 +2363,66 @@ private struct ConnectModelBar: View {
 private struct ChatComposer: View {
     @Environment(Workspace.self) private var ws
     @State private var templatesOpen = false
-    /// The highlighted row of the «/» or «@» list.
+    /// The highlighted row of the «/», «@» or «$» list.
     @State private var pick = 0
+    /// The row ↑↓ moved to: only the keys scroll the list to it. A row the pointer is over is highlighted, never scrolled
+    /// to: as the list moved under a resting pointer, the row under it took the highlight and the list ran to the bottom.
+    @State private var keyedRow: Int?
+    /// Where the pointer was when ↑↓ last moved: a row it rests on doesn't take the highlight back until it moves.
+    @State private var pointerAtKey: CGPoint?
     /// The field's text when Esc closed the list: it stays closed until the text changes.
     @State private var dismissed: String?
     /// The sent message ↑ brought back into the field (SentHistory), while the field still holds it.
     @State private var recalled: Int?
 
-    /// Where the caret is in the field: «/» and «@» lists work on the word it's in, anywhere in the text.
-    @State private var selection: TextSelection?
-    private var caret: Int? {
-        // The field hands back UTF-16 indices, choose() makes UTF-8 ones, and either can outlive the text it came from.
-        // Comparing with draft's own endIndex mixes encodings (Cyrillic is 1 UTF-16 unit but 2 UTF-8 bytes) and the
-        // conversion then traps; an offset within the UTF-16 count is in range in either encoding.
-        guard case .selection(let r)? = selection?.indices, r.upperBound.encodedOffset <= ws.draft.utf16.count else { return nil }
-        return r.upperBound.utf16Offset(in: ws.draft)
-    }
-    private func walk(up: Bool) -> KeyPress.Result {
+    /// Where the caret is in the field (UTF-16 offset in the draft): «/», «@» and «$» lists work on the word it's in,
+    /// anywhere in the text.
+    @State private var caretAt: Int?
+    /// A pick from a list puts the caret right after what went in.
+    @State private var caretRequest: Int?
+    private var caret: Int? { caretAt.map { min($0, ws.draft.utf16.count) } }
+    private func walk(up: Bool) -> Bool {
         let history = SentHistory.list(ws.messages.filter(\.fromUser).map(\.text))
-        guard let next = SentHistory.step(history, at: recalled, draft: ws.draft, up: up) else { return .ignored }
+        guard let next = SentHistory.step(history, at: recalled, draft: ws.draft, up: up) else { return false }
         (recalled, ws.draft) = next
-        return .handled
+        return true
+    }
+
+    /// Return, ↑↓, Tab and Esc from the field.
+    private func key(_ key: ComposerField.Key) -> Bool {
+        switch key {
+        case .submit:
+            send()
+            return true
+        // ↑↓ walk the «/», «@» or «$» list; otherwise what was sent, as a terminal's history: ↑ in an empty field or on a
+        // message brought back goes one further back, ↓ forward and out to an empty field (SentHistory).
+        case .up:
+            if !suggestions.isEmpty { keyed(max(0, pick - 1)); return true }
+            return walk(up: true)
+        case .down:
+            if !suggestions.isEmpty { keyed(min(suggestions.count - 1, pick + 1)); return true }
+            return walk(up: false)
+        case .tab:
+            guard let row = picked else { return false }
+            choose(row)
+            return true
+        case .escape:
+            guard !suggestions.isEmpty else { return false }
+            dismissed = ws.draft
+            return true
+        }
+    }
+
+    private func keyed(_ row: Int) {
+        pick = row
+        keyedRow = row
+        pointerAtKey = NSEvent.mouseLocation
+    }
+
+    /// The move waiting for Confirm, said in the field's own head; nil when nothing waits.
+    private var waiting: String? {
+        guard let text = ws.pendingText ?? ws.pendingAllocation.map({ ws.readable($0.summary) }) else { return nil }
+        return text.prefix(1).uppercased() + text.dropFirst()
     }
 
     private var suggestions: [ComposerSuggestion] { ws.draft == dismissed ? [] : ComposerSuggestion.for(ws.draft, caret: caret, ws: ws) }
@@ -2420,7 +2454,7 @@ private struct ChatComposer: View {
             if voice.listening { listening(voice) } else if ws.hasModel { field } else { ConnectModelBar() }
         }
         .padding(12)
-        .onChange(of: ws.draft) { pick = 0 }
+        .onChange(of: ws.draft) { pick = 0; keyedRow = nil }
         // A model on this Mac: whether its server answers and has it, before a field is offered.
         .task(id: ws.providerID) { if ws.provider.info.kind == .local { await ws.refreshLocalModels() } }
         // A contract or mint typed after «@»: asked once, for the list above the field.
@@ -2468,6 +2502,51 @@ private struct ChatComposer: View {
     }
 
     private var field: some View {
+        let waiting = waiting
+        return VStack(spacing: 0) {
+            if let waiting { waitingBar(waiting) }
+            entry(waiting: waiting != nil)
+        }
+        .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Brand.glassFill))
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        // A glass pill on the glass chat, its rim orange while a move waits for Confirm.
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(waiting == nil ? Brand.glassRim : Brand.accent, lineWidth: waiting == nil ? 1 : 1.5))
+    }
+
+    /// Variant E: while a move waits, the field carries it — what it is, Cancel and Confirm in one place, the orange bar
+    /// above the field gone. The steps stay on the canvas; the field below still asks about it or changes it.
+    private func waitingBar(_ title: String) -> some View {
+        let sign = ws.pendingText == nil
+        let what = HStack(alignment: .top, spacing: 9) {
+            Circle().fill(Brand.accent).frame(width: 8, height: 8).padding(.top, 5)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.ui(13, .semibold)).lineLimit(3).fixedSize(horizontal: false, vertical: true)
+                Text(ws.executing ? "Signing…" : "Its steps are on the canvas · Touch ID signs").font(.ui(11)).foregroundStyle(.secondary).lineLimit(1)
+            }
+        }
+        let buttons = HStack(spacing: 6) {
+            Button { Task { await ws.send("cancel") } } label: {
+                Text("Cancel").font(.ui(12.5, .medium)).padding(.horizontal, 13).frame(height: 32)
+                    .overlay(Capsule().strokeBorder(Brand.cardBorder)).contentShape(Capsule())
+            }
+            .buttonStyle(.plain).pointerStyle(.link)
+            Button { Task { await ws.pressConfirm() } } label: {
+                Label(sign ? "Sign" : "Confirm", systemImage: "touchid").font(.ui(12.5, .bold)).foregroundStyle(Brand.onAccent)
+                    .padding(.horizontal, 14).frame(height: 32).background(Capsule().fill(Brand.accent)).contentShape(Capsule())
+            }
+            .buttonStyle(.plain).pointerStyle(.link).help(title)
+        }
+        .disabled(ws.busy || ws.executing)
+        return ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) { what; Spacer(minLength: 6); buttons }
+            VStack(alignment: .leading, spacing: 8) { what; HStack { Spacer(); buttons } }
+        }
+        .padding(.vertical, 10).padding(.leading, 14).padding(.trailing, 9)
+        .background(Brand.accent.opacity(0.10))
+        .overlay(alignment: .bottom) { Rectangle().fill(Brand.cardBorder).frame(height: 1) }
+    }
+
+    private func entry(waiting: Bool) -> some View {
         HStack(alignment: .bottom, spacing: 8) {
             Button { templatesOpen.toggle() } label: {
                 Image(systemName: "square.grid.2x2").font(.system(size: 14, weight: .semibold))
@@ -2482,39 +2561,21 @@ private struct ChatComposer: View {
             .popover(isPresented: $templatesOpen, arrowEdge: .top) {
                 TemplatesPanel { phrase in ws.draft = phrase; templatesOpen = false }
             }
-            TextField(ws.stepContext == nil ? "What should we do? / for blocks, @ for names" : ws.stepContext?.about == nil ? "Ask about this step…" : "Ask about \(ws.stepContext?.title ?? "it")…", text: Bindable(ws).draft, selection: $selection, axis: .vertical)
-                .textFieldStyle(.plain).font(.ui(14)).lineLimit(1...8)
-                // The caret in the brand's orange.
-                .tint(Brand.accent)
-                .padding(.vertical, 8)
-                .onSubmit(send)
-                // Shift-Return breaks the line at the caret; plain Return still sends.
-                .onKeyPress(.return, phases: .down) { press in
-                    guard press.modifiers.contains(.shift) else { return .ignored }
-                    // The field inserts it itself, as it does on ⌥Return, so its text and caret stay in step.
-                    NSApp.sendAction(#selector(NSResponder.insertNewlineIgnoringFieldEditor(_:)), to: nil, from: nil)
-                    return .handled
+            // «$SOL» shows as the token's chip (ComposerField); Shift-Return breaks the line, Return sends.
+            ZStack(alignment: .topLeading) {
+                if ws.draft.isEmpty {
+                    Text(waiting ? "Ask about it, change it («make it 0.02»), or something else"
+                         : ws.stepContext == nil ? "What should we do? / blocks, @ names, $ tokens"
+                         : ws.stepContext?.about == nil ? "Ask about this step…" : "Ask about \(ws.stepContext?.title ?? "it")…")
+                        .font(.ui(14)).foregroundStyle(.tertiary).lineLimit(1)
+                        .padding(.vertical, ComposerField.inset.height).padding(.leading, 5)
+                        .allowsHitTesting(false)
                 }
-                // ↑↓ walk the «/» or «@» list; otherwise what was sent, as a terminal's history: ↑ in an empty field or on a
-                // message brought back goes one further back, ↓ forward and out to an empty field (SentHistory).
-                .onKeyPress(.upArrow) {
-                    if !suggestions.isEmpty { pick = max(0, pick - 1); return .handled }
-                    return walk(up: true)
+                ComposerField(text: Bindable(ws).draft, caret: $caretAt, moveCaret: $caretRequest, onKey: key) { ticker in
+                    ws.holdings.first { $0.symbol.caseInsensitiveCompare(ticker) == .orderedSame }?.icon
+                        ?? ws.favoriteTokens.first { $0.symbol.caseInsensitiveCompare(ticker) == .orderedSame }?.image
                 }
-                .onKeyPress(.downArrow) {
-                    if !suggestions.isEmpty { pick = min(suggestions.count - 1, pick + 1); return .handled }
-                    return walk(up: false)
-                }
-                .onKeyPress(.tab) {
-                    guard let row = picked else { return .ignored }
-                    choose(row)
-                    return .handled
-                }
-                .onKeyPress(.escape) {
-                    guard !suggestions.isEmpty else { return .ignored }
-                    dismissed = ws.draft
-                    return .handled
-                }
+            }
             Button { Task { await ws.voice.start() } } label: {
                 Image(systemName: "mic").font(.system(size: 14, weight: .semibold))
                     .frame(width: 34, height: 34).contentShape(Circle())
@@ -2541,7 +2602,8 @@ private struct ChatComposer: View {
     private func send() {
         // Return with the list open puts the highlighted row in; the next Return sends.
         if let row = picked { choose(row); return }
-        let text = ws.draft.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The model and the parsers read «SOL»: the «$» only made the chip.
+        let text = TokenMentions.plain(ws.draft.trimmingCharacters(in: .whitespacesAndNewlines))
         guard !text.isEmpty, !ws.busy else { return }
         ws.draft = ""
         Task { await ws.send(text) }
@@ -2550,7 +2612,7 @@ private struct ChatComposer: View {
     private func choose(_ row: ComposerSuggestion) {
         ws.draft = row.draft
         // The caret right after what went in, so the rest of the text stays where it was.
-        selection = TextSelection(insertionPoint: String.Index(utf16Offset: min(row.caret, row.draft.utf16.count), in: row.draft))
+        caretRequest = min(row.caret, row.draft.utf16.count)
         // A block's example is finished and sent by the person: the list stays closed on it.
         dismissed = row.draft
     }
@@ -2574,13 +2636,13 @@ private struct ChatComposer: View {
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain).pointerStyle(.link)
-                            .onHover { if $0 { pick = i } }
+                            .onHover { if $0, NSEvent.mouseLocation != pointerAtKey { pick = i } }
                             .id(i)
                         }
                     }
                 }
                 .frame(height: CGFloat(min(rows.count, 8)) * 32 - 2)
-                .onChange(of: pick) { proxy.scrollTo(pick) }
+                .onChange(of: keyedRow) { if let keyedRow { proxy.scrollTo(keyedRow) } }
             }
             Text(rows.count > 8 ? "\(rows.count) · scroll or ↑↓ · Return puts it in · Esc closes" : "↑↓ choose · Return puts it in · Esc closes")
                 .font(.ui(10)).foregroundStyle(.tertiary).padding(.horizontal, 9).padding(.top, 2)
@@ -2637,9 +2699,10 @@ struct ComposerSuggestion: Identifiable, Equatable {
     static func `for`(_ draft: String, caret: Int?, ws: Workspace) -> [ComposerSuggestion] {
         let w = word(draft, caret: caret)
         // A pick replaces the word; the rest of the text stays, the caret after what went in.
-        func row(_ icon: String, _ title: String, _ detail: String, put text: String, logo: String? = nil, image: URL? = nil) -> ComposerSuggestion {
+        // `space`: a space after it even alone in the field — «$SOL » becomes its chip only once something closes it.
+        func row(_ icon: String, _ title: String, _ detail: String, put text: String, space: Bool = false, logo: String? = nil, image: URL? = nil) -> ComposerSuggestion {
             let alone = w.before.isEmpty && w.after.isEmpty
-            let head = w.before + text + (alone ? "" : " ")
+            let head = w.before + text + (alone && !space ? "" : " ")
             let tail = w.after.hasPrefix(" ") ? String(w.after.dropFirst()) : w.after
             return ComposerSuggestion(icon: icon, title: title, detail: detail, draft: head + tail, caret: head.utf16.count, logo: logo, image: image)
         }
@@ -2648,6 +2711,16 @@ struct ComposerSuggestion: Identifiable, Equatable {
             return BlockCatalog.all.filter { !$0.automatic && !$0.example.isEmpty }
                 .filter { q.isEmpty || "\($0.title) \($0.group) \($0.example)".lowercased().contains(q) }
                 .map { row("square.grid.2x2", $0.title, $0.example, put: $0.example, logo: $0.logo) }
+        }
+        // «$» lists the tokens: what the wallet holds first, then the usual ones and the favorites. «$5» is dollars.
+        if w.text.hasPrefix("$"), !(w.text.dropFirst().first?.isNumber ?? false) {
+            let q = w.text.dropFirst().lowercased()
+            return tokens(ws).filter { q.isEmpty || $0.symbol.lowercased().hasPrefix(q) || $0.detail.lowercased().contains(q) }
+                .prefix(40).map { t in
+                    // The app's own logo first, the token's picture from the network when it has none.
+                    let own = TokenLogo.name(forAsset: t.symbol)
+                    return row("dollarsign.circle", t.symbol, t.detail, put: "$" + t.symbol, space: true, logo: own, image: own == nil ? t.image : nil)
+                }
         }
         guard w.text.hasPrefix("@") else { return [] }
         let q = w.text.dropFirst().lowercased()
@@ -2667,6 +2740,29 @@ struct ComposerSuggestion: Identifiable, Equatable {
         let names = ws.addressBook.map { row("person.crop.circle", $0.name, $0.network.title, put: $0.name, logo: $0.network.logo) }
             + ws.favoriteTokens.map { row("star", $0.symbol, "\($0.name) · \($0.chainTitle)", put: $0.symbol, logo: $0.image == nil ? $0.chainLogo : nil, image: $0.image) }
         return names.filter { q.isEmpty || $0.title.lowercased().contains(q) }
+    }
+
+    /// The «$» list's tokens, each once: the wallet's (SOL and USDC on Solana, then the tokens on show by value), the
+    /// usual ones, the favorites.
+    static func tokens(_ ws: Workspace) -> [(symbol: String, detail: String, image: URL?)] {
+        var seen = Set<String>(), out: [(symbol: String, detail: String, image: URL?)] = []
+        func add(_ symbol: String, _ detail: String, image: URL? = nil) {
+            guard !symbol.isEmpty, symbol.count <= 12, seen.insert(symbol.uppercased()).inserted else { return }
+            out.append((symbol, detail, image))
+        }
+        if let s = ws.solana {
+            add("SOL", "Solana · \(Fmt.num(s.sol, maxFraction: 4)) SOL")
+            add("USDC", "Solana · \(Fmt.num(s.usdc, maxFraction: 2)) USDC")
+        }
+        for t in ws.shownTokens.sorted(by: { ($0.usd ?? 0) > ($1.usd ?? 0) }) {
+            add(t.symbol, "\(ModuleNetwork(place: t.chain)?.name ?? t.chain.capitalized) · \(t.usd.map { Fmt.usd($0) } ?? Fmt.num(t.amount))", image: t.icon)
+        }
+        for (symbol, name) in [("SOL", "Solana"), ("USDC", "USD Coin"), ("ETH", "Ether"), ("BTC", "Bitcoin"), ("HYPE", "Hyperliquid"),
+                               ("NEAR", "NEAR"), ("USDT", "Tether"), ("JUP", "Jupiter")] {
+            add(symbol, name)
+        }
+        for f in ws.favoriteTokens { add(f.symbol, "\(f.name) · \(f.chainTitle)", image: f.image) }
+        return out
     }
 }
 
