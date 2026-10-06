@@ -1,5 +1,65 @@
 [
   {
+    "version": "0.5",
+    "date": "2026-10-06",
+    "stories": [
+      {
+        "title": "Tokens in the chat",
+        "text": "Type $ to pick a token: $SOL shows as its logo, and $ with a contract or a mint shows that token with its picture, so you see what you'll buy before you send. While a card waits, its Cancel and Confirm sit right in the field.",
+        "try": "buy $SOL for 2 USDC",
+        "symbol": "dollarsign.circle.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Swap across networks",
+        "text": "Any token on one network for any token on another, in one signature: SOL on Solana for ETH on Arbitrum. Every USDC bridge weighs Relay against NEAR Intents, and Circle's CCTP when it lands more or when you ask for it.",
+        "try": "swap 0.1 SOL on Solana for ETH on Arbitrum",
+        "symbol": "arrow.left.arrow.right",
+        "color": "4615C8"
+      },
+      {
+        "title": "Send to Bitcoin, TRON, XRP and more",
+        "text": "Through NEAR Intents, money goes to a saved Bitcoin, TRON, XRP, Dogecoin, Zcash or Sui address — an exchange's deposit, say — and comes in from them: «receive» shows an address and a QR. NEAR sells for USDC on Base, Arbitrum or Ethereum.",
+        "try": "receive 20 USDC from Sui",
+        "symbol": "paperplane.fill",
+        "color": "00C08B"
+      },
+      {
+        "title": "Borrow on Aave",
+        "text": "Supply ETH or USDC, then borrow USDC against it on Base, Arbitrum, Polygon or Ethereum. The card shows the health factor before and after and the ETH price at which it would be liquidated; ihatecrypto never borrows below 1.5.",
+        "try": "borrow 10 USDC on Aave",
+        "symbol": "building.columns.fill",
+        "color": "B6509E"
+      },
+      {
+        "title": "HyperEVM, Optimism and Tempo swaps",
+        "text": "Two new networks: USDC in and out with gas brought along, their cards in the portfolio and their switches in Settings › Modules. On Tempo, stablecoins swap on its own exchange for a basis point or two.",
+        "try": "move 5 USDC from Solana to HyperEVM",
+        "symbol": "point.3.connected.trianglepath.dotted",
+        "color": "FF0420"
+      },
+      {
+        "title": "Money in transit",
+        "text": "A bridge that left and hasn't landed shows above the network cards; a click opens the bridge's own word on it, the transaction and the address. The legs of a move from several networks travel together, as fast as the slowest.",
+        "symbol": "clock.arrow.2.circlepath",
+        "color": "2775CA"
+      },
+      {
+        "title": "Approvals and dust",
+        "text": "«show my approvals» lists every allowance your wallet gave, unlimited ones first, each with Revoke. «sweep dust» turns small leftovers into USDC. Bridged USDC.e is named as such, one click from Circle's USDC.",
+        "try": "show my approvals",
+        "symbol": "checkmark.shield.fill",
+        "color": "0B7A55"
+      },
+      {
+        "title": "Answers as they're written",
+        "text": "Every model's reply shows as it's written, and a model on this Mac reads the whole prompt. Claude Code installs from Settings › Models; a NEAR Intents key in Settings › General lowers 1Click's fees. Hyperliquid spot buys and sells too.",
+        "symbol": "text.bubble.fill",
+        "color": "9945FF"
+      }
+    ]
+  },
+  {
     "version": "0.4.4",
     "date": "2026-10-05",
     "stories": [
