@@ -1258,6 +1258,9 @@ struct CanvasViewport<Content: View>: View {
     @State private var hovering = false
     @State private var pointer: CGPoint = .zero
     @State private var scrollMonitor: Any?
+    /// In full screen there's no window to move: the top strip pans like the rest.
+    @State private var fullScreen = false
+    @Environment(\.displayScale) private var displayScale
     static var zoomRange: ClosedRange<CGFloat> { 0.4...2.5 }
 
     var body: some View {
@@ -1273,14 +1276,21 @@ struct CanvasViewport<Content: View>: View {
         let scale = base * k
         let live = CGSize(width: leading + pan.width + drag.width, height: pan.height + drag.height)
         let moved = CanvasZoom.pan(keeping: (pinchAt.x, pinchAt.y), from: (live.width, live.height), by: k)
+        // On whole pixels: a drag moves by fractions of a point, and under a scale that isn't 100 % each board, line
+        // and letter then snapped to the screen's pixels its own way every frame — the boards wobbled against each other.
+        let snapped = CGSize(width: (moved.x * displayScale).rounded() / displayScale, height: (moved.y * displayScale).rounded() / displayScale)
         // The ground (color and dots) is StudioView's, under the rail too; this only takes the gestures.
         // The content hangs in an overlay so the viewport keeps the window's size: a board taller than the window
         // (Favorites, History) no longer stretches it and pushes the zoom bar below the bottom edge.
         return Color.clear
+            // Where a title bar would be, the canvas moves the window, as its first 30 pt already did by themselves:
+            // below them a grab panned the boards instead, so the same «top of the window» did one thing or the other.
+            // The boards over the strip still take their clicks and drags.
+            .overlay(alignment: .top) { if !fullScreen { WindowDragArea().frame(height: 2 * TrafficLights.center.y) } }
             .overlay(alignment: .topLeading) {
                 content
                     .scaleEffect(scale, anchor: .topLeading)
-                    .offset(CGSize(width: moved.x, height: moved.y))
+                    .offset(snapped)
             }
         .clipped()
         .contentShape(Rectangle())
@@ -1315,10 +1325,13 @@ struct CanvasViewport<Content: View>: View {
             zoom = 1; pan = .zero
         }
         .onAppear(perform: watchScrolling)
+        .onAppear { fullScreen = NSApp.windows.contains { $0.styleMask.contains(.fullScreen) } }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willEnterFullScreenNotification)) { _ in fullScreen = true }
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.willExitFullScreenNotification)) { _ in fullScreen = false }
         .onDisappear { if let m = scrollMonitor { NSEvent.removeMonitor(m); scrollMonitor = nil }; CanvasSharpness.shared.track(false) }
         .onChange(of: scale >= CanvasSharpness.from, initial: true) { _, on in CanvasSharpness.shared.track(on) }
         // Any motion of the content (a drag, a scroll, a pinch, a zoom step, a resize): sharpen once it stops.
-        .onChange(of: [scale, moved.x, moved.y]) { CanvasSharpness.shared.hold() }
+        .onChange(of: [scale, snapped.width, snapped.height]) { CanvasSharpness.shared.hold() }
         .overlay(alignment: .bottomLeading) { zoomBar(scale).padding(18).padding(.leading, leading) }
     }
 
