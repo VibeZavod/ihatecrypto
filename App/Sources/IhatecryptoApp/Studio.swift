@@ -2548,7 +2548,6 @@ private struct ChatComposer: View {
         }
         .padding(.vertical, 10).padding(.leading, 14).padding(.trailing, 9)
         .background(Brand.accent.opacity(0.10))
-        .overlay(alignment: .bottom) { Rectangle().fill(Brand.cardBorder).frame(height: 1) }
     }
 
     private func waitingRow(_ title: String, state: Workspace.QuoteState) -> some View {
