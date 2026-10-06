@@ -1,5 +1,30 @@
 [
   {
+    "version": "0.5.1",
+    "date": "2026-10-06",
+    "stories": [
+      {
+        "title": "The rate before you swap",
+        "text": "A swap waiting for Confirm says what you get and at what rate — «You get ≈ 23 SPX · 1 SPX ≈ $0.43» — Solana buys through Jupiter too. Confirm holds 15 seconds after the price; then Refresh asks for a fresh one.",
+        "try": "buy $SOL for 2 USDC",
+        "symbol": "arrow.triangle.2.circlepath",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Tokens stay tokens",
+        "text": "A message with $SPX or $ and a contract shows the token's chip in the chat too, not a long address, and «understood as» names the token. The model still gets the exact address.",
+        "symbol": "dollarsign.circle.fill",
+        "color": "2775CA"
+      },
+      {
+        "title": "Models on this Mac, ten times faster",
+        "text": "A model on this Mac no longer thinks to itself before every answer: Gemma 4 12B answers the chat in about 8 seconds instead of two minutes.",
+        "symbol": "bolt.fill",
+        "color": "0B7A55"
+      }
+    ]
+  },
+  {
     "version": "0.5",
     "date": "2026-10-06",
     "stories": [
