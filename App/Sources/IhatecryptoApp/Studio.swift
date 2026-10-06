@@ -2539,7 +2539,6 @@ private struct ChatComposer: View {
         }
         .padding(.vertical, 10).padding(.leading, 14).padding(.trailing, 9)
         .background(Brand.accent.opacity(0.10))
-        .overlay(alignment: .bottom) { Rectangle().fill(Brand.cardBorder).frame(height: 1) }
     }
 
     private func waitingRow(_ title: String, state: Workspace.QuoteState) -> some View {
@@ -2640,9 +2639,10 @@ private struct ChatComposer: View {
             .keyboardShortcut(.return, modifiers: .command)
         }
         .padding(.vertical, 5).padding(.leading, 5).padding(.trailing, 5)
-        // A glass pill on the glass chat: white in light mode, faint in dark.
+        // A glass pill on the glass chat: white in light mode, faint in dark. Under a waiting move its rim is the frame's
+        // orange — a grey one showed as a third colour at its top corners, and its top edge divides it from the move.
         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Brand.glassFill))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Brand.glassRim))
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(waiting ? Brand.accent : Brand.glassRim, lineWidth: waiting ? 1.5 : 1))
     }
 
     private func send() {
