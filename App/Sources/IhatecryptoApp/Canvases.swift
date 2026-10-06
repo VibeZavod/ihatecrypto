@@ -1480,9 +1480,15 @@ extension Workspace {
         favoriteTokens.first { $0.address.lowercased() == contract.lowercased() }
     }
 
-    /// Text for the canvas and the chat with every contract in it replaced by its token's name.
+    /// Text for the canvas and the chat with every contract in it replaced by its token's name, and every Solana mint
+    /// the app has looked up (a «$<mint>» in the chat) by its symbol; other base58 (a wallet, a signature) stays as is.
     func readable(_ text: String) -> String {
         text.replacing(/0x[0-9a-fA-F]{40}/) { tokenLabel(String($0.0)) }
+            .replacing(/\b[1-9A-HJ-NP-Za-km-z]{32,44}\b/) { m in
+                let mint = String(m.0)
+                guard let symbol = contractLookups[mint]?.first?.symbol ?? tokenNames[mint.lowercased()] else { return mint }
+                return "\(TokenLookup.suspicious(symbol, contract: mint, genuine: Self.genuineContracts) ? "⚠ " : "")\(symbol) (\(mint.prefix(4))…\(mint.suffix(4)))"
+            }
     }
 
     /// What the chain waiting behind this card does next («… then buy AI then buy MOO»): each step's own cards but where

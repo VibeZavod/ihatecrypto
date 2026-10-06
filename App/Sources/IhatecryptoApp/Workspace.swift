@@ -23,6 +23,8 @@ struct Message: Identifiable, Codable, Equatable {
     let fromUser: Bool
     let text: String
     var note: String?
+    /// A message as the user typed it, «$SOL» and «$<mint>» kept: the chat draws them as chips. `text` is what's read.
+    var shown: String?
 
     /// The guard's notes on its reply to a message it stopped as steering (send()); that message never reaches a model.
     static let guardLocal = "guard: local rules", guardBoth = "guard: rules and the second check"
@@ -729,7 +731,8 @@ final class Workspace {
         await Self.$pressed.withValue(true) { await send("do it") }
     }
 
-    func send(_ raw: String) async {
+    /// `shown`: the message as typed, when its «$» mentions became plain text (ChatComposer.send).
+    func send(_ raw: String, shown: String? = nil) async {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !busy else { return }
         if SeedGuard.containsMnemonic(text) {
@@ -740,7 +743,8 @@ final class Workspace {
         // A step handed over from its card: the message is about it, and a move waiting for Confirm keeps waiting.
         let step = stepContext
         stepContext = nil
-        messages.append(Message(fromUser: true, text: step.map { "«\($0.title)»\n" + text } ?? text))
+        messages.append(Message(fromUser: true, text: step.map { "«\($0.title)»\n" + text } ?? text,
+                                shown: shown.map { typed in step.map { "«\($0.title)»\n" + typed } ?? typed }))
         thinking = true
         draftReply = nil
         defer { thinking = false; draftReply = nil }
@@ -1366,7 +1370,7 @@ final class Workspace {
     /// `inChain`: a step of «A then B», whose «In steps» line already said what was understood.
     func runCanonical(_ canonical: String, userText text: String, before: TradeIntent, inChain: Bool = false) async -> Bool {
         if !inChain { updateActivity { $0.understood = canonical } }
-        let note = "understood as “\(canonical)” · \(model)"
+        let note = "understood as “\(readable(canonical))” · \(model)"
         if ScheduledTask.cancelsAll(canonical) { cancelTasks(note: note); return true }
         if let task = ScheduledTask.parse(canonical) { schedule(task, note: note); return true }
         // A paid request before any other reading: its body is free text, where a contract, «then» or «chart» belongs to

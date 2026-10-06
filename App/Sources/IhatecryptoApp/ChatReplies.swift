@@ -88,6 +88,8 @@ enum ChatItem: Identifiable {
 }
 
 struct MessageRow: View {
+    @Environment(Workspace.self) private var ws
+    @Environment(\.colorScheme) private var scheme
     let message: Message
 
     var body: some View {
@@ -95,7 +97,7 @@ struct MessageRow: View {
             // Yours: an orange outline, no fill (V02 «Cards»); the answers are the filled cards.
             HStack {
                 Spacer(minLength: 80)
-                Text(message.text)
+                (message.shown.map(chipped) ?? Text(message.text))
                     .textSelection(.enabled)
                     .padding(.horizontal, 13).padding(.vertical, 9)
                     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Brand.accent, lineWidth: 1))
@@ -104,6 +106,22 @@ struct MessageRow: View {
         } else {
             Reply(message: message)
         }
+    }
+
+    /// The message as typed, each «$SOL» or «$<mint>» drawn as in the field: the token's chip, not a raw address.
+    private func chipped(_ typed: String) -> Text {
+        // Padded: a mention at the very end is closed too.
+        let padded = typed + " "
+        let appearance = NSAppearance(named: scheme == .dark ? .darkAqua : .aqua) ?? NSApp.effectiveAppearance
+        var out = Text(""), at = padded.startIndex
+        for m in TokenMentions.find(padded) {
+            let face = ws.tokenFace(m.ticker)
+            let chip = ComposerField.chipImage(face.label ?? m.ticker.uppercased(), picture: ComposerField.picture(m.ticker, icon: face.icon),
+                                               appearance: appearance)
+            out = out + Text(padded[at..<m.range.lowerBound]) + Text(Image(nsImage: chip)).baselineOffset(ComposerField.chipDrop)
+            at = m.range.upperBound
+        }
+        return out + Text(padded[at...].dropLast())
     }
 }
 

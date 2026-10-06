@@ -2589,15 +2589,8 @@ private struct ChatComposer: View {
                         .allowsHitTesting(false)
                 }
                 ComposerField(text: Bindable(ws).draft, caret: $caretAt, moveCaret: $caretRequest, onKey: key,
-                              known: TokenMentions.addresses(ws.draft).filter { ws.contractLookups[$0] != nil }.count) { token in
-                    // «$0x…» or «$<mint>»: the market's symbol and picture (looked up below), short until then.
-                    if TokenMentions.isAddress(token) {
-                        let found = ws.contractLookups[token]?.first
-                        return (found?.symbol ?? "\(token.prefix(5))…\(token.suffix(4))", found?.imageURL)
-                    }
-                    return (nil, ws.holdings.first { $0.symbol.caseInsensitiveCompare(token) == .orderedSame }?.icon
-                        ?? ws.favoriteTokens.first { $0.symbol.caseInsensitiveCompare(token) == .orderedSame }?.image)
-                }
+                              known: TokenMentions.addresses(ws.draft).filter { ws.contractLookups[$0] != nil }.count,
+                              face: ws.tokenFace)
             }
             Button { Task { await ws.voice.start() } } label: {
                 Image(systemName: "mic").font(.system(size: 14, weight: .semibold))
@@ -2625,11 +2618,11 @@ private struct ChatComposer: View {
     private func send() {
         // Return with the list open puts the highlighted row in; the next Return sends.
         if let row = picked { choose(row); return }
-        // The model and the parsers read «SOL»: the «$» only made the chip.
-        let text = TokenMentions.plain(ws.draft.trimmingCharacters(in: .whitespacesAndNewlines))
+        // The model and the parsers read «SOL»: the «$» only made the chip. The chat shows it as typed, chips and all.
+        let typed = ws.draft.trimmingCharacters(in: .whitespacesAndNewlines), text = TokenMentions.plain(typed)
         guard !text.isEmpty, !ws.busy else { return }
         ws.draft = ""
-        Task { await ws.send(text) }
+        Task { await ws.send(text, shown: typed == text ? nil : typed) }
     }
 
     private func choose(_ row: ComposerSuggestion) {

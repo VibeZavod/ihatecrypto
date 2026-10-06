@@ -82,6 +82,79 @@ struct ComposerField: NSViewRepresentable {
         return CGSize(width: width, height: min(max(used, line), line * CGFloat(maxLines)) + 2 * Self.inset.height)
     }
 
+    // MARK: Chips, for the field and the chat's bubbles
+
+    /// How far a chip sits below the text's baseline.
+    static var chipDrop: CGFloat { font.descender - 1.5 }
+
+    /// A token's picture: the app's own logo for a ticker (TokenLogo), else the token's picture from the network once
+    /// fetched — `loaded` runs when it arrives. A contract has no logo of the app's: only its market's.
+    static func picture(_ ticker: String, icon: URL?, loaded: @escaping @MainActor () -> Void = {}) -> NSImage? {
+        if let own = TokenLogo.image(ticker.lowercased()) { return own }
+        guard let icon else { return nil }
+        if let hit = pictures[icon] { return hit }
+        if asked.insert(icon).inserted {
+            Task { @MainActor in
+                guard let (data, _) = try? await URLSession.shared.data(from: icon), let image = NSImage(data: data) else { return }
+                pictures[icon] = image
+                loaded()
+            }
+        }
+        return nil
+    }
+    private static var pictures: [URL: NSImage] = [:]
+    private static var asked = Set<URL>()
+
+    /// The label on a pill of the accent's tint, the picture on a white disc at its start (its first letter without
+    /// one). Drawn once into pixels in `appearance`: an NSImage drawing handler may be called off the main thread, and
+    /// this module's code runs on the main actor.
+    static func chipImage(_ text: String, picture: NSImage?, appearance: NSAppearance, scale: CGFloat = 2) -> NSImage {
+        let label = text as NSString
+        let bold = NSFont(descriptor: font.fontDescriptor.addingAttributes([.traits: [NSFontDescriptor.TraitKey.weight: NSFont.Weight.semibold]]),
+                          size: font.pointSize - 1) ?? font
+        let ink: [NSAttributedString.Key: Any] = [.font: bold, .foregroundColor: NSColor.labelColor]
+        let textSize = label.size(withAttributes: ink)
+        let h = ceil(font.ascender - font.descender) + 3, disc = h - 6
+        let w = ceil(3 + disc + 5 + textSize.width + 8)
+        let rect = NSRect(x: 0, y: 0, width: w, height: h)
+        let image = NSImage(size: rect.size)
+        guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(w * scale), pixelsHigh: Int(h * scale), bitsPerSample: 8,
+                                         samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
+        else { return image }
+        rep.size = rect.size
+        let accent = Coordinator.accent
+        NSGraphicsContext.saveGraphicsState()
+        NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
+        appearance.performAsCurrentDrawingAppearance {
+            let pill = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: h / 2 - 0.5, yRadius: h / 2 - 0.5)
+            accent.withAlphaComponent(0.14).setFill()
+            pill.fill()
+            accent.withAlphaComponent(0.45).setStroke()
+            pill.lineWidth = 1
+            pill.stroke()
+            let circle = NSRect(x: 3, y: 3, width: disc, height: disc)
+            if let picture {
+                NSColor.white.setFill()
+                NSBezierPath(ovalIn: circle).fill()
+                NSGraphicsContext.saveGraphicsState()
+                NSBezierPath(ovalIn: circle).addClip()
+                picture.draw(in: circle)
+                NSGraphicsContext.restoreGraphicsState()
+            } else {
+                accent.withAlphaComponent(0.3).setFill()
+                NSBezierPath(ovalIn: circle).fill()
+                let letter = String(label.substring(to: min(1, label.length))) as NSString
+                let small: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: disc * 0.55, weight: .bold), .foregroundColor: NSColor.labelColor]
+                let s = letter.size(withAttributes: small)
+                letter.draw(at: NSPoint(x: circle.midX - s.width / 2, y: circle.midY - s.height / 2), withAttributes: small)
+            }
+            label.draw(at: NSPoint(x: 3 + disc + 5, y: (h - textSize.height) / 2), withAttributes: ink)
+        }
+        NSGraphicsContext.restoreGraphicsState()
+        image.addRepresentation(rep)
+        return image
+    }
+
     final class FieldView: NSTextView {
         weak var coordinator: Coordinator?
 
@@ -243,77 +316,30 @@ struct ComposerField: NSViewRepresentable {
 
         // MARK: The chip
 
-        private func logo(_ ticker: String) -> NSImage? {
-            if let own = TokenLogo.image(ticker.lowercased()) { return own }
-            guard let url = parent.face(ticker).icon else { return nil }
-            if let hit = Self.pictures[url] { return hit }
-            if Self.asked.insert(url).inserted {
-                Task { [weak self] in
-                    guard let (data, _) = try? await URLSession.shared.data(from: url), let image = NSImage(data: data) else { return }
-                    Self.pictures[url] = image
-                    self?.redraw()
-                }
-            }
-            return nil
-        }
-        private static var pictures: [URL: NSImage] = [:]
-        private static var asked = Set<URL>()
-
-        /// The ticker on a pill of the accent's tint, the logo on a white disc at its start.
         private func chip(_ ticker: String) -> NSTextAttachment {
-            let font = ComposerField.font
+            let picture = ComposerField.picture(ticker, icon: parent.face(ticker).icon) { [weak self] in self?.redraw() }
             // A ticker in capitals; a contract by its market's symbol as written, or short while it's looked up. Its
             // picture is the market's only: a look-alike calling itself USDC never gets the app's USDC logo.
-            let label = (parent.face(ticker).label ?? ticker.uppercased()) as NSString
-            let bold = NSFont(descriptor: font.fontDescriptor.addingAttributes([.traits: [NSFontDescriptor.TraitKey.weight: NSFont.Weight.semibold]]),
-                              size: font.pointSize - 1) ?? font
-            let ink: [NSAttributedString.Key: Any] = [.font: bold, .foregroundColor: NSColor.labelColor]
-            let textSize = label.size(withAttributes: ink)
-            let h = ceil(font.ascender - font.descender) + 3, disc = h - 6
-            let w = ceil(3 + disc + 5 + textSize.width + 8)
-            let picture = logo(ticker)
-            // Drawn once into pixels (twice the points), in the field's appearance: an NSImage drawing handler may be
-            // called off the main thread, and this module's code runs on the main actor.
-            let scale = max(2, view?.window?.backingScaleFactor ?? 2)
-            guard let rep = NSBitmapImageRep(bitmapDataPlanes: nil, pixelsWide: Int(w * scale), pixelsHigh: Int(h * scale), bitsPerSample: 8,
-                                             samplesPerPixel: 4, hasAlpha: true, isPlanar: false, colorSpaceName: .deviceRGB, bytesPerRow: 0, bitsPerPixel: 0)
-            else { return NSTextAttachment() }
-            rep.size = NSSize(width: w, height: h)
-            let rect = NSRect(x: 0, y: 0, width: w, height: h)
-            NSGraphicsContext.saveGraphicsState()
-            NSGraphicsContext.current = NSGraphicsContext(bitmapImageRep: rep)
-            (view?.effectiveAppearance ?? NSApp.effectiveAppearance).performAsCurrentDrawingAppearance {
-                let pill = NSBezierPath(roundedRect: rect.insetBy(dx: 0.5, dy: 0.5), xRadius: h / 2 - 0.5, yRadius: h / 2 - 0.5)
-                Self.accent.withAlphaComponent(0.14).setFill()
-                pill.fill()
-                Self.accent.withAlphaComponent(0.45).setStroke()
-                pill.lineWidth = 1
-                pill.stroke()
-                let circle = NSRect(x: 3, y: 3, width: disc, height: disc)
-                if let picture {
-                    NSColor.white.setFill()
-                    NSBezierPath(ovalIn: circle).fill()
-                    NSGraphicsContext.saveGraphicsState()
-                    NSBezierPath(ovalIn: circle).addClip()
-                    picture.draw(in: circle)
-                    NSGraphicsContext.restoreGraphicsState()
-                } else {
-                    Self.accent.withAlphaComponent(0.3).setFill()
-                    NSBezierPath(ovalIn: circle).fill()
-                    let letter = String(label.substring(to: min(1, label.length))) as NSString
-                    let small: [NSAttributedString.Key: Any] = [.font: NSFont.systemFont(ofSize: disc * 0.55, weight: .bold), .foregroundColor: NSColor.labelColor]
-                    let s = letter.size(withAttributes: small)
-                    letter.draw(at: NSPoint(x: circle.midX - s.width / 2, y: circle.midY - s.height / 2), withAttributes: small)
-                }
-                label.draw(at: NSPoint(x: 3 + disc + 5, y: (h - textSize.height) / 2), withAttributes: ink)
-            }
-            NSGraphicsContext.restoreGraphicsState()
-            let image = NSImage(size: rect.size)
-            image.addRepresentation(rep)
+            let image = ComposerField.chipImage(parent.face(ticker).label ?? ticker.uppercased(), picture: picture,
+                                                appearance: view?.effectiveAppearance ?? NSApp.effectiveAppearance,
+                                                scale: max(2, view?.window?.backingScaleFactor ?? 2))
             let chip = NSTextAttachment()
             chip.image = image
-            chip.bounds = NSRect(x: 0, y: font.descender - 1.5, width: w, height: h)
+            chip.bounds = NSRect(x: 0, y: ComposerField.chipDrop, width: image.size.width, height: image.size.height)
             return chip
         }
+    }
+}
+
+extension Workspace {
+    /// What a «$» mention shows: a contract's or mint's market symbol and picture (TokenLookup), short until it's
+    /// found; a ticker's picture from the wallet's tokens or the favorites (nil label: the ticker itself).
+    func tokenFace(_ token: String) -> (label: String?, icon: URL?) {
+        if TokenMentions.isAddress(token) {
+            let found = contractLookups[token]?.first
+            return (found?.symbol ?? "\(token.prefix(5))…\(token.suffix(4))", found?.imageURL)
+        }
+        return (nil, holdings.first { $0.symbol.caseInsensitiveCompare(token) == .orderedSame }?.icon
+            ?? favoriteTokens.first { $0.symbol.caseInsensitiveCompare(token) == .orderedSame }?.image)
     }
 }
