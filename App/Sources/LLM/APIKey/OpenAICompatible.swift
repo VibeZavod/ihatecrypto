@@ -66,9 +66,13 @@ public struct OllamaChatClient: LLMClient {
     // ponytail: one size for every model; a Mac short of memory for 16k on a big model would want it from /api/show.
     static let context = 16_384
 
-    func body(_ r: LLMRequest, stream: Bool) -> [String: Any] {
+    /// `think: false`: a thinking model (Gemma 4, Qwen 3.x) otherwise reasons to itself before its JSON — 544 tokens and
+    /// 18.5 s instead of 19 and 5.3 s for «купи SOL на 5 долларов» on Gemma 4 12B, and ≈ 2 minutes an answer with the
+    /// chat's whole brief. A model that can't stop thinking is asked again without it.
+    func body(_ r: LLMRequest, stream: Bool, think: Bool = false) -> [String: Any] {
         var body: [String: Any] = ["model": r.model, "stream": stream, "options": ["num_ctx": Self.context],
                                    "messages": r.messages.map { ["role": $0.role.rawValue, "content": $0.text] }]
+        if !think { body["think"] = false }
         if r.wantsJSON { body["format"] = "json" }
         return body
     }
@@ -76,7 +80,14 @@ public struct OllamaChatClient: LLMClient {
     public func complete(_ r: LLMRequest) async throws -> String { try await stream(r) { _ in } }
 
     public func stream(_ r: LLMRequest, partial: @escaping @Sendable (String) -> Void) async throws -> String {
-        let request = try HTTP.request(base + "/api/chat", method: "POST", body: try JSONSerialization.data(withJSONObject: body(r, stream: true)),
+        do { return try await stream(r, think: false, partial: partial) } catch {
+            guard "\(error)".localizedCaseInsensitiveContains("think") else { throw error }
+            return try await stream(r, think: true, partial: partial)
+        }
+    }
+
+    private func stream(_ r: LLMRequest, think: Bool, partial: @escaping @Sendable (String) -> Void) async throws -> String {
+        let request = try HTTP.request(base + "/api/chat", method: "POST", body: try JSONSerialization.data(withJSONObject: body(r, stream: true, think: think)),
                                        contentType: "application/json", headers: [:], timeout: 300)
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
         if !(200..<300).contains((response as? HTTPURLResponse)?.statusCode ?? 0) {

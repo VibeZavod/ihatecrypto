@@ -41,6 +41,14 @@ if prompt == "--verify", args.count >= 4 {
     exit(0)
 }
 
+// `--exam`: the app's ModelExam (Settings › AI model › Check) from the terminal: `swift run LLMCheck ollama --exam`.
+if prompt == "--exam" {
+    let client = try provider.client(credential, save: { _ in })
+    let r = await ModelExam.run(client: client, model: model) { done in fputs("\r\(done)/\(ModelExam.questions.count)", stderr) }
+    print("\n\(model): \(r.short)" + (r.misses.isEmpty ? "" : " · missed: " + r.misses.joined(separator: " | ")))
+    exit(0)
+}
+
 if prompt == "--route" {
     var context = ChatRouter.Context()
     context.favorites = ["AI (Artificial Inu) = 0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18 on Robinhood Chain"]
