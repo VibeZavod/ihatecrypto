@@ -435,6 +435,15 @@ struct TrafficLights: NSViewRepresentable {
                     MainActor.assumeIsolated { self?.place() }
                 })
             }
+            // macOS 27 lays the title bar out again by itself, not only on resize: it shrank the container back to its
+            // own 32 pt while the lights kept their place, so they stood half above the window. Its frame changing is
+            // the one sign of that.
+            if let container = window.standardWindowButton(.closeButton)?.superview?.superview {
+                container.postsFrameChangedNotifications = true
+                observers.append(NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: container, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { self?.place() }
+                })
+            }
             DispatchQueue.main.async { self.place() }
         }
 
@@ -445,7 +454,9 @@ struct TrafficLights: NSViewRepresentable {
                   let zoom = window.standardWindowButton(.zoomButton),
                   let container = close.superview?.superview else { return }
             let height = 2 * center.y
-            container.frame = CGRect(x: container.frame.minX, y: window.frame.height - height, width: container.frame.width, height: height)
+            let frame = CGRect(x: container.frame.minX, y: window.frame.height - height, width: container.frame.width, height: height)
+            // Only a change: setting it posts the frame change place() listens to.
+            if container.frame != frame { container.frame = frame }
             let step = mini.frame.minX - close.frame.minX
             let first = middle.map { $0 - (2 * step + close.frame.width) / 2 } ?? center.x - close.frame.width / 2
             // Folding the rail slides them along with it.
