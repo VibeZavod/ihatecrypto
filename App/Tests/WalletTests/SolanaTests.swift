@@ -111,3 +111,14 @@ private let usdcMint = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
     #expect(!matches.isEmpty)
     for (owner, account) in matches { #expect(try SPL.associatedAccount(owner: owner, mint: mint) != account) }
 }
+
+/// The automation wallet's daily spread failed as «{"InsufficientFundsForRent":{"account_index":0}}» with 0.00198 SOL
+/// (2026-10-06): read as short of SOL, so the error says to send some. Another account's rent or a slippage error isn't.
+@Test func shortOfSOLReadsTheFeePayersErrors() {
+    #expect(SolanaRPC.shortOfSOL(#"{"InsufficientFundsForRent":{"account_index":0}}"#, logs: []))
+    #expect(SolanaRPC.shortOfSOL("AccountNotFound", logs: []))
+    #expect(SolanaRPC.shortOfSOL("InsufficientFundsForFee", logs: []))
+    #expect(SolanaRPC.shortOfSOL(#"{"InstructionError":[2,{"Custom":1}]}"#, logs: ["Transfer: insufficient lamports 1977880, need 2039280"]))
+    #expect(!SolanaRPC.shortOfSOL(#"{"InsufficientFundsForRent":{"account_index":3}}"#, logs: []))
+    #expect(!SolanaRPC.shortOfSOL(#"{"InstructionError":[3,{"Custom":6001}]}"#, logs: ["Program log: Error: slippage tolerance exceeded"]))
+}

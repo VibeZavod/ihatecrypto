@@ -225,3 +225,17 @@ func evmCallsSurviveABadOwnNodeAndTheCheckKeepsOnlyAGoodOne() async throws {
     #expect(refused?.contains("turned the key away") == true)
     #expect(await EVMNodes.problem(with: URL(string: "http://mainnet.base.org")!, chainId: 8453)?.contains("https") == true)
 }
+
+/// A wallet short of gas is told so with amounts and what to do, not with the node's «insufficient funds for gas * price
+/// + value»; a token's own revert stays the node's words.
+@Test func evmShortOfGasIsSaidWithWhatToDo() {
+    let geth = "insufficient funds for gas * price + value: address 0x9965507D1a55bcC2695C58ba16FB37d819B0A4dc have 120000000000000 want 340000000000000"
+    #expect(EVMRPC.shortOfGas(geth, chainId: 8453)
+            == "Not enough ETH for gas: the wallet has 0.00012 ETH and needs 0.00034 ETH with the fee. Send it a little ETH, then try again.")
+    #expect(EVMRPC.shortOfGas("insufficient funds for intrinsic transaction cost", chainId: 137)
+            == "Not enough POL for gas: the wallet can't pay this network's fee. Send it a little POL, then try again.")
+    #expect(EVMRPC.shortOfGas("EVM error: OutOfFunds", chainId: 8453)
+            == "Not enough ETH for gas: the wallet can't pay this network's fee. Send it a little ETH, then try again.")
+    #expect(EVMRPC.shortOfGas("execution reverted: insufficient funds", chainId: 8453) == nil)
+    #expect(EVMRPC.shortOfGas("nonce too low", chainId: 8453) == nil)
+}

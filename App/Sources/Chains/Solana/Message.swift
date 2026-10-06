@@ -123,8 +123,23 @@ extension SolanaRPC {
         guard let err = value?["err"], !(err is NSNull) else { return (nil, after) }
         let text = JSONSerialization.isValidJSONObject(err)
             ? (try? JSONSerialization.data(withJSONObject: err)).map { String(decoding: $0, as: UTF8.self) } ?? "\(err)" : "\(err)"
+        let logs = value?["logs"] as? [String] ?? []
+        // Short of SOL: said with what to do, not as Solana's code («{"InsufficientFundsForRent":{"account_index":0}}»).
+        if Self.shortOfSOL(text, logs: logs), let payer = try? SolanaMessage.parse(transaction: transaction).staticKeys.first {
+            let have = (try? await balance(payer)).map { " has \(Decimal($0) / 1_000_000_000) SOL and" } ?? ""
+            return ("Not enough SOL: the wallet \(payer.prefix(4))…\(payer.suffix(4))\(have) can't pay Solana's fee and the rent of the account "
+                    + "this move opens. Send it ≈ 0.01 SOL, then try again.", after)
+        }
         // The program's own words when it logged any, e.g. «Error: insufficient funds».
-        let reason = (value?["logs"] as? [String])?.first { $0.contains("Error") }?.replacingOccurrences(of: "Program log: ", with: "")
+        let reason = logs.first { $0.contains("Error") }?.replacingOccurrences(of: "Program log: ", with: "")
         return (reason.map { "\($0) \(text)" } ?? text, after)
+    }
+
+    /// The fee payer can't cover the fee or a new account's rent: it holds no SOL at all (AccountNotFound), too little for
+    /// the fee, would drop under its own rent, or the System Program couldn't fund an account from it.
+    static func shortOfSOL(_ error: String, logs: [String]) -> Bool {
+        error.contains("AccountNotFound") || error.contains("InsufficientFundsForFee")
+            || error.contains(#"{"InsufficientFundsForRent":{"account_index":0}}"#)
+            || logs.contains { $0.contains("Transfer: insufficient lamports") }
     }
 }

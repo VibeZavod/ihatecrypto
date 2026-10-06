@@ -9,6 +9,8 @@ import TradeExecution
 /// (one address for all of them; USDG on Robinhood Chain) and NEAR.
 struct AutomationBudget: Equatable {
     var solana: Decimal?
+    /// SOL on Solana: what its fees and new accounts are paid with.
+    var sol: Decimal?
     /// By EVMNetwork.key; a network that didn't answer is missing.
     var evm: [String: Decimal] = [:]
     var near: Decimal?
@@ -90,9 +92,10 @@ extension Workspace {
         if !c.messages.contains(where: \.fromUser) { canvases.removeAll { $0.id == id } }
     }
 
-    /// «Run now»: due at once; the watch loop runs it within half a minute, on a canvas of its own like any run.
+    /// «Run now»: due at once; the watch loop runs it within half a minute, on a canvas of its own like any run, without
+    /// waiting for the user to step away.
     func runScheduledNow(_ key: String) {
-        if let i = tasks.firstIndex(where: { "task:\($0.id)" == key }) { tasks[i].next = Date() }
+        if let i = tasks.firstIndex(where: { "task:\($0.id)" == key }) { tasks[i].next = Date(); TaskRun.now.insert(key) }
         if let i = schedules.firstIndex(where: { "buy:\($0.symbol)" == key }) { schedules[i].next = Date() }
     }
 
@@ -101,18 +104,25 @@ extension Workspace {
         if let i = schedules.firstIndex(where: { "buy:\($0.symbol)" == id }) { schedules[i].paused = paused ? true : nil }
     }
 
+    /// Off the schedule for good; what it ran stays in the history.
+    func removeScheduled(_ id: String) {
+        tasks.removeAll { "task:\($0.id)" == id }
+        schedules.removeAll { "buy:\($0.symbol)" == id }
+    }
+
     func loadAutomationBudget() async {
         guard let w = automationWallet else { automationBudget = nil; return }
-        async let sol = Self.solanaUSDC(w.solana)
+        async let sol = Self.solanaBalance(w.solana)
         async let evm = Self.evmUSDC(w.evm)
         async let near = Self.nearUSDC(w.near)
-        let budget = AutomationBudget(solana: await sol, evm: await evm, near: await near)
+        let solana = await sol
+        let budget = AutomationBudget(solana: solana?.usdc, sol: solana?.sol, evm: await evm, near: await near)
         if budget != automationBudget { automationBudget = budget }
     }
 
-    private static func solanaUSDC(_ address: String?) async -> Decimal? {
+    private static func solanaBalance(_ address: String?) async -> Solana.Balance? {
         guard let address else { return nil }
-        return try? await Solana.balance(owner: address).usdc
+        return try? await Solana.balance(owner: address)
     }
 
     /// USDC (USDG on Robinhood Chain) at the one EVM address, on every network at once.
@@ -226,6 +236,17 @@ struct ScheduleFrame: View {
                         ForEach(0..<4, id: \.self) { i in Capsule().fill(i < weeks ? Brand.profit : Color.primary.opacity(0.1)).frame(height: 5) }
                     }
                 }
+                // USDC on Solana but next to no SOL: every move there fails on the fee or a new account's rent.
+                if let w = ws.automationWallet, let sol = ws.automationBudget?.sol, sol < TaskRun.solFloor, (ws.automationBudget?.solana ?? 0) > 0 {
+                    HStack(spacing: 8) {
+                        Text("\(Fmt.num(sol, maxFraction: 6)) SOL for Solana’s fees: too little, its tasks there fail.")
+                            .font(.ui(11, .semibold)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true)
+                        Spacer(minLength: 4)
+                        Button { Task { await ws.send("send 0.01 SOL to \(w.label)") } } label: { Label("Send 0.01 SOL", systemImage: "plus").font(.ui(11.5, .bold)) }
+                            .buttonStyle(.bordered).controlSize(.small).pointerStyle(.link)
+                            .help("From your main wallet: the card waits for Confirm and Touch ID")
+                    }
+                }
                 // Nothing on it: the way to put the budget there, right here and in the chat.
                 if total == 0 {
                     Button { Task { await ws.topUpAutomation() } } label: {
@@ -296,6 +317,9 @@ struct ScheduleFrame: View {
         .contentShape(Rectangle())
         // Its own canvas: steps, runs, Pause and Delete, and the chat to change it.
         .modifier(HoverLift(radius: 14)).onTapGesture { ws.openScheduleCanvas(e.id) }
+        .contextMenu {
+            if !e.id.hasPrefix("perp:") { Button("Delete", role: .destructive) { ws.removeScheduled(e.id) } }
+        }
     }
 
     // MARK: History
@@ -413,6 +437,12 @@ struct ScheduleTop3: View {
                 Text("SCHEDULE").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
                 if ws.schedulePaused { Text("paused").font(.ui(10)).foregroundStyle(Brand.loss) }
                 Spacer()
+                if !next.isEmpty {
+                    Button { ws.schedulePaused.toggle() } label: { Image(systemName: ws.schedulePaused ? "play.fill" : "pause.fill").font(.system(size: 10, weight: .semibold)) }
+                        .buttonStyle(.hoverIcon)
+                        .help(ws.schedulePaused ? "Resume the schedule" : "Pause the whole schedule: nothing runs until you resume")
+                        .accessibilityLabel(ws.schedulePaused ? "Resume the schedule" : "Pause the schedule")
+                }
                 Button { withAnimation(StudioView.spring) { ws.showSchedule = true } } label: {
                     HStack(spacing: 2) { Text("All"); Image(systemName: "chevron.right") }.font(.ui(10.5, .semibold))
                 }
@@ -428,6 +458,14 @@ struct ScheduleTop3: View {
                         Text(e.title).font(.ui(11.5, .semibold)).lineLimit(1)
                         Text(e.paused ? "paused" : e.when).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
                     }
+                    Spacer(minLength: 4)
+                    // Stops it from here; a perp's stops sit on the exchange.
+                    if !e.id.hasPrefix("perp:") {
+                        Button { ws.setPaused(e.id, !e.paused) } label: { Image(systemName: e.paused ? "play.fill" : "pause.fill").font(.system(size: 10, weight: .semibold)) }
+                            .buttonStyle(.hoverIcon)
+                            .help(e.paused ? "Resume it" : "Pause it: it doesn’t run until you resume it")
+                            .accessibilityLabel("\(e.paused ? "Resume" : "Pause") \(e.title)")
+                    }
                 }
                 .opacity(e.paused || ws.schedulePaused ? 0.55 : 1)
                 // Room inside the row, so its hover edge sits off the text; all of it clicks.
@@ -435,6 +473,12 @@ struct ScheduleTop3: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(RoundedRectangle(cornerRadius: 10))
                 .modifier(HoverLift(radius: 10)).onTapGesture { ws.openScheduleCanvas(e.id) }
+                .contextMenu {
+                    if !e.id.hasPrefix("perp:") {
+                        Button(e.paused ? "Resume" : "Pause") { ws.setPaused(e.id, !e.paused) }
+                        Button("Delete", role: .destructive) { ws.removeScheduled(e.id) }
+                    }
+                }
             }
         }
         .padding(12)

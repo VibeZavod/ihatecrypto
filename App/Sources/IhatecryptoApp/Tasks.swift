@@ -9,6 +9,11 @@ import WalletCore
 /// a Confirm pressed meanwhile in the window is another task and still signs with the active wallet.
 nonisolated enum TaskRun {
     @TaskLocal static var automation: SignerWallet?
+    /// «Run now» pressed: these go at once, even with the user at the window.
+    @MainActor static var now: Set<String> = []
+    /// Below this the automation wallet can't pay Solana's fee plus a new account's rent (a Jupiter Lend deposit failed
+    /// with 0.00198 SOL on 2026-10-06; rent-exempt minimum 0.00089 + a token account 0.00204 + fees).
+    static let solFloor = Decimal(string: "0.005")!
 }
 
 // Scheduled tasks («in 1 week: rebalance USDC», «every day at 09:00: sell SOL then lend USDC» — ScheduledTask) and
@@ -61,23 +66,48 @@ extension Workspace {
             || (IntentParser.startsPlan(step, markets: m) && IntentParser.apply(step, to: TradeIntent(), markets: m) != nil)
     }
 
-    /// The first task whose time has come, on a canvas of its own, once nothing else is going on: the user's card
-    /// waiting for Confirm, a reply being written, a move running or half-typed text come first.
+    /// The first task whose time has come, in the background: on a canvas of its own (one per task — the last run's makes
+    /// way), and back to the canvas the user was on once it's done, unless it needs them (a Confirm, a plan's Execute, a
+    /// failure to fix). Only once nothing else is going on: the user's card waiting for Confirm, a reply being written, a
+    /// move running or half-typed text come first.
     func runDueTask() async {
         guard !schedulePaused, let i = tasks.firstIndex(where: { $0.next <= Date() && $0.paused != true }), canSwitchCanvas, !thinking, !preparing,
               pendingAction == nil, pendingAllocation == nil, prepared == nil, awaitingAmount == nil, draft.isEmpty else { return }
+        let key = "task:\(tasks[i].id)"
+        // With the user at the window, a clock task waits for them to step away (half an hour at most), so the canvas
+        // doesn't change under them («при переключении вижу каждый раз скедуал»). An alert's task and «Run now» go at once.
+        let asked = TaskRun.now.contains(key) || tasks[i].because != nil
+        guard asked || Self.userAway || Date().timeIntervalSince(tasks[i].next) > 1800 else { return }
+        TaskRun.now.remove(key)
         var task = tasks[i]
         if task.advance() { tasks[i] = task } else { tasks.remove(at: i) }
+        let back = canvasID, frame = showSchedule, place = detail
+        // The runs before left their canvases: what they did stays in the Schedule's history. One the user wrote on stays.
+        let before = Set(activities.filter { $0.schedule == key }.compactMap(\.canvas))
+        for c in canvases where c.id != canvasID && before.contains(c.id) && c.messages.filter(\.fromUser).count <= 1 { deleteCanvas(c.id) }
+        keepViewport = true
         newCanvas()
+        keepViewport = false
         let request = (task.because.map { $0 + ": " } ?? say("Scheduled: ", "По расписанию: ")) + task.steps.joined(separator: say(", then ", ", потом "))
         messages.append(Message(fromUser: true, text: request))
-        beginActivity(.request, request: request, schedule: "task:\(task.id)")
+        beginActivity(.request, request: request, schedule: key)
         let run = currentActivity
         // With an automation wallet the task's moves go through at once from it, without Touch ID — never one typed
         // through the debug API. Without one, each move waits on its canvas for Confirm.
         let automation = task.untrusted == true ? nil : wallets.first(where: \.isAutomation)
         if let automation { reply(say("From the automation wallet «\(automation.label)», no Touch ID.", "С кошелька автоматизации «\(automation.label)», без Touch ID.")) }
         await TaskRun.$automation.withValue(automation) { await runSteps(task.steps, confirmed: automation != nil) }
+        let failed = finishedAction?.outcome.ok == false
+        // Short of SOL, it fails the same way every run: said with what to do, and the way to do it as a card.
+        if let automation, failed, let address = automation.solana, let sol = try? await Solana.balance(owner: address).sol, sol < TaskRun.solFloor {
+            reply(say("The automation wallet «\(automation.label)» has \(Fmt.num(sol, maxFraction: 6)) SOL — too little for Solana’s fees and the accounts a move opens. Send it 0.01 SOL and the next run goes through.",
+                      "На кошельке автоматизации «\(automation.label)» \(Fmt.num(sol, maxFraction: 6)) SOL — мало для комиссий Solana и счетов, которые открывает движение. Отправь на него 0.01 SOL, и следующий запуск пройдёт."))
+            nextSteps = NextSteps(options: [
+                ChatRouter.Option(title: say("Send 0.01 SOL to \(automation.label)", "Отправить 0.01 SOL на \(automation.label)"),
+                                  comment: say("From your main wallet: Confirm and Touch ID.", "С основного кошелька: Confirm и Touch ID."),
+                                  command: "send 0.01 SOL to \(automation.label)", recommended: true),
+            ], userText: "", found: [], canvas: canvasID)
+        }
         // The Schedule canvas opens the canvas it ran on (saved by now).
         if let i = activities.lastIndex(where: { $0.id == run }) { activities[i].canvas = canvasID }
         // A trade plan waits for Execute the way a move waits for Confirm; one a rule stops needs the user just as much.
@@ -89,6 +119,19 @@ extension Workspace {
                                    : say("The plan is on its canvas, but a rule stops it — open it to fix.", "План на своём канвасе, но его стопорит правило — открой и поправь."))
                     : waits ? say("Ready on its canvas — press Confirm.", "Готово на своём канвасе — нажми Confirm.")
                             : messages.last.map(\.text) ?? "", record: false)
+        // Nothing here for the user: back where they were, as it was. «Run now» and an alert's task stay to be seen.
+        guard !asked, !waits, !failed, draft.isEmpty, messages.filter(\.fromUser).count <= 1,
+              let back, let c = canvases.first(where: { $0.id == back }) else { return }
+        keepViewport = true
+        openCanvas(c)
+        showSchedule = frame
+        detail = place
+        keepViewport = false
+    }
+
+    /// Nobody at the window: another app in front, or no key or mouse for five minutes.
+    static var userAway: Bool {
+        !NSApp.isActive || CGEventSource.secondsSinceLastEventType(.combinedSessionState, eventType: CGEventType(rawValue: ~0)!) >= 300
     }
 
     /// Steps one after another. The first that waits for Confirm holds the rest until its move has gone through

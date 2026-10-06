@@ -229,7 +229,14 @@ public enum Near {
         func call(_ method: String, _ params: [String: Any]) async throws -> [String: Any] {
             let data = try await HTTP.post(rpc, json: ["jsonrpc": "2.0", "id": 1, "method": method, "params": params])
             let j = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-            guard let result = j?["result"] as? [String: Any] else { throw NetError(message: "NEAR RPC \(method): \(j?["error"] ?? "no result")") }
+            guard let result = j?["result"] as? [String: Any] else {
+                let error = "\(j?["error"] ?? "no result")"
+                // No NEAR ever came: the account isn't there to sign from.
+                if error.contains("UNKNOWN_ACCOUNT") || error.contains("does not exist while viewing") {
+                    throw NetError(message: "This NEAR account doesn't exist yet: NEAR opens it with the first NEAR it receives. Send it ≈ 0.1 NEAR, then try again.")
+                }
+                throw NetError(message: "NEAR RPC \(method): \(error)")
+            }
             return result
         }
         guard let raw = Data(hex: account), raw.count == 32 else { throw NetError(message: "Not a NEAR implicit account: \(account).") }
@@ -245,14 +252,26 @@ public enum Near {
         return (nonce + 1, try Base58.decode(hash), balance, storage, gasPrice)
     }
 
+    /// NEAR's «NotEnoughBalance» (the fee) or «LackBalanceForState» (what the account must keep for its storage) in words,
+    /// with what to do; nil for anything else.
+    static func shortOfNEAR(_ error: String) -> String? {
+        guard error.contains("NotEnoughBalance") || error.contains("LackBalanceForState") else { return nil }
+        return "Not enough NEAR: the account keeps NEAR for its storage and pays the fee in NEAR. Send it ≈ 0.1 NEAR, then try again."
+    }
+
     /// Broadcasts a borsh SignedTransaction and waits until it has executed; throws with NEAR's reason on failure.
     /// Returns the transaction hash (base58).
     public static func send(_ signed: Data) async throws -> String {
         let data = try await HTTP.post(rpc, json: ["jsonrpc": "2.0", "id": 1, "method": "send_tx",
                                                    "params": ["signed_tx_base64": signed.base64EncodedString(), "wait_until": "EXECUTED_OPTIMISTIC"]])
         let j = try JSONSerialization.jsonObject(with: data) as? [String: Any]
-        guard let result = j?["result"] as? [String: Any] else { throw NetError(message: "NEAR RPC send_tx: \(j?["error"] ?? "no result")") }
-        if let failure = (result["status"] as? [String: Any])?["Failure"] { throw NetError(message: "The NEAR transaction failed: \(failure)") }
+        guard let result = j?["result"] as? [String: Any] else {
+            let error = "\(j?["error"] ?? "no result")"
+            throw NetError(message: shortOfNEAR(error) ?? "NEAR RPC send_tx: \(error)")
+        }
+        if let failure = (result["status"] as? [String: Any])?["Failure"] {
+            throw NetError(message: shortOfNEAR("\(failure)") ?? "The NEAR transaction failed: \(failure)")
+        }
         return (result["transaction"] as? [String: Any])?["hash"] as? String ?? "?"
     }
 }

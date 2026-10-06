@@ -296,6 +296,23 @@ public struct EVMRPC: Sendable {
                 "invalid api key", "api key", "forbidden", "authenticat"].contains { m.contains($0) }
     }
 
+    /// The node's «insufficient funds for gas * price + value: address 0x… have 120 want 340» (geth, Arbitrum) or «EVM
+    /// error: OutOfFunds» (reth: Base, measured 2026-10-06) in words, with what to do; nil for anything else (a token's
+    /// own revert included).
+    static func shortOfGas(_ message: String, chainId: UInt64) -> String? {
+        let m = message.lowercased()
+        guard m.contains("insufficient funds") || m.contains("outoffunds"), !m.contains("revert") else { return nil }
+        let coin = coin(chainId)
+        // Wei, so 18 decimals; Tempo's fee is in a USD token, said without amounts.
+        func amount(_ pattern: Regex<(Substring, Substring)>) -> String? {
+            guard coin != "USD", let match = m.firstMatch(of: pattern), let wei = Decimal(string: String(match.1)) else { return nil }
+            return "\(wei / 1_000_000_000_000_000_000) \(coin)"
+        }
+        let said = [amount(/have (\d+)/).map { "has \($0)" }, amount(/want (\d+)/).map { "needs \($0) with the fee" }].compactMap { $0 }
+        return "Not enough \(coin) for gas: the wallet \(said.isEmpty ? "can't pay this network's fee" : said.joined(separator: " and "))."
+            + " Send it a little \(coin), then try again."
+    }
+
     /// Fallbacks (2026-10-05): each served calls, estimates with a state override, fees, nonces, receipts and
     /// eth_simulateV1, and 30 calls at once — a node without one of them would turn a retry into a failure. Not used:
     /// 1rpc (a daily cap: «You've reached the usage limit» after an hour of checks), publicnode on Arbitrum and Base
@@ -389,6 +406,7 @@ public struct EVMRPC: Sendable {
             }
             if let error = reply["error"] as? [String: Any] {
                 let message = error["message"] as? String ?? "\(error)"
+                if let short = Self.shortOfGas(message, chainId: chainId) { throw WalletError(short) }
                 throw RPCRetry.Again(status == 429 || RPCRetry.transient(message) || (elsewhere && (status == 401 || status == 403 || Self.notThisNode(message))),
                                      WalletError("EVM RPC \(method): \(message)"))
             }

@@ -49,3 +49,10 @@ import Testing
     #expect(Holdings.pick("AERO", in: [fake, other]) == .several([fake, other]))
     #expect(Holdings.pick("DEGEN", in: [real, eth]) == .none)
 }
+
+/// NEAR short of its own coin says what to do; any other failure keeps NEAR's words.
+@Test func nearShortOfBalanceIsSaidWithWhatToDo() {
+    #expect(Near.shortOfNEAR(#"{"TxExecutionError":{"InvalidTxError":{"NotEnoughBalance":{"balance":"1","cost":"2","signer_id":"ab"}}}}"#)?.hasPrefix("Not enough NEAR") == true)
+    #expect(Near.shortOfNEAR(#"{"ActionError":{"index":0,"kind":{"LackBalanceForState":{"account_id":"ab","amount":"1"}}}}"#) != nil)
+    #expect(Near.shortOfNEAR(#"{"ActionError":{"index":0,"kind":{"AccountDoesNotExist":{"account_id":"bob.near"}}}}"#) == nil)
+}
