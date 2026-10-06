@@ -1072,8 +1072,11 @@ extension Workspace {
     }
 }
 
+struct QuoteRun: Equatable { let command: WalletCommand; let round: Int }
+
 /// Confirm and Cancel under a board waiting for «do it»: the same path as typing «do it» or «cancel» in the chat,
-/// so the signer, the guard and Jev see exactly what they would.
+/// so the signer, the guard and Jev see exactly what they would. A priced swap's Confirm holds 15 s after its quote,
+/// then turns into Refresh (Workspace.quoteState).
 struct PendingButtons: View {
     @Environment(Workspace.self) private var ws
     var confirm = "Confirm"
@@ -1083,10 +1086,28 @@ struct PendingButtons: View {
         HStack(spacing: 8) {
             Button("Cancel") { Task { await ws.send("cancel") } }
                 .buttonStyle(.bordered).controlSize(.large)
-            Button { Task { await ws.pressConfirm() } } label: {
-                Label(confirm, systemImage: "touchid").font(.ui(13, .semibold)).padding(.horizontal, 6)
+            TimelineView(.periodic(from: .now, by: 1)) { context in
+                switch ws.quoteState(at: context.date) {
+                case .stale:
+                    Button { ws.requoteSwap() } label: {
+                        Label("Refresh", systemImage: "arrow.clockwise").font(.ui(13, .semibold)).padding(.horizontal, 6)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large).help("The price is over 15 seconds old: ask for it again")
+                case .quoting:
+                    Label("Quoting…", systemImage: "hourglass").font(.ui(13, .semibold)).padding(.horizontal, 6)
+                        .foregroundStyle(.secondary).frame(height: 28)
+                case .fresh(let left):
+                    Button { Task { await ws.pressConfirm() } } label: {
+                        Label("\(confirm) · \(left)", systemImage: "touchid").font(.ui(13, .semibold)).monospacedDigit().padding(.horizontal, 6)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large).accessibilityLabel(confirm)
+                case .none:
+                    Button { Task { await ws.pressConfirm() } } label: {
+                        Label(confirm, systemImage: "touchid").font(.ui(13, .semibold)).padding(.horizontal, 6)
+                    }
+                    .buttonStyle(.borderedProminent).controlSize(.large)
+                }
             }
-            .buttonStyle(.borderedProminent).controlSize(.large)
         }
         .disabled(ws.busy)
     }
@@ -1850,9 +1871,11 @@ extension Workspace {
         return step("relay", "\(Self.wayName(best.way).uppercased()) · BEST NOW", "≈ \(best.gets)", line, .relay)
     }
 
-    /// Quotes both ways of a Base or Arbitrum trade while its card waits for Confirm, again every 30 s, so the card
-    /// shows the one that leaves more now. Nothing is signed; the executor quotes once more right before signing.
+    /// A swap's price while its card waits for Confirm: quoted once (both ways of a Base or Arbitrum trade, the better
+    /// first), and again on Refresh — Confirm holds `quoteLife` after a quote (quoteState). Nothing is signed; the executor
+    /// quotes once more right before signing. A quote that fails is asked again every 15 s.
     func quoteSwap(_ command: WalletCommand) async {
+        pricedCommand = nil
         let (place, token, usdc, sell): (String, String, Decimal?, Decimal?)
         switch command {
         case .buyOn(let p, let t, let u?, _): (place, token, usdc, sell) = (p, t, u, nil)
@@ -1861,6 +1884,9 @@ extension Workspace {
         case .sellStock(let s, let a): await quoteStock(command, s, usdc: nil, sell: a); return
         case .swapOn(let p, let a, let b, let x): await quotePair(command, p, a, b, x); return
         case .crossSwap(let a, let from, let b, let to, let x): await quoteCross(command, a, from, b, to, x); return
+        // Solana through Jupiter: what the buy gets, or the sale leaves.
+        case .buy(let asset, let u?): await quoteJupiter(command, from: .usdc, to: asset, amount: u); return
+        case .sell(let asset, let a?): await quoteJupiter(command, from: asset, to: .usdc, amount: a); return
         case .aaveBorrow(let x?, let net):
             // The health factor after the borrow and the price of ETH that would liquidate it, read again every 30 s.
             guard let wallet = previewWallet, let m = AaveV3.markets.first(where: { $0.chain == net }) else { return }
@@ -1884,25 +1910,89 @@ extension Workspace {
         if case .buyOn(_, _, _, let f) = command { from = f }
         if case .sellOn(_, _, _, let k) = command { keep = k }
         guard let wallet = previewWallet, let net = EVMNetwork.named(place) else { return }
+        pricedCommand = command
         while !Task.isCancelled {
             let ways = try? await executor(wallet).swapQuotes(net, token, usdc: usdc, sell: sell, from: from, keep: keep)
             guard !Task.isCancelled else { return }
             // A failed quote keeps the last good one.
-            if let ways, !ways.isEmpty { swapQuote = (command, ways) }
-            else if swapQuote?.command != command { swapQuote = (command, []) }
-            try? await Task.sleep(for: .seconds(30))
+            if let ways, !ways.isEmpty { swapQuote = (command, ways); return }
+            if swapQuote?.command != command { swapQuote = (command, []) }
+            try? await Task.sleep(for: .seconds(15))
         }
+    }
+
+    /// A Solana buy or sale through Jupiter: its quote for the amount said.
+    private func quoteJupiter(_ command: WalletCommand, from: SpotAsset, to: SpotAsset, amount: Decimal) async {
+        let units = NSDecimalNumber(decimal: (amount * Decimal(sign: .plus, exponent: from.decimals, significand: 1)).rounded(0, .down)).uint64Value
+        guard units > 0 else { return }
+        pricedCommand = command
+        while !Task.isCancelled {
+            let q = try? await Jupiter.quote(input: from.mint, output: to.mint, amount: units)
+            guard !Task.isCancelled else { return }
+            if let q {
+                let out = Decimal(q.outAmount) / Decimal(sign: .plus, exponent: to.decimals, significand: 1)
+                swapQuote = (command, [("Jupiter", "\(Fmt.num(out, maxFraction: 6)) \(to.symbol)", 0)])
+                return
+            }
+            if swapQuote?.command != command { swapQuote = (command, []) }
+            try? await Task.sleep(for: .seconds(15))
+        }
+    }
+
+    enum QuoteState: Equatable { case none, quoting, fresh(seconds: Int), stale }
+
+    /// Where Confirm stands on a priced swap waiting for it: still quoting, fresh for so many seconds, or stale (Refresh).
+    /// `none`: not a priced swap, Confirm as always.
+    func quoteState(at now: Date) -> QuoteState {
+        guard case .wallet(let c)? = pendingAction, pricedCommand == c else { return .none }
+        guard let q = swapQuote, q.command == c else { return .quoting }
+        guard !q.ways.isEmpty else { return .stale }
+        guard let at = swapQuotedAt else { return .quoting }
+        let left = Self.quoteLife - now.timeIntervalSince(at)
+        return left > 0 ? .fresh(seconds: Int(left.rounded(.up))) : .stale
+    }
+
+    /// Refresh on a stale swap: quoted again, Confirm back for `quoteLife`.
+    func requoteSwap() {
+        swapQuotedAt = nil
+        quoteRound += 1
+    }
+
+    /// What the swap waiting for Confirm gets and at what rate, from its quote: «You get ≈ 23.01 SPX · 1 SPX ≈ $0.4346».
+    func swapLine(_ c: WalletCommand) -> String? {
+        guard let q = swapQuote, q.command == c, let best = q.ways.first else { return nil }
+        if case .sendToken = c { return best.gets }   // a coin bought on the way: its cost in USDC, the fees, the time
+        guard let m = best.gets.firstMatch(of: /([\d,]+(?:\.\d+)?)\s+([^\s·≈(]+)/),
+              let out = Decimal(string: String(m.1).replacingOccurrences(of: ",", with: "")), out > 0 else { return "You get ≈ \(best.gets)" }
+        let got = String(m.2)
+        let pays: (amount: Decimal, symbol: String)? = switch c {
+        case .buy(_, let u?), .buyOn(_, _, let u?, _), .buyStock(_, let u?): (u, "USDC")
+        case .sell(let a, let x?): (x, a.symbol)
+        case .sellOn(_, let t, let x?, _): (x, tokenSymbol(t) ?? (t.hasPrefix("0x") ? "\(t.prefix(6))…" : t))
+        case .sellStock(let s, let x?): (x, s)
+        case .swapOn(_, let a, _, let x?), .crossSwap(let a, _, _, _, let x?): (x, a)
+        default: nil
+        }
+        var line = "You get ≈ \(Fmt.num(out, maxFraction: 6)) \(got)"
+        if let pays, pays.amount > 0 {
+            let dollars: Set<String> = ["USDC", "USDG", "USDT", "USDT0", "PATHUSD", "OUSD", "USDC.E"]
+            if dollars.contains(pays.symbol.uppercased()) { line += " · 1 \(got) ≈ $\(Fmt.price(pays.amount / out))" }
+            else if dollars.contains(got.uppercased()) { line += " · 1 \(pays.symbol) ≈ $\(Fmt.price(out / pays.amount))" }
+            else { line += " · 1 \(pays.symbol) ≈ \(Fmt.price(out / pays.amount)) \(got)" }
+        }
+        return line
     }
 
     /// A token-for-token swap: Uniswap's best route quoted while the card waits, again every 30 s; nothing is signed.
     private func quotePair(_ command: WalletCommand, _ place: String, _ from: String, _ to: String, _ amount: Decimal?) async {
         guard let wallet = previewWallet, let net = EVMNetwork.named(place) else { return }
+        pricedCommand = command
         while !Task.isCancelled {
             let q = try? await executor(wallet).pairQuote(net, from: from, to: to, amount: amount)
             guard !Task.isCancelled else { return }
-            if let q { swapQuote = (command, [(q.way, q.gets, 0)]) }
-            else if swapQuote?.command != command { swapQuote = (command, []) }
-            try? await Task.sleep(for: .seconds(30))
+            if let q { swapQuote = (command, [(q.way, q.gets, 0)]); return }
+            if swapQuote?.command != command { swapQuote = (command, []) }
+            try? await Task.sleep(for: .seconds(15))
         }
     }
 
@@ -1910,6 +2000,7 @@ extension Workspace {
     /// every 30 s.
     private func quoteAcross(_ command: WalletCommand, _ symbol: String, _ amount: Decimal, _ network: String, _ address: String) async {
         guard let wallet = previewWallet else { return }
+        pricedCommand = command
         while !Task.isCancelled {
             let q = try? await executor(wallet).acrossQuote(symbol, amount: amount, network: network, to: address)
             guard !Task.isCancelled else { return }
@@ -1919,33 +2010,36 @@ extension Workspace {
                 let fees = worth.map { cost - $0 }.map { $0 > 0 ? " · fees ≈ \(Fmt.usd($0)) (\(Fmt.num($0 / cost * 100, maxFraction: 0))%)" : "" } ?? ""
                 let time = q.quote.timeEstimate.map { $0 >= 120 ? " · ≈ \($0 / 60) min" : " · ≈ \($0) s" } ?? ""
                 swapQuote = (command, [(q.source?.name ?? "Solana", "≈ \(Fmt.num(cost)) USDC for \(worth.map(Fmt.usd) ?? "?") of it\(fees)\(time)", 0)])
+                return
             }
-            else if swapQuote?.command != command { swapQuote = (command, []) }
-            try? await Task.sleep(for: .seconds(30))
+            if swapQuote?.command != command { swapQuote = (command, []) }
+            try? await Task.sleep(for: .seconds(15))
         }
     }
 
     /// A swap between networks: Relay's quote, again every 30 s.
     private func quoteCross(_ command: WalletCommand, _ a: String, _ from: String, _ b: String, _ to: String, _ amount: Decimal?) async {
         guard let wallet = previewWallet else { return }
+        pricedCommand = command
         while !Task.isCancelled {
             let q = try? await executor(wallet).crossQuoteText(a, on: from, for: b, on: to, amount: amount)
             guard !Task.isCancelled else { return }
-            if let q { swapQuote = (command, [(q.way, q.gets, 0)]) }
-            else if swapQuote?.command != command { swapQuote = (command, []) }
-            try? await Task.sleep(for: .seconds(30))
+            if let q { swapQuote = (command, [(q.way, q.gets, 0)]); return }
+            if swapQuote?.command != command { swapQuote = (command, []) }
+            try? await Task.sleep(for: .seconds(15))
         }
     }
 
     /// A Robinhood Chain buy or sale: Uniswap v4, v3 and Relay's swap quoted, again every 30 s, the best first.
     private func quoteStock(_ command: WalletCommand, _ symbol: String, usdc: Decimal?, sell: Decimal?) async {
         guard let wallet = previewWallet else { return }
+        pricedCommand = command
         while !Task.isCancelled {
             let ways = try? await executor(wallet).stockQuotes(symbol, usdc: usdc, sell: sell)
             guard !Task.isCancelled else { return }
-            if let ways, !ways.isEmpty { swapQuote = (command, ways) }
-            else if swapQuote?.command != command { swapQuote = (command, []) }
-            try? await Task.sleep(for: .seconds(30))
+            if let ways, !ways.isEmpty { swapQuote = (command, ways); return }
+            if swapQuote?.command != command { swapQuote = (command, []) }
+            try? await Task.sleep(for: .seconds(15))
         }
     }
 
@@ -2286,7 +2380,8 @@ struct WithdrawBoard: View {
             }
             .frame(width: max(470, RouteCards.width(route.steps.count)), alignment: .leading)
             .transition(.opacity)
-            .task(id: command) { await ws.quoteSwap(command) }
+            // Again on Refresh (quoteRound).
+            .task(id: QuoteRun(command: command, round: ws.quoteRound)) { await ws.quoteSwap(command) }
         }
     }
 }

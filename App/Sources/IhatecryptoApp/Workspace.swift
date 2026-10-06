@@ -311,7 +311,16 @@ final class Workspace {
     var routeWays: [String: String] = [:]
     /// Both ways of the Base or Arbitrum trade waiting for Confirm, quoted now, the better first (Workspace.quoteSwap):
     /// its card shows the one that leaves more. Empty = neither quotes.
-    var swapQuote: (command: WalletCommand, ways: [(way: String, gets: String, worth: Decimal)])?
+    var swapQuote: (command: WalletCommand, ways: [(way: String, gets: String, worth: Decimal)])? {
+        didSet { if swapQuote?.ways.isEmpty == false { swapQuotedAt = Date() } }
+    }
+    /// When the swap waiting for Confirm was quoted: its Confirm holds `quoteLife` after that, then Refresh asks again.
+    var swapQuotedAt: Date?
+    /// The swap whose card shows a price (Workspace.quoteSwap): the one Confirm waits on a fresh quote for.
+    var pricedCommand: WalletCommand?
+    /// Bumped by Refresh: the waiting card's quote starts over.
+    var quoteRound = 0
+    static let quoteLife: TimeInterval = 15
     /// Speaking into the chat's field.
     let voice = VoiceInput()
     /// A menu or Settings the person has open ("Picking a model", "Choosing networks", "In Settings"): the coin raises

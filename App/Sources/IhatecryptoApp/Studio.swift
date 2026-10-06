@@ -2533,12 +2533,33 @@ private struct ChatComposer: View {
     /// Variant E: while a move waits, the field carries it — what it is, Cancel and Confirm in one place, the orange bar
     /// above the field gone. The steps stay on the canvas; the field below still asks about it or changes it.
     private func waitingBar(_ title: String) -> some View {
+        // Once a second: a priced swap's Confirm holds 15 s after its quote, then Refresh asks again (quoteState).
+        TimelineView(.periodic(from: .now, by: 1)) { context in
+            waitingRow(title, state: ws.quoteState(at: context.date))
+        }
+        .padding(.vertical, 10).padding(.leading, 14).padding(.trailing, 9)
+        .background(Brand.accent.opacity(0.10))
+        .overlay(alignment: .bottom) { Rectangle().fill(Brand.cardBorder).frame(height: 1) }
+    }
+
+    private func waitingRow(_ title: String, state: Workspace.QuoteState) -> some View {
         let sign = ws.pendingText == nil
+        // A swap: what it gets and at what rate, as quoted now; else where its steps are.
+        let line: String = {
+            if ws.executing { return "Signing…" }
+            guard case .wallet(let c)? = ws.pendingAction, state != .none else { return "Its steps are on the canvas · Touch ID signs" }
+            switch state {
+            case .quoting: return "Getting the price…"
+            case .stale: return (ws.swapLine(c).map { $0 + " · " } ?? "") + "the price is over 15 s old"
+            case .fresh(let left): return (ws.swapLine(c) ?? "Quoted") + " · \(left) s"
+            case .none: return ""
+            }
+        }()
         let what = HStack(alignment: .top, spacing: 9) {
             Circle().fill(Brand.accent).frame(width: 8, height: 8).padding(.top, 5)
             VStack(alignment: .leading, spacing: 2) {
                 Text(title).font(.ui(13, .semibold)).lineLimit(3).fixedSize(horizontal: false, vertical: true)
-                Text(ws.executing ? "Signing…" : "Its steps are on the canvas · Touch ID signs").font(.ui(11)).foregroundStyle(.secondary).lineLimit(1)
+                Text(line).font(.ui(11)).foregroundStyle(.secondary).monospacedDigit().lineLimit(2).fixedSize(horizontal: false, vertical: true)
             }
         }
         let buttons = HStack(spacing: 6) {
@@ -2547,20 +2568,29 @@ private struct ChatComposer: View {
                     .overlay(Capsule().strokeBorder(Brand.cardBorder)).contentShape(Capsule())
             }
             .buttonStyle(.plain).pointerStyle(.link)
-            Button { Task { await ws.pressConfirm() } } label: {
-                Label(sign ? "Sign" : "Confirm", systemImage: "touchid").font(.ui(12.5, .bold)).foregroundStyle(Brand.onAccent)
-                    .padding(.horizontal, 14).frame(height: 32).background(Capsule().fill(Brand.accent)).contentShape(Capsule())
+            switch state {
+            case .stale:
+                Button { ws.requoteSwap() } label: {
+                    Label("Refresh", systemImage: "arrow.clockwise").font(.ui(12.5, .bold)).foregroundStyle(Brand.onAccent)
+                        .padding(.horizontal, 14).frame(height: 32).background(Capsule().fill(Brand.accent)).contentShape(Capsule())
+                }
+                .buttonStyle(.plain).pointerStyle(.link).help("Ask for the price again; Confirm comes back for 15 s")
+            case .quoting:
+                Label("Quoting…", systemImage: "hourglass").font(.ui(12.5, .bold)).foregroundStyle(.secondary)
+                    .padding(.horizontal, 14).frame(height: 32).background(Capsule().fill(Color.primary.opacity(0.08)))
+            default:
+                Button { Task { await ws.pressConfirm() } } label: {
+                    Label(sign ? "Sign" : "Confirm", systemImage: "touchid").font(.ui(12.5, .bold)).foregroundStyle(Brand.onAccent)
+                        .padding(.horizontal, 14).frame(height: 32).background(Capsule().fill(Brand.accent)).contentShape(Capsule())
+                }
+                .buttonStyle(.plain).pointerStyle(.link).help(title)
             }
-            .buttonStyle(.plain).pointerStyle(.link).help(title)
         }
         .disabled(ws.busy || ws.executing)
         return ViewThatFits(in: .horizontal) {
             HStack(spacing: 10) { what; Spacer(minLength: 6); buttons }
             VStack(alignment: .leading, spacing: 8) { what; HStack { Spacer(); buttons } }
         }
-        .padding(.vertical, 10).padding(.leading, 14).padding(.trailing, 9)
-        .background(Brand.accent.opacity(0.10))
-        .overlay(alignment: .bottom) { Rectangle().fill(Brand.cardBorder).frame(height: 1) }
     }
 
     private func entry(waiting: Bool) -> some View {
