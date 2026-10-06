@@ -2371,6 +2371,15 @@ private struct ConnectModelBar: View {
     }
 }
 
+/// What a rounded rectangle leaves bare of its frame at the top: the two corners past its curves.
+private nonisolated struct TopCorners: Shape {
+    let radius: CGFloat
+    func path(in r: CGRect) -> Path {
+        Path(CGRect(x: r.minX, y: r.minY, width: r.width, height: radius))
+            .subtracting(Path(roundedRect: r, cornerRadius: radius, style: .continuous))
+    }
+}
+
 /// The chat's input: the model and the networks above it, the field with the microphone. Its own view: a keystroke or
 /// the voice's wave redraws the field and its buttons, not the conversation above it.
 private struct ChatComposer: View {
@@ -2539,6 +2548,7 @@ private struct ChatComposer: View {
         }
         .padding(.vertical, 10).padding(.leading, 14).padding(.trailing, 9)
         .background(Brand.accent.opacity(0.10))
+        .overlay(alignment: .bottom) { Rectangle().fill(Brand.cardBorder).frame(height: 1) }
     }
 
     private func waitingRow(_ title: String, state: Workspace.QuoteState) -> some View {
@@ -2639,10 +2649,12 @@ private struct ChatComposer: View {
             .keyboardShortcut(.return, modifiers: .command)
         }
         .padding(.vertical, 5).padding(.leading, 5).padding(.trailing, 5)
-        // A glass pill on the glass chat: white in light mode, faint in dark. Under a waiting move its rim is the frame's
-        // orange — a grey one showed as a third colour at its top corners, and its top edge divides it from the move.
+        // A glass pill on the glass chat: white in light mode, faint in dark.
         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Brand.glassFill))
-        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(waiting ? Brand.accent : Brand.glassRim, lineWidth: waiting ? 1.5 : 1))
+        // Under a waiting move, the corners past its rounded top take the move's tint: the frame's own colour showed
+        // there as a third one, left and right of the field.
+        .background { if waiting { TopCorners(radius: 22).fill(Brand.accent.opacity(0.10)) } }
+        .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Brand.glassRim))
     }
 
     private func send() {
