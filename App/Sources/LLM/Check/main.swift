@@ -99,7 +99,13 @@ if prompt == "--route" {
                 var out: [String: Any] = ["message": m, "seconds": Date().timeIntervalSince(started)]
                 var intent: TradeIntent?
                 switch reading.route {
-                case .command(let written):
+                case .command(var written):
+                    // The user's folders (`IHATECRYPTO_ROUTE_FOLDERS="Research,Ideas"`): a typo of one is that folder, as
+                    // the app reads it (Workspace.folderCommand).
+                    if let names = env["IHATECRYPTO_ROUTE_FOLDERS"]?.components(separatedBy: ","), let f = FolderCommand.parse(written) {
+                        let name = switch f { case .save(let n): n; case .note(let n, _): n }
+                        if let real = FolderCommand.existing(name, among: names), real != name { written = written.replacingOccurrences(of: name, with: real) }
+                    }
                     let c = ChatRouter.planChange(written, markets: markets) ?? written
                     out["route"] = "command"; out["command"] = written; out["parses"] = ChatRouter.parses(written, markets: markets)
                     if ChatRouter.steps(c) == nil, ScheduledTask.parse(c) == nil, AlertCommand.parse(c, markets: markets) == nil,

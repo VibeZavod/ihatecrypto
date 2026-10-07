@@ -1,9 +1,11 @@
 ---
 name: add-network
-description: Подключает новую сеть (блокчейн) к ihatecrypto — от проверки фактов о сети до иконки, списка в Settings › Modules, моста Relay, переводов, портфеля, команд чата и релизной сборки. Use when the user says "подключи сеть", "добавь блокчейн", "добавь сеть X", "подключи X chain", "add a network", "add chain", "support <chain>", or asks to make a new EVM chain work in the app (bridge, balance, transfers, payments).
+description: Подключает новую сеть (блокчейн) к ihatecrypto — после BNB Chain только когда пользователь сам назвал сеть и попросил (решение 2026-10-08) — от проверки фактов о сети до иконки, списка в Settings › Modules, моста Relay, переводов, портфеля, команд чата и релизной сборки. Use when the user says "подключи сеть", "добавь блокчейн", "добавь сеть X", "подключи X chain", "add a network", "add chain", "support <chain>", or asks to make a new EVM chain work in the app (bridge, balance, transfers, payments).
 ---
 
 # Новая сеть в ihatecrypto
+
+**После BNB Chain сеть подключается только по прямой просьбе пользователя с названием сети** (решение 2026-10-08). Самому не предлагать и не начинать — ни Avalanche, ни Arc, ни Plasma, ни Unichain, ни другие.
 
 Итог: сеть есть в списке Settings › Modules со своей иконкой, деньги ходят Solana ⇄ сеть через Relay, баланс виден в портфеле, адреса этой сети сохраняются и принимают переводы, чат понимает сеть по-русски и по-английски, всё покрыто тестами и собрано в Release из закоммиченного кода.
 

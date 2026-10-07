@@ -41,9 +41,14 @@ NETS = {  # key: (en form, ru words, es words)
     "ethereum": ("ethereum", ["эфир", "эфириум", "мейннет", "ethereum"], ["Ethereum", "mainnet"]),
     "robinhood": ("robinhood", ["робингуд", "робинхуд", "robinhood"], ["Robinhood"]),
     "tempo": ("tempo", ["темпо", "tempo"], ["Tempo"]),
+    "optimism": ("optimism", ["оптимизм", "optimism"], ["Optimism"]),
+    "hyperevm": ("hyperevm", ["хайперевм", "hyperevm"], ["HyperEVM"]),
+    "bnb": ("bnb", ["бнб", "bnb", "bsc"], ["BNB", "BSC"]),
 }
-RU_NET_PREP = {"base": "на бейз", "arbitrum": "на арбитрум", "polygon": "в полигон", "ethereum": "на эфир", "robinhood": "на робингуд", "tempo": "в темпо"}
-RU_NET_FROM = {"base": "с бейза", "arbitrum": "с арбитрума", "polygon": "с полигона", "ethereum": "с эфира", "robinhood": "с робингуда", "tempo": "с темпо"}
+# What the command may call a network: «BNB Chain» for bnb.
+NET_RE = {"bnb": "(?:bnb(?: chain)?|bsc)"}
+RU_NET_PREP = {"base": "на бейз", "arbitrum": "на арбитрум", "polygon": "в полигон", "ethereum": "на эфир", "robinhood": "на робингуд", "tempo": "в темпо", "optimism": "на оптимизм", "hyperevm": "на хайперевм", "bnb": "на бнб"}
+RU_NET_FROM = {"base": "с бейза", "arbitrum": "с арбитрума", "polygon": "с полигона", "ethereum": "с эфира", "robinhood": "с робингуда", "tempo": "с темпо", "optimism": "с оптимизма", "hyperevm": "с хайперевм", "bnb": "с бнб"}
 
 
 def typo(s):
@@ -163,32 +168,32 @@ def morpho_in(lang):
 
 @kind
 def evm_to_sol(lang):
-    v = rnd.choice(AMTS); m = money(lang, v); net = rnd.choice(["base", "arbitrum", "polygon", "ethereum", "tempo"])
+    v = rnd.choice(AMTS); m = money(lang, v); net = rnd.choice(["base", "arbitrum", "polygon", "ethereum", "tempo", "optimism", "hyperevm", "bnb"])
     en, ru, es = NETS[net]
     t = {"ru": [f"верни {m} {RU_NET_FROM[net]} на солану", f"переведи {m} {RU_NET_FROM[net]} в солану"],
          "en": [f"move {m} from {en} to Solana", f"bring {m} back from {en} to solana"],
          "es": [f"mueve {m} de {rnd.choice(es)} a Solana"]}[lang]
-    return rnd.choice(t), cmd(f"move {num_re(v)} usdc from {net} to solana")
+    return rnd.choice(t), cmd(f"move {num_re(v)} usdc from {NET_RE.get(net, net)} to solana")
 
 
 @kind
 def sol_to_evm(lang):
-    v = rnd.choice(AMTS); m = money(lang, v); net = rnd.choice(["base", "arbitrum", "polygon", "ethereum", "robinhood", "tempo"])
+    v = rnd.choice(AMTS); m = money(lang, v); net = rnd.choice(["base", "arbitrum", "polygon", "ethereum", "robinhood", "tempo", "optimism", "hyperevm", "bnb"])
     en, ru, es = NETS[net]
     t = {"ru": [f"переведи {m} из соланы {RU_NET_PREP[net]}", f"закинь {m} с соланы {RU_NET_PREP[net]}"],
          "en": [f"move {m} from Solana to {en}", f"send {m} from solana over to {en}"],
          "es": [f"mueve {m} de Solana a {rnd.choice(es)}"]}[lang]
-    return rnd.choice(t), cmd(f"move {num_re(v)} usdc from solana to {net}")
+    return rnd.choice(t), cmd(f"move {num_re(v)} usdc from solana to {NET_RE.get(net, net)}")
 
 
 @kind
 def evm_to_evm(lang):
     v = rnd.choice(AMTS); m = money(lang, v)
-    a, b = rnd.sample(["base", "arbitrum", "polygon", "ethereum", "robinhood"], 2)
+    a, b = rnd.sample(["base", "arbitrum", "polygon", "ethereum", "robinhood", "optimism", "bnb"], 2)
     t = {"ru": [f"перекинь {m} {RU_NET_FROM[a]} {RU_NET_PREP[b]}"],
          "en": [f"move {m} from {NETS[a][0]} to {NETS[b][0]}", f"bridge {m} {NETS[a][0]} -> {NETS[b][0]}"],
          "es": [f"pasa {m} de {NETS[a][2][0]} a {NETS[b][2][0]}"]}[lang]
-    return rnd.choice(t), cmd(f"move {num_re(v)} usdc from {a} to {b}")
+    return rnd.choice(t), cmd(f"move {num_re(v)} usdc from {NET_RE.get(a, a)} to {NET_RE.get(b, b)}")
 
 
 @kind
@@ -197,6 +202,18 @@ def evm_to_hl(lang):
     t = {"ru": [f"закинь {m} {RU_NET_FROM[net]} на гипер", f"переведи {m} {RU_NET_FROM[net]} на хайперликвид"],
          "en": [f"move {m} from {net} to Hyperliquid"], "es": [f"mueve {m} de {net} a Hyperliquid"]}[lang]
     return rnd.choice(t), cmd(f"move {num_re(v)} usdc from {net} to hyperliquid")
+
+
+@kind
+def buy_evm(lang):
+    """A token bought on an EVM network with its USDC (2026-10-08: Optimism, BNB Chain added)."""
+    v = rnd.choice(AMTS); m = money(lang, v)
+    net, t = rnd.choice([("base", "AERO"), ("arbitrum", "ARB"), ("optimism", "OP"), ("bnb", "CAKE"), ("polygon", "AAVE")])
+    en, ru, es = NETS[net]
+    p = {"ru": [f"купи {t} {RU_NET_PREP[net]} на {m}", f"закупи {t} на {rnd.choice(ru)} на {m}"],
+         "en": [f"buy {t} on {en} for {m}", f"get me {m} of {t} on {en}"],
+         "es": [f"compra {t} en {rnd.choice(es)} por {m}"]}[lang]
+    return rnd.choice(p), cmd(f"buy {t.lower()} on {NET_RE.get(net, net)} for {num_re(v)} usdc")
 
 
 @kind
@@ -316,7 +333,9 @@ def chart(lang):
          "en": [f"show me the {a} chart" + (" for the week" if week else ""), f"chart {a}" + (" week" if week else "")],
          "es": [f"muéstrame el gráfico de {a}" + (" de la semana" if week else "")]}[lang]
     rng = " week" if week else "(?: day)?"
-    return rnd.choice(t), {"route": "any", "cmd_or_show": [f"^chart {CHART_EN[coin]}{rng}$"]}
+    # PEPE is a token on Ethereum too: its own chart there answers as well as Hyperliquid's kPEPE (route-check 2026-10-08).
+    token = [f"^chart token 0x6982508145454ce325ddbe47a25d4ec3d2311933 on ethereum{rng}$"] if coin == "kPEPE" else []
+    return rnd.choice(t), {"route": "any", "cmd_or_show": [f"^chart {CHART_EN[coin]}{rng}$"] + token}
 
 
 @kind

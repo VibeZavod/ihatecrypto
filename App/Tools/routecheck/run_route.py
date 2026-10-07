@@ -11,7 +11,7 @@ import argparse, json, os, re, subprocess, sys, threading, time
 from concurrent.futures import ThreadPoolExecutor
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-APP = "/Users/vakurin/Desktop/vibe-zavod/ihatecrypto/App"
+APP = os.path.abspath(os.path.join(HERE, "..", ".."))
 MARKETS = open(os.path.join(HERE, "markets-main.txt")).read().strip() + "," + open(os.path.join(HERE, "markets-xyz.txt")).read().strip()
 
 
@@ -56,7 +56,8 @@ def judge(case, out):
 
 
 def run_batch(batch, provider, env_extra):
-    env = dict(os.environ, IHATECRYPTO_ROUTE_JSON="1", IHATECRYPTO_MARKETS=MARKETS, **env_extra)
+    # The folders the phrases name, as the app knows the user's: a typo of one lands there (FolderCommand.existing).
+    env = dict(os.environ, IHATECRYPTO_ROUTE_JSON="1", IHATECRYPTO_MARKETS=MARKETS, IHATECRYPTO_ROUTE_FOLDERS="Research,Ресерч,Ideas,Идеи", **env_extra)
     cmd = [os.path.join(HERE, "LLMCheck"), provider, "--route"] + [c["message"] for c in batch]
     try:
         p = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=120 * len(batch))
