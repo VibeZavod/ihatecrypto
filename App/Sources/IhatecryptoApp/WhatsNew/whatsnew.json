@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.5.3",
+    "date": "2026-10-07",
+    "stories": [
+      {
+        "title": "A canvas that keeps up",
+        "text": "Dragging the canvas, with two fingers or the mouse, now moves it whole: the frames don't drop, even with a move waiting for Confirm. A card waiting, a model answering and the first seconds after launch take a fraction of what they did.",
+        "symbol": "hand.draw.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "What you get, on the card",
+        "text": "A swap's card says what arrives, as quoted now: «≈ 0.0083 SOL», «≈ 1.8 UNI», «≈ 0.11 HYPE». Jupiter, Relay, Hyperliquid's spot book and Robinhood's stock tokens.",
+        "symbol": "arrow.triangle.2.circlepath",
+        "color": "2775CA"
+      },
+      {
+        "title": "Asked for more than you have",
+        "text": "«Buy SOL for 150» with 100 on Solana no longer starts a chain of moves: the chat says what's there, and the canvas offers the ways on — bring the rest from another network first, take all there is, or top up.",
+        "symbol": "exclamationmark.bubble.fill",
+        "color": "0B7A55"
+      },
+      {
+        "title": "Think before answering",
+        "text": "Settings › Models has a switch for the model to reason before it answers: steadier on a muddled request, a few seconds slower. Off by default.",
+        "symbol": "brain",
+        "color": "9945FF"
+      }
+    ]
+  },
+  {
     "version": "0.5.2",
     "date": "2026-10-06",
     "stories": [
