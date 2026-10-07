@@ -23,6 +23,17 @@ extension Workspace {
     /// Jupiter-verified Solana token by ticker (an unverified one by its mint only with Safe search off), on the EVM
     /// networks by contract. Each goes into the chat's field for the user to send.
     func tokenPhrases(chain: String, address: String, symbol: String, stock: Bool, verified: Bool) -> [(title: String, icon: String, phrase: String)] {
+        // The network's own dollar: buying it is selling the network's coin for it, selling it is buying that coin (the
+        // user: «для соланы SOL, для всех остальных сетей эфириум»). Robinhood's USDG has no swap for ETH: no buttons.
+        if TokenBoard.walletDollar(chain: chain, address: address) {
+            switch chain {
+            case "solana": return [("Buy \(symbol)", "cart", "sell 0.01 SOL"), ("Sell", "arrow.down.right.circle", "buy SOL for 2 USDC")]
+            case "base", "arbitrum", "polygon", "ethereum":
+                let coin = chain == "polygon" ? "POL" : "ETH", some = chain == "polygon" ? "5" : "0.001"
+                return [("Buy \(symbol)", "cart", "swap \(some) \(coin) for USDC on \(chain)"), ("Sell", "arrow.down.right.circle", "swap 2 USDC for \(coin) on \(chain)")]
+            default: return []
+            }
+        }
         let pair: (buy: String, sell: String)? = switch chain {
         case "robinhood": stock ? ("buy \(symbol) stock for 2 USDC", "sell \(symbol) stock") : ("buy token \(address) for 2 USDC", "sell token \(address)")
         case "solana": verified ? ("buy \(symbol) on solana for 2 USDC", "sell \(symbol) on solana")
@@ -74,7 +85,7 @@ struct TokenMenu: ViewModifier {
                 Button { ws.askAbout(symbol: symbol, chain: chain, address: address) } label: { Label("Ask in chat", systemImage: "bubble.left") }
                 if let address {
                     ForEach(ws.tokenPhrases(chain: chain, address: address, symbol: symbol, stock: stock, verified: verified), id: \.phrase) { p in
-                        Button { ws.draft = p.phrase } label: { Label(p.title, systemImage: p.icon) }
+                        Button { ws.suggest(p.phrase) } label: { Label(p.title, systemImage: p.icon) }
                     }
                 }
             }
@@ -129,9 +140,14 @@ struct TokenBoard: View {
             chart
             if let m = market { stats(m) }
             if let h = holding {
-                held(h.amount, h.usd, isStock ? "valued at Robinhood’s bid \(h.price.map(tokenPrice) ?? "—")" : "valued at the pool price")
+                held(h.amount, h.usd, isStock ? "valued at Robinhood’s bid \(h.price.map(tokenPrice) ?? "—")" : "valued at the pool price",
+                     pnl: h.price.flatMap { ws.costBasis["robinhood:\(h.address.lowercased())"]?.pnl(held: h.amount, price: $0) },
+                     cost: ws.costBasis["robinhood:\(h.address.lowercased())"])
             } else if let t = heldToken {
-                held(t.amount, t.usd, t.price == nil ? "no price yet" : "valued at the pool price")
+                held(t.amount, t.usd, t.price == nil ? "no price yet" : "valued at the pool price",
+                     pnl: ws.purchasePnL(t), cost: ws.costBasis[t.id] ?? ws.costBasis[t.contract], today: Self.today(t))
+            } else if Self.walletDollar(chain: chain, address: address), let usdc = ws.usdc(on: chain), usdc > 0 {
+                held(usdc, usdc, "not earning")
             }
             links
             actions
@@ -287,12 +303,30 @@ struct TokenBoard: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
     }
 
-    private func held(_ amount: Decimal, _ usd: Decimal?, _ how: String) -> some View {
+    /// Today's move of what's held, in dollars, from its 24-hour change.
+    static func today(_ t: Holding) -> Decimal? {
+        guard let usd = t.usd, let change = t.change24h, change > -100 else { return nil }
+        return usd - usd / (1 + change / 100)
+    }
+
+    /// What's held, and how it went: the P/L since it was bought here (what it cost), or for one that came from
+    /// elsewhere — no cost to compare — at least today's move in dollars.
+    private func held(_ amount: Decimal, _ usd: Decimal?, _ how: String, pnl: (usd: Decimal, pct: Decimal)? = nil, cost: CostBasis? = nil,
+                      today: Decimal? = nil) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "wallet.pass.fill").foregroundStyle(Brand.accentInk)
             VStack(alignment: .leading, spacing: 1) {
                 Text("You hold \(Fmt.num(amount, maxFraction: 6)) \(symbol)").font(.ui(13, .semibold))
                 Text(how).font(.ui(10)).foregroundStyle(.secondary)
+                if let pnl {
+                    let sign = pnl.usd < 0 ? "−" : "+"
+                    Text("\(Text("P/L \(sign)\(Fmt.usd(abs(pnl.usd))) (\(sign)\(Fmt.pct(abs(pnl.pct).rounded(1, .plain))))").foregroundStyle(pnl.usd < 0 ? Brand.loss : Brand.profit))\(Text(cost.map { " · bought here for \(Fmt.usd($0.usd))" } ?? "").foregroundStyle(.secondary))")
+                        .font(.ui(11, .semibold)).padding(.top, 2)
+                } else if let today, today != 0 {
+                    let sign = today < 0 ? "−" : "+"
+                    Text("\(Text("Today \(sign)\(Fmt.usd(abs(today)))").foregroundStyle(today < 0 ? Brand.loss : Brand.profit))\(Text(" · not bought here: no cost to compare").foregroundStyle(.secondary))")
+                        .font(.ui(11, .semibold)).padding(.top, 2)
+                }
             }
             Spacer()
             Text(usd.map(Fmt.usd) ?? "—").font(.ui(15, .bold)).monospacedDigit()
@@ -316,7 +350,7 @@ struct TokenBoard: View {
     private var actions: some View {
         let trades = ws.tokenPhrases(chain: chain, address: address, symbol: symbol, stock: isStock,
                                      verified: verified?.ok == true || heldToken?.verified == true)
-        let watch = trades.isEmpty && favorite == nil ? [(title: "Watch \(symbol)", icon: "star", phrase: "watch token \(address) on \(chain)")] : []
+        let watch = trades.isEmpty && favorite == nil && !Self.walletDollar(chain: chain, address: address) ? [(title: "Watch \(symbol)", icon: "star", phrase: "watch token \(address) on \(chain)")] : []
         return VStack(alignment: .leading, spacing: 8) {
             Flow(spacing: 6) {
                 Button { ws.askAbout(symbol: symbol, chain: chain, address: address) } label: {
@@ -327,7 +361,7 @@ struct TokenBoard: View {
                 .buttonStyle(.plain).pointerStyle(.link).help("Your next message in the chat is about \(symbol): its network, contract and what you hold go along")
                 ForEach(trades + watch, id: \.phrase) { p in
                     let sell = p.title == "Sell"
-                    Button { ws.draft = p.phrase } label: {
+                    Button { ws.suggest(p.phrase) } label: {
                         Label(p.title, systemImage: p.icon).font(.ui(12, .semibold)).foregroundStyle(sell ? Brand.loss : Brand.accentInk)
                             .padding(.horizontal, 12).padding(.vertical, 6)
                             .background(Capsule().fill((sell ? Brand.loss : Brand.accent).opacity(0.1)))

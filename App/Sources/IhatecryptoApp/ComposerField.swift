@@ -351,3 +351,26 @@ extension Workspace {
             ?? favoriteTokens.first { $0.symbol.caseInsensitiveCompare(token) == .orderedSame }?.image)
     }
 }
+
+/// The typing of a suggested prompt under way; the next one replaces it.
+// ponytail: one for the app (one chat field); per window if there are ever two.
+private var suggesting: Task<Void, Never>?
+
+extension Workspace {
+    /// A button's prompt put into the chat's field typed out, a few letters at a time for about half a second whatever
+    /// its length (the user: «анимация печатания в чате, чтобы человек понимал куда обращать внимание»). The field
+    /// follows the draft and keeps the caret at its end.
+    func suggest(_ text: String) {
+        suggesting?.cancel()
+        let letters = Array(text), step = max(1, letters.count / 24)
+        draft = ""
+        suggesting = Task {
+            for end in stride(from: step, to: letters.count, by: step) {
+                draft = String(letters[..<end])
+                try? await Task.sleep(for: .milliseconds(20))
+                if Task.isCancelled { return }
+            }
+            draft = text
+        }
+    }
+}

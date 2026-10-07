@@ -23,6 +23,10 @@ struct NetworkLine: Identifiable {
     var amount: String? = nil
     /// The details a click opens (Openable).
     var place: String? = nil
+    /// Without details here: the site a click opens beside the chat, where it's managed.
+    var site: String? = nil
+    /// The coin's contract, for its board and chart (idle USDC, USDG); nil for a network's own coin.
+    var contract: String? = nil
     var help: String? = nil
 }
 
@@ -41,9 +45,9 @@ extension Workspace {
     /// A network's places beyond its tokens and stocks, the most money first.
     func networkLines(_ n: ModuleNetwork) -> [NetworkLine] {
         let cent = Decimal(string: "0.01")!
-        func idle(_ amount: Decimal?, _ symbol: String = "USDC") -> [NetworkLine] {
+        func idle(_ amount: Decimal?, _ symbol: String = "USDC", contract: String) -> [NetworkLine] {
             guard let amount, amount >= cent else { return [] }
-            return [NetworkLine(kind: .idle, logo: symbol.lowercased(), title: symbol, detail: "idle · not earning", usd: amount, usdc: symbol == "USDC")]
+            return [NetworkLine(kind: .idle, logo: symbol.lowercased(), title: symbol, detail: "\(Fmt.num(amount)) · not earning", usd: amount, contract: contract)]
         }
         func gas(_ coin: Decimal?, _ symbol: String) -> [NetworkLine] {
             guard let coin, coin > 0 else { return [] }
@@ -58,30 +62,32 @@ extension Workspace {
         // Aave and Morpho off Base.
         let elsewhere = lendingElsewhere.filter { ModuleNetwork(place: $0.network) == n }.map { p in
             let protocolName = p.place.hasPrefix("Morpho") ? "Morpho" : "Aave"
-            return earning(protocolName.lowercased(), protocolName, apy: p.apy, usdc: p.usdc,
-                           help: "Say “withdraw USDC from \(protocolName) on \(p.network)” to bring it back to Solana")
+            var line = earning(protocolName.lowercased(), protocolName, apy: p.apy, usdc: p.usdc,
+                               help: "Say “withdraw USDC from \(protocolName) on \(p.network)” to bring it back to Solana")
+            line.site = protocolName == "Aave" ? "app.aave.com" : "app.morpho.org"
+            return line
         }
         var lines: [NetworkLine]
         switch n {
         case .solana:
-            lines = idle(solana?.usdc) + gas(solana?.sol, "SOL")
+            lines = idle(solana?.usdc, contract: SpotAsset.usdc.mint) + gas(solana?.sol, "SOL")
             if lendTotal > 0 { lines.append(earning("jup", "Jupiter Lend", apy: nil, usdc: lendTotal, place: "jupiter")) }
             if kamino > 0 { lines.append(NetworkLine(kind: .earning, logo: "kamino", title: "Kamino Lend", detail: "earning", usd: kamino, place: "kamino")) }
             // Deposits made on a site: Kamino's vaults, Jupiter's other platforms.
             lines += protocolPositions.map { p in
                 NetworkLine(kind: .earning, logo: p.logo, title: p.platform, detail: p.name + (p.apy.map { " · \(Fmt.num($0.rounded(2, .plain)))%" } ?? ""),
-                            usd: p.usd, amount: p.amount, help: "Managed on \(p.site): say “открой сайт \(p.site)” to open it beside the chat")
+                            usd: p.usd, amount: p.amount, site: p.site, help: "Managed on \(p.site): a click opens it beside the chat")
             }
         case .base:
-            lines = idle(base?.usdc) + gas(base?.eth, "ETH")
+            lines = idle(base?.usdc, contract: EVMRPC.baseUSDC) + gas(base?.eth, "ETH")
             if let b = base, b.morpho > 0 { lines.append(earning("morpho", "Morpho", apy: morphoAPY, usdc: b.morpho, place: "morpho")) }
             if let b = base, b.aave > 0 { lines.append(earning("aave", "Aave", apy: aaveAPY, usdc: b.aave, place: "aave")) }
         case .arbitrum:
-            lines = idle(arbitrumUSDC) + elsewhere
+            lines = idle(arbitrumUSDC, contract: EVMRPC.arbitrumUSDC) + elsewhere
         case .robinhood:
-            lines = idle(robinhood?.usdg, "USDG") + gas(robinhood?.eth, "ETH")
+            lines = idle(robinhood?.usdg, "USDG", contract: EVMRPC.robinhoodUSDG) + gas(robinhood?.eth, "ETH")
         case .near:
-            lines = near > 0 ? [NetworkLine(kind: .held, logo: "near", title: "NEAR", detail: "native NEAR", usd: nearUSD, amount: "\(Fmt.num(near, maxFraction: 4)) NEAR")] : []
+            lines = near > 0 ? [NetworkLine(kind: .held, logo: "near", title: "NEAR", detail: "\(Fmt.num(near, maxFraction: 4)) · native", usd: nearUSD, amount: "\(Fmt.num(near, maxFraction: 4)) NEAR")] : []
         case .ethereum, .polygon, .optimism:
             lines = elsewhere
         // Their USDC and coins are tokens on the card (Holdings.tempo, Holdings.hyperevm).
@@ -89,6 +95,43 @@ extension Workspace {
             lines = []
         }
         return lines.sorted { $0.usd > $1.usd }
+    }
+}
+
+/// One coin on a network, whatever kind: idle money or gas (a place line), a Robinhood stock token, any other token.
+enum NetworkCoin: Identifiable {
+    case line(NetworkLine), stock(StockHolding), token(Holding)
+    var id: String {
+        switch self {
+        case .line(let l): "line:" + l.id
+        case .stock(let s): "stock:" + s.id
+        case .token(let t): "token:" + t.id
+        }
+    }
+    var usd: Decimal {
+        switch self {
+        case .line(let l): l.usd
+        case .stock(let s): s.usd
+        case .token(let t): t.usd ?? 0
+        }
+    }
+}
+
+extension Workspace {
+    /// Every coin on the network in one list, the most money first (the user: «от большего к меньшему»): its idle money
+    /// and gas among `lines`, Robinhood's stock tokens, the tokens on show. Deposits aren't coins.
+    func networkCoins(_ n: ModuleNetwork, lines: [NetworkLine]) -> [NetworkCoin] {
+        (lines.filter { $0.kind != .earning }.map(NetworkCoin.line)
+         + (n == .robinhood ? robinhood?.stocks ?? [] : []).map(NetworkCoin.stock)
+         + shownTokens.filter { $0.chain == n.rawValue }.map(NetworkCoin.token)).sorted { $0.usd > $1.usd }
+    }
+
+    /// What a click on a network's line opens, the same on its card and on its board (the user: everything on them is
+    /// clickable): a deposit's board or its site beside the chat; a coin's board and chart.
+    func opener(_ line: NetworkLine, chain: String) -> (() -> Void)? {
+        if let place = line.place { return { self.toggleDetail(place) } }
+        if let site = line.site { return { self.openSite(site) } }
+        return line.kind == .earning ? nil : opener(chain: chain, contract: line.contract ?? "native", symbol: line.title)
     }
 }
 
@@ -169,6 +212,8 @@ struct NetworkCard: View {
 
     var body: some View {
         let lines = ws.networkLines(network), style = Self.style(network)
+        let deposits = lines.filter { $0.kind == .earning }, coins = ws.networkCoins(network, lines: lines)
+        let tokens = !coins.isEmpty || ws.tuckedTokens.contains { $0.chain == network.rawValue }
         let card = VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 10) {
                 TokenLogo(name: network.logo, size: 34)
@@ -176,15 +221,29 @@ struct NetworkCard: View {
                     // «Robinhood Chain» beside its amount takes two lines rather than ending in «…».
                     Text(network.name).font(.ui(14, .semibold)).lineLimit(2).fixedSize(horizontal: false, vertical: true)
                     // Wraps rather than ends in «…» next to a wide amount.
-                    Text(subtitle(lines)).font(.ui(10)).foregroundStyle(style.ink).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    if let line = subtitle(lines, tokens: tokens) {
+                        Text(line).font(.ui(10)).foregroundStyle(style.ink).lineLimit(2).fixedSize(horizontal: false, vertical: true)
+                    }
                 }
                 Spacer(minLength: 4)
                 Text(Fmt.usd(usd)).font(.ui(13, .bold)).monospacedDigit().lineLimit(1).fixedSize()
             }
             if network == .hyperliquid { positions }
-            if network == .robinhood { stocks }
-            ForEach(lines) { NetworkLineRow(line: $0, chain: network.rawValue) }
-            TokenList(chain: network.rawValue)
+            // Coins first, deposits under their own name (the user: «непонятно разделение дефай и токены»).
+            if tokens, !deposits.isEmpty { SectionName(title: "Tokens") }
+            ForEach(coins) { c in
+                switch c {
+                case .line(let l): NetworkLineRow(line: l, chain: network.rawValue)
+                case .stock(let s): stockRow(s)
+                case .token(let t): HoldingRow(token: t, shown: true)
+                }
+            }
+            HiddenTokens(chain: network.rawValue)
+            if !deposits.isEmpty {
+                if tokens { Rectangle().fill(.primary.opacity(0.1)).frame(height: 1).padding(.top, 2) }
+                SectionName(title: "DeFi")
+                ForEach(deposits) { NetworkLineRow(line: $0, chain: network.rawValue) }
+            }
         }
         .padding(11)
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -194,8 +253,8 @@ struct NetworkCard: View {
         if Self.opens.contains(network) { card.modifier(Openable(place: network.rawValue)) } else { card }
     }
 
-    /// What the network's money does («idle $2,532.82 · earning $150.10»), or what it is.
-    private func subtitle(_ lines: [NetworkLine]) -> String {
+    /// What the network's money does («idle $2,532.82 · earning $150.10»), or what it is; nil when its rows say it all.
+    private func subtitle(_ lines: [NetworkLine], tokens: Bool) -> String? {
         switch network {
         case .hyperliquid:
             return ws.hlMargin.map { "\(Fmt.usd($0)) · margin" + (ws.hlp.equity > 0 ? " · HLP \(Fmt.usd(ws.hlp.equity))" : "") } ?? "no address"
@@ -205,12 +264,9 @@ struct NetworkCard: View {
             let sums = [("earning", NetworkLine.Kind.earning), ("idle", .idle)]
                 .map { name, kind in (name, lines.filter { $0.kind == kind }.reduce(Decimal(0)) { $0 + $1.usd }) }
                 .filter { $0.1 >= Decimal(string: "0.01")! }.sorted { $0.1 > $1.1 }
-            let stocks = ws.robinhood?.stocks.count ?? 0
-            // Stock tokens and tokens bought by contract alike.
-            let parts = (network == .robinhood && stocks > 0 ? ["\(stocks) token\(stocks == 1 ? "" : "s")"] : [])
-                + sums.map { "\($0.0) \(Fmt.usd($0.1))" }
-            let tokens = ws.shownTokens.contains { $0.chain == network.rawValue }
-            return parts.isEmpty ? (lines.first?.detail ?? (tokens ? "tokens" : "nothing here yet")) : parts.joined(separator: " · ")
+            // No count of tokens: the rows under it show them (the user: «убери слово 5 tokens»).
+            if !sums.isEmpty { return sums.map { "\($0.0) \(Fmt.usd($0.1))" }.joined(separator: " · ") }
+            return tokens ? nil : "nothing here yet"
         }
     }
 
@@ -243,22 +299,21 @@ struct NetworkCard: View {
         }
     }
 
-    /// Robinhood Chain's stock tokens and tokens bought by contract, the most money first; a click opens the token,
-    /// right-click asks the chat about it or trades it.
-    private var stocks: some View {
-        ForEach((ws.robinhood?.stocks ?? []).sorted { $0.usd > $1.usd }) { s in
-            HStack(spacing: 8) {
+    /// A Robinhood Chain stock token or token bought by contract; a click opens the token, right-click asks the chat
+    /// about it or trades it.
+    private func stockRow(_ s: StockHolding) -> some View {
+        let stock = TokenBoard.isStock(s.symbol)
+        return HStack(spacing: 8) {
                 StockLogo(symbol: s.symbol, url: s.logo, size: 20)
-                VStack(alignment: .leading, spacing: 0) {
-                    Text(s.symbol).font(.ui(12, .semibold)).lineLimit(1)
-                    Text("\(Fmt.num(s.amount, maxFraction: 6)) · \(s.price.map { Fmt.usd($0) } ?? "—")").font(.ui(9.5)).foregroundStyle(.secondary).lineLimit(1)
-                }
+                CoinName(symbol: s.symbol, amount: Fmt.num(s.amount, maxFraction: 6))
                 Spacer(minLength: 4)
-                Text(Fmt.usd(s.usd)).font(.ui(12, .bold)).monospacedDigit()
+                // A stock's day off its Hyperliquid market (xyz:TSLA); a token bought by contract off its DexScreener pool.
+                CoinValue(value: Fmt.usd(s.usd),
+                          change: stock ? ws.markets["xyz:\(s.symbol)"]?.change24h : ws.tokenInfo["robinhood:" + s.address.lowercased()]?.change24h)
             }
-            .modifier(RowLink(action: { ws.openToken(s.address) }, help: "\(s.symbol): details and chart · right-click to ask the chat, buy or sell"))
-            .modifier(TokenMenu(chain: "robinhood", address: s.address, symbol: s.symbol, stock: TokenBoard.isStock(s.symbol), verified: true))
-        }
+            .modifier(RowLink(action: { ws.openToken(s.address) },
+                              help: "\(s.symbol) at \(s.price.map { Fmt.usd($0) } ?? "—"): details and chart · right-click to ask the chat, buy or sell"))
+            .modifier(TokenMenu(chain: "robinhood", address: s.address, symbol: s.symbol, stock: stock, verified: true))
     }
 }
 
@@ -282,14 +337,35 @@ struct RowLink: ViewModifier {
     }
 }
 
-/// A place on a network's card: logo, name, what it does, the money. A deposit with a details board opens it; a
-/// network's own coin (SOL, ETH, NEAR) opens its chart, and right-click asks the chat about it.
+/// A place on a network's card: logo, name, what it does, the money; every one opens something. A deposit opens its
+/// details board, or its site beside the chat; idle USDC opens its own board and chart, like any token (the user: «не
+/// открывается его график»); a network's own coin (SOL, ETH, NEAR) opens its chart. Right-click asks the chat about a coin.
 struct NetworkLineRow: View {
     @Environment(Workspace.self) private var ws
     let line: NetworkLine
     let chain: String
 
     var body: some View {
+        if line.kind == .earning { deposit } else { coin }
+    }
+
+    /// Idle money, gas, a held coin: laid out like a token (the amount under the name, the day's move on the right).
+    @ViewBuilder private var coin: some View {
+        let row = HStack(spacing: 8) {
+            TokenLogo(name: line.logo, size: 20)
+            CoinName(symbol: line.title, amount: line.detail)
+            Spacer(minLength: 4)
+            // A coin without a price shows its amount; a stablecoin has no day's move to show.
+            CoinValue(value: line.usd > 0 ? Fmt.usd(line.usd) : line.amount ?? Fmt.usd(0),
+                      change: line.kind == .idle ? nil : ws.markets[line.title.uppercased()]?.change24h)
+        }
+        .contentShape(Rectangle())
+        row.modifier(RowLink(action: ws.opener(line, chain: chain),
+                             help: (line.help ?? "\(line.title): \(line.contract == nil ? "chart" : "details and chart")") + " · right-click to ask the chat"))
+            .modifier(TokenMenu(chain: chain, address: line.contract, symbol: line.title))
+    }
+
+    @ViewBuilder private var deposit: some View {
         let row = HStack(spacing: 8) {
             TokenLogo(name: line.logo, size: 20)
             VStack(alignment: .leading, spacing: 0) {
@@ -314,11 +390,80 @@ struct NetworkLineRow: View {
         // The accent edge a little off the row, so it doesn't touch the logo and the amount.
         if let place = line.place {
             row.padding(.horizontal, 5).padding(.vertical, 3).modifier(Openable(place: place)).padding(.horizontal, -5).padding(.vertical, -3)
-        } else if line.kind == .gas || line.kind == .held {
-            row.modifier(RowLink(action: ws.opener(chain: chain, contract: "native", symbol: line.title), help: "\(line.title): chart · right-click to ask the chat"))
-                .modifier(TokenMenu(chain: chain, address: nil, symbol: line.title))
         } else {
-            row
+            row.modifier(RowLink(action: ws.opener(line, chain: chain), help: line.help ?? ""))
+        }
+    }
+}
+
+extension TokenBoard {
+    /// The network's own dollar the wallet keeps (USDC, Robinhood's USDG): its board shows the chart and what's held,
+    /// with no buy or sale of it.
+    static func walletDollar(chain: String, address: String) -> Bool {
+        address == SpotAsset.usdc.mint || EVMNetwork.all.contains { $0.key == chain && $0.usdc.lowercased() == address.lowercased() }
+    }
+}
+
+/// A part of a network's card: «Tokens», «DeFi».
+struct SectionName: View {
+    let title: String
+
+    var body: some View {
+        Text(title.uppercased()).font(.ui(9, .semibold)).tracking(1).foregroundStyle(.secondary)
+    }
+}
+
+/// A coin's symbol with how much of it is held under it (the user: the amount under the name, the day's move on the
+/// right). `verified` nil: no mark (a network's own coin, a stock token).
+struct CoinName: View {
+    let symbol: String
+    let amount: String
+    var verified: Bool? = nil
+    /// What it made or lost since it was bought here (Workspace.purchasePnL), after the amount, in its color.
+    var pnl: (usd: Decimal, pct: Decimal)? = nil
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 4) {
+                Text(symbol).font(.ui(12, .semibold)).lineLimit(1)
+                if verified == true { VerifiedBadge(size: 12) }
+                if verified == false { Text("unverified").font(.ui(9)).foregroundStyle(.secondary).lineLimit(1) }
+            }
+            if let pnl {
+                let sign = pnl.usd < 0 ? "−" : "+"
+                Text("\(Text(amount).foregroundStyle(.secondary)) \(Text("\(sign)\(Fmt.pct(abs(pnl.pct).rounded(1, .plain)))").foregroundStyle(pnl.usd < 0 ? Brand.loss : Brand.profit))")
+                    .font(.ui(9.5)).monospacedDigit().lineLimit(1)
+                    .help("\(pnl.usd < 0 ? "Loss" : "Profit") \(Fmt.usd(abs(pnl.usd))) since it was bought here")
+            } else {
+                Text(amount).font(.ui(9.5)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+            }
+        }
+    }
+}
+
+extension Workspace {
+    /// What a held token made or lost since it was bought in the app; nil for one that came from elsewhere (no cost to
+    /// compare). Solana's are kept by mint, the others by «network:contract».
+    func purchasePnL(_ t: Holding) -> (usd: Decimal, pct: Decimal)? {
+        guard let price = t.price else { return nil }
+        return (costBasis[t.id] ?? costBasis[t.contract])?.pnl(held: t.amount, price: price)
+    }
+}
+
+/// A coin's dollars and, under them, how its price moved in 24 hours.
+struct CoinValue: View {
+    let value: String
+    var change: Decimal? = nil
+
+    var body: some View {
+        VStack(alignment: .trailing, spacing: 0) {
+            Text(value).font(.ui(12, .bold)).monospacedDigit().lineLimit(1)
+            if let change {
+                let move = Text("\(change < 0 ? "−" : "+")\(Fmt.pct(abs(change).rounded(1, .plain)))").foregroundStyle(change < 0 ? Brand.loss : Brand.profit)
+                Text("\(move) \(Text("24h").foregroundStyle(.secondary))")
+                    .font(.ui(9, .semibold)).monospacedDigit().lineLimit(1)
+                    .help("How far the price moved in the last 24 hours")
+            }
         }
     }
 }

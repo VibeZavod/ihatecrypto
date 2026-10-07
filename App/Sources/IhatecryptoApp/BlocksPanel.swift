@@ -75,7 +75,7 @@ struct BlocksPanel: View {
         } else {
             let text = example(b)
             Button {
-                ws.draft = text
+                ws.suggest(text)
                 close()
             } label: { RouteCard(step: bubble(b), state: .plain, compact: true, hint: "Puts “\(text)” into the chat") }
                 .buttonStyle(.plain)

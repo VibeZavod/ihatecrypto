@@ -1357,7 +1357,7 @@ struct StudioCanvas: View {
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(148), spacing: 12), count: 3), alignment: .leading, spacing: 12) {
                 ForEach(TemplatesPanel.templates.prefix(6), id: \.title) { t in
                     let look = TemplatesPanel.looks[t.title]
-                    Button { ws.draft = t.phrase } label: {
+                    Button { ws.suggest(t.phrase) } label: {
                         VStack(alignment: .leading, spacing: 0) {
                             RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.06)).frame(width: 34, height: 34)
                                 .overlay(Image(systemName: look?.icon ?? "square.grid.2x2").font(.system(size: 15, weight: .semibold))
@@ -1687,32 +1687,29 @@ struct StatusChip: View {
 
 // MARK: Portfolio frame
 
-/// Tokens beyond the balances read one by one, inside their network's card. The ones the user hid, and airdrops that
-/// look like scams, are tucked under «N hidden» instead of shown.
-struct TokenList: View {
+/// The tokens on a network's card the user hid, and airdrops that look like scams: tucked under «N hidden» at the end
+/// of the card's coins (the shown ones are among them, NetworkCard).
+struct HiddenTokens: View {
     @Environment(Workspace.self) private var ws
     /// The network's Holding.chain: «solana», «base», «robinhood»…
     let chain: String
     @State private var showTucked = false
 
     var body: some View {
-        let mine = { (t: Holding) in t.chain == chain }
-        let shown = ws.shownTokens.filter(mine), tucked = ws.tuckedTokens.filter(mine)
-        if !shown.isEmpty || !tucked.isEmpty {
+        let tucked = ws.tuckedTokens.filter { $0.chain == chain }
+        if !tucked.isEmpty {
             VStack(alignment: .leading, spacing: 6) {
-                ForEach(shown) { HoldingRow(token: $0, shown: true) }
-                if !tucked.isEmpty {
-                    Button(showTucked ? "Collapse" : "\(tucked.count) hidden · show") { withAnimation(.snappy) { showTucked.toggle() } }
-                        .buttonStyle(.plain).font(.ui(10, .semibold)).foregroundStyle(.secondary)
-                        .help("Tokens you hid, and airdrops that look like scams: unverified, with no real pool")
-                    if showTucked { ForEach(tucked) { HoldingRow(token: $0, shown: false) } }
-                }
+                Button(showTucked ? "Collapse" : "\(tucked.count) hidden · show") { withAnimation(.snappy) { showTucked.toggle() } }
+                    .buttonStyle(.plain).font(.ui(10, .semibold)).foregroundStyle(.secondary)
+                    .help("Tokens you hid, and airdrops that look like scams: unverified, with no real pool")
+                if showTucked { ForEach(tucked) { HoldingRow(token: $0, shown: false) } }
             }
         }
     }
 }
 
-/// One token: its icon, symbol, value and amount. The eye hides it (on hover) or shows a tucked one.
+/// One token: its icon, symbol and amount under it; its value and the day's move on the right. The eye hides it (on
+/// hover) or shows a tucked one.
 struct HoldingRow: View {
     @Environment(Workspace.self) private var ws
     let token: Holding
@@ -1729,8 +1726,8 @@ struct HoldingRow: View {
                     .overlay(Text(token.symbol.prefix(1)).font(.ui(9, .bold)).foregroundStyle(Brand.solanaInk))
             }
             .frame(width: 20, height: 20).clipShape(Circle())
-            Text(token.symbol).font(.ui(12, .semibold)).lineLimit(1)
-            if token.verified { VerifiedBadge(size: 12) } else { Text("unverified").font(.ui(9)).foregroundStyle(.secondary) }
+            // What it made or lost since bought here, after the amount: in the hint alone it looked as if there was none.
+            CoinName(symbol: token.symbol, amount: Fmt.num(token.amount, maxFraction: 4), verified: token.verified, pnl: ws.purchasePnL(token))
             Spacer(minLength: 4)
             // 20 pt, under the row's own height: at the usual 28 the row grew while the pointer was on it, and the card's
             // new height redrew the whole canvas on every row the pointer crossed. Kept out of the row until hovered: one
@@ -1739,22 +1736,15 @@ struct HoldingRow: View {
                 Button { withAnimation(.snappy) { ws.tokenChoices[token.id] = !shown } } label: { Image(systemName: shown ? "eye.slash" : "eye") }
                     .buttonStyle(HoverIconStyle(size: 20)).help(shown ? "Hide \(token.symbol): it leaves the portfolio and its total" : "Show \(token.symbol) in the portfolio")
             }
-            VStack(alignment: .trailing, spacing: 0) {
-                Text(token.usd.map(Fmt.usd) ?? "no price").font(.ui(12, .bold)).monospacedDigit()
-                // What it made or lost since it was bought here; tokens that came from elsewhere have no cost to compare.
-                if let price = token.price, let pnl = ws.costBasis[token.contract]?.pnl(held: token.amount, price: price) {
-                    Text("\(Fmt.num(token.amount, maxFraction: 4)) · \(pnl.usd < 0 ? "−" : "+")\(Fmt.pct(abs(pnl.pct).rounded(1, .plain)))")
-                        .font(.ui(9, .semibold)).foregroundStyle(pnl.usd < 0 ? Brand.loss : Brand.profit).monospacedDigit()
-                        .help("\(pnl.usd < 0 ? "Loss" : "Profit") \(Fmt.usd(abs(pnl.usd))) on what was bought here")
-                } else {
-                    Text(Fmt.num(token.amount, maxFraction: 4)).font(.ui(9)).foregroundStyle(.secondary).monospacedDigit()
-                }
-            }
+            // A network's own coin (ETH on Arbitrum) without a pool's word: Hyperliquid's market of it.
+            CoinValue(value: token.usd.map(Fmt.usd) ?? "no price",
+                      change: token.change24h ?? (token.native ? ws.markets[token.symbol.uppercased()]?.change24h : nil))
         }
         .opacity(shown ? 1 : 0.6)
         .contentShape(Rectangle())
         .onHover { hover = $0 }
-        // A click opens the token (its board, or the chart of a network's own coin); right-click asks the chat about it or trades it.
+        // A click opens the token (its board, or the chart of a network's own coin); right-click asks the chat about it or
+        // trades it.
         .modifier(RowLink(action: ws.opener(chain: token.chain, contract: token.contract, symbol: token.symbol),
                           help: "\(token.symbol): details and chart · right-click to ask the chat, buy or sell"))
         .modifier(TokenMenu(chain: token.chain, address: token.native || token.chain == "hyperliquid" ? nil : token.contract,
@@ -2273,7 +2263,7 @@ struct FloatingChat: View {
                             VStack(spacing: 6) {
                                 ForEach([("chart.line.uptrend.xyaxis", "long ETH risk $0.25 by the book"), ("building.columns", "where to keep USDC"),
                                          ("calendar.badge.clock", "buy SOL for 2 USDC every week"), ("arrow.down.to.line", "withdraw 1 USDC to Solana")], id: \.1) { icon, phrase in
-                                    Button { ws.draft = phrase } label: {
+                                    Button { ws.suggest(phrase) } label: {
                                         HStack(spacing: 10) {
                                             Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.accentInk)
                                                 .frame(width: 28, height: 28)
@@ -2803,7 +2793,7 @@ private struct ChatComposer: View {
             .foregroundStyle(.secondary)
             .help("Plan templates")
             .popover(isPresented: $templatesOpen, arrowEdge: .top) {
-                TemplatesPanel { phrase in ws.draft = phrase; templatesOpen = false }
+                TemplatesPanel { phrase in ws.suggest(phrase); templatesOpen = false }
             }
             // «$SOL» shows as the token's chip (ComposerField); Shift-Return breaks the line, Return sends.
             ZStack(alignment: .topLeading) {
@@ -3686,7 +3676,7 @@ struct YieldBubbles: View {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 140), spacing: 10)], alignment: .leading, spacing: 10) {
                 ForEach(Array(options.prefix(8).enumerated()), id: \.offset) { _, o in
                     let size = 96 + 70 * CGFloat(NSDecimalNumber(decimal: o.apy / max(top, 0.0001)).doubleValue)
-                    Button { if let how = o.how { ws.draft = how } } label: {
+                    Button { if let how = o.how { ws.suggest(how) } } label: {
                         VStack(spacing: 3) {
                             TokenLogo(name: logo(o.place), size: 26)
                             Text("\(Fmt.num(o.apy.rounded(2, .plain)))%").font(.ui(size > 140 ? 24 : 19, .heavy)).monospacedDigit()

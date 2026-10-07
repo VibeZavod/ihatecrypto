@@ -87,7 +87,7 @@ struct WhatsNewPanel: View {
     var body: some View {
         ZStack {
             if let p = WhatsNew.shared.playing, let release = WhatsNew.shared.releases.first(where: { $0.version == p.version }) {
-                StoriesView(release: release, start: p.start, tryIt: { phrase in ws.draft = phrase; WhatsNew.shared.open = false },
+                StoriesView(release: release, start: p.start, tryIt: { phrase in ws.suggest(phrase); WhatsNew.shared.open = false },
                             close: { WhatsNew.shared.playing = nil })
                     .id("\(p.version)·\(p.start)").zIndex(1).transition(.opacity)
             }

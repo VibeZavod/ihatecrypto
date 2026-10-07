@@ -17,6 +17,8 @@ public struct Market: Sendable, Equatable {
     public let dex: String?
     /// Traded in the last 24 hours, USD; orders the market picker.
     public var volume24h: Decimal = 0
+    /// How far the price moved in 24 hours, in %; nil without the price from then.
+    public var change24h: Decimal? { prevDayPx.flatMap { $0 > 0 ? (markPx - $0) / $0 * 100 : nil } }
 
     public enum Group: String, CaseIterable, Sendable {
         case crypto = "Crypto"

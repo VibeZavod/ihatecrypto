@@ -190,7 +190,8 @@ public enum Solana {
             if tags.contains("jup-lend-earn"), !lendShares { return nil }
             return Holding(chain: "solana", contract: mint, amount: amount, symbol: t["symbol"] as? String ?? String(mint.prefix(4)) + "…",
                            icon: (t["icon"] as? String).flatMap(URL.init(string:)), price: Holdings.number(t["usdPrice"]),
-                           verified: t["isVerified"] as? Bool == true || tags.contains("verified"), liquidity: Holdings.number(t["liquidity"]))
+                           verified: t["isVerified"] as? Bool == true || tags.contains("verified"), liquidity: Holdings.number(t["liquidity"]),
+                           change24h: Holdings.number((t["stats24h"] as? [String: Any])?["priceChange"]))
         }
         .sorted { ($0.usd ?? 0, $0.symbol) > ($1.usd ?? 0, $1.symbol) }
     }

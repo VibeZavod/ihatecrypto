@@ -19,6 +19,8 @@ public struct Holding: Sendable, Identifiable, Equatable {
     public var liquidity: Decimal?
     /// The network's own coin (ETH on Arbitrum and Ethereum): gas, in the balance but not in the risk rules' capital.
     public var native = false
+    /// How far the price moved in 24 hours, in %, where the market that priced it says (Jupiter, DexScreener, Hyperliquid's book).
+    public var change24h: Decimal? = nil
 
     /// The key the user's show/hide choice is kept under: the mint on Solana, «chain:contract» elsewhere.
     public var id: String { chain == "solana" ? contract : "\(chain):\(contract.lowercased())" }
@@ -55,12 +57,12 @@ public enum Holdings {
         case .some(let a?): if let eth = nativeCoin(chain, a) { out.append(eth) }
         case .none: break
         }
-        // Tokens CoinGecko doesn't list get DexScreener's price and pool, so the scam check has something to go on.
-        // DexScreener takes 30 contracts a call.
+        // DexScreener gives every token its day's move, and the ones CoinGecko doesn't list their price and pool, so the
+        // scam check has something to go on. It takes 30 contracts a call; the priced ones go first.
         // ponytail: 20 calls at most (600 tokens); past that the rest stays listed under «hidden», unpriced.
-        let unpriced = out.filter { $0.price == nil }.map(\.contract)
-        for start in stride(from: 0, to: min(unpriced.count, 600), by: 30) {
-            let chunk = unpriced[start..<min(start + 30, unpriced.count)]
+        let asked = (out.filter { $0.price != nil } + out.filter { $0.price == nil }).filter { !$0.native }.map(\.contract)
+        for start in stride(from: 0, to: min(asked.count, 600), by: 30) {
+            let chunk = asked[start..<min(start + 30, asked.count)]
             out = dexPrices(out, try? await HTTP.get("https://api.dexscreener.com/tokens/v1/\(chain)/" + chunk.joined(separator: ",")))
         }
         return out
@@ -184,20 +186,24 @@ public enum Holdings {
                        price: number(a["exchange_rate"]), verified: true, native: true)
     }
 
-    /// The deepest pool per token from DexScreener's pairs.
+    /// The deepest pool per token from DexScreener's pairs: its day's move for every token, its price and pool for an
+    /// unpriced one (a CoinGecko rate stays).
     static func dexPrices(_ tokens: [Holding], _ data: Data?) -> [Holding] {
-        var best: [String: (price: Decimal, liquidity: Decimal)] = [:]
+        var best: [String: (price: Decimal, liquidity: Decimal, change: Decimal?)] = [:]
         for pair in json(data) as? [[String: Any]] ?? [] {
             guard let base = ((pair["baseToken"] as? [String: Any])?["address"] as? String)?.lowercased(),
                   let price = number(pair["priceUsd"]) else { continue }
             let liquidity = number((pair["liquidity"] as? [String: Any])?["usd"]) ?? 0
-            if liquidity >= best[base]?.liquidity ?? -1 { best[base] = (price, liquidity) }
+            if liquidity >= best[base]?.liquidity ?? -1 { best[base] = (price, liquidity, number((pair["priceChange"] as? [String: Any])?["h24"])) }
         }
         return tokens.map { t in
-            guard t.price == nil, let b = best[t.contract] else { return t }
+            guard let b = best[t.contract] else { return t }
             var priced = t
-            priced.price = b.price
-            priced.liquidity = b.liquidity
+            priced.change24h = t.change24h ?? b.change
+            if t.price == nil {
+                priced.price = b.price
+                priced.liquidity = b.liquidity
+            }
             return priced
         }
     }
@@ -224,8 +230,9 @@ public enum Holdings {
             // The token's market against USDC (token 0) on the spot book.
             let market = universe.first { ($0["tokens"] as? [Int]) == [token, 0] }
             let context = (market?["index"] as? Int).flatMap { $0 < contexts.count ? contexts[$0] : nil }
-            return Holding(chain: "hyperliquid", contract: coin, amount: amount, symbol: coin,
-                           price: number(context?["midPx"]) ?? number(context?["markPx"]), liquidity: number(context?["dayNtlVlm"]))
+            let price = number(context?["midPx"]) ?? number(context?["markPx"]), before = number(context?["prevDayPx"])
+            return Holding(chain: "hyperliquid", contract: coin, amount: amount, symbol: coin, price: price, liquidity: number(context?["dayNtlVlm"]),
+                           change24h: price.flatMap { p in before.flatMap { $0 > 0 ? (p - $0) / $0 * 100 : nil } })
         }
     }
 

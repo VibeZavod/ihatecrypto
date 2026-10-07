@@ -418,24 +418,35 @@ struct PlaceDetailBoard: View {
     }
 
     /// A network in detail, like Robinhood's stock tokens: the same places and tokens as its card on the portfolio
-    /// (idle money, gas, deposits, deposits made on a site, every token on show), a row each, a click opening its board.
+    /// (idle money, gas, deposits, deposits made on a site, every token on show), the coins the most money first, then
+    /// the deposits; every row opens something (Workspace.opener), as on the card.
     @ViewBuilder private func networkRows(_ n: ModuleNetwork) -> some View {
-        ForEach(ws.networkLines(n)) { line in
-            detailRow(TokenLogo(name: line.logo, size: 24), title: line.title, detail: line.detail,
-                      value: line.usdc ? "\(Fmt.num(line.usd)) USDC" : line.amount ?? Fmt.usd(line.usd),
-                      sub: line.amount != nil && line.usd > 0 ? "≈ \(Fmt.usd(line.usd))" : nil,
-                      open: line.place.map { p in { withAnimation(StudioView.spring) { ws.detail = p } } })
+        let lines = ws.networkLines(n)
+        ForEach(ws.networkCoins(n, lines: lines)) { coin in
+            switch coin {
+            case .line(let line): lineRow(line, n)
+            case .stock(let s):
+                detailRow(StockLogo(symbol: s.symbol, url: s.logo, size: 24), title: s.symbol, detail: "\(Fmt.num(s.amount, maxFraction: 6)) · \(s.price.map { "$" + Fmt.price($0) } ?? "no price")",
+                          value: Fmt.usd(s.usd), sub: nil, open: { ws.openToken(s.address) })
+            case .token(let t):
+                // An unverified token's icon URL is its creator's pick: not fetched (HoldingRow's rule).
+                detailRow(RemoteIcon(url: t.verified ? t.icon : nil, size: 24) {
+                              Circle().fill(Brand.solanaInk.opacity(0.15)).overlay(Text(t.symbol.prefix(1)).font(.ui(10, .bold)).foregroundStyle(Brand.solanaInk))
+                          }.frame(width: 24, height: 24).clipShape(Circle()),
+                          title: t.symbol + (t.verified ? "" : " · unverified"),
+                          detail: "\(Fmt.num(t.amount, maxFraction: 6)) · \(t.price.map { "$" + Fmt.price($0) } ?? "no price")",
+                          value: t.usd.map(Fmt.usd) ?? "—", sub: nil,
+                          open: ws.opener(chain: t.chain, contract: t.contract, symbol: t.symbol))
+            }
         }
-        ForEach(ws.shownTokens.filter { $0.chain == n.rawValue }) { t in
-            // An unverified token's icon URL is its creator's pick: not fetched (HoldingRow's rule).
-            detailRow(RemoteIcon(url: t.verified ? t.icon : nil, size: 24) {
-                          Circle().fill(Brand.solanaInk.opacity(0.15)).overlay(Text(t.symbol.prefix(1)).font(.ui(10, .bold)).foregroundStyle(Brand.solanaInk))
-                      }.frame(width: 24, height: 24).clipShape(Circle()),
-                      title: t.symbol + (t.verified ? "" : " · unverified"),
-                      detail: "\(Fmt.num(t.amount, maxFraction: 6)) · \(t.price.map { Fmt.usd($0) } ?? "no price")",
-                      value: t.usd.map(Fmt.usd) ?? "—", sub: nil,
-                      open: { ws.openToken(t.contract, chain: t.chain) })
-        }
+        ForEach(lines.filter { $0.kind == .earning }) { lineRow($0, n) }
+    }
+
+    private func lineRow(_ line: NetworkLine, _ n: ModuleNetwork) -> some View {
+        detailRow(TokenLogo(name: line.logo, size: 24), title: line.title, detail: line.detail,
+                  value: line.usdc ? "\(Fmt.num(line.usd)) USDC" : line.amount ?? Fmt.usd(line.usd),
+                  sub: line.amount != nil && line.usd > 0 ? "≈ \(Fmt.usd(line.usd))" : nil,
+                  open: ws.opener(line, chain: n.rawValue))
     }
 
     private func detailRow(_ logo: some View, title: String, detail: String, value: String, sub: String?, open: (() -> Void)?) -> some View {
@@ -491,7 +502,7 @@ struct PlaceDetailBoard: View {
         Flow(spacing: 6) {
             ForEach(phrases, id: \.0) { p in
                 Button {
-                    if p.1 == "top up" { withAnimation(StudioView.spring) { ws.showReceive = true } } else { ws.draft = p.1 }
+                    if p.1 == "top up" { withAnimation(StudioView.spring) { ws.showReceive = true } } else { ws.suggest(p.1) }
                 } label: {
                     Label(p.0, systemImage: Self.icon(p.0)).font(.ui(12, .semibold)).foregroundStyle(Brand.accentInk)
                         .padding(.horizontal, 10).padding(.vertical, 6).background(Capsule().fill(Brand.accent.opacity(0.1)))

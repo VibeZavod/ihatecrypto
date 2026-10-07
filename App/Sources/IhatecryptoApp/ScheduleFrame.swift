@@ -281,7 +281,7 @@ struct ScheduleFrame: View {
             }
             Flow(spacing: 6) {
                 ForEach(["every week: rebalance USDC", "every day at 09:00: what's moving"], id: \.self) { e in
-                    Button { ws.draft = e } label: {
+                    Button { ws.suggest(e) } label: {
                         Label(e, systemImage: "text.bubble").font(.ui(11, .medium)).padding(.horizontal, 9).padding(.vertical, 5)
                             .overlay(Capsule().strokeBorder(Brand.cardBorder))
                     }

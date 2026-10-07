@@ -865,7 +865,7 @@ final class Workspace {
             if screen.problems.count == 1, found.commands.isEmpty, found.transferVerb, let address = found.addresses.first {
                 let lower = text.lowercased()
                 let net = AddressBookCommand.network(lower) ?? (address.hasPrefix("0x") ? "base" : "solana")
-                draft = say("save \(address) as NAME on \(net)", "сохрани \(address) как ИМЯ на \(net)")
+                suggest(say("save \(address) as NAME on \(net)", "сохрани \(address) как ИМЯ на \(net)"))
                 reply(say("Money goes only to saved addresses, so a swapped address can't receive it. Save this one first: the phrase is in the field — put a name instead of NAME (and another network if it isn't \(net)), send it, and check the address on the card. Then say “send <amount> USDC to <name>”.",
                           "Деньги уходят только на сохранённые адреса — так подменённый адрес ничего не получит. Сначала сохрани этот: фраза уже в поле — впиши имя вместо ИМЯ (и другую сеть, если не \(net)), отправь и сверь адрес на карточке. Потом скажи «переведи <сумма> USDC <имя>»."),
                       note: "guard: sends go to saved addresses")

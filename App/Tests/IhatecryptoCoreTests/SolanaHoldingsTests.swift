@@ -4,7 +4,7 @@ import Testing
 
 @Test func solanaHoldingsShowBoughtTokensAndTuckAwayAirdrops() {
     let json = """
-    [{"id": "RAYmint", "symbol": "RAY", "icon": "https://cdn/ray.png", "usdPrice": 1.88, "liquidity": 18801373, "isVerified": true, "tags": ["verified"]},
+    [{"id": "RAYmint", "symbol": "RAY", "icon": "https://cdn/ray.png", "usdPrice": 1.88, "liquidity": 18801373, "isVerified": true, "tags": ["verified"], "stats24h": {"priceChange": -2.5}},
      {"id": "jlUSDCmint", "symbol": "jlUSDC", "usdPrice": 1.06, "isVerified": true, "tags": ["verified", "jup-lend-earn"]},
      {"id": "MEMEmint", "symbol": "POKEMON", "usdPrice": 0.0004, "liquidity": 36500, "isVerified": false, "tags": ["token-2022"]},
      {"id": "SPAMmint", "symbol": "USDC", "usdPrice": 0.000001, "liquidity": 12, "isVerified": false, "tags": []}]
@@ -17,6 +17,7 @@ import Testing
     // The most valuable first.
     #expect(held.first?.symbol == "RAY")
     #expect(held.first?.usd == Decimal(string: "1.88")! * Decimal(string: "1.065743")!)
+    #expect(held.first?.change24h == Decimal(string: "-2.5")!)
 
     let bySymbol = Dictionary(uniqueKeysWithValues: held.map { ($0.contract, $0) })
     #expect(bySymbol["RAYmint"]?.looksReal == true)
@@ -46,10 +47,14 @@ import Testing
     #expect(tokens.map(\.symbol) == ["AERO", "MEME", "Claim-USDC.com", "USDT"])
     let dex = """
     [{"baseToken": {"address": "0xmeme"}, "priceUsd": "0.002", "liquidity": {"usd": 5000}},
-     {"baseToken": {"address": "0xmeme"}, "priceUsd": "0.0021", "liquidity": {"usd": 80000}}]
+     {"baseToken": {"address": "0xmeme"}, "priceUsd": "0.0021", "liquidity": {"usd": 80000}, "priceChange": {"h24": 12.4}},
+     {"baseToken": {"address": "0x940181a94a35a4569e4529a3cdfb74e38fd98631"}, "priceUsd": "0.9", "liquidity": {"usd": 9000000}, "priceChange": {"h24": -1.5}}]
     """
     let priced = Dictionary(uniqueKeysWithValues: Holdings.dexPrices(tokens, Data(dex.utf8)).map { ($0.symbol, $0) })
+    // CoinGecko's rate stays; the pool adds the day's move.
     #expect(priced["AERO"]?.usd == Decimal(string: "2.0066424")!)
+    #expect(priced["AERO"]?.change24h == Decimal(string: "-1.5")!)
+    #expect(priced["MEME"]?.change24h == Decimal(string: "12.4")!)
     #expect(priced["AERO"]?.looksReal == true)
     // Not on CoinGecko, but the deepest pool prices it: bought, so shown.
     #expect(priced["MEME"]?.price == Decimal(string: "0.0021")!)
@@ -66,13 +71,14 @@ import Testing
     """
     let meta = """
     [{"universe": [{"tokens": [1, 0], "index": 0}, {"tokens": [150, 0], "index": 1}]},
-     [{"midPx": "0.143", "dayNtlVlm": "2830499"}, {"midPx": "87.77", "dayNtlVlm": "90000000"}]]
+     [{"midPx": "0.143", "dayNtlVlm": "2830499"}, {"midPx": "87.77", "prevDayPx": "80", "dayNtlVlm": "90000000"}]]
     """
     let spot = Holdings.hyperliquidSpot(Data(state.utf8), meta: Data(meta.utf8))
     #expect(spot.map(\.symbol) == ["USDC", "HYPE"])
     #expect(spot[0].usd == Decimal(string: "3.5")!)
     #expect(spot[1].usd == Decimal(string: "43.885")!)
     #expect(spot[1].looksReal == true)
+    #expect(spot[1].change24h == Decimal(string: "9.7125")!)
 }
 
 @Test func nearTokensLeaveWrappedNearToTheNearRow() {
