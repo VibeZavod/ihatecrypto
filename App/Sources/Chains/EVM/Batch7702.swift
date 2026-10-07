@@ -10,8 +10,9 @@ import WalletCore
 public enum Batch7702 {
     public static let delegate = "0x4cd241e8d1510e30b2076397afc7508ae59c66c9"
     /// Networks past Prague (type-4 transactions taken, checked by a signed authorization's gas estimate) with that
-    /// bytecode at `delegate`: Ethereum, Polygon, Arbitrum, Base, Robinhood Chain.
-    public static let chains: Set<UInt64> = [1, 137, 42161, 8453, 4663]
+    /// bytecode at `delegate`: Ethereum, Polygon, Arbitrum, Base, Robinhood Chain, and Optimism (the same code there,
+    /// checked 2026-10-07). Not HyperEVM: no code at `delegate`, and its node refuses type-4 transactions.
+    public static let chains: Set<UInt64> = [1, 137, 42161, 8453, 4663, 10]
     /// ERC-4337's EntryPoints v0.6, v0.7 and v0.8: a delegated account obeys a user operation its key signed for one.
     public static let entryPoints: Set<String> = ["0x5ff137d4b0fdcd49dca30c7cf57e578a026d2789", "0x0000000071727de22e5e9d8baf0edac6f37da032",
                                                   "0x4337084d9e255ff0702461cf8895ce9e3b5ff108"]

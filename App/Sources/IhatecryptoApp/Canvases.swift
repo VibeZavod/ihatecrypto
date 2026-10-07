@@ -245,6 +245,11 @@ extension Workspace {
     /// canvas stays open and shows the card with «Open». The next note to the same folder from there is one more card on
     /// that note canvas, not a canvas of its own. A new folder name makes the folder.
     func folderCommand(_ command: FolderCommand, note: String? = nil) {
+        // A typo of a folder that's there is that folder, not a new one beside it (route-check: «Resarch» made one).
+        let command: FolderCommand = switch command {
+        case .save(let f): .save(folder: FolderCommand.existing(f, among: canvasFolders) ?? f)
+        case .note(let f, let text): .note(folder: FolderCommand.existing(f, among: canvasFolders) ?? f, text: text)
+        }
         switch command {
         case .save(let folder):
             saveCanvas()

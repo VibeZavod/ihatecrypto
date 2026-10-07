@@ -491,7 +491,9 @@ extension Decimal {
 public struct EVMSimulation: Equatable, Sendable {
     public static let native = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
     /// WETH9 on Ethereum and Base; Arbitrum's WETH logs a Transfer on wrap.
-    static let weth9: Set<String> = ["0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", "0x4200000000000000000000000000000000000006"]
+    /// WETH on Ethereum and the OP chains, WHYPE on HyperEVM (the same WETH9 code).
+    static let weth9: Set<String> = ["0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", "0x4200000000000000000000000000000000000006",
+                                     "0x5555555555555555555555555555555555555555"]
     static let transfer = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
     static let deposit = "0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c"
     static let withdrawal = "0x7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65"

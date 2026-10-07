@@ -116,9 +116,15 @@ public enum Holdings {
     /// HyperEVM, read from its node (its explorers have no API ihatecrypto can use): HYPE itself, USDC — what Relay
     /// brings — USD₮0 and WHYPE, HYPE priced by Relay, with the icons Relay publishes (its /chains, 2026-10-06). nil when
     /// the node didn't answer.
+    /// Unit's UBTC, UETH and USOL and Kinetiq's kHYPE too, the coins ihatecrypto swaps there (EVMTokens.hyperevm), priced
+    /// by DexScreener.
     static let hyperevmTokens = [("0xb88339cb7199b77e23db6e890353e22632ba630f", "USDC", 6, "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png"),
                                  ("0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb", "USD₮0", 6, "https://coin-images.coingecko.com/coins/images/53705/large/usdt0.jpg"),
-                                 ("0x5555555555555555555555555555555555555555", "WHYPE", 18, "https://coin-images.coingecko.com/coins/images/54469/large/_UP3jBsi_400x400.jpg")]
+                                 ("0x5555555555555555555555555555555555555555", "WHYPE", 18, "https://coin-images.coingecko.com/coins/images/54469/large/_UP3jBsi_400x400.jpg"),
+                                 ("0x9fdbda0a5e284c32744d2f17ee5c74b284993463", "UBTC", 8, ""),
+                                 ("0xbe6727b535545c67d5caa73dea54865b92cf7907", "UETH", 18, ""),
+                                 ("0x068f321fa8fb9f0d135f290ef6a3e2813e1c8a29", "USOL", 9, ""),
+                                 ("0xfd739d4e423301ce9385c1fb8850539d657c296d", "kHYPE", 18, "")]
     static let hypeIcon = URL(string: "https://assets.coingecko.com/coins/images/50882/standard/hyperliquid.jpg")
     static func hyperevm(_ address: String) async -> [Holding]? {
         let owner = address.lowercased().replacingOccurrences(of: "0x", with: "")
@@ -136,10 +142,14 @@ public enum Holdings {
             guard let units = await quantity(["jsonrpc": "2.0", "id": 1, "method": "eth_call",
                                               "params": [["to": contract, "data": "0x70a08231" + String(repeating: "0", count: 24) + owner], "latest"]]) else { return nil }
             if units > 0 {
+                let dollar = symbol == "USDC" || symbol == "USD₮0"
                 out.append(Holding(chain: "hyperevm", contract: contract, amount: units / pow(10, decimals), symbol: symbol, icon: URL(string: icon),
-                                   price: symbol == "WHYPE" ? price : 1, verified: true))
+                                   price: symbol == "WHYPE" ? price : dollar ? 1 : nil, verified: true))
             }
         }
+        // The swapped coins (UBTC…) priced by their deepest pool; nothing asked when none is held.
+        let unpriced = out.filter { $0.price == nil }.map(\.contract)
+        if !unpriced.isEmpty { out = dexPrices(out, try? await HTTP.get("https://api.dexscreener.com/tokens/v1/hyperevm/" + unpriced.joined(separator: ","))) }
         return out
     }
 

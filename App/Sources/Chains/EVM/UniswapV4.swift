@@ -41,6 +41,14 @@ public enum UniswapV4 {
         case 137: Deployment(poolManager: "0x67366782805870060151383f4bbff9dab53e5cd6", quoter: "0xb3d5c3dfc3a7aebff71895a7191796bffc2c81b9",
                              router: "0xdc264714f68d84cf29bc605589405e78bdbe7c9f", positionManager: "0x1ec2ebf4f37e7363fdfe3551602425af0b3ceef9",
                              blockscout: "polygon.blockscout.com")
+        // Optimism and HyperEVM, Universal Router 2.1.2 (the same build as Base's; its V4Quoter and PositionManager name the
+        // PoolManager, checked 2026-10-07). HyperEVM has no Blockscout: a pool's key comes from the PositionManager alone.
+        case 10: Deployment(poolManager: "0x9a13f98cb987694c9f086b1f5eb990eea8264ec3", quoter: "0x1f3131a13296fb91c90870043742c3cdbff1a8d7",
+                            router: "0xc09255d86db563cbc11c2fcf4a0c512e160111b4", positionManager: "0x3c3ea4b57a46241e54610e5f022e5c45859a1017",
+                            blockscout: "explorer.optimism.io")
+        case 999: Deployment(poolManager: "0x12d4fd9c5dedd00ab8a0bce2cf0167bbf94b6b1f", quoter: "0x108bfe38532c98f8cd8d7ab49c9ddaa3675a1c5e",
+                             router: "0xed270a1bcdc63cf1356d695e7f40961d4819d6bf", positionManager: "0x0d7ab5b3db668128aff6f70c4ebc71d7d4da9bf9",
+                             blockscout: "")
         default: nil
         }
     }

@@ -21,6 +21,23 @@ import Testing
     }
 }
 
+/// Swaps on HyperEVM and Optimism (2026-10-07): a token there for USDC, for another, HYPE as HyperEVM's own coin.
+@Test func swapsOnOptimismAndHyperEVM() {
+    #expect(WalletCommand.parse("buy UBTC on hyperevm for 5 USDC") == .buyOn("hyperevm", token: "UBTC", usdc: 5))
+    #expect(WalletCommand.parse("купи OP на оптимизме на 5 USDC") == .buyOn("optimism", token: "OP", usdc: 5))
+    #expect(WalletCommand.parse("sell all OP on optimism") == .sellOn("optimism", token: "OP", amount: nil))
+    #expect(WalletCommand.parse("swap 5 USDC for OP on optimism") == .buyOn("optimism", token: "OP", usdc: 5, from: "optimism"))
+    #expect(WalletCommand.parse("swap 0.001 ETH for OP on optimism") == .swapOn("optimism", from: "ETH", to: "OP", amount: Decimal(string: "0.001")!))
+    // HYPE is HyperEVM's coin: for USDC or back it stays a swap, not a buy that looks HYPE up as a token.
+    #expect(WalletCommand.parse("swap 5 USDC for HYPE on hyperevm") == .swapOn("hyperevm", from: "USDC", to: "HYPE", amount: 5))
+    #expect(WalletCommand.parse("swap 5 USDC for UBTC on hyperevm") == .swapOn("hyperevm", from: "USDC", to: "UBTC", amount: 5))
+    #expect(WalletCommand.parse("поменяй 0.1 HYPE на UBTC на хайперевм") == .swapOn("hyperevm", from: "HYPE", to: "UBTC", amount: Decimal(string: "0.1")!))
+    for c in [WalletCommand.buyOn("hyperevm", token: "UBTC", usdc: 5), .swapOn("optimism", from: "ETH", to: "OP", amount: 1),
+              .swapOn("hyperevm", from: "USDC", to: "HYPE", amount: 5)] {
+        #expect(WalletCommand.parse(c.summary) == c, "\(c.summary)")
+    }
+}
+
 /// Optimism, the first network added on demand (2026-10-06): moves to and from it, gas, sends, CCTP by name.
 @Test func optimismIsAPlaceOfItsOwn() {
     #expect(WalletCommand.parse("move 2 USDC from Solana to Optimism") == .solanaTo("optimism", 2))
@@ -35,4 +52,17 @@ import Testing
     for c in [WalletCommand.solanaTo("optimism", 2), .evmToSolana("optimism", 1), .bridge(from: "optimism", to: "arbitrum", 4), .gas("optimism", usd: 1)] {
         #expect(WalletCommand.parse(c.summary) == c, "\(c.summary)")
     }
+}
+
+/// A money move the wallet parser can't take — a network ihatecrypto doesn't have, a swap it can't place — is never read
+/// as a trade plan of the ticker it names (route-check, 2026-10-07: «move 5 USDC from Solana to BNB» was «long BNB»).
+@Test func anUnknownMoneyMoveIsNotATradePlan() {
+    let markets: Set<String> = ["ETH", "BNB", "CAKE", "OP", "HYPE", "SOL"]
+    for line in ["move 5 USDC from Solana to BNB", "move 5 USDC from Solana to BSC", "buy CAKE on bnb for 5 USDC",
+                 "swap 0.01 BNB for USDT on bsc", "переведи 10 USDC на бнб", "купи CAKE на бнб чейне на 5$", "send 5 USDT to Binance on bsc"] {
+        #expect(IntentParser.apply(line, to: TradeIntent(), markets: markets) == nil, "\(line)")
+    }
+    // Plans still read: a long, a stop moved.
+    #expect(IntentParser.apply("long BNB 5 USDC", to: TradeIntent(), markets: markets)?.asset == "BNB")
+    #expect(IntentParser.apply("move stop to 3%", to: TradeIntent(), markets: markets) != nil)
 }

@@ -527,5 +527,9 @@ extension UniswapV4 {
             "0xfef8e78090697c808116c56a9e81fc83d4f76000",
             "0xffd39ccd8baea0c8f809a500806386242d3a1000",
         ],
+        10: [
+            "0x9df32940f91e9c1d00eeeecd05da3518cfec5540",
+            "0xc375f636db1fb4b53e3a776ccb98e6ea458b4800",
+        ],
     ]
 }

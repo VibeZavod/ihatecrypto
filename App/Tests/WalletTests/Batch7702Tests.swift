@@ -33,9 +33,9 @@ private let calls = [Batch7702.Call(to: baseUSDC, data: approve), Batch7702.Call
                                         recipient: owner, amountIn: 1_500_000, amountOutMinimum: 1)
     let good = [Batch7702.Call(to: baseUSDC, data: approve), Batch7702.Call(to: router, data: swap)]
     #expect(Batch7702.problems(good, owner: owner, chainId: 8453).isEmpty)
-    for chain: UInt64 in [1, 137, 42161, 8453, 4663] { #expect(Batch7702.problems(good, owner: owner, chainId: chain).isEmpty) }
-    // Networks without the audited account or Prague: Tempo, Optimism, and chain 0 (an authorization good on every network).
-    for chain: UInt64 in [4217, 10, 0] { #expect(!Batch7702.problems(good, owner: owner, chainId: chain).isEmpty) }
+    for chain: UInt64 in [1, 137, 42161, 8453, 4663, 10] { #expect(Batch7702.problems(good, owner: owner, chainId: chain).isEmpty) }
+    // Networks without the audited account or Prague: Tempo, HyperEVM, and chain 0 (an authorization good on every network).
+    for chain: UInt64 in [4217, 999, 0] { #expect(!Batch7702.problems(good, owner: owner, chainId: chain).isEmpty) }
     // A call into the wallet itself would run the batch account's executeBatch with calls nobody read.
     #expect(!Batch7702.problems(good + [.init(to: owner.lowercased(), data: Data([1, 2, 3, 4]))], owner: owner, chainId: 8453).isEmpty)
     // The one-call rules hold inside: an unlimited approve, a swap paying someone else.
@@ -60,7 +60,7 @@ private let calls = [Batch7702.Call(to: baseUSDC, data: approve), Batch7702.Call
 @Test func v4BuyOnEveryNetworkPassesTheSignersRules() throws {
     let key = UniswapV4.PoolKey(currency0: baseUSDC, currency1: "0xcbb7c0000ab88b473b1f5afd9ef808440eed33bf", fee: 500, tickSpacing: 10,
                                 hooks: "0x0000000000000000000000000000000000000000")
-    for chain: UInt64 in [8453, 42161, 1, 137, 4663] {
+    for chain: UInt64 in [8453, 42161, 1, 137, 4663, 10] {
         let v4 = try #require(UniswapV4.on(chain))
         #expect(EVMCall.knownSpenders(chainId: chain).isSuperset(of: [v4.router, UniswapV4.permit2]))
         let calls = [Batch7702.Call(to: baseUSDC, data: try ERC20.approve(spender: UniswapV4.permit2, units: 4_000_000)),

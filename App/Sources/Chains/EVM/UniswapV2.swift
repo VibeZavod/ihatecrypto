@@ -19,6 +19,9 @@ public enum UniswapV2 {
         case 1: Deployment(router: "0x7a250d5630b4cf539739df2c5dacb4c659f2488d", weth: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")
         case 137: Deployment(router: "0xedf6066a2b290c185783862c7f4776a2c8077ad1", weth: "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270")
         case 4663: Deployment(router: "0x89e5db8b5aa49aa85ac63f691524311aeb649eba", weth: "0x0bd7d308f8e1639fab988df18a8011f41eacad73")
+        // Optimism and HyperEVM: their Router02's WETH() is WETH and WHYPE (checked 2026-10-07).
+        case 10: Deployment(router: "0x4a7b5da61326a6379179b40d00f57e5bbdc962c2", weth: "0x4200000000000000000000000000000000000006")
+        case 999: Deployment(router: "0x1f7d7550b1b028f7571e69a784071f0205fd2efa", weth: "0x5555555555555555555555555555555555555555")
         default: nil
         }
     }

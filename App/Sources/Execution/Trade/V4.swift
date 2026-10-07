@@ -131,6 +131,7 @@ extension Executor {
                 return key
             }
         }
+        guard !v4.blockscout.isEmpty else { return nil }
         var url = URLComponents(string: "https://\(v4.blockscout)/api")
         url?.queryItems = [("module", "logs"), ("action", "getLogs"), ("fromBlock", "0"), ("toBlock", "latest"),
                            ("address", v4.poolManager), ("topic0", UniswapV4.initializeTopic), ("topic1", id),

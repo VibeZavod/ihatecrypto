@@ -114,6 +114,14 @@ public enum IntentParser {
         // «buy SOL for 5 USDC every 0 days» (a recurring buy it refused): never a long of that many USDC.
         if q.contains(/\bsell\b|прода[йтв]/) || (q.contains(/\bbuy\b|куп|покупа/) && q.contains(/\bevery\b|кажд/)),
            !q.contains(/\b(?:лонг|шорт|long|short)/), q.contains(/\$\s*\d|\d\s*(?:usdc|usdg|\$|долл|dollars?|bucks|бакс)/) { return nil }
+        // A money move the wallet parser didn't take («move 5 USDC from Solana to BNB», «swap 0.01 BNB for USDT on bsc»,
+        // «buy CAKE on bnb for 5 USDC»): never a trade plan of the ticker it names — the router asks again or says it can't.
+        // A stop or a take being moved stays the plan's.
+        if !q.contains(/\b(?:лонг|шорт|long|short)/), !q.contains(/\b(?:stop|take|tp|sl|стоп\w*|тейк\w*)\b/),
+           // An amount, or «all»: a bare «MOVE» is the ticker being looked up (namedAsset), not a move.
+           q.contains(/^\s*(?:move|swap|exchange|convert|bridge|send|transfer|deposit|withdraw|lend|stake|receive|top\s*up|переве\w*|перевод\w*|отправ\w*|помен\w*|обмен\w*|свап\w*|своп\w*|конверт\w*|выведи|вывод\w*|полож\w*|внеси|пополн\w*|задепоз\w*|бридж\w*)\b/)
+               && q.contains(/\d|\ball\b|\bвс[её]\b|\bвесь\b/)
+            || q.contains(/^\s*(?:buy|sell|купи\w*|прода\w*)\b.*\b(?:on|на|в|во)\s+(?:the\s+)?(?:solana|base|arbitrum|polygon|ethereum|mainnet|optimism|hyperevm|robinhood|tempo|bnb|bsc|binance|avalanche|avax|sui|tron|солан\w*|бейс\w*|арбитрум\w*|полигон\w*|эфириум\w*|оптимизм\w*|хайперевм\w*|робинхуд\w*|темпо\w*|бнб|бсц|бинанс\w*|аваланч\w*)\b/) { return nil }
         var next = intent
         var hit = false
 

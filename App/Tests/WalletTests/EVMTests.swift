@@ -196,7 +196,10 @@ import WalletCore
     // The quote call: selector, offset 0x40, amount, then the path's length and bytes padded to a word.
     let quote = try UniswapV3.quoteExactInput(path: path, amountIn: 5_000_000)
     #expect(quote.prefix(4).hex == "cdca1753" && quote.count == 4 + 32 * 3 + 96)
-    #expect(UniswapV3.on(8453)?.router == "0x2626664c2603336e57b271c5c0b26f421741e481" && UniswapV3.on(42161) != nil && UniswapV3.on(1) != nil && UniswapV3.on(137) != nil && UniswapV3.on(10) == nil)
+    #expect(UniswapV3.on(8453)?.router == "0x2626664c2603336e57b271c5c0b26f421741e481" && UniswapV3.on(42161) != nil && UniswapV3.on(1) != nil && UniswapV3.on(137) != nil)
+    // Optimism and HyperEVM too (2026-10-07); a network the app doesn't swap on has none.
+    #expect(UniswapV3.on(10)?.weth == "0x4200000000000000000000000000000000000006" && UniswapV3.on(999)?.weth == "0x5555555555555555555555555555555555555555")
+    #expect(UniswapV3.on(56) == nil)
 }
 
 @Test func signableNetworks() {
@@ -311,7 +314,8 @@ import WalletCore
     #expect(EVMCall.decode(try ERC20.approve(spender: stranger, amount: 1)).payees(to: EVMRPC.baseUSDC, value: 0, chainId: 8453) == [stranger])
     let own: [(UInt64, String)] = [(8453, AaveV3.basePool), (42161, AaveV3.arbitrum.pool), (8453, MorphoVault.base.address),
                                    (8453, UniswapV3.on(8453)!.router), (4663, UniswapV3.robinhoodRouter), (4663, UniswapV4.permit2),
-                                   (137, "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be"), (4217, "0x4cd00e387622c35bddb9b4c962c136462338bc31")]
+                                   (137, "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be"), (4217, "0x4cd00e387622c35bddb9b4c962c136462338bc31"),
+                                   (10, UniswapV4.on(10)!.router), (10, UniswapV3.on(10)!.router), (999, UniswapV2.on(999)!.router), (999, UniswapV4.permit2)]
     for (chain, spender) in own {
         #expect(EVMCall.decode(try ERC20.approve(spender: spender, amount: 1)).payees(to: EVMRPC.baseUSDC, value: 0, chainId: chain).isEmpty, "\(spender)")
     }

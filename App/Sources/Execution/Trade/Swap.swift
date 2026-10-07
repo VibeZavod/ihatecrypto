@@ -16,7 +16,20 @@ public enum EVMTokens {
         public let decimals: Int
     }
 
+    /// HyperEVM's own: Uniswap's list has nothing for chain 999. Unit's bridged coins, Kinetiq's kHYPE, USD₮0 and WHYPE,
+    /// each address, symbol and decimals read on-chain 2026-10-07.
+    static let hyperevm = [Token(symbol: "UBTC", name: "Unit Bitcoin", address: "0x9fdbda0a5e284c32744d2f17ee5c74b284993463", decimals: 8),
+                           Token(symbol: "UETH", name: "Unit Ethereum", address: "0xbe6727b535545c67d5caa73dea54865b92cf7907", decimals: 18),
+                           Token(symbol: "USOL", name: "Unit Solana", address: "0x068f321fa8fb9f0d135f290ef6a3e2813e1c8a29", decimals: 9),
+                           Token(symbol: "kHYPE", name: "Kinetiq Staked HYPE", address: "0xfd739d4e423301ce9385c1fb8850539d657c296d", decimals: 18),
+                           Token(symbol: "USDT0", name: "USD₮0", address: "0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb", decimals: 6),
+                           Token(symbol: "WHYPE", name: "Wrapped HYPE", address: "0x5555555555555555555555555555555555555555", decimals: 18)]
+
     public static func find(_ symbol: String, chainId: UInt64) async throws -> Token? {
+        if chainId == 999 {
+            let want = symbol.uppercased().trimmingCharacters(in: CharacterSet(charactersIn: "$"))
+            return hyperevm.first { $0.symbol.uppercased() == want }
+        }
         let (data, _) = try await URLSession.shared.data(from: URL(string: "https://tokens.uniswap.org")!)
         return find(data, symbol: symbol, chainId: chainId)
     }
@@ -48,7 +61,7 @@ extension Executor {
         let rpc = net.rpc
         if !ref.hasPrefix("0x") {
             guard let t = try await EVMTokens.find(ref, chainId: rpc.chainId) else {
-                throw ExecutionError("\(ref.uppercased()) isn't on Uniswap's token list for \(net.name). To buy it anyway, name it by its contract: “buy token 0x… on \(net.key) for 5 USDC”.")
+                throw ExecutionError("\(ref.uppercased()) isn't on \(rpc.chainId == 999 ? "ihatecrypto's HyperEVM list (UBTC, UETH, USOL, kHYPE, USDT0)" : "Uniswap's token list") for \(net.name). To buy it anyway, name it by its contract: “buy token 0x… on \(net.key) for 5 USDC”.")
             }
             guard ABI.uint(in: try await rpc.read(t.address, Data([0x31, 0x3c, 0xe5, 0x67])), word: 0) == UInt64(t.decimals) else {
                 throw ExecutionError("The \(t.symbol) contract on \(net.name) doesn't match Uniswap's list. Nothing was signed.")
@@ -221,7 +234,7 @@ extension Executor {
     /// with another EVM network's USDC brought over first (`from`), else from Solana, the better of the two ways (or the
     /// one picked on the route's step).
     public func buyOn(_ net: EVMNetwork, _ ref: String, usdc: Decimal, prefer: String? = nil, from: String? = nil) async throws -> String {
-        guard let uni = UniswapV3.on(net.rpc.chainId) else { throw ExecutionError("ihatecrypto swaps on Solana, Base, Arbitrum, Polygon and Ethereum.") }
+        guard let uni = UniswapV3.on(net.rpc.chainId) else { throw ExecutionError("ihatecrypto swaps on Solana, Base, Arbitrum, Polygon, Ethereum, Optimism and HyperEVM.") }
         let token = try await evmToken(ref, on: net), me = wallet.evm
         let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
         guard units >= 500_000 else { throw ExecutionError("At least 0.5 USDC: less isn't worth the bridge.") }
@@ -367,7 +380,7 @@ extension Executor {
     /// Sells a token on an EVM network back to USDC on Solana; nil = all of it. The better of Relay's swap-and-bridge
     /// and Uniswap on the chain followed by the Relay bridge. `keep`: Uniswap there, and the USDC stays on the network.
     public func sellOn(_ net: EVMNetwork, _ ref: String, amount: Decimal?, prefer: String? = nil, keep: Bool = false) async throws -> String {
-        guard let uni = UniswapV3.on(net.rpc.chainId) else { throw ExecutionError("ihatecrypto swaps on Solana, Base, Arbitrum, Polygon and Ethereum.") }
+        guard let uni = UniswapV3.on(net.rpc.chainId) else { throw ExecutionError("ihatecrypto swaps on Solana, Base, Arbitrum, Polygon, Ethereum, Optimism and HyperEVM.") }
         let token = try await evmToken(ref, on: net), me = wallet.evm
         let scale = Decimal(sign: .plus, exponent: token.decimals, significand: 1)
         let held = try await balance(token.address, on: net.rpc)
@@ -460,8 +473,11 @@ extension Executor {
         let coinIn: Bool
         let coinOut: Bool
         let units: Decimal
-        /// nil for the coin into its own wrapped token or back: a wrap or an unwrap, no swap.
+        /// nil for the coin into its own wrapped token or back: a wrap or an unwrap, no swap — or for Relay's swap.
         let route: UniRoute?
+        /// What Relay's swap on the network gives, in the output's smallest units, when Uniswap has no pool for the pair
+        /// (HyperEVM's money sits on other exchanges, which Relay reaches).
+        var relayOut: Decimal? = nil
         /// The route is a v4 pool of the coin itself: it goes in as the call's value or comes out as coins, unwrapped.
         var direct: Bool { route?.v4?.key.currency0 == UniswapV4.native }
     }
@@ -475,7 +491,7 @@ extension Executor {
     /// `swapOn`'s quote, for the card too: nothing is signed.
     func pairSwap(_ net: EVMNetwork, from a: String, to b: String, amount: Decimal?) async throws -> PairSwap {
         guard let uni = UniswapV3.on(net.rpc.chainId), let weth = UniswapV2.on(net.rpc.chainId)?.weth else {
-            throw ExecutionError("ihatecrypto swaps one token for another on Base, Arbitrum, Ethereum and Polygon.")
+            throw ExecutionError("ihatecrypto swaps one token for another on Base, Arbitrum, Ethereum, Polygon, Optimism and HyperEVM.")
         }
         let rpc = net.rpc
         func side(_ ref: String) async throws -> (EVMTokens.Token, Bool) {
@@ -511,8 +527,39 @@ extension Executor {
             }
             route = direct
         }
-        guard let route else { throw ExecutionError("Uniswap has no pool for \(tokenIn.symbol) → \(tokenOut.symbol) on \(net.name) right now. Nothing was signed.") }
+        guard let route else {
+            // No Uniswap pool: Relay's swap on the network itself, if it quotes the pair (the coin goes in wrapped).
+            if allowedWays(net).relay, let out = try? await relayPairQuote(net, from: tokenIn.address, to: coinOut ? UniswapV4.native : tokenOut.address, units: units).out {
+                return PairSwap(tokenIn: tokenIn, tokenOut: tokenOut, coinIn: coinIn, coinOut: coinOut, units: units, route: nil, relayOut: out)
+            }
+            throw ExecutionError("Neither Uniswap nor Relay swaps \(tokenIn.symbol) for \(tokenOut.symbol) on \(net.name) right now. Nothing was signed.")
+        }
         return PairSwap(tokenIn: tokenIn, tokenOut: tokenOut, coinIn: coinIn, coinOut: coinOut, units: units, route: route)
+    }
+
+    /// Relay's swap on one network, from and to this wallet: its quote, checked — the sender and the recipient are this
+    /// wallet, the steps an exact approve of what goes in to the approval proxy Relay publishes for the network and then
+    /// a call to that same proxy with no coins, and at most 3% (or $0.15) lost by Relay's own valuation. `to` 0x0…0 is
+    /// the network's coin.
+    func relayPairQuote(_ net: EVMNetwork, from: String, to: String, units: Decimal) async throws -> (quote: Relay.Quote, call: Relay.EVMStep, proxy: String, out: Decimal) {
+        let me = wallet.evm
+        let quote = try await Relay.quote(user: me, recipient: me, originChain: net.relayChain, destinationChain: net.relayChain,
+                                          originCurrency: from, destinationCurrency: to, amount: 0, units: "\(units)")
+        let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": quote.recipient.lowercased()],
+                                         expected: ["sender": me.lowercased(), "recipient": me.lowercased()], subject: "Relay quote")
+        guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
+        guard let proxy = try await Relay.approvalProxy(chainId: net.relayChain)?.lowercased(),
+              let call = quote.evm.last, call.to.lowercased() == proxy, call.chainId == net.relayChain, call.value == "0" || call.value == "<null>",
+              quote.evm.dropLast().allSatisfy({ $0.to.lowercased() == from.lowercased() && $0.data.prefix(4).hex == "095ea7b3"
+                  && ABI.address(in: Data($0.data.dropFirst(4)), word: 0)?.lowercased() == proxy && ABI.decimal(in: Data($0.data.dropFirst(4)), word: 1) == units }) else {
+            throw ExecutionError("Relay's transactions don't go to the approval proxy it publishes for \(net.name), for exactly this amount. Nothing was signed.")
+        }
+        let out = Decimal(string: quote.amountOut) ?? 0
+        let worthIn = Decimal(string: quote.amountInUSD) ?? 0, worthOut = Decimal(string: quote.amountOutUSD) ?? 0
+        guard out > 0, worthIn - worthOut <= max(worthIn * Decimal(string: "0.03")!, Decimal(string: "0.15")!) else {
+            throw ExecutionError("Relay gives \(Fmt.usd(worthOut)) for \(Fmt.usd(worthIn)): more lost than allowed. Nothing was signed.")
+        }
+        return (quote, call, proxy, out)
     }
 
     /// What the card shows while a token-for-token swap waits: «≈ 25.31 AERO · price impact 0.4%», and the route's name.
@@ -523,8 +570,9 @@ extension Executor {
         }
         let p = try await pairSwap(net, from: a, to: b, amount: amount)
         let scale = Decimal(sign: .plus, exponent: p.tokenOut.decimals, significand: 1)
-        let out = p.route?.out ?? p.units
-        return ("\(Fmt.num(out / scale, maxFraction: 6)) \(p.tokenOut.symbol)\(p.route?.impactText ?? "")", p.route.map { $0.title } ?? (p.coinIn ? "wrap" : "unwrap"))
+        let out = p.route?.out ?? p.relayOut ?? p.units
+        return ("\(Fmt.num(out / scale, maxFraction: 6)) \(p.tokenOut.symbol)\(p.route?.impactText ?? "")",
+                p.route.map { $0.title } ?? (p.relayOut != nil ? "Relay's swap" : p.coinIn ? "wrap" : "unwrap"))
     }
 
     /// «swap 0.01 ETH for AERO on Base», «swap all DEGEN for AERO on base»: one token for another on the network, straight —
@@ -547,7 +595,17 @@ extension Executor {
         // What came out, when the coin's balance can't say it (its fees come out of the same coin): the WETH the swap paid
         // before it was unwrapped; a v4 pool of the coin, its quote.
         var received: Decimal?
-        if let route = p.route {
+        if p.relayOut != nil {
+            // Relay's swap: the coin is wrapped first (Relay takes its wrapped token through the proxy), then asked again with
+            // the money in place — the price may have moved — and every check run on that quote.
+            if p.coinIn { _ = try await sendEVM(rpc, to: weth, data: Data([0xd0, 0xe3, 0x0d, 0xb0]), note: "Wrap \(what) into \(wrappedName)", value: wei) }
+            let q = try await relayPairQuote(net, from: p.tokenIn.address, to: p.coinOut ? UniswapV4.native : p.tokenOut.address, units: p.units)
+            report("\(what) → \(p.tokenOut.symbol) on \(net.name) through Relay's swap (no Uniswap pool there): ≈ \(show(q.out, p.tokenOut)).")
+            last = try await approveAndSend(rpc, token: p.tokenIn.address, spender: q.proxy, units: p.units,
+                                            approveNote: "Approve exactly \(p.coinIn ? "\(Fmt.num(p.units / 1e18, maxFraction: 8)) \(wrappedName)" : what) to Relay",
+                                            to: q.call.to, data: q.call.data, note: "Relay: swap \(what) for \(p.tokenOut.symbol) on \(net.name)")
+            try journal.append(.init(chain: "relay", id: q.quote.requestId, kind: .signed, note: "\(net.name) \(p.tokenIn.symbol)→\(p.tokenOut.symbol), tx \(last)"))
+        } else if let route = p.route {
             report("\(what) → \(p.tokenOut.symbol) on \(net.name), on \(route.title)\(p.direct ? " (\(net.gasCoin) itself, no wrap)" : ""): ≈ \(show(route.out, p.tokenOut))\(route.impactText).")
             if p.direct {
                 last = try await swapUniswap(route, on: net, uni, tokenIn: p.coinIn ? UniswapV4.native : p.tokenIn.address, units: p.units, what: what,

@@ -28,6 +28,13 @@ public enum UniswapV3 {
                            weth: "0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2")
         case 137: Deployment(quoter: "0x61ffe014ba17989e743c5f6cb21bf9697530b21e", router: "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45",
                              weth: "0x0d500b1d8e8ef31e21c99d1db9a6444d3adf1270")
+        // Optimism and HyperEVM (developers.uniswap.org v3 deployments; each checked on-chain 2026-10-07: the router's
+        // WETH9() and factory() and the quoter's answer). HyperEVM's pools hold almost nothing — its swaps fill through
+        // Relay — but the table names its router and WHYPE for the signer.
+        case 10: Deployment(quoter: "0x61ffe014ba17989e743c5f6cb21bf9697530b21e", router: "0x68b3465833fb72a70ecdf485e0e4c7bd8665fc45",
+                            weth: "0x4200000000000000000000000000000000000006")
+        case 999: Deployment(quoter: "0x7dfd4f31be6814d2906bde155c3e1b146eac1468", router: "0x7adf4701abcdbc5dcf5cb58b526f897e048f0d11",
+                             weth: "0x5555555555555555555555555555555555555555")
         default: nil
         }
     }

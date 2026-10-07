@@ -240,7 +240,7 @@ private final class Script: LLMClient, @unchecked Sendable {
     // Not these: a contract without a network stays Robinhood's; moving USDC is a bridge.
     #expect(WalletCommand.parse("buy token \(aero) for 3 USDC") == .buyStock(symbol: aero, usdc: 3))
     #expect(WalletCommand.parse("move 2 USDC from Solana to Base") == .solanaTo("base", 2))
-    #expect(ChatRouter.forms.contains("buy <TICKER> on <base|arbitrum|polygon|ethereum> for N USDC") && ChatRouter.forms.contains("buy <TICKER> on solana for N USDC"))
+    #expect(ChatRouter.forms.contains("buy <TICKER> on <base|arbitrum|polygon|ethereum|optimism|hyperevm> for N USDC") && ChatRouter.forms.contains("buy <TICKER> on solana for N USDC"))
 }
 
 @Test func aTickerFindsJupitersVerifiedTokenNotItsNamesakes() throws {
@@ -597,6 +597,11 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(WalletCommand.parse("swap 0.01 ETH for AERO on base") == .swapOn("base", from: "ETH", to: "AERO", amount: Decimal(string: "0.01")!))
     #expect(WalletCommand.parse("поменяй 0.01 ETH на AERO на бейсе") == .swapOn("base", from: "ETH", to: "AERO", amount: Decimal(string: "0.01")!))
     #expect(WalletCommand.parse("swap 5 USDC on base for USDC on arbitrum") == .bridge(from: "base", to: "arbitrum", 5))
+    // USDC on one side is a buy or a sale, but the network's own coin isn't on Uniswap's list: ETH ↔ USDC stays a swap.
+    #expect(WalletCommand.parse("swap 2 USDC for AERO on base") == .buyOn("base", token: "AERO", usdc: 2, from: "base"))
+    #expect(WalletCommand.parse("swap 2 USDC for ETH on base") == .swapOn("base", from: "USDC", to: "ETH", amount: 2))
+    #expect(WalletCommand.parse("swap 0.001 ETH for USDC on arbitrum") == .swapOn("arbitrum", from: "ETH", to: "USDC", amount: Decimal(string: "0.001")!))
+    #expect(WalletCommand.parse("swap 2 USDC for POL on polygon") == .swapOn("polygon", from: "USDC", to: "POL", amount: 2))
     for c in [WalletCommand.crossSwap(from: "SOL", on: "solana", to: "ETH", at: "arbitrum", amount: Decimal(string: "0.01")!),
               .crossSwap(from: "AERO", on: "base", to: "SOL", at: "solana", amount: nil),
               .crossSwap(from: "USDC", on: "robinhood", to: "ETH", at: "base", amount: 3)] {

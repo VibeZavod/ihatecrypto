@@ -22,3 +22,16 @@ import Testing
     #expect(ChatRouter.partialReply(#"{"route": "lookup", "lookups": [{"tool": "portfolio"#) == nil)
     #expect(ChatRouter.partialReply(#"{"route": "chat", "rep"#) == nil)
 }
+
+/// A typo of a folder that's there means that folder (route-check 2026-10-07: «Resarch» made a new one beside «Research»).
+@Test func aFolderTypoMeansTheFolderThere() {
+    let folders = ["Research", "Ресерч", "ideas", "UITest"]
+    #expect(FolderCommand.existing("Resarch", among: folders) == "Research")
+    #expect(FolderCommand.existing("Reesarch", among: folders) == "Research")
+    #expect(FolderCommand.existing("research", among: folders) == "Research")
+    #expect(FolderCommand.existing("Ресеррч", among: folders) == "Ресерч")
+    #expect(FolderCommand.existing("ideaz", among: folders) == "ideas")
+    // Short or far names stay new folders: «idea» → no guess under 4 letters off the mark, «Travel» is new.
+    #expect(FolderCommand.existing("Travel", among: folders) == nil)
+    #expect(FolderCommand.existing("ui", among: folders) == nil)
+}
