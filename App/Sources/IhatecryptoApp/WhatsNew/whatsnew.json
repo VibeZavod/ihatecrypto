@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.5.4",
+    "date": "2026-10-07",
+    "stories": [
+      {
+        "title": "Small fixes",
+        "text": "What's New scrolls its list of versions and fits a smaller window, and the canvas no longer lights up its cards under the chat, the rail or a panel open over it.",
+        "symbol": "wrench.and.screwdriver.fill",
+        "color": "FF7A2F"
+      }
+    ]
+  },
+  {
     "version": "0.5.3",
     "date": "2026-10-07",
     "stories": [
