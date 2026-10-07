@@ -1,13 +1,37 @@
 [
   {
-    "version": "0.5.4",
-    "date": "2026-10-07",
+    "version": "0.5.5",
+    "date": "2026-10-08",
     "stories": [
       {
-        "title": "Small fixes",
-        "text": "What's New scrolls its list of versions and fits a smaller window, and the canvas no longer lights up its cards under the chat, the rail or a panel open over it.",
-        "symbol": "wrench.and.screwdriver.fill",
+        "title": "Every coin opens",
+        "text": "Each row of a network's card opens: a token its board, SOL or ETH its chart, idle USDC its own page with Buy and Sell, a deposit its details. Coins and deposits sit apart, the amount under the name, the day's move beside the dollars.",
+        "symbol": "hand.tap.fill",
         "color": "FF7A2F"
+      },
+      {
+        "title": "Profit and loss on every token",
+        "text": "A token bought in the app shows what it made or lost next to its amount, and its board says it in dollars with what it cost. One that came from elsewhere shows today's move.",
+        "symbol": "chart.line.uptrend.xyaxis",
+        "color": "0B7A55"
+      },
+      {
+        "title": "Swaps on Optimism and HyperEVM",
+        "text": "«swap 0.001 ETH for OP on optimism» goes through Uniswap there; on HyperEVM, where the money isn't in Uniswap's pools, «swap 5 USDC for HYPE on hyperevm» or for UBTC, UETH, USOL and kHYPE goes through Relay's swap.",
+        "symbol": "arrow.triangle.2.circlepath",
+        "color": "FF0420"
+      },
+      {
+        "title": "Prompts typed out",
+        "text": "A button that puts a phrase into the chat types it in, so you see where to look before you send it.",
+        "symbol": "keyboard",
+        "color": "2775CA"
+      },
+      {
+        "title": "Small fixes",
+        "text": "What's New scrolls its list of versions; the canvas no longer lights up cards under the chat or a panel; a typo of a folder's name means that folder; a move to a network ihatecrypto doesn't have is no longer read as a trade.",
+        "symbol": "wrench.and.screwdriver.fill",
+        "color": "9945FF"
       }
     ]
   },
