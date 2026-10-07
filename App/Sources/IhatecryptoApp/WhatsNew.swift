@@ -102,11 +102,13 @@ struct WhatsNewPanel: View {
                 .padding(.horizontal, 28).padding(.top, 22)
                 WhatsNewPage()
             }
-            .frame(width: 820, height: 560)
+            .frame(maxWidth: 820, maxHeight: 560)
             .background(Brand.canvas)
             .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
             .overlay(RoundedRectangle(cornerRadius: 22, style: .continuous).strokeBorder(Brand.cardBorder))
             .shadow(color: .black.opacity(0.25), radius: 30, y: 18)
+            // In a window under 870 × 610 the panel shrinks with it instead of running past its edges.
+            .padding(24)
         }
         .focusable()
         .focusEffectDisabled()
@@ -124,20 +126,24 @@ struct WhatsNewPage: View {
     var body: some View {
         let releases = WhatsNew.shared.releases
         HStack(alignment: .top, spacing: 0) {
-            VStack(alignment: .leading, spacing: 2) {
-                ForEach(releases, id: \.version) { r in
-                    Button { chosen = r.version } label: {
-                        VStack(alignment: .leading, spacing: 1) {
-                            Text("Version \(r.version)").font(.ui(13, chosen == r.version ? .semibold : .regular))
-                            if !r.day.isEmpty { Text(r.day).font(.ui(11)).foregroundStyle(.secondary) }
+            // Its own scroll: a dozen releases are taller than the panel, and the list pushed the title out of it.
+            ScrollView {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(releases, id: \.version) { r in
+                        Button { chosen = r.version } label: {
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text("Version \(r.version)").font(.ui(13, chosen == r.version ? .semibold : .regular))
+                                if !r.day.isEmpty { Text(r.day).font(.ui(11)).foregroundStyle(.secondary) }
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.horizontal, 10).padding(.vertical, 6)
+                            .background(RoundedRectangle(cornerRadius: 8).fill(chosen == r.version ? Brand.accent.opacity(0.14) : .clear))
+                            .contentShape(Rectangle())
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal, 10).padding(.vertical, 6)
-                        .background(RoundedRectangle(cornerRadius: 8).fill(chosen == r.version ? Brand.accent.opacity(0.14) : .clear))
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
                 }
+                .padding(.bottom, 24)
             }
             .frame(width: 170)
             .padding(.trailing, 16)
@@ -154,6 +160,7 @@ struct WhatsNewPage: View {
             }
         }
         .padding(.horizontal, 28).padding(.top, 16)
+        .frame(maxHeight: .infinity, alignment: .top)
         .onAppear { WhatsNew.shared.markSeen() }
     }
 
