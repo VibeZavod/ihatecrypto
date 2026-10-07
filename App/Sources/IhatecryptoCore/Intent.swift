@@ -250,7 +250,14 @@ public enum Fmt {
         return (d < 0 && text != "0.00" ? "−$" : "$") + text
     }
     public static func num(_ d: Decimal, maxFraction: Int = 2) -> String {
-        d.formatted(.number.precision(.fractionLength(0...maxFraction)).locale(locale))
+        // A coin amount (6+ places) keeps four significant digits however small: 0.00001196 UBTC, not 0.000012 — the
+        // card's rate, worked out from the shown amount, came out 9% off.
+        var fraction = maxFraction
+        if maxFraction >= 6, d != 0 {
+            var scaled = abs(d) * pow(10, maxFraction)
+            while scaled < 1000, fraction < 18 { scaled *= 10; fraction += 1 }
+        }
+        return d.formatted(.number.precision(.fractionLength(0...fraction)).locale(locale))
     }
     public static func price(_ d: Decimal) -> String { d.formatted(.number.precision(.significantDigits(1...6)).locale(locale)) }
     public static func pct(_ d: Decimal) -> String { num(d) + "%" }

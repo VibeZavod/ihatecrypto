@@ -66,3 +66,15 @@ import Testing
     #expect(IntentParser.apply("long BNB 5 USDC", to: TradeIntent(), markets: markets)?.asset == "BNB")
     #expect(IntentParser.apply("move stop to 3%", to: TradeIntent(), markets: markets) != nil)
 }
+
+/// A tiny coin amount keeps four significant digits (2026-10-08: 1 USDC of UBTC showed «0.000011», and the card's rate
+/// worked out from it read $90,909 instead of ≈ $83,600); dollars and ordinary amounts look as before.
+@Test func aTinyCoinAmountKeepsItsDigits() {
+    #expect(Fmt.num(Decimal(string: "0.00001196")!, maxFraction: 6) == "0.00001196")
+    #expect(Fmt.num(Decimal(string: "0.0000119612")!, maxFraction: 6) == "0.00001196")
+    #expect(Fmt.num(Decimal(string: "8.1535351")!, maxFraction: 6) == "8.153535")
+    #expect(Fmt.num(Decimal(string: "0.054737")!, maxFraction: 6) == "0.054737")
+    #expect(Fmt.num(Decimal(string: "0.00012345678")!, maxFraction: 8) == "0.00012346")
+    #expect(Fmt.num(Decimal(string: "0.004")!) == "0")
+    #expect(Fmt.num(0, maxFraction: 6) == "0")
+}
