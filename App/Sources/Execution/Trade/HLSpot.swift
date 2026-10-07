@@ -55,6 +55,14 @@ extension Executor {
         return mid
     }
 
+    /// What a spot buy (`usdc`) or sale (`sell`) gets at the book's mid now, for the route's card: «0.243 HYPE».
+    // ponytail: the mid, not a walk of the book; the order itself takes at most 1% off it (IOC), a big one may get less.
+    public static func spotQuote(_ symbol: String, usdc: Decimal?, sell: Decimal?) async throws -> String? {
+        let pair = try await spotPair(symbol), mid = try await spotMid(pair)
+        if let usdc { return "\(Fmt.num(usdc / mid, maxFraction: 6)) \(pair.symbol)" }
+        return sell.map { "\(Fmt.num($0 * mid, maxFraction: 2)) USDC" }
+    }
+
     /// What's free on the spot balance of `coin` (total less what open orders hold).
     func spotFree(_ coin: String) async throws -> Decimal {
         guard let state = try await Self.hlInfo(["type": "spotClearinghouseState", "user": wallet.evm]) as? [String: Any],

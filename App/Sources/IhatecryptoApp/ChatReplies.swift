@@ -8,12 +8,6 @@ struct ChatHistory: View, Equatable {
     let messages: [Message]
     /// The last steps card shows a spinner on its last step while a plan is executing.
     var running = false
-    /// ihatecrypto is working on the last message: dots under it until the first reply.
-    var thinking = false
-    /// What the model is looking up right now.
-    var step: String?
-    /// The answer as far as the model has written it.
-    var draft: String?
 
     var body: some View {
         let items = ChatItem.group(messages)
@@ -25,15 +19,24 @@ struct ChatHistory: View, Equatable {
             case .steps(let steps): StepsCard(steps: steps, running: running && steps.last?.id == messages.last?.id)
             }
         }
-        if thinking, messages.last?.fromUser == true {
-            // The answer's first words replace the dots as soon as the model writes them.
-            if let draft { Reply(message: Message(fromUser: false, text: draft)).opacity(0.85).transition(.opacity) } else { ThinkingDots(label: step).transition(.opacity) }
-        }
-        // Scroll here for the newest line: a step inside a card has no view of its own.
-        Color.clear.frame(height: 0).id(Self.end)
     }
 
+    /// Scroll here for the newest line: a step inside a card has no view of its own.
     static let end = "chat-end"
+}
+
+/// ihatecrypto working on the last message: dots under it until the first words, then the answer as far as the model
+/// has written it. A view of its own: the draft changes several times a second, and only this redraws with it, not the
+/// whole chat above.
+struct DraftReply: View {
+    @Environment(Workspace.self) private var ws
+
+    var body: some View {
+        if ws.thinking, ws.messages.last?.fromUser == true {
+            if let draft = ws.draftReply { Reply(message: Message(fromUser: false, text: draft), draft: true).opacity(0.85).transition(.opacity) }
+            else { ThinkingDots(label: ws.agentStep).transition(.opacity) }
+        }
+    }
 }
 
 /// Three dots breathing in turn where ihatecrypto's reply will appear.
@@ -48,15 +51,8 @@ struct ThinkingDots: View {
     }
 
     private var dots: some View {
-        TimelineView(.animation(minimumInterval: 1.0 / 30)) { context in
-            let t = context.date.timeIntervalSinceReferenceDate
-            HStack(spacing: 5) {
-                ForEach(0..<3, id: \.self) { i in
-                    Circle().fill(Color.secondary).frame(width: 7, height: 7)
-                        .opacity(0.3 + 0.7 * (0.5 + 0.5 * sin(t * 5 - Double(i) * 0.9)))
-                }
-            }
-        }
+        // Core Animation's: a 30 fps TimelineView here redrew the whole window for as long as a model took to answer.
+        BreathingDots().frame(width: BreathingDots.size.width, height: BreathingDots.size.height)
         .padding(.horizontal, 12).padding(.vertical, 11)
         .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Brand.glassFill))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Brand.cardBorder))
@@ -132,6 +128,8 @@ struct Reply: View {
     let message: Message
     /// What an execution came to: a green check instead of the emoji.
     var outcome = false
+    /// A reply still being written: each version of it is drawn once, so it isn't kept in ChatText's cache.
+    var draft = false
 
     var body: some View {
         let (emoji, full) = ChatText.leadingEmoji(message.text)
@@ -180,7 +178,7 @@ struct Reply: View {
     }
 
     private func styled(_ text: String) -> some View {
-        Text(ChatText.styled(text)).textSelection(.enabled).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
+        Text(ChatText.styled(text, cached: !draft)).textSelection(.enabled).lineSpacing(3).fixedSize(horizontal: false, vertical: true)
     }
 
     /// «gpt-6-sol · from your portfolio and history» → ✦ GPT 6 SOL · FROM YOUR PORTFOLIO AND HISTORY; «incoming» in green.
@@ -364,16 +362,18 @@ enum ChatText {
 
     /// Markdown as the model writes it, then: links → «Arbiscan ↗», 0x… → «0x2E8c…1e18», signed numbers in
     /// profit or loss colors, amounts («2 USDC», «$0.24») bold unless `emphasis` is off.
-    static func styled(_ text: String, emphasis: Bool = true) -> AttributedString {
+    static func styled(_ text: String, emphasis: Bool = true, cached: Bool = true) -> AttributedString {
+        guard cached else { return parse(text, emphasis: emphasis) }
         let key = "\(emphasis)\u{0}\(text)"
         if let hit = cache[key] { return hit }
         let s = parse(text, emphasis: emphasis)
+        // ponytail: dropped whole past 500 texts, then filled again by what's on screen; LRU if that ever shows.
+        if cache.count >= 500 { cache.removeAll(keepingCapacity: true) }
         cache[key] = s
         return s
     }
 
     /// The chat redraws on every keystroke in the field; each message is parsed once.
-    // ponytail: grows with the messages seen this run (hundreds of short strings); evict if chats get huge.
     private static var cache: [String: AttributedString] = [:]
     /// A contract's ticker when the app knows it (Workspace sets it).
     static var tokenName: (String) -> String? = { _ in nil }

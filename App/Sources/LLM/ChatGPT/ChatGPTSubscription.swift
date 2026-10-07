@@ -190,7 +190,7 @@ actor ChatGPTClient: LLMClient {
     }
 
     static func body(_ r: LLMRequest) -> [String: Any] {
-        [
+        var body: [String: Any] = [
             "model": r.model,
             "instructions": r.system,
             "input": r.dialogue.map { m in
@@ -201,6 +201,9 @@ actor ChatGPTClient: LLMClient {
             "stream": true,
             "prompt_cache_key": "ihatecrypto-" + cacheKey(r.system),
         ]
+        // Left to the model's own default unless asked to think it through.
+        if r.thinking { body["reasoning"] = ["effort": "high"] }
+        return body
     }
 
     /// FNV-1a of the instructions, the same across launches: a changed prompt gets a cache of its own.

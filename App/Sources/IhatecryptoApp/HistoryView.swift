@@ -17,6 +17,10 @@ struct HistoryView: View {
     @State private var earlier: [Activity] = []
     @State private var loading = false
     @State private var loadError: String?
+    /// The «All» rows and each position with its activities, built when what they come from changes (`inputs`), not on
+    /// every pass: ~2,000 fills sorted with everything else.
+    @State private var rows: [Row] = []
+    @State private var stories: [(story: TradeHistory.Story, activities: [Activity])] = []
     let close: () -> Void
 
     var body: some View {
@@ -48,6 +52,25 @@ struct HistoryView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Brand.canvas)
         .task { await load() }
+        .onChange(of: inputs, initial: true) { build() }
+    }
+
+    /// What the rows and positions come from, cheaply: activities are only added and trimmed, and only the newest one
+    /// changes; the rest is replaced whole by `load` (a fresh 2,000 fills can keep the count, not the newest fill).
+    private var inputs: [AnyHashable] {
+        let last = ws.activities.last
+        return [ws.activities.count, last?.id, last?.title, last?.coin, last?.lines.count,
+                fills.count, fills.first?.time, fills.last?.time, transfers.count, journal.count]
+    }
+
+    private func build() {
+        rows = allRows()
+        let byCoin = Dictionary(grouping: ws.activities, by: \.coin)
+        stories = TradeHistory.stories(fills).map { story in
+            (story: story, activities: (byCoin[story.coin] ?? []).filter { a in
+                a.at >= story.opened.addingTimeInterval(-900) && a.at <= (story.closed ?? .distantFuture).addingTimeInterval(120)
+            })
+        }
     }
 
     // MARK: Agent
@@ -68,15 +91,10 @@ struct HistoryView: View {
     // MARK: Positions
 
     @ViewBuilder private var positions: some View {
-        let stories = TradeHistory.stories(fills)
         if stories.isEmpty, !loading {
             empty(ws.hlAddress.isEmpty ? "No Hyperliquid address yet." : "No trades on Hyperliquid yet.")
         }
-        ForEach(stories) { story in
-            StoryCard(story: story, activities: ws.activities.filter { a in
-                a.coin == story.coin && a.at >= story.opened.addingTimeInterval(-900) && a.at <= (story.closed ?? .distantFuture).addingTimeInterval(120)
-            })
-        }
+        ForEach(stories, id: \.story.id) { StoryCard(story: $0.story, activities: $0.activities) }
     }
 
     // MARK: All
@@ -92,7 +110,6 @@ struct HistoryView: View {
     }
 
     @ViewBuilder private var everything: some View {
-        let rows = allRows()
         if rows.isEmpty, !loading { empty("Nothing yet.") }
         ForEach(rows) { r in
             HStack(alignment: .firstTextBaseline, spacing: 12) {
@@ -158,7 +175,9 @@ struct HistoryView: View {
         // Signatures from the app and from the terminal tool, which trades from the same wallet.
         let appJournal = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "ihatecrypto/journal.jsonl")
         let cliJournal = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".ihatecrypto/journal.jsonl")
-        journal = [appJournal, cliJournal].flatMap { (try? Journal(url: $0).entries()) ?? [] }
+        // Off the main thread: every signature ever, a JSON line each.
+        let files = [appJournal, cliJournal]
+        journal = await Task.detached { files.flatMap { (try? Journal(url: $0).entries()) ?? [] } }.value
         earlier = Self.sessions(journal, before: ws.activities.first?.at ?? .distantFuture)
         guard !ws.hlAddress.isEmpty else { return }
         do {

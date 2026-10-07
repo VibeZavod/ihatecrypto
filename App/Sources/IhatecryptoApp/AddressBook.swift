@@ -11,7 +11,7 @@ import WalletCore
 /// A saved address: an exchange's deposit address, another wallet, a person. Added by hand here, or from the user's own
 /// chat message after a confirmation — never from a model, a site or a pasted instruction. Kept on this Mac
 /// (addressbook.json, owner-only; pictures in icons/).
-struct SavedAddress: Codable, Identifiable, Hashable {
+nonisolated struct SavedAddress: Codable, Identifiable, Hashable {
     /// The first version's fixed types; old entries keep theirs as the category.
     enum Kind: String, Codable, CaseIterable {
         case exchange, wallet, person, other
@@ -57,7 +57,7 @@ struct SavedAddress: Codable, Identifiable, Hashable {
 }
 
 /// A picture for an entry: a chain or token logo, an SF Symbol, an emoji or the user's own image (a file in icons/).
-enum AddressIcon: Codable, Hashable {
+nonisolated enum AddressIcon: Codable, Hashable {
     case logo(String), symbol(String), emoji(String), image(String)
 }
 

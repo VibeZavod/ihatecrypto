@@ -88,15 +88,16 @@ struct ComposerField: NSViewRepresentable {
     static var chipDrop: CGFloat { font.descender - 1.5 }
 
     /// A token's picture: the app's own logo for a ticker (TokenLogo), else the token's picture from the network once
-    /// fetched — `loaded` runs when it arrives. A contract has no logo of the app's: only its market's.
+    /// fetched — `loaded` runs when it arrives. A contract has no logo of the app's: only its market's. Fetched as every
+    /// RemoteIcon is: size-capped, and decoded off the main thread at a size for the chip's ~15 pt disc.
     static func picture(_ ticker: String, icon: URL?, loaded: @escaping @MainActor () -> Void = {}) -> NSImage? {
         if let own = TokenLogo.image(ticker.lowercased()) { return own }
         guard let icon else { return nil }
         if let hit = pictures[icon] { return hit }
         if asked.insert(icon).inserted {
             Task { @MainActor in
-                guard let (data, _) = try? await URLSession.shared.data(from: icon), let image = NSImage(data: data) else { return }
-                pictures[icon] = image
+                guard let image = await RemoteIconLoader.shared.image(icon, pixels: 48) else { return }
+                pictures[icon] = NSImage(cgImage: image, size: .zero)
                 loaded()
             }
         }
@@ -109,6 +110,10 @@ struct ComposerField: NSViewRepresentable {
     /// one). Drawn once into pixels in `appearance`: an NSImage drawing handler may be called off the main thread, and
     /// this module's code runs on the main actor.
     static func chipImage(_ text: String, picture: NSImage?, appearance: NSAppearance, scale: CGFloat = 2) -> NSImage {
+        // Kept: the field and every message with a «$» ask again on each pass. A picture counts by identity (TokenLogo and
+        // `pictures` keep each one); the entry holds it, so its identifier can't go to another image meanwhile.
+        let key = "\(text)|\(picture.map { "\(ObjectIdentifier($0))" } ?? "-")|\(appearance.name.rawValue)|\(scale)"
+        if let hit = chips[key], hit.picture === picture { return hit.image }
         let label = text as NSString
         let bold = NSFont(descriptor: font.fontDescriptor.addingAttributes([.traits: [NSFontDescriptor.TraitKey.weight: NSFont.Weight.semibold]]),
                           size: font.pointSize - 1) ?? font
@@ -152,8 +157,11 @@ struct ComposerField: NSViewRepresentable {
         }
         NSGraphicsContext.restoreGraphicsState()
         image.addRepresentation(rep)
+        if chips.count >= 200 { chips.removeAll() }
+        chips[key] = (picture, image)
         return image
     }
+    private static var chips: [String: (picture: NSImage?, image: NSImage)] = [:]
 
     final class FieldView: NSTextView {
         weak var coordinator: Coordinator?

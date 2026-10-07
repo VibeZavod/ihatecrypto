@@ -46,7 +46,8 @@ extension Executor {
             if there < units, there > 0, units - there <= max(1_000_000, units / 50) { units = there }
             let ranked = await stockWays(token, buy: true, units: Decimal(units), listing: listing).ranked
             guard let top = ranked.first?.out else { return [] }
-            return ranked.map { ($0.name, "\(Fmt.num($0.out / scale, maxFraction: 2)) \(token.symbol)", Decimal(units) / 1_000_000 * $0.out / top) }
+            // Six places: a dollar of a $400 stock is 0.0025 of it, and two places showed «0 TSLA».
+            return ranked.map { ($0.name, "\(Fmt.num($0.out / scale, maxFraction: 6)) \(token.symbol)", Decimal(units) / 1_000_000 * $0.out / top) }
         }
         let held = try await balance(token.address, on: EVMRPC.robinhood)
         let wanted = (sell.map { min($0 * scale, held) } ?? held).rounded(0, .down)

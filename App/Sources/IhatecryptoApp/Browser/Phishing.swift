@@ -23,20 +23,21 @@ final class PhishingList {
         loading = true
         defer { loading = false }
         let file = file
-        if blocked.isEmpty, let lists = await Self.parse(try? Data(contentsOf: file)) { (blocked, allowed) = lists }
+        if blocked.isEmpty, let lists = await Self.parse(file: file) { (blocked, allowed) = lists }
         let saved = (try? file.resourceValues(forKeys: [.contentModificationDateKey]))?.contentModificationDate
         guard saved.map({ Date().timeIntervalSince($0) > 86_400 }) ?? true,
               let (data, response) = try? await URLSession.shared.data(from: Self.source), (response as? HTTPURLResponse)?.statusCode == 200,
-              let lists = await Self.parse(data) else { return }
-        try? data.write(to: file, options: .atomic)
+              let lists = await Self.parse(data, file: file) else { return }
         (blocked, allowed) = lists
     }
 
-    /// Off the main thread: 100,000 entries take a moment.
-    private static func parse(_ data: Data?) async -> (Set<String>, Set<String>)? {
-        guard let data else { return nil }
-        return await Task.detached {
-            guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let b = j["blacklist"] as? [String] else { return nil }
+    /// Off the main thread: 100,000 entries (2.9 MB) take a moment to read, parse and write. Without `data` the saved
+    /// copy is read; with it, a list that parses is saved over it.
+    private static func parse(_ data: Data? = nil, file: URL) async -> (Set<String>, Set<String>)? {
+        await Task.detached {
+            guard let bytes = data ?? (try? Data(contentsOf: file)),
+                  let j = try? JSONSerialization.jsonObject(with: bytes) as? [String: Any], let b = j["blacklist"] as? [String] else { return nil }
+            if data != nil { try? bytes.write(to: file, options: .atomic) }
             return (Set(b), Set(j["whitelist"] as? [String] ?? []))
         }.value
     }

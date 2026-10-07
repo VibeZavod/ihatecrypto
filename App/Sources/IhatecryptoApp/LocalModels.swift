@@ -9,7 +9,7 @@ import LLMCore
 /// Models that run on this Mac through Ollama: whether Ollama is there, how big a model is (its registry manifest),
 /// whether it fits this Mac's memory, and downloading one with Ollama's own /api/pull, with its progress.
 enum OllamaModels {
-    static let base = "http://localhost:11434"
+    nonisolated static let base = "http://localhost:11434"
 
     /// Ollama's app, or its command-line server (Homebrew).
     static var installed: Bool {
@@ -67,20 +67,23 @@ enum OllamaModels {
     }
 
     /// Pulls `model`, reporting 0…1 over all its layers as Ollama streams them; throws Ollama's own error.
-    static func pull(_ model: String, progress: @escaping @MainActor (Double) -> Void) async throws {
+    /// Off the main thread: a download is thousands of JSON lines over minutes, and the bar moves only by whole percents.
+    nonisolated static func pull(_ model: String, progress: @escaping @Sendable @MainActor (Double) -> Void) async throws {
         var request = URLRequest(url: URL(string: "\(base)/api/pull")!, timeoutInterval: 3600)
         request.httpMethod = "POST"
         request.httpBody = try JSONSerialization.data(withJSONObject: ["model": model, "stream": true])
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
         guard (response as? HTTPURLResponse)?.statusCode == 200 else { throw LLMError("Ollama didn't start the download (HTTP \((response as? HTTPURLResponse)?.statusCode ?? 0)).") }
         var layers: [String: (done: Double, total: Double)] = [:]
+        var shown = -1.0
         for try await line in bytes.lines {
             guard let j = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { continue }
             if let error = j["error"] as? String { throw LLMError(error) }
             if let digest = j["digest"] as? String, let total = (j["total"] as? NSNumber)?.doubleValue, total > 0 {
                 layers[digest] = ((j["completed"] as? NSNumber)?.doubleValue ?? 0, total)
                 let all = layers.values.reduce((0.0, 0.0)) { ($0.0 + $1.done, $0.1 + $1.total) }
-                await progress(min(all.0 / all.1, 1))
+                let p = min(all.0 / all.1, 1)
+                if abs(p - shown) >= 0.01 { shown = p; await progress(p) }
             }
             if j["status"] as? String == "success" { return }
         }

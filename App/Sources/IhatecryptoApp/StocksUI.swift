@@ -55,9 +55,12 @@ extension Workspace {
             }
             holdings.append(StockHolding(symbol: t.symbol, name: t.name, address: t.address, amount: amount, price: (found[t.id] ?? tokenInfo[t.id])?.priceUSD, logo: t.image))
         }
-        tokenBalances.merge(held) { $1 }
-        tokenInfo.merge(found) { $1 }
-        robinhood = (Decimal(usdg) / 1_000_000, Decimal(eth) / Decimal(sign: .plus, exponent: 18, significand: 1), holdings)
+        land { [self] in
+            guard me == hlAddress else { return }
+            tokenBalances.merge(held) { $1 }
+            tokenInfo.merge(found) { $1 }
+            robinhood = (Decimal(usdg) / 1_000_000, Decimal(eth) / Decimal(sign: .plus, exponent: 18, significand: 1), holdings)
+        }
     }
 
     var robinhoodTotal: Decimal { robinhood.map { $0.usdg + $0.stocks.reduce(0) { $0 + $1.usd } } ?? 0 }

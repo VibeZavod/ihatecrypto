@@ -4,7 +4,7 @@ import Foundation
 /// Application Support/ihatecrypto/Crashes before macOS retires them, each with a one-line summary: the exception and the
 /// first frame in our own code. Nothing leaves the Mac; the debug API's GET /crashes lists them for whoever fixes them.
 enum Crashes {
-    struct Report: Codable {
+    nonisolated struct Report: Codable {
         var file: String
         var date: Date
         var summary: String

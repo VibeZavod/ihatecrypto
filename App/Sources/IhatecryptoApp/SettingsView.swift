@@ -762,6 +762,7 @@ struct SettingsPill: View {
 
 struct ModelSection: View {
     @Environment(Workspace.self) private var ws
+    @AppStorage("modelThinking") private var thinking = false
     @State private var key = ""
     private static let ways = ["claude-code", "chatgpt", "openrouter"]
 
@@ -815,6 +816,12 @@ struct ModelSection: View {
                     else { SettingsPill(text: ws.hasModel ? "Connected" : "Not connected", good: ws.hasModel) }
                 }
                 if info.unavailable == nil { connection(info) }
+            }
+            SettingsGroup {
+                SettingsRow("Think before answering", icon: "brain",
+                            info: "The model reasons before it answers: steadier on a muddled or tricky request, but each reply takes longer, often several times as long (a message can take a few model calls). Off by default. A model that can't reason answers as usual.") {
+                    Toggle("Think before answering", isOn: $thinking).toggleStyle(AccentSwitch()).labelsHidden()
+                }
             }
         }
     }

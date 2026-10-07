@@ -166,6 +166,8 @@ struct StudioView: View {
     @AppStorage("webWidth") private var webWidth = 0.0
     @State private var webResizing: CGFloat?
     @AppStorage("railCollapsed") private var railCollapsed = true
+    /// The canvas in its own hosting view, panned by the scroll view (CanvasHost.swift); off = the SwiftUI offset.
+    @AppStorage("canvasHost") private var canvasHost = true
     @State private var railFoldedForRoom = false
     /// Counts the orange waves around the window's edge (EdgePulse); each new value runs one.
     @State private var edgePulse = 0
@@ -195,7 +197,11 @@ struct StudioView: View {
             } else {
                 // The canvas's scale follows the window alone: moving or resizing the chat, which floats
                 // above everything, never shifts or rescales the boards.
-                CanvasViewport(inset: Self.chatColumn, leading: railEdge, contentWidth: StudioCanvas.contentWidth) { StudioCanvas() }
+                if canvasHost {
+                    CanvasScroller(inset: Self.chatColumn, leading: railEdge, contentWidth: StudioCanvas.contentWidth) { StudioCanvas() }
+                } else {
+                    CanvasViewport(inset: Self.chatColumn, leading: railEdge, contentWidth: StudioCanvas.contentWidth) { StudioCanvas() }
+                }
             }
             HStack(spacing: 0) {
                 // The rail floats over the canvas as a glass panel; the window's traffic lights sit inside it.
@@ -594,7 +600,7 @@ struct StudioRail: View {
                     // Keeps its whole name: the freshness line gives way, not «Led…».
                     WalletChip().layoutPriority(1).onHover { walletHover = $0 }
                 }
-                if ws.updatedAt == nil {
+                if !ws.balancesLoaded {
                     Skeleton(width: 150, height: 34, radius: 9).padding(.vertical, 3)
                 } else {
                     Text(ws.total.map(Fmt.usd) ?? "—").font(.ui(32, .semibold)).monospacedDigit().tracking(-0.6)
@@ -607,7 +613,7 @@ struct StudioRail: View {
             .padding(.horizontal, 4)
             .onHover { balanceHover = $0 }
             // The loaded balance fades in instead of popping up.
-            .animation(.easeOut(duration: 0.35), value: ws.updatedAt == nil)
+            .animation(.easeOut(duration: 0.35), value: !ws.balancesLoaded)
             RailActions()
             CanvasList()
             ProfileMenu(compact: false)
@@ -629,7 +635,7 @@ struct StudioRail: View {
                 VStack(spacing: 8) {
                     BrandLogo(size: 34, mood: refreshing ? .thinking : .idle, animated: true)
                     VStack(spacing: 1) {
-                        if ws.updatedAt == nil {
+                        if !ws.balancesLoaded {
                             Skeleton(width: 44, height: 11)
                         } else {
                             Text(ws.total.map(Fmt.usd) ?? "—").font(.ui(11, .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
@@ -693,24 +699,177 @@ struct Skeleton: View {
     var width: CGFloat? = nil
     var height: CGFloat = 12
     var radius: CGFloat = 6
-    @State private var sweep = false
 
     var body: some View {
         RoundedRectangle(cornerRadius: radius)
             .fill(Color.primary.opacity(0.07))
-            .overlay {
-                GeometryReader { g in
-                    LinearGradient(colors: [.clear, Color.primary.opacity(0.09), .clear], startPoint: .leading, endPoint: .trailing)
-                        .frame(width: g.size.width * 0.6)
-                        .offset(x: sweep ? g.size.width : -g.size.width * 0.6)
-                }
-            }
-            .clipShape(RoundedRectangle(cornerRadius: radius))
+            .overlay { LightSweep(radius: radius).allowsHitTesting(false) }
             .frame(width: width, height: height)
-            // Scoped, never withAnimation: a repeating transaction takes other views' transitions along and never ends them.
-            .animation(.linear(duration: 1.3).repeatForever(autoreverses: false), value: sweep)
-            .onAppear { sweep = true }
-            .accessibilityLabel("Loading")
+            .accessibilityElement().accessibilityLabel("Loading")
+    }
+}
+
+// Motion drawn by Core Animation. A SwiftUI repeatForever or TimelineView lays out and draws the whole window again on
+// every frame (≈ 13 ms of main thread with the canvas, the chat and the rail in one window, measured), so a pulse at
+// 120 Hz kept the main thread full and everything else stuttered. A layer animation runs in the render server: the
+// app does nothing per frame. Each view lets clicks through and sets its colors again when the window turns light or dark.
+// Not on the panned canvas for long: an AppKit view that moves with a pan makes AppKit work out the window's drag regions
+// on every step, asking SwiftUI's focus system each time (RingPulse, RouteCards.swift). The skeletons there last seconds.
+
+/// A rounded border whose opacity breathes, 0.9 s each way.
+struct BreathingBorder: NSViewRepresentable {
+    let color: Color
+    let radius: CGFloat
+    var lineWidth: CGFloat = 1.5
+    var low: Float = 0.35
+    var high: Float = 1
+
+    func makeNSView(context: Context) -> Layered { Layered() }
+    func updateNSView(_ view: Layered, context: Context) {
+        view.color = NSColor(color)
+        view.radius = radius
+        view.lineWidth = lineWidth
+        view.range = (low, high)
+        view.needsLayout = true
+    }
+
+    final class Layered: NSView {
+        var color = NSColor.clear, radius: CGFloat = 0, lineWidth: CGFloat = 1, range: (Float, Float) = (0, 1)
+        private let edge = CALayer()
+        private var animated: (Float, Float)?
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            layer?.addSublayer(edge)
+        }
+        required init?(coder: NSCoder) { nil }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidChangeEffectiveAppearance() { needsLayout = true }
+        override func viewDidMoveToWindow() { animated = nil; needsLayout = true }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            edge.frame = bounds
+            edge.cornerRadius = radius
+            edge.cornerCurve = .continuous
+            edge.borderWidth = lineWidth
+            effectiveAppearance.performAsCurrentDrawingAppearance { edge.borderColor = color.cgColor }
+            edge.opacity = range.1
+            CATransaction.commit()
+            // A layer leaving its window loses its animations: it gets them again when it's back.
+            guard window != nil, animated.map({ $0 != range }) ?? true else { return }
+            let breath = CABasicAnimation(keyPath: "opacity")
+            breath.fromValue = range.0
+            breath.toValue = range.1
+            breath.duration = 0.9
+            breath.autoreverses = true
+            breath.repeatCount = .infinity
+            breath.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            edge.add(breath, forKey: "breath")
+            animated = range
+        }
+    }
+}
+
+/// The skeleton's slow light sweep, left to right every 1.3 s.
+private struct LightSweep: NSViewRepresentable {
+    let radius: CGFloat
+
+    func makeNSView(context: Context) -> Layered { Layered() }
+    func updateNSView(_ view: Layered, context: Context) { view.radius = radius; view.needsLayout = true }
+
+    final class Layered: NSView {
+        var radius: CGFloat = 0
+        private let light = CAGradientLayer()
+        private var animatedWidth: CGFloat?
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            layer?.masksToBounds = true
+            light.startPoint = CGPoint(x: 0, y: 0.5)
+            light.endPoint = CGPoint(x: 1, y: 0.5)
+            layer?.addSublayer(light)
+        }
+        required init?(coder: NSCoder) { nil }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidChangeEffectiveAppearance() { needsLayout = true }
+        override func viewDidMoveToWindow() { animatedWidth = nil; needsLayout = true }
+
+        override func layout() {
+            super.layout()
+            let w = bounds.width
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            layer?.cornerRadius = radius
+            light.bounds = CGRect(x: 0, y: 0, width: w * 0.6, height: bounds.height)
+            light.position = CGPoint(x: -w * 0.3, y: bounds.midY)
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                let tint = NSColor.labelColor.withAlphaComponent(0.09).cgColor
+                light.colors = [NSColor.clear.cgColor, tint, NSColor.clear.cgColor]
+            }
+            CATransaction.commit()
+            guard window != nil, w > 0, animatedWidth != w else { return }
+            let sweep = CABasicAnimation(keyPath: "position.x")
+            sweep.fromValue = -w * 0.3
+            sweep.toValue = w * 1.3
+            sweep.duration = 1.3
+            sweep.repeatCount = .infinity
+            light.add(sweep, forKey: "sweep")
+            animatedWidth = w
+        }
+    }
+}
+
+/// Three dots breathing in turn, 7 pt with 5 pt between them.
+struct BreathingDots: NSViewRepresentable {
+    static let size = CGSize(width: 31, height: 7)
+
+    func makeNSView(context: Context) -> Layered { Layered() }
+    func updateNSView(_ view: Layered, context: Context) {}
+
+    final class Layered: NSView {
+        private let row = CAReplicatorLayer(), dot = CALayer()
+        private var animating = false
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            dot.frame = CGRect(x: 0, y: 0, width: 7, height: 7)
+            dot.cornerRadius = 3.5
+            dot.opacity = 0.3
+            row.instanceCount = 3
+            row.instanceTransform = CATransform3DMakeTranslation(12, 0, 0)
+            row.instanceDelay = 0.18
+            row.addSublayer(dot)
+            layer?.addSublayer(row)
+        }
+        required init?(coder: NSCoder) { nil }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidChangeEffectiveAppearance() { needsLayout = true }
+        override func viewDidMoveToWindow() { animating = false; needsLayout = true }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            row.frame = bounds
+            effectiveAppearance.performAsCurrentDrawingAppearance { dot.backgroundColor = NSColor.secondaryLabelColor.cgColor }
+            CATransaction.commit()
+            guard window != nil, !animating else { return }
+            let breath = CABasicAnimation(keyPath: "opacity")
+            breath.fromValue = 0.3
+            breath.toValue = 1
+            breath.duration = 0.63
+            breath.autoreverses = true
+            breath.repeatCount = .infinity
+            breath.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
+            dot.add(breath, forKey: "breath")
+            animating = true
+        }
     }
 }
 
@@ -734,11 +893,14 @@ struct BrandLogo: View {
     @Environment(\.appearsActive) private var windowActive
     /// Bumped on every change of mood: it plays the hop or the shake.
     @State private var kick = 0
+    /// A new mood moves for a few seconds, then the coin rests: a card can wait minutes for Confirm, and a model minutes
+    /// for its answer (the dots go on showing that), with every frame redrawing the window.
+    @State private var moving = true
 
     private struct Pose { var scale = 1.0, x = 0.0, y = 0.0 }
 
     var body: some View {
-        let live = animated && !reduceMotion
+        let live = animated && !reduceMotion && moving
         TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !(live && windowActive && [.waiting, .thinking, .listening].contains(mood)))) { timeline in
             let t = live ? timeline.date.timeIntervalSinceReferenceDate : 0
             Canvas { context, s in draw(&context, s, t: t) }
@@ -761,7 +923,12 @@ struct BrandLogo: View {
                 CubicKeyframe(0, duration: 0.06)
             }
         }
-        .onChange(of: mood) { if live { kick += 1 } }
+        .onChange(of: mood) { if animated && !reduceMotion { kick += 1 } }
+        .task(id: mood) {
+            moving = true
+            try? await Task.sleep(for: .seconds(4))
+            if !Task.isCancelled { moving = false }
+        }
         .accessibilityLabel("ihatecrypto")
     }
 
@@ -1081,12 +1248,12 @@ struct StudioCanvas: View {
             // Moves already done on this canvas stay above the current one.
             EarlierBoards()
             // A move waiting for its signature or running has its own title and status: no «Plan · waiting» over it.
-            if hasRoute || ws.allocationPreview != nil || (ws.pendingAction == nil && ws.runningAction == nil && ws.currentScheduleKey == nil) {
+            if hasRoute || ws.allocationPreview != nil || (ws.pendingAction == nil && !ws.moveRunning && ws.currentScheduleKey == nil) {
                 HStack(spacing: 8) {
                     Text(ws.allocationPreview.map { "Plan · spread \($0.asset) across the best rates" }
                          ?? (hasRoute ? "\(ws.managesPosition ? "Position" : "Plan") · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))" : board.map { ws.readable($0.title) } ?? "Plan"))
                         .font(.ui(14, .semibold))
-                    StatusChip(text: statusText(nodes), tint: statusTint(nodes))
+                    if ws.assembling { AssemblyCount(chip: true) } else { StatusChip(text: statusText(nodes), tint: statusTint(nodes)) }
                     // An open position is on its market for good: nothing to pick until it closes.
                     if hasRoute, !ws.managesPosition { MarketPicker() }
                     Spacer(minLength: 12)
@@ -1133,7 +1300,7 @@ struct StudioCanvas: View {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
                     if let dca = ws.jupiterDCAs, !dca.isEmpty { JupiterDCABoard(orders: dca) }
                     // Under a running board (a chain's move done, its next step coming) the saved one would draw it twice.
-                    if let board, ws.runningAction == nil { SavedBoard(canvas: board) } else if board == nil, positions.isEmpty, ws.schedules.isEmpty, ws.jupiterDCAs?.isEmpty ?? true, (ws.nextSteps ?? ws.heldAnswer?.steps) == nil, ws.pendingAction == nil, ws.runningAction == nil, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
+                    if let board, !ws.moveRunning { SavedBoard(canvas: board) } else if board == nil, positions.isEmpty, ws.schedules.isEmpty, ws.jupiterDCAs?.isEmpty ?? true, (ws.nextSteps ?? ws.heldAnswer?.steps) == nil, ws.pendingAction == nil, !ws.moveRunning, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
                               (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty {
                         // Never blank while something is under way: whatever path left nothing live, the canvas's last
                         // board stays until the answer or the outcome takes its place. The empty canvas is for when nothing runs.
@@ -1155,14 +1322,14 @@ struct StudioCanvas: View {
                 // One list of ways on: what fits (checked by the code), the model's ideas, raising the limit.
                 let blocked = nodes.contains { $0.status == .blocked }
                 let ideas = (ws.nextSteps ?? ws.heldAnswer?.steps).flatMap { $0.canvas == ws.canvasID ? $0 : nil }
-                if blocked || ideas != nil, ws.assembly == nil {
+                if blocked || ideas != nil, !ws.assembling {
                     let fit = blocked ? ws.planFix.map { ChatRouter.Option(title: $0.title, comment: $0.detail, command: $0.command, recommended: true) } : nil
                     let overLimit = blocked && (ws.evaluation.sizing.map { s in (ws.equity ?? 0) > 0 && s.lossAtStopUSD / ws.equity! * 100 > ws.policy.maxRiskPct } ?? false)
                     if fit != nil || overLimit || !(ideas?.options.isEmpty ?? true) {
                         NextStepsBoard(steps: ideas, fit: fit, overLimit: overLimit)
                     }
                 }
-                if let choices = ws.takeChoices ?? ws.heldAnswer?.takes, ws.assembly == nil {
+                if let choices = ws.takeChoices ?? ws.heldAnswer?.takes, !ws.assembling {
                     TakeChoices(choices: choices, risk: ws.evaluation.sizing?.lossAtStopUSD)
                         .allowsHitTesting(ws.takeChoices != nil)
                         .transition(.opacity)
@@ -1221,7 +1388,6 @@ struct StudioCanvas: View {
     private func statusText(_ nodes: [StudioNode]) -> String {
         if ws.allocationPreview != nil { return ws.pendingAllocation != nil ? "ready to sign" : "nothing to place" }
         guard hasRoute else { return board.map { $0.outcome.map { $0.ok ? "executed" : "failed" } ?? "saved canvas" } ?? "waiting for a task" }
-        if let a = ws.assembly { return "building · \(a.shown) of \(a.total)" }
         if ws.managesPosition { return ws.positions.contains { $0.coin == ws.intent.asset } ? "position open" : "done · position closed" }
         if nodes.contains(where: { $0.status == .blocked }) { return ws.planBlocker.map { ws.say("stopped: ", "стоп: ") + $0.short } ?? "stopped by the rules" }
         return ws.planIsReady ? "ready to sign" : "needs details"
@@ -1230,7 +1396,7 @@ struct StudioCanvas: View {
     private func statusTint(_ nodes: [StudioNode]) -> Color {
         if ws.allocationPreview != nil { return ws.pendingAllocation != nil ? Brand.profit : .secondary }
         if !hasRoute, let o = board?.outcome { return o.ok ? Brand.profit : Brand.loss }
-        guard hasRoute, ws.assembly == nil else { return .secondary }
+        guard hasRoute, !ws.assembling else { return .secondary }
         if nodes.contains(where: { $0.status == .blocked }) { return Brand.blockedInk }
         return ws.planIsReady || ws.managesPosition ? Brand.profit : Brand.jevInk
     }
@@ -1254,9 +1420,11 @@ struct CanvasViewport<Content: View>: View {
     /// A trackpad pinch in progress, and the point between the fingers that stays put.
     @GestureState private var pinch: CGFloat = 1
     @State private var pinchAt: CGPoint = .zero
-    /// Two-finger scrolling pans the canvas while the pointer is over it (not over the chat).
-    @State private var hovering = false
-    @State private var pointer: CGPoint = .zero
+    /// Two-finger scrolling pans the canvas while the pointer is over it (not over the chat); ⌘-scroll zooms about the
+    /// pointer. Kept in a plain class, not @State: the pointer moves with every mouse event, and as state each move
+    /// rebuilt the viewport and redrew the window.
+    @State private var mouse = Mouse()
+    final class Mouse { var over = false, at: CGPoint = .zero }
     @State private var scrollMonitor: Any?
     /// In full screen there's no window to move: the top strip pans like the rest.
     @State private var fullScreen = false
@@ -1304,12 +1472,12 @@ struct CanvasViewport<Content: View>: View {
             .onEnded { value in zoomAbout(value.startLocation, by: value.magnification) })
         .onContinuousHover { phase in
             switch phase {
-            case .active(let p): hovering = true; pointer = p
-            case .ended: hovering = false
+            case .active(let p): mouse.over = true; mouse.at = p
+            case .ended: mouse.over = false
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: .canvasZoom)) { note in
-            if let f = note.userInfo?["factor"] as? CGFloat { zoomAbout(pointer, by: f) }
+            if let f = note.userInfo?["factor"] as? CGFloat { zoomAbout(mouse.at, by: f) }
         }
         .onReceive(NotificationCenter.default.publisher(for: .canvasPan)) { note in
             pan.width += note.userInfo?["dx"] as? CGFloat ?? 0
@@ -1348,10 +1516,10 @@ struct CanvasViewport<Content: View>: View {
     /// Trackpad two-finger scrolling pans; ⌘ + scroll zooms (for a mouse wheel). Over the chat, scrolling stays the chat's.
     private func watchScrolling() {
         guard scrollMonitor == nil else { return }
-        let hovering = $hovering, pan = $pan
+        let mouse = mouse, pan = $pan
         let ws = ws
         scrollMonitor = NSEvent.addLocalMonitorForEvents(matching: .scrollWheel) { event in
-            guard hovering.wrappedValue, let window = event.window else { return event }
+            guard mouse.over, let window = event.window else { return event }
             let height = window.contentView?.bounds.height ?? 0
             let point = CGPoint(x: event.locationInWindow.x, y: height - event.locationInWindow.y)
             if ws.chatFrame.contains(point) || ws.railFrame.contains(point) { return event }
@@ -1486,6 +1654,26 @@ struct DotGrid: View {
     }
 }
 
+/// «building · 3 of 7» while the cursor puts a route's cards down: the plan's status chip, or the bar over the chat's
+/// actions. Its own view, so the count redraws only itself, not the canvas or the chat.
+struct AssemblyCount: View {
+    @Environment(Workspace.self) private var ws
+    let chip: Bool
+
+    var body: some View {
+        if let a = ws.assembly {
+            if chip {
+                StatusChip(text: "building · \(a.shown) of \(a.total)", tint: .secondary)
+            } else {
+                HStack(spacing: 8) {
+                    ProgressView(value: Double(a.shown), total: Double(a.total)).progressViewStyle(.linear).frame(width: 70)
+                    Text("Building on the canvas · \(a.shown) of \(a.total)").font(.ui(10)).foregroundStyle(.secondary).monospacedDigit()
+                }
+            }
+        }
+    }
+}
+
 struct StatusChip: View {
     let text: String
     let tint: Color
@@ -1579,13 +1767,13 @@ struct StudioPortfolio: View {
 
     var body: some View {
         Group {
-            if ws.updatedAt == nil { loading } else { loaded.transition(.opacity) }
+            if !ws.balancesLoaded { loading } else { loaded.transition(.opacity) }
         }
         .padding(14)
         .frame(width: 270)
         .background(RoundedRectangle(cornerRadius: 26).fill(Brand.card).shadow(color: .black.opacity(0.08), radius: 18, y: 10))
         .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Brand.cardBorder))
-        .animation(.easeOut(duration: 0.35), value: ws.updatedAt == nil)
+        .animation(.easeOut(duration: 0.35), value: !ws.balancesLoaded)
     }
 
     /// Before the first balances arrive: the card's shape, shimmering.
@@ -2074,7 +2262,9 @@ struct FloatingChat: View {
                 ScrollView {
                     // Not lazy: a lazy stack anchored at the bottom dropped the first message when it replaced the intro.
                     VStack(alignment: .leading, spacing: 14) {
-                        ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing, thinking: ws.thinking, step: ws.agentStep, draft: ws.draftReply)
+                        ChatHistory(messages: Array(ws.messages.dropFirst()), running: ws.executing)
+                        DraftReply()
+                        Color.clear.frame(height: 0).id(ChatHistory.end)
                         if ws.messages.count <= 1 {
                             Text("Your portfolio is on the canvas. Tell me what to do with your money — in any language — and I’ll build the plan next to it. Nothing moves without your signature.")
                                 .font(.ui(14)).foregroundStyle(.secondary)
@@ -2106,18 +2296,12 @@ struct FloatingChat: View {
                     .padding(.horizontal, 14).padding(.bottom, 8)
                 }
                 .defaultScrollAnchor(.bottom)
-                .onChange(of: ws.messages.count) {
-                    withAnimation { proxy.scrollTo(ChatHistory.end, anchor: .bottom) }
-                }
+                // Not animated: a scroll animation redraws the whole window every frame, and execution adds a line at a time.
+                .onChange(of: ws.messages.count) { proxy.scrollTo(ChatHistory.end, anchor: .bottom) }
             }
 
-            if let a = ws.assembly {
-                HStack(spacing: 8) {
-                    ProgressView(value: Double(a.shown), total: Double(a.total)).progressViewStyle(.linear).frame(width: 70)
-                    Text("Building on the canvas · \(a.shown) of \(a.total)").font(.ui(10)).foregroundStyle(.secondary).monospacedDigit()
-                }
-                .padding(.horizontal, 14).padding(.bottom, 4)
-                .transition(.opacity)
+            if ws.assembling {
+                AssemblyCount(chip: false).padding(.horizontal, 14).padding(.bottom, 4).transition(.opacity)
             }
             ChatActions().padding(.horizontal, 14)
 
@@ -2137,7 +2321,7 @@ struct FloatingChat: View {
     /// looking at a menu or Settings the person has open.
     private var mood: BrandLogo.Mood {
         if ws.executionError != nil { return .error }
-        if ws.thinking || ws.executing || ws.preparing || ws.assembly != nil { return .thinking }
+        if ws.thinking || ws.executing || ws.preparing || ws.assembling { return .thinking }
         if ws.voice.listening { return .listening }
         if ws.tuning != nil { return .tuning }
         if ws.pendingText != nil || ws.pendingAllocation != nil { return .waiting }
@@ -2257,7 +2441,7 @@ private struct VoiceBars: View {
                     .opacity(i < bars.count / 2 ? 1 : 1 - 0.85 * Double(i - bars.count / 2) / Double(bars.count - bars.count / 2))
             }
         }
-        .animation(.smooth(duration: 0.2), value: levels)
+        // Not animated: ten readings a second kept a 0.2 s animation running, redrawing the window, for the whole dictation.
         .frame(maxWidth: .infinity, maxHeight: 30, alignment: .leading)
         .clipped()
         .accessibilityHidden(true)
@@ -2542,9 +2726,14 @@ private struct ChatComposer: View {
     /// Variant E: while a move waits, the field carries it — what it is, Cancel and Confirm in one place, the orange bar
     /// above the field gone. The steps stay on the canvas; the field below still asks about it or changes it.
     private func waitingBar(_ title: String) -> some View {
-        // Once a second: a priced swap's Confirm holds 15 s after its quote, then Refresh asks again (quoteState).
-        TimelineView(.periodic(from: .now, by: 1)) { context in
-            waitingRow(title, state: ws.quoteState(at: context.date))
+        // Once a second while a priced swap's Confirm counts down its 15 s after the quote, then Refresh asks again
+        // (quoteState). Otherwise nothing here changes with the time, and each tick redraws the window.
+        Group {
+            if case .fresh = ws.quoteState(at: Date()) {
+                TimelineView(.periodic(from: .now, by: 1)) { context in waitingRow(title, state: ws.quoteState(at: context.date)) }
+            } else {
+                waitingRow(title, state: ws.quoteState(at: Date()))
+            }
         }
         .padding(.vertical, 10).padding(.leading, 14).padding(.trailing, 9)
         .background(Brand.accent.opacity(0.10))
@@ -3695,7 +3884,7 @@ struct RailRound: ButtonStyle {
             .frame(minWidth: 60)
             .contentShape(Rectangle())
             .opacity(enabled ? 1 : 0.5)
-            .animation(.snappy(duration: 0.16), value: lit)
+            // Hover changes at once (a fade redraws the whole window every frame); a press fades for a tenth of a second.
             .animation(.snappy(duration: 0.1), value: pressed)
             .onHover { hover = $0 }
             .pointerStyle(enabled ? .link : nil)

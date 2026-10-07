@@ -16,7 +16,7 @@ struct PaymentQuote {
 
 /// What a service sent back, on the canvas: its results as rows (or its values), who answered, what it cost. A paid
 /// one is kept in its move's last step, so every move on a canvas keeps its own answer.
-struct ServiceAnswer: Codable, Hashable {
+nonisolated struct ServiceAnswer: Codable, Hashable {
     let service: String
     let usdc: Decimal?
     /// The payment on Tempo's explorer; nil when the service answered for free.

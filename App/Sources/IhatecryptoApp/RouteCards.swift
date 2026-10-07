@@ -336,10 +336,11 @@ struct RouteCards: View {
         }
     }
 
-    /// The cursor puts the cards down one by one; the chat's coin says «building» meanwhile. Without motion (or for a
-    /// route that is only shown again) they are all there at once.
+    /// The cursor puts the cards down one by one; the chat's coin says «building» meanwhile. Without motion, for a route
+    /// that is only shown again, or one of more than six cards, they are all there at once: the motion redraws the whole
+    /// window every frame, and thirty cards kept it going for thirteen seconds.
     private func assemble() async {
-        guard build, !reduceMotion, !steps.isEmpty else { putDown = .max; return }
+        guard build, !reduceMotion, !steps.isEmpty, steps.count <= 6 else { putDown = .max; return }
         putDown = 0
         for i in 1...steps.count {
             try? await Task.sleep(for: .milliseconds(i == 1 ? 200 : 420))
@@ -481,35 +482,30 @@ struct RouteCard: View {
             } else if state == .now || state == .touch {
                 RingPulse(color: state == .touch ? .primary : look.fill.accent, radius: radius)
             }
+            // At once, not faded: each frame of a fade redraws the whole window.
             card.strokeBorder(Brand.accent, lineWidth: 2).opacity(hover && !isOpen ? 0.7 : 0)
-                .animation(.snappy(duration: 0.18), value: hover)
         }
         .allowsHitTesting(false)
     }
 }
 
-/// The ring of the step a move is on: its opacity breathes, nothing else changes. Each frame of it redraws the window,
-/// so it holds still while the window is in the background. On the card's own edge and radius: 5 pt outside it, at a
-/// fixed 25, it pulsed past the border.
+/// The ring of the step a move is on: its opacity breathes, nothing else changes, twelve times a second and only while
+/// the window is in front. A repeatForever redrew the whole window every display frame (120 a second); Core Animation's
+/// BreathingBorder can't go here: an AppKit view moving with the canvas makes AppKit work out the window's drag regions
+/// again on every step of a pan, asking SwiftUI's focus system each time (a quarter of a pan's main thread, measured).
+/// On the card's own edge and radius: 5 pt outside it, at a fixed 25, it pulsed past the border.
 private struct RingPulse: View {
     let color: Color
     let radius: CGFloat
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.appearsActive) private var active
 
     var body: some View {
-        if active { Breathing(color: color, radius: radius) } else { RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(color, lineWidth: 2.5) }
-    }
-
-    private struct Breathing: View {
-        let color: Color
-        let radius: CGFloat
-        @State private var bright = false
-
-        var body: some View {
+        TimelineView(.animation(minimumInterval: 1.0 / 12, paused: reduceMotion || !active)) { timeline in
+            // 0.9 s each way, as before: 0.35 … 1.
+            let t = timeline.date.timeIntervalSinceReferenceDate
             RoundedRectangle(cornerRadius: radius, style: .continuous).strokeBorder(color, lineWidth: 2.5)
-                .opacity(bright ? 1 : 0.35)
-                .animation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true), value: bright)
-                .onAppear { bright = true }
+                .opacity(reduceMotion ? 1 : 0.675 + 0.325 * sin(t * .pi / 0.9))
         }
     }
 }

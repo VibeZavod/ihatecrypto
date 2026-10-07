@@ -218,7 +218,8 @@ struct NodeSheet: View {
 /// Settings › General: NEAR Intents' partner key. Without one 1Click adds 0.25% to every quote; with one it charges its
 /// partner fees (0.20%, 0.01% on stablecoin and same-asset routes). Shown only as «set», never the key.
 struct OneClickKeySection: View {
-    @State private var set = NodeStore.oneClickKey != nil
+    /// Read from the Keychain when shown: as the initial value it was read (~4 ms) on every redraw of Settings.
+    @State private var set = false
     @State private var adding = false
 
     var body: some View {
@@ -234,6 +235,7 @@ struct OneClickKeySection: View {
             }
         }
         .sheet(isPresented: $adding) { OneClickKeySheet { set = true } }
+        .onAppear { set = NodeStore.oneClickKey != nil }
     }
 }
 

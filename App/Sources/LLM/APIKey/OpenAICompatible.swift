@@ -84,9 +84,9 @@ public struct OllamaChatClient: LLMClient {
     public func complete(_ r: LLMRequest) async throws -> String { try await stream(r) { _ in } }
 
     public func stream(_ r: LLMRequest, partial: @escaping @Sendable (String) -> Void) async throws -> String {
-        do { return try await stream(r, think: false, partial: partial) } catch {
+        do { return try await stream(r, think: r.thinking, partial: partial) } catch {
             guard "\(error)".localizedCaseInsensitiveContains("think") else { throw error }
-            return try await stream(r, think: true, partial: partial)
+            return try await stream(r, think: !r.thinking, partial: partial)
         }
     }
 
@@ -133,11 +133,26 @@ public struct OpenAIChatClient: LLMClient {
             "messages": r.messages.map { ["role": $0.role.rawValue, "content": $0.text] },
         ]
         if r.wantsJSON, jsonMode { body["response_format"] = ["type": "json_object"] }
+        // OpenAI's, Gemini's and OpenRouter's reasoning models take it; a model that doesn't is asked again without it.
+        if r.thinking { body["reasoning_effort"] = "medium" }
         return body
     }
 
+    /// A model that refuses `reasoning_effort` (one that doesn't reason, or reasons by its name) answers without it.
+    private func withoutThinking<T>(_ r: LLMRequest, _ ask: (LLMRequest) async throws -> T) async throws -> T {
+        do { return try await ask(r) } catch where r.thinking && "\(error)".localizedCaseInsensitiveContains("reasoning") {
+            var plain = r
+            plain.thinking = false
+            return try await ask(plain)
+        }
+    }
+
     public func complete(_ r: LLMRequest) async throws -> String {
-        let data = try await HTTP.post(baseURL + "/chat/completions", json: body(r), headers: headers, timeout: 90)
+        try await withoutThinking(r) { try await completeOnce($0) }
+    }
+
+    private func completeOnce(_ r: LLMRequest) async throws -> String {
+        let data = try await HTTP.post(baseURL + "/chat/completions", json: body(r), headers: headers, timeout: r.thinking ? 180 : 90)
         struct Message: Decodable { let content: String? }
         struct Choice: Decodable { let message: Message }
         struct Completion: Decodable { let choices: [Choice] }
@@ -150,10 +165,15 @@ public struct OpenAIChatClient: LLMClient {
     /// The same answer as server-sent events, `partial` told the text so far: OpenAI's, OpenRouter's, Ollama's and LM
     /// Studio's /chat/completions all speak them. A server that ignores «stream» and answers with one body still works.
     public func stream(_ r: LLMRequest, partial: @escaping @Sendable (String) -> Void) async throws -> String {
+        try await withoutThinking(r) { try await streamOnce($0, partial: partial) }
+    }
+
+    private func streamOnce(_ r: LLMRequest, partial: @escaping @Sendable (String) -> Void) async throws -> String {
         var b = body(r)
         b["stream"] = true
         let request = try HTTP.request(baseURL + "/chat/completions", method: "POST", body: try JSONSerialization.data(withJSONObject: b),
-                                       contentType: "application/json", headers: headers.merging(["Accept": "text/event-stream"]) { mine, _ in mine }, timeout: 90)
+                                       contentType: "application/json", headers: headers.merging(["Accept": "text/event-stream"]) { mine, _ in mine },
+                                       timeout: r.thinking ? 180 : 90)
         let (bytes, response) = try await URLSession.shared.bytes(for: request)
         if !(200..<300).contains((response as? HTTPURLResponse)?.statusCode ?? 0) {
             var body = Data()

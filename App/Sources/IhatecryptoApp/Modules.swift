@@ -9,7 +9,7 @@ import WalletCore
 
 /// A market's candles on the canvas, with the levels that matter for it. Kept with the canvas: reopened, it shows
 /// the snapshot and when it was taken, until Refresh.
-struct ChartState: Equatable, Codable {
+nonisolated struct ChartState: Equatable, Codable {
     var coin: String
     var range: ChartCommand.Range
     var candles: [Hyperliquid.Candle] = []
@@ -541,13 +541,11 @@ struct Openable: ViewModifier {
     func body(content: Content) -> some View {
         let open = ws.detail == place
         let width: CGFloat = open ? 2 : 1.5
-        // A fixed-color edge whose opacity fades: an opacity change doesn't re-render the layer (a color change would,
-        // every frame, and at up to 4× on a zoomed canvas).
+        // A fixed-color edge that shows at once: a fade redraws the whole window every frame.
         content
             .overlay {
                 RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent, lineWidth: width)
                     .opacity(open ? 1 : hover ? 0.6 : 0)
-                    .animation(.snappy(duration: 0.18), value: hover)
             }
             .contentShape(Rectangle())
             .onHover { hover = $0 }
@@ -602,15 +600,14 @@ struct HoverIconStyle: ButtonStyle {
 
         var body: some View {
             let lit = hover && enabled
-            // Only the wash animates, and only its opacity (a fixed-color layer fading isn't re-rendered each frame, even
-            // on a zoomed canvas); the icon's color switches at once instead of re-drawing the glyph every frame.
+            // The wash and the icon's color switch at once: each frame of a fade redraws the whole window. Only a press
+            // fades, for a tenth of a second.
             configuration.label
                 .foregroundStyle(lit ? AnyShapeStyle(Brand.accentInk) : AnyShapeStyle(.secondary))
                 .frame(minWidth: size, minHeight: size)
                 .background {
                     RoundedRectangle(cornerRadius: 8).fill(Brand.accent)
                         .opacity(configuration.isPressed ? 0.24 : lit ? 0.13 : 0)
-                        .animation(.snappy(duration: 0.16), value: lit)
                         .animation(.snappy(duration: 0.1), value: configuration.isPressed)
                 }
                 .contentShape(Rectangle())
@@ -626,7 +623,8 @@ extension ButtonStyle where Self == HoverIconStyle {
 
 /// Something clickable under the pointer: the hand cursor and an accent edge (a filled card hides the background
 /// tint, so the edge is what shows it can be clicked). Cards never move: no lift, no scale — only the border (the user's rule).
-/// Wash and edge are fixed colors whose opacity fades: that isn't a re-render per frame, even on a zoomed canvas.
+/// Wash and edge change at once: each frame of a fade redraws the whole window (≈ 13 ms), and a pointer crossing the
+/// portfolio set off one fade per row.
 struct HoverLift: ViewModifier {
     var radius: CGFloat = 12
     var enabled = true
@@ -635,8 +633,8 @@ struct HoverLift: ViewModifier {
     func body(content: Content) -> some View {
         let on = hover && enabled
         content
-            .background(RoundedRectangle(cornerRadius: radius).fill(Color.primary).opacity(on ? 0.07 : 0).animation(.snappy(duration: 0.16), value: on))
-            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Brand.accent, lineWidth: 1.5).opacity(on ? 0.7 : 0).animation(.snappy(duration: 0.16), value: on))
+            .background(RoundedRectangle(cornerRadius: radius).fill(Color.primary).opacity(on ? 0.07 : 0))
+            .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(Brand.accent, lineWidth: 1.5).opacity(on ? 0.7 : 0))
             .onHover { hover = $0 }
             .pointerStyle(enabled ? .link : .default)
     }

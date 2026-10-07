@@ -729,6 +729,10 @@ extension WalletCommand {
         case .receiveAcross(let net, let t, _): .receiveAcross(network: net, token: t, amount: amount)
         case .aaveBorrow(_, let net): .aaveBorrow(amount, network: net)
         case .aaveCollateral(_, let net): .aaveCollateral(amount, network: net)
+        case .sell(let a, _): .sell(a, amount: amount)
+        case .sellOn(let place, let t, _, let keep): .sellOn(place, token: t, amount: amount, keep: keep)
+        case .swapOn(let place, let from, let to, _): .swapOn(place, from: from, to: to, amount: amount)
+        case .crossSwap(let from, let on, let to, let at, _): .crossSwap(from: from, on: on, to: to, at: at, amount: amount)
         default: self
         }
     }

@@ -7,7 +7,7 @@ import TradeExecution
 
 /// One thing that happened with ihatecrypto: what the user asked, how it was understood, the bubbles on the canvas at that
 /// moment, and what ihatecrypto said and did. Kept on this Mac only (Application Support/ihatecrypto/activity.json, owner-only).
-struct Activity: Codable, Identifiable, Sendable {
+nonisolated struct Activity: Codable, Identifiable, Sendable {
     enum Kind: String, Codable, Sendable { case request, execution, automatic }
     var id = UUID()
     var at = Date()
@@ -29,7 +29,7 @@ struct Activity: Codable, Identifiable, Sendable {
 }
 
 /// A canvas bubble frozen in time: enough to draw it again the same way in the history.
-struct ActivityBubble: Codable, Hashable, Sendable {
+nonisolated struct ActivityBubble: Codable, Hashable, Sendable {
     /// A plan node kind (source, bridge, position, …) or deposit / skipped / yield / choice / free / result.
     var kind: String
     var label: String

@@ -6,7 +6,7 @@ import WalletCore
 
 /// A token the user watches: by its contract on one chain. Name and symbol come from the chain itself where ihatecrypto can
 /// read it (EVM), the icon and the price from DexScreener. Kept on this Mac (tokens.json).
-struct FavoriteToken: Codable, Identifiable, Hashable {
+nonisolated struct FavoriteToken: Codable, Identifiable, Hashable {
     var id: String { chain + ":" + address.lowercased() }
     let chain: String
     let address: String

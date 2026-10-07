@@ -43,6 +43,7 @@ struct ClaudeCodeClient: LLMClient {
         + (streaming ? ["--output-format", "stream-json", "--verbose", "--include-partial-messages"] : ["--output-format", "json"])
         + ["--model", r.model,
          "--system-prompt", r.system.isEmpty ? "You are an assistant. Answer briefly and to the point." : r.system]
+        + (r.thinking ? ["--effort", "high"] : [])
     }
 
     func complete(_ r: LLMRequest) async throws -> String {

@@ -9,16 +9,17 @@ import WalletCore
 
 /// Owner-only JSON files in Application Support/ihatecrypto.
 ///
-/// A chat reply changes activity.json and canvases.json several times in one go: each file is encoded once, at the
-/// end of that turn of the run loop, and written off the main thread. Encoding stays on main: the app's types are
-/// main-actor isolated, so their Codable conformances can't run elsewhere.
+/// A chat reply changes activity.json and canvases.json several times in one go: each file is encoded once, half a
+/// second after the first change, and encoded and written off the main thread. On main the two (≈ 1.3 MB) took tens of
+/// milliseconds a save, two to four times a message, right as the reply animated in. The saved types are `nonisolated`
+/// for that: a main-actor type's Codable conformance can't run elsewhere.
 enum LocalStore {
-    /// Writes go one at a time, in order.
+    /// Encodes and writes go one at a time, in order.
     private static let queue = DispatchQueue(label: "app.ihatecrypto.localstore")
-    /// Values saved during this turn, by file: only the last one of each is encoded.
-    private static var pending: [String: () -> Data?] = [:]
-    /// The bytes each file last got: an unchanged value isn't written again.
-    private static var written: [String: Data] = [:]
+    /// Values saved meanwhile, by file: only the last one of each is encoded.
+    private static var pending: [String: @Sendable () -> Data?] = [:]
+    /// The bytes each file last got: an unchanged value isn't written again. Touched on `queue` only.
+    nonisolated(unsafe) private static var written: [String: Data] = [:]
 
     nonisolated static func url(_ name: String) -> URL {
         let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "ihatecrypto")
@@ -47,12 +48,12 @@ enum LocalStore {
     /// A file gone for good (a removed wallet's): what still waits to be written goes first, so it can't come back.
     static func remove(_ name: String) {
         flush()
-        written[name] = nil
+        queue.sync { written[name] = nil }
         try? FileManager.default.removeItem(at: url(name))
     }
 
-    static func save<T: Encodable>(_ value: T, _ name: String) {
-        if pending.isEmpty { Task { encodePending() } }
+    static func save<T: Encodable & Sendable>(_ value: T, _ name: String) {
+        if pending.isEmpty { Task { try? await Task.sleep(for: .milliseconds(500)); writePending() } }
         pending[name] = {
             let encoder = JSONEncoder()
             encoder.dateEncodingStrategy = .iso8601
@@ -60,22 +61,20 @@ enum LocalStore {
         }
     }
 
-    /// Encodes what was saved and hands the bytes to the queue.
-    private static func encodePending() {
+    /// Hands what was saved to the queue, which encodes and writes it.
+    private static func writePending() {
         let jobs = pending
         pending = [:]
-        for (name, encode) in jobs {
-            guard let data = encode(), written[name] != data else { continue }
-            written[name] = data
-            queue.async {
+        guard !jobs.isEmpty else { return }
+        queue.async {
+            for (name, encode) in jobs {
+                guard let data = encode(), written[name] != data else { continue }
                 let file = url(name)
                 if !FileManager.default.fileExists(atPath: file.path) {
                     FileManager.default.createFile(atPath: file.path, contents: nil, attributes: [.posixPermissions: 0o600])
                 }
-                do { try data.write(to: file, options: .atomic) } catch {
-                    // Not on disk (a full disk): the same value saved again has to be written, not skipped as unchanged.
-                    Task { @MainActor in if written[name] == data { written[name] = nil } }
-                }
+                // Not on disk (a full disk): the same value saved again has to be written, not skipped as unchanged.
+                do { try data.write(to: file, options: .atomic); written[name] = data } catch { written[name] = nil }
                 try? FileManager.default.setAttributes([.posixPermissions: 0o600], ofItemAtPath: file.path)
             }
         }
@@ -83,14 +82,14 @@ enum LocalStore {
 
     /// Everything saved so far is on disk when this returns: at quit, and before a read.
     static func flush() {
-        encodePending()
+        writePending()
         queue.sync {}
     }
 }
 
 /// One canvas: its chat, its plan, the model it was talked through and the bubbles last on it.
 /// Kept on this Mac (canvases.json, owner-only); the canvas open at quit opens again at launch.
-struct CanvasSession: Codable, Identifiable, Equatable {
+nonisolated struct CanvasSession: Codable, Identifiable, Equatable {
     var id = UUID()
     var updated = Date()
     var title = ""
@@ -130,7 +129,7 @@ struct CanvasSession: Codable, Identifiable, Equatable {
 }
 
 /// A money move carried out from a canvas.
-struct CanvasOutcome: Codable, Equatable {
+nonisolated struct CanvasOutcome: Codable, Equatable {
     var at: Date
     var ok: Bool
     /// Not ok, but not failed either: sent with no outcome back (Execution.swift unsettled); never offered again.
@@ -138,7 +137,7 @@ struct CanvasOutcome: Codable, Equatable {
 }
 
 /// A finished move kept on its canvas once the next one begins.
-struct DoneBoard: Codable, Equatable {
+nonisolated struct DoneBoard: Codable, Equatable {
     var title: String
     var bubbles: [ActivityBubble]
     var outcome: CanvasOutcome
@@ -186,7 +185,7 @@ extension Workspace {
 
     /// Another canvas may open: nothing is being answered or carried out. A move saves its outcome, title, replies and
     /// «Try again» to the canvas open when it ends, so that canvas can't change under it.
-    var canSwitchCanvas: Bool { !busy && !executing && runningAction == nil }
+    var canSwitchCanvas: Bool { !busy && !executing && !moveRunning }
 
     func openCanvas(_ c: CanvasSession) {
         // The open canvas clicked again: its board back as it was kept, when nothing on it runs or waits for Confirm —
@@ -557,17 +556,17 @@ private struct NewCanvasRow: View {
 struct PulsingEdge: ViewModifier {
     let active: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var lit = false
 
     func body(content: Content) -> some View {
-        content
-            // The repeating animation is scoped to this border: started with withAnimation as the row lit up, it took
-            // along whatever else changed in that update — the canvas's old board, leaving on Confirm, stayed on
-            // screen under the running one for as long as the row breathed («опять видно два канваса»).
-            .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .strokeBorder(Brand.accent.opacity(active ? (lit ? 0.8 : 0.2) : 0), lineWidth: 1.5)
-                .animation(active && !reduceMotion ? .easeInOut(duration: 0.9).repeatForever(autoreverses: true) : nil, value: lit))
-            .onChange(of: active, initial: true) { lit = active }
+        // Core Animation breathes it (BreathingBorder): a SwiftUI repeatForever here redrew the whole window 120 times a
+        // second for as long as a new canvas stayed empty, the window in the background too. It also took along whatever
+        // else changed in the update it started in («опять видно два канваса»).
+        content.overlay {
+            if active {
+                if reduceMotion { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Brand.accent.opacity(0.8), lineWidth: 1.5) }
+                else { BreathingBorder(color: Brand.accent, radius: 12, lineWidth: 1.5, low: 0.2, high: 0.8).allowsHitTesting(false) }
+            }
+        }
     }
 }
 
@@ -1057,8 +1056,10 @@ extension Workspace {
         // what is free on Hyperliquid; the confirm step re-quotes exactly.
         let richest = ([solana?.usdc] + EVMNetwork.searched.map { usdc(on: $0.key) }).compactMap { $0 }.max() ?? 0
         let available = max(0, richest - Decimal(string: "0.1")!) + (hl.map { $0.withdrawable + (m.dex.flatMap { dexBalances[$0]?.withdrawable } ?? 0) } ?? 0)
-        guard let f = Plan.fix(intent, market: m, equity: equity, policy: policy,
-                               openRisk: HyperliquidAccount.riskAtStops(positions: positions, orders: orders), available: available) else { return nil }
+        let key = FixKey(intent: intent, market: m, equity: equity, policy: policy,
+                         openRisk: HyperliquidAccount.riskAtStops(positions: positions, orders: orders), available: available)
+        if fixMemo?.key != key { fixMemo = (key, Plan.fix(key.intent, market: m, equity: key.equity, policy: key.policy, openRisk: key.openRisk, available: available)) }
+        guard let f = fixMemo?.fix else { return nil }
         // Said as what changes in the trade, not as a sum: «Risk $0.33» read like something to pay.
         let s = f.sizing, now = evaluation.sizing
         let title = f.command.hasSuffix("USDC")
@@ -1086,30 +1087,38 @@ struct PendingButtons: View {
         HStack(spacing: 8) {
             Button("Cancel") { Task { await ws.send("cancel") } }
                 .buttonStyle(.bordered).controlSize(.large)
-            TimelineView(.periodic(from: .now, by: 1)) { context in
-                switch ws.quoteState(at: context.date) {
-                case .stale:
-                    Button { ws.requoteSwap() } label: {
-                        Label("Refresh", systemImage: "arrow.clockwise").font(.ui(13, .semibold)).padding(.horizontal, 6)
-                    }
-                    .buttonStyle(.borderedProminent).controlSize(.large).help("The price is over 15 seconds old: ask for it again")
-                case .quoting:
-                    Label("Quoting…", systemImage: "hourglass").font(.ui(13, .semibold)).padding(.horizontal, 6)
-                        .foregroundStyle(.secondary).frame(height: 28)
-                case .fresh(let left):
-                    Button { Task { await ws.pressConfirm() } } label: {
-                        Label("\(confirm) · \(left)", systemImage: "touchid").font(.ui(13, .semibold)).monospacedDigit().padding(.horizontal, 6)
-                    }
-                    .buttonStyle(.borderedProminent).controlSize(.large).accessibilityLabel(confirm)
-                case .none:
-                    Button { Task { await ws.pressConfirm() } } label: {
-                        Label(confirm, systemImage: "touchid").font(.ui(13, .semibold)).padding(.horizontal, 6)
-                    }
-                    .buttonStyle(.borderedProminent).controlSize(.large)
-                }
+            // Once a second only while a quote counts down: otherwise nothing on it changes with the time, and each tick
+            // redraws the window.
+            if case .fresh = ws.quoteState(at: Date()) {
+                TimelineView(.periodic(from: .now, by: 1)) { context in confirmButton(ws.quoteState(at: context.date)) }
+            } else {
+                confirmButton(ws.quoteState(at: Date()))
             }
         }
         .disabled(ws.busy)
+    }
+
+    @ViewBuilder private func confirmButton(_ state: Workspace.QuoteState) -> some View {
+        switch state {
+        case .stale:
+            Button { ws.requoteSwap() } label: {
+                Label("Refresh", systemImage: "arrow.clockwise").font(.ui(13, .semibold)).padding(.horizontal, 6)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large).help("The price is over 15 seconds old: ask for it again")
+        case .quoting:
+            Label("Quoting…", systemImage: "hourglass").font(.ui(13, .semibold)).padding(.horizontal, 6)
+                .foregroundStyle(.secondary).frame(height: 28)
+        case .fresh(let left):
+            Button { Task { await ws.pressConfirm() } } label: {
+                Label("\(confirm) · \(left)", systemImage: "touchid").font(.ui(13, .semibold)).monospacedDigit().padding(.horizontal, 6)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large).accessibilityLabel(confirm)
+        case .none:
+            Button { Task { await ws.pressConfirm() } } label: {
+                Label(confirm, systemImage: "touchid").font(.ui(13, .semibold)).padding(.horizontal, 6)
+            }
+            .buttonStyle(.borderedProminent).controlSize(.large)
+        }
     }
 }
 
@@ -1134,7 +1143,7 @@ struct MoveRoute {
 }
 
 /// A route step's color, by place; kept by name, so a saved route draws the same.
-enum RouteFill: String, Codable, Hashable, Sendable {
+nonisolated enum RouteFill: String, Codable, Hashable, Sendable {
     case solana, relay, hyperliquid, hlp, jupiter, kamino, jito, aave, morpho, base, arbitrum, robinhood, near, tempo, hyperevm
     /// A plan's checks and its result: no place of their own, a grey card.
     case check
@@ -1144,7 +1153,7 @@ enum RouteFill: String, Codable, Hashable, Sendable {
         self = RouteFill(rawValue: try decoder.singleValueContainer().decode(String.self)) ?? .check
     }
 
-    var color: Color {
+    @MainActor var color: Color {
         switch self {
         case .solana: Brand.solanaTint
         case .relay: Brand.relay
@@ -1402,7 +1411,8 @@ extension Workspace {
             return (step("hype", "FROM · HLP VAULT", "\(n(x)) USDC", "", .hlp), step("hype", "TO · HYPERLIQUID", "USDC", "trading balance", .hyperliquid))
         case .buy(let a, let u):
             return (step("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC, .solana),
-                    step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "BUY · JUPITER", a.symbol, "best route, simulated first", .jupiter))
+                    step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "BUY · JUPITER", a.symbol,
+                         quotedGets(c).map { "≈ \($0) · simulated first" } ?? "best route, simulated first", .jupiter))
         case .jupiterDCA(let a, let u, let o, let e):
             let orders = o ?? u.map(WalletCommand.jupiterDCAOrders) ?? 2
             return (step("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC + (solUSDC.isEmpty ? "" : " · ") + "all goes in now", .solana),
@@ -1432,7 +1442,7 @@ extension Workspace {
                 : solana?.tokens.first { $0.contract == a.mint || (a.mint.isEmpty && $0.symbol.uppercased() == a.symbol.uppercased()) }?.amount
             return (step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "SELL · JUPITER", "\(n(x)) \(a.symbol)",
                          held.map { "held: \(Fmt.num($0, maxFraction: 6)) \(a.symbol)" } ?? "best route, simulated first", .jupiter),
-                    step("usdc", "TO · SOLANA", "USDC", "your wallet", .solana))
+                    step("usdc", "TO · SOLANA", "USDC", quotedGets(c).map { "≈ \($0) · your wallet" } ?? "your wallet", .solana))
         default:
             return nil
         }
@@ -1678,14 +1688,14 @@ extension Workspace {
                 step("sol", "FROM · SOLANA", "\(Fmt.num(usdc)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana),
                 way,
             ] + (viaUniswap ? [approve("≈ \(Fmt.num(usdc)) USDC", for: "Uniswap", logo: "uni", fill, line: "exactly what arrives · only Uniswap may take it")] : []) + [
-                step(logo, "BUY · ON \(name.uppercased())", label, "at the best price found", fill),
+                step(logo, "BUY · ON \(name.uppercased())", label, quotedGets(command).map { "≈ \($0) arrives" } ?? "at the best price found", fill),
             ], warning: token.hasPrefix("0x") ? "A token by its contract is anyone’s coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose." : nil)
         }
         return MoveRoute(title: "Sell \(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label) on \(name) → Solana", footer: footer, steps: [
             step(logo, "FROM · \(name.uppercased())", "\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label)", "\(EVMNetwork.named(place)?.gasCoin ?? "ETH") for gas comes along when there’s none", fill),
         ] + (viaUniswap ? [approve("\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label)", for: "Uniswap", logo: "uni", fill)] : []) + [
             way,
-            step("sol", "TO · SOLANA", "USDC", "your wallet", .solana),
+            step("sol", "TO · SOLANA", "USDC", quotedGets(command).map { "≈ \($0) · your wallet" } ?? "your wallet", .solana),
         ])
     }
 
@@ -1696,13 +1706,15 @@ extension Workspace {
             return MoveRoute(title: "Buy \(symbol) · \(Fmt.num(usdc)) USDC on Hyperliquid spot",
                              footer: "One spot order on Hyperliquid's book, IOC within 1% of the mid; the spot USDC comes from your perp balance first when short (one more signature of yours). The exchange takes orders from 10 USDC. Press Confirm.",
                              steps: [step("hyperliquid", "FROM · HYPERLIQUID", "\(Fmt.num(usdc)) USDC", "spot balance · perp tops it up when short", .hyperliquid),
-                                     step(logo, "BUY · SPOT ORDER", symbol, "IOC · at most 1% over the mid", .hyperliquid),
+                                     step(logo, "BUY · SPOT ORDER", symbol,
+                                          quotedGets(.hlSpotBuy(symbol: symbol, usdc: usdc)).map { "≈ \($0) · at most 1% over the mid" } ?? "IOC · at most 1% over the mid", .hyperliquid),
                                      step(logo, "TO · SPOT BALANCE", symbol, "on Hyperliquid, yours ✓", .hyperliquid)])
         }
         return MoveRoute(title: "Sell \(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(symbol) on Hyperliquid spot",
                          footer: "One spot order on Hyperliquid's book, IOC within 1% of the mid; the USDC lands on your spot balance. The exchange takes orders from 10 USDC. Press Confirm.",
                          steps: [step(logo, "FROM · SPOT BALANCE", "\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(symbol)", "on Hyperliquid", .hyperliquid),
-                                 step(logo, "SELL · SPOT ORDER", "→ USDC", "IOC · at most 1% under the mid", .hyperliquid),
+                                 step(logo, "SELL · SPOT ORDER", "→ USDC",
+                                      quotedGets(.hlSpotSell(symbol: symbol, amount: sell)).map { "≈ \($0) · at most 1% under the mid" } ?? "IOC · at most 1% under the mid", .hyperliquid),
                                  step("usdc", "TO · SPOT USDC", "USDC", "on Hyperliquid, yours ✓", .hyperliquid)])
     }
 
@@ -1858,6 +1870,10 @@ extension Workspace {
 
     /// The way that leaves more right now, what it gives and by how much it beats the other; `ways` is nil while both
     /// are being quoted.
+    /// What the move waiting as `c` gets by its best way now («0.00826 SOL»), from its quote: the card's last step says
+    /// it, not only the chat. nil until quoted, and on a board shown as it was.
+    func quotedGets(_ c: WalletCommand) -> String? { swapQuote.flatMap { $0.command == c ? $0.ways.first?.gets : nil } }
+
     private func bestWay(_ ways: [(way: String, gets: String, worth: Decimal)]?) -> ActivityBubble {
         guard let ways else { return step("relay", "RELAY OR UNISWAP · COMPARING", "comparing…", "Relay swap vs Relay + Uniswap", .relay) }
         guard let best = ways.first else { return step("relay", "RELAY OR UNISWAP · COMPARING", "no quote now", "asking again every 30 s", .relay) }
@@ -1887,6 +1903,9 @@ extension Workspace {
         // Solana through Jupiter: what the buy gets, or the sale leaves.
         case .buy(let asset, let u?): await quoteJupiter(command, from: .usdc, to: asset, amount: u); return
         case .sell(let asset, let a?): await quoteJupiter(command, from: asset, to: .usdc, amount: a); return
+        // Hyperliquid's spot book at its mid: an estimate for the card, the order keeps within 1% of it.
+        case .hlSpotBuy(let s, let u?): await quoteSpot(command, s, usdc: u, sell: nil); return
+        case .hlSpotSell(let s, let x?): await quoteSpot(command, s, usdc: nil, sell: x); return
         case .aaveBorrow(let x?, let net):
             // The health factor after the borrow and the price of ETH that would liquidate it, read again every 30 s.
             guard let wallet = previewWallet, let m = AaveV3.markets.first(where: { $0.chain == net }) else { return }
@@ -1922,6 +1941,17 @@ extension Workspace {
     }
 
     /// A Solana buy or sale through Jupiter: its quote for the amount said.
+    private func quoteSpot(_ command: WalletCommand, _ symbol: String, usdc: Decimal?, sell: Decimal?) async {
+        while !Task.isCancelled {
+            if let gets = try? await Executor.spotQuote(symbol, usdc: usdc, sell: sell) {
+                guard !Task.isCancelled else { return }
+                swapQuote = (command, [("Hyperliquid", gets, 0)])
+                return
+            }
+            try? await Task.sleep(for: .seconds(15))
+        }
+    }
+
     private func quoteJupiter(_ command: WalletCommand, from: SpotAsset, to: SpotAsset, amount: Decimal) async {
         let units = NSDecimalNumber(decimal: (amount * Decimal(sign: .plus, exponent: from.decimals, significand: 1)).rounded(0, .down)).uint64Value
         guard units > 0 else { return }
@@ -2070,15 +2100,71 @@ extension Workspace {
                                 hyperliquid: hl?.withdrawable ?? 0, near: near, nearPrice: markets["NEAR"]?.markPx)
     }
 
-    /// A deposit or a buy whose network hasn't the USDC, the source left unsaid, as steps: the portfolio's free money brought
-    /// there first — Solana, the EVM networks (Ethereum last), Hyperliquid's withdrawable, NEAR sold — one leg a place
-    /// (FundingPlan), then the move. nil when the network has it, one place pays all of it inside the move (one card), or
-    /// all of it together isn't enough (fundingShortfall says so).
-    func fundedFromElsewhere(_ c: WalletCommand) -> [String]? {
-        // The move is run again from its words: only a command that reads back the same (not a token by its mint).
-        guard let (short, net) = fundingNeed(c), WalletCommand.parse(c.summary) == c, !oneSource(short, net),
-              let legs = fundingLegs(short, net), !legs.isEmpty else { return nil }
-        return legs + [c.summary]
+    /// A move asking for more than its place holds, as the person said it: what there is in a line, and the ways on as
+    /// cards — bring the rest from elsewhere first (the legs FundingPlan finds), take all there is, or top up. A buy or a
+    /// deposit is counted in USDC; a swap or a sale in the token it gives. nil when there's enough, the move pays it
+    /// within itself (one place sends straight), or the holding isn't known.
+    func shortChoices(_ c: WalletCommand) -> (line: String, options: [ChatRouter.Option])? {
+        if let (short, net) = fundingNeed(c), !oneSource(short, net) {
+            let have = usdc(on: net) ?? 0, place = WalletCommand.placeName(net)
+            var options: [ChatRouter.Option] = []
+            if let legs = fundingLegs(short, net), !legs.isEmpty, WalletCommand.parse(c.summary) == c {
+                options.append(ChatRouter.Option(title: say("Bring \(Fmt.num(short)) USDC to \(place) first", "Сначала довезти \(Fmt.num(short)) USDC на \(place)"),
+                                                 comment: (legs + [c.summary]).joined(separator: " → "), command: (legs + [c.summary]).joined(separator: " then "),
+                                                 recommended: true))
+            }
+            options += allThere(c, have: have, unit: "USDC", recommended: options.isEmpty)
+            options.append(topUp(place))
+            return (say("On \(place) there's \(Fmt.num(have)) USDC, and this asks \(Fmt.num(have + short)). Pick a way on the canvas.",
+                        "На \(place) \(Fmt.num(have)) USDC, а нужно \(Fmt.num(have + short)). Выбери на холсте, как быть."), options)
+        }
+        let asked: (symbol: String, amount: Decimal, net: String)
+        switch c {
+        case .swapOn(let net, let from, _, let x?): asked = (from, x, net)
+        case .sellOn(let net, let token, let x?, _): asked = (token, x, net)
+        case .crossSwap(let from, let on, _, _, let x?): asked = (from, x, on)
+        case .sell(let a, let x?): asked = (a.symbol, x, "solana")
+        default: return nil
+        }
+        guard let have = held(asked.symbol, on: asked.net), asked.amount > have else { return nil }
+        let place = WalletCommand.placeName(asked.net), symbol = asked.symbol.uppercased()
+        // USDC short on that network can be brought from elsewhere first, as for a buy.
+        var bring: [ChatRouter.Option] = []
+        if symbol == "USDC", let legs = fundingLegs(asked.amount - have, asked.net), !legs.isEmpty {
+            bring = [ChatRouter.Option(title: say("Bring \(Fmt.num(asked.amount - have)) USDC to \(place) first", "Сначала довезти \(Fmt.num(asked.amount - have)) USDC на \(place)"),
+                                       comment: (legs + [c.summary]).joined(separator: " → "), command: (legs + [c.summary]).joined(separator: " then "), recommended: true)]
+        }
+        return (say("On \(place) there's \(Fmt.num(have, maxFraction: 6)) \(symbol), and this asks \(Fmt.num(asked.amount, maxFraction: 6)). Pick a way on the canvas.",
+                    "На \(place) \(Fmt.num(have, maxFraction: 6)) \(symbol), а нужно \(Fmt.num(asked.amount, maxFraction: 6)). Выбери на холсте, как быть."),
+                bring + allThere(c, have: have, unit: symbol, recommended: bring.isEmpty) + [topUp(place)])
+    }
+
+    /// «All there is»: the same move for what the place holds, when that's worth a move.
+    private func allThere(_ c: WalletCommand, have: Decimal, unit: String, recommended: Bool) -> [ChatRouter.Option] {
+        let amount = unit == "USDC" ? have.rounded(2, .down) : have
+        guard amount > 0, unit != "USDC" || amount >= Decimal(string: "0.5")! else { return [] }
+        let all = c.with(amount: amount)
+        guard all != c else { return [] }
+        return [ChatRouter.Option(title: say("All there is: \(Fmt.num(amount, maxFraction: 6)) \(unit)", "Всё, что есть: \(Fmt.num(amount, maxFraction: 6)) \(unit)"),
+                                  comment: all.summary, command: all.summary, recommended: recommended)]
+    }
+
+    private func topUp(_ place: String) -> ChatRouter.Option {
+        ChatRouter.Option(title: say("Top up first", "Сначала пополнить"),
+                          comment: say("Your addresses on the canvas; send the rest to \(place) and ask again.", "Адреса на холсте: пришли недостающее на \(place) и попроси снова."),
+                          command: "top up", recommended: false)
+    }
+
+    /// What the wallet holds of a token at a place, as last read; nil when not known (a balance that isn't read here).
+    func held(_ symbol: String, on net: String) -> Decimal? {
+        let s = symbol.uppercased()
+        if s == "USDC" { return usdc(on: net) }
+        switch (net, s) {
+        case ("solana", "SOL"): return solana?.sol
+        case ("base", "ETH"): return base?.eth
+        case ("robinhood", "ETH"): return robinhood?.eth
+        default: return holdings.first { $0.chain == net && ($0.symbol.uppercased() == s || $0.contract.lowercased() == symbol.lowercased()) }?.amount
+        }
     }
 
     /// All the wallet's free money together can't pay the move: said before a card that would fail.
@@ -2117,7 +2203,8 @@ extension Workspace {
 
     /// Gas for a network: Solana's USDC → Relay → the network's own coin at our address (half a dollar of USDC comes along).
     private func gasRoute(_ place: String, _ usd: Decimal) -> MoveRoute {
-        let name = WalletCommand.placeName(place), coin = place == "polygon" ? "POL" : "ETH"
+        // The network's own coin: HYPE on HyperEVM, POL on Polygon (the card said «ETH» on HyperEVM).
+        let name = WalletCommand.placeName(place), coin = EVMNetwork.named(place)?.gasCoin ?? (place == "polygon" ? "POL" : "ETH")
         let fill: RouteFill = ["base": .base, "arbitrum": .arbitrum, "robinhood": .robinhood][place] ?? .relay
         return MoveRoute(title: "Gas · \(Fmt.usd(usd)) of \(coin) on \(name)",
                          footer: "One Solana signature for the Relay bridge: \(Fmt.usd(usd)) of \(coin) and half a dollar of USDC arrive at your own address on \(name). "
@@ -2471,9 +2558,11 @@ extension Workspace {
         // A deposit into Aave or Morpho takes the USDC on its own network first, then Solana's. When neither has enough
         // but another EVM network does, that money comes straight from there, the way a trade's does: the move, then the
         // deposit, one Confirm. «положи 300 в aave на арбитруме» with the USDC on Ethereum made a card that could only fail.
-        if !quiet, TaskRun.automation == nil, let steps = fundedFromElsewhere(command) {
-            reply(say("In steps: ", "По шагам: ", "Por pasos: ") + steps.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: " → "), note: note)
-            await runSteps(steps)
+        // Asked for more than is there («swap 150» with 100): the facts in a line and the ways on as cards, not a chain of
+        // moves drawn at once. A step of a chain or a task — already chosen — goes on as it was.
+        if !quiet, TaskRun.automation == nil, let short = shortChoices(command) {
+            withAnimation(StudioView.spring) { nextSteps = NextSteps(options: short.options, userText: "", found: [], canvas: canvasID) }
+            reply(short.line, note: note)
             return
         }
         // A recurring buy can run two ways: both are offered, in a line each, before either starts. Jupiter's DCA named

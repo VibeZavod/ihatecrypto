@@ -17,15 +17,37 @@ public struct LLMRequest: Sendable {
     public var messages: [LLMMessage]
     /// Ask for a bare JSON object where the API supports it. Callers still parse leniently (`JSONText`).
     public var wantsJSON: Bool
+    /// Let the model reason before it answers (Settings › Models › «Think before answering»): slower, steadier on a muddled
+    /// or tricky request. Each service gets it its own way; one that doesn't know it answers as usual.
+    public var thinking: Bool
 
-    public init(model: String, messages: [LLMMessage], wantsJSON: Bool = false) {
+    public init(model: String, messages: [LLMMessage], wantsJSON: Bool = false, thinking: Bool = false) {
         self.model = model
         self.messages = messages
         self.wantsJSON = wantsJSON
+        self.thinking = thinking
     }
 
     public var system: String { messages.filter { $0.role == .system }.map(\.text).joined(separator: "\n\n") }
     public var dialogue: [LLMMessage] { messages.filter { $0.role != .system } }
+}
+
+/// A client whose every request thinks first (`LLMRequest.thinking`), whatever its caller asked.
+public struct ThinkingClient: LLMClient {
+    let base: any LLMClient
+    public init(_ base: any LLMClient) { self.base = base }
+
+    public func complete(_ request: LLMRequest) async throws -> String {
+        var r = request
+        r.thinking = true
+        return try await base.complete(r)
+    }
+
+    public func stream(_ request: LLMRequest, partial: @escaping @Sendable (String) -> Void) async throws -> String {
+        var r = request
+        r.thinking = true
+        return try await base.stream(r, partial: partial)
+    }
 }
 
 /// A ready connection to one model service. The app talks only to this.

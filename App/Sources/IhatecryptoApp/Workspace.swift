@@ -18,7 +18,7 @@ import SignerAPI
 import TradeExecution
 import TxGuard
 
-struct Message: Identifiable, Codable, Equatable {
+nonisolated struct Message: Identifiable, Codable, Equatable {
     var id = UUID()
     let fromUser: Bool
     let text: String
@@ -45,23 +45,32 @@ final class Workspace {
     /// The model's answer while it's still being written (ChatRouter's `draft`): shown in place of the dots, gone once the
     /// finished reply lands.
     var draftReply: String?
+    /// When the draft was last shown: a model streams tens of pieces a second, and each shown one lays out the chat.
+    @ObservationIgnored private var draftShownAt = Date.distantPast
+
+    /// The model's answer so far, at most ten times a second; the finished reply replaces it whatever was skipped.
+    func showDraft(_ words: String) {
+        guard thinking, Date().timeIntervalSince(draftShownAt) >= 0.1 else { return }
+        draftShownAt = Date()
+        draftReply = words
+    }
 
     var markets: [String: Market] = [:]
     /// The market picker's lists, names by group, most traded first. Set only when they change, so the picker
     /// doesn't rebuild its menus with every price.
     var marketNames: [Market.Group: [String]] = [:]
     var marketsError: String?
-    var solana: Solana.Balance?
+    var solana: Solana.Balance? { didSet { sortHoldings() } }
     var solanaError: String?
     /// The user's say on a token, by Holding.id: true shows it, false hides it; no entry follows Holding.looksReal.
     /// Not per wallet: a scam token hidden once stays hidden on every wallet.
     var tokenChoices: [String: Bool] = UserDefaults.standard.dictionary(forKey: "tokenChoices") as? [String: Bool] ?? [:] {
-        didSet { UserDefaults.standard.set(tokenChoices, forKey: "tokenChoices") }
+        didSet { UserDefaults.standard.set(tokenChoices, forKey: "tokenChoices"); sortHoldings() }
     }
     func tokenShown(_ t: Holding) -> Bool { tokenChoices[t.id] ?? t.looksReal }
     /// Tokens on the other networks (Holdings.swift): ERC-20s on Base, Arbitrum, Ethereum and Robinhood Chain, ETH on
     /// Arbitrum and Ethereum, Hyperliquid's spot side and NEAR tokens.
-    var otherTokens: [Holding] = []
+    var otherTokens: [Holding] = [] { didSet { sortHoldings() } }
     /// Aave and Morpho off Base, with money in them (Lending.swift).
     var lendingElsewhere: [LendingPosition] = []
     /// Deposits made on a site: Kamino's vaults (withdrawn by the kamino form), Jupiter's other platforms (Protocols.swift).
@@ -70,14 +79,21 @@ final class Workspace {
     /// A read of the other networks' tokens is under way (refresh starts one and doesn't wait for it).
     @ObservationIgnored var holdingsLoading = false
     /// Every token beyond the balances read one by one, Solana's first. Stock tokens the Robinhood card already shows
-    /// are left out here.
-    var holdings: [Holding] {
-        let stocks = Set((robinhood?.stocks ?? []).map { $0.address.lowercased() })
-        return (solana?.tokens ?? []) + otherTokens.filter { !($0.chain == "robinhood" && stocks.contains($0.contract)) }
-    }
+    /// are left out here. Kept, not worked out on each read: the portfolio's cards read these tens of times a refresh.
+    private(set) var holdings: [Holding] = []
     /// The tokens on show, and the ones tucked away (hidden by the user or looking like scam airdrops).
-    var shownTokens: [Holding] { holdings.filter(tokenShown) }
-    var tuckedTokens: [Holding] { holdings.filter { !tokenShown($0) } }
+    private(set) var shownTokens: [Holding] = []
+    private(set) var tuckedTokens: [Holding] = []
+
+    /// Sorts the tokens again when what they're made of changes; an unchanged list isn't assigned, so nothing redraws.
+    private func sortHoldings() {
+        let stocks = Set((robinhood?.stocks ?? []).map { $0.address.lowercased() })
+        let all = (solana?.tokens ?? []) + otherTokens.filter { !($0.chain == "robinhood" && stocks.contains($0.contract)) }
+        if all != holdings { holdings = all }
+        let shown = all.filter(tokenShown), tucked = all.filter { !tokenShown($0) }
+        if shown != shownTokens { shownTokens = shown }
+        if tucked != tuckedTokens { tuckedTokens = tucked }
+    }
     /// What the tokens on show are worth, the networks' own coins apart: those are gas, like SOL.
     var shownTokensUSD: Decimal { shownTokens.filter { !$0.native }.reduce(0) { $0 + ($1.usd ?? 0) } }
     var shownNativeUSD: Decimal { shownTokens.filter(\.native).reduce(0) { $0 + ($1.usd ?? 0) } }
@@ -87,7 +103,12 @@ final class Workspace {
     var quoteError: String?
     /// The EVM network the plan's USDC leaves from, straight to Hyperliquid, when Solana is short; nil = Solana.
     var fundingNet: EVMNetwork?
-    var updatedAt: Date?
+    var updatedAt: Date? {
+        didSet { if balancesLoaded != (updatedAt != nil) { balancesLoaded = updatedAt != nil } }
+    }
+    /// The balances were read: what the rail and the portfolio ask instead of `updatedAt`, which is new every refresh
+    /// and redrew them both each time.
+    private(set) var balancesLoaded = false
     /// Whether the signing process holds a key; nil outside ihatecrypto.app, where there is no signer.
     var signerHasWallet: Bool?
     /// The wallet whose key the signing process holds; only then can a plan be executed.
@@ -131,7 +152,12 @@ final class Workspace {
     }
     var executionError: String?
     /// A confirmed money move while it runs: its route stays on the canvas with the latest step, until the outcome.
-    var runningAction: (title: String, steps: [ActivityBubble], lines: [String], started: Date)?
+    var runningAction: (title: String, steps: [ActivityBubble], lines: [String], started: Date)? {
+        didSet { if moveRunning != (runningAction != nil) { moveRunning = runningAction != nil } }
+    }
+    /// A move is running: what the canvas and the canvas list ask, not `runningAction`, whose every log line would redraw
+    /// them (only RunningBoard shows the lines).
+    private(set) var moveRunning = false
     var planReview: JevReview?
     /// The second check of the plan under way (startPlanReview).
     var planReviewTask: Task<Void, Never>?
@@ -220,8 +246,12 @@ final class Workspace {
     @ObservationIgnored var chatFrame: CGRect = .zero
     /// The same for the rail, which floats over the canvas too.
     @ObservationIgnored var railFrame: CGRect = .zero
-    /// The plan being assembled on the canvas, block by block (S02: the chat shows the count).
-    var assembly: (shown: Int, total: Int)?
+    /// The plan being assembled on the canvas, block by block (S02: the chat shows the count). Read only by the count
+    /// itself (AssemblyCount): it changes with every card put down, and the canvas and the chat ask `assembling`.
+    var assembly: (shown: Int, total: Int)? {
+        didSet { if assembling != (assembly != nil) { assembling = assembly != nil } }
+    }
+    private(set) var assembling = false
     /// A place opened from the rail or the portfolio: «solana», «hyperliquid», «jupiter», «aave».
     var detail: String?
     /// What the token card in `detail` shows, written by the card as its numbers load: the chat's model reads it.
@@ -230,7 +260,11 @@ final class Workspace {
     var lastOwnMove = Date.distantPast
     /// Everything ihatecrypto did, with the canvas bubbles of each moment; saved on every change.
     var activities: [Activity] = LocalStore.load("activity.json") ?? [] {
-        didSet { LocalStore.save(Array(activities.suffix(1000)), "activity.json") }
+        didSet {
+            // The file keeps the last 1000; memory too, or a long session copies and walks an ever longer list.
+            if activities.count > 1100 { activities.removeFirst(activities.count - 1000) }
+            LocalStore.save(Array(activities.suffix(1000)), "activity.json")
+        }
     }
     /// Every canvas with its chat, plan and model (see Canvases.swift); saved on every change.
     var canvases: [CanvasSession] = LocalStore.load("canvases.json") ?? [] {
@@ -447,7 +481,7 @@ final class Workspace {
             robinhoodRead = newValue
         }
     }
-    private var robinhoodRead: (usdg: Decimal, eth: Decimal, stocks: [StockHolding])?
+    private var robinhoodRead: (usdg: Decimal, eth: Decimal, stocks: [StockHolding])? { didSet { sortHoldings() } }
     /// Aave v3 USDC supply APY on Base, %, read from the pool itself.
     var aaveAPY: Decimal?
     /// Morpho's Gauntlet USDC Prime vault on Base, net of its fee.
@@ -581,8 +615,10 @@ final class Workspace {
     /// nil until the chosen provider is connected.
     func llmClient() -> (any LLMClient)? {
         let p = provider, id = p.info.id
-        guard p.info.unavailable == nil, credential != nil || p.info.kind == .local else { return nil }
-        return try? p.client(credential, save: { Keychain.save($0, for: id) })
+        guard p.info.unavailable == nil, credential != nil || p.info.kind == .local,
+              let client = try? p.client(credential, save: { Keychain.save($0, for: id) }) else { return nil }
+        // Settings › Models › «Think before answering»: every request reasons first.
+        return UserDefaults.standard.bool(forKey: "modelThinking") ? ThinkingClient(client) : client
     }
 
     func signIn() async {
@@ -694,15 +730,13 @@ final class Workspace {
             + (base.map { $0.usdc + $0.aave + $0.morpho } ?? 0) + lendingElsewhereUSD + (arbitrumUSDC ?? 0) + robinhoodTotal + kamino + hlp.equity + nearUSD + protocolUSD
     }
     /// The plan with what the user left to the rules filled in.
-    var resolved: (intent: TradeIntent, notes: [String]) { Plan.resolve(intent, market: market, equity: equity, policy: policy) }
-    var evaluation: Evaluation { Plan.evaluate(resolved.intent, market: market) }
+    var resolved: (intent: TradeIntent, notes: [String]) { planned().resolved }
+    var evaluation: Evaluation { planned().evaluation }
     var blocks: [Block] {
-        let (intent, notes) = resolved
         var live = Live()
         live.equity = equity
         live.policy = policy
         live.openRisk = HyperliquidAccount.riskAtStops(positions: positions, orders: orders)
-        live.notes = notes
         live.solanaAddressSet = isSolanaAddress(solanaAddress)
         live.solanaUSDC = solana?.usdc
         live.hlAddressSet = isEVMAddress(hlAddress)
@@ -712,8 +746,46 @@ final class Workspace {
         live.market = market
         live.quote = quote
         live.from = fundingNet.map { ($0.name, usdc(on: $0.key) ?? 0) }
-        return Plan.blocks(intent, evaluation, live)
+        let key = BlocksKey(intent: intent, live: live)
+        if let memo = blocksMemo, memo.key == key { return memo.blocks }
+        let (resolvedIntent, notes) = resolved
+        live.notes = notes
+        let b = Plan.blocks(resolvedIntent, evaluation, live)
+        blocksMemo = (key, b)
+        return b
     }
+
+    // The plan's numbers are asked for some ten times an update (the status, the buttons, the chat's actions), each a
+    // whole resolve and evaluate, and Plan.fix runs both 60 times. Each keeps its last answer by its inputs: reading the
+    // inputs to make the key still ties a view to them, so it redraws when they change.
+    private struct PlanInputs: Equatable { let intent: TradeIntent, market: Market?, equity: Decimal?, policy: RiskPolicy }
+    @ObservationIgnored private var planMemo: (inputs: PlanInputs, resolved: (intent: TradeIntent, notes: [String]), evaluation: Evaluation)?
+    private func planned() -> (resolved: (intent: TradeIntent, notes: [String]), evaluation: Evaluation) {
+        let inputs = PlanInputs(intent: intent, market: market, equity: equity, policy: policy)
+        if let memo = planMemo, memo.inputs == inputs { return (memo.resolved, memo.evaluation) }
+        let r = Plan.resolve(inputs.intent, market: inputs.market, equity: inputs.equity, policy: inputs.policy)
+        let e = Plan.evaluate(r.intent, market: inputs.market)
+        planMemo = (inputs, r, e)
+        return (r, e)
+    }
+
+    /// Everything Plan.blocks reads but the notes, which follow from the intent and the live numbers.
+    private struct BlocksKey: Equatable {
+        let intent: TradeIntent, equity: Decimal?, policy: RiskPolicy, openRisk: Decimal?, solanaSet: Bool, solanaUSDC: Decimal?
+        let hlSet: Bool, hlWithdrawable: Decimal?, marketsLoaded: Bool, market: Market?, quote: BridgeQuote?, from: String?, fromUSDC: Decimal?
+        init(intent: TradeIntent, live: Live) {
+            self.intent = intent
+            equity = live.equity; policy = live.policy; openRisk = live.openRisk
+            solanaSet = live.solanaAddressSet; solanaUSDC = live.solanaUSDC
+            hlSet = live.hlAddressSet; hlWithdrawable = live.hlWithdrawable; marketsLoaded = live.marketsLoaded
+            market = live.market; quote = live.quote; from = live.from?.name; fromUSDC = live.from?.usdc
+        }
+    }
+    @ObservationIgnored private var blocksMemo: (key: BlocksKey, blocks: [Block])?
+
+    /// Plan.fix's inputs: the plan's and what the account can still put in.
+    struct FixKey: Equatable { let intent: TradeIntent, market: Market, equity: Decimal?, policy: RiskPolicy, openRisk: Decimal?, available: Decimal }
+    @ObservationIgnored var fixMemo: (key: FixKey, fix: (command: String, sizing: Sizing)?)?
 
     // MARK: Chat
 
@@ -759,10 +831,11 @@ final class Workspace {
         defer { thinking = false; draftReply = nil }
         heldAnswer = (nextSteps, yieldOptions, takeChoices)
         defer { heldAnswer = nil }
-        finishedAction = nil
+        // Cleared only when set: a tuple and NextSteps aren't Equatable, so even nil over nil redraws what reads them.
+        if finishedAction != nil { finishedAction = nil }
         // The cards of the last answer go with any new message; the model still knows them («да», «второй»).
         let offered = nextSteps?.options ?? []
-        nextSteps = nil
+        if nextSteps != nil { nextSteps = nil }
         if noteCard?.canvas != canvasID { noteCard = nil }
         // Every message starts an activity; whatever is on the canvas when it's handled is frozen into it.
         beginActivity(.request, request: text)
@@ -1157,7 +1230,7 @@ final class Workspace {
                 // Before the markets load a trade can't be checked: the model's command goes through as it is.
                 reading = try await ChatRouter.route(text, context: context, client: client, model: model,
                                                      markets: markets.isEmpty ? nil : Set(markets.keys), lookup: lookup, check: check,
-                                                     draft: { [weak self] words in Task { @MainActor in if self?.thinking == true { self?.draftReply = words } } })
+                                                     draft: { [weak self] words in Task { @MainActor in self?.showDraft(words) } })
             } catch {
                 failure = error.localizedDescription
                 unreadable = error is ChatRouter.Unreadable
@@ -1539,13 +1612,20 @@ final class Workspace {
         func same() -> Bool { wallet == (activeWalletID, solanaAddress, hlAddress) }
         let before = (solana?.usdc, solana?.sol, base?.usdc)
         defer { if updatedAt != nil, same() { announceIncoming(before: (before.0, before.1, before.2)) } }
-        async let m: Void = loadMarkets()
-        async let s: Void = loadSolana()
-        async let h: Void = loadHL()
-        async let b: Void = loadBase()
-        async let r: Void = loadRobinhood()
-        async let t: Void = refreshTokens()
-        _ = await (m, s, h, b, r, t)
+        let read = RefreshReads()
+        await Self.$landings.withValue(read) {
+            async let m: Void = loadMarkets()
+            async let s: Void = loadSolana()
+            async let h: Void = loadHL()
+            async let b: Void = loadBase()
+            async let r: Void = loadRobinhood()
+            async let t: Void = refreshTokens()
+            _ = await (m, s, h, b, r, t)
+        }
+        // Every network's numbers in one update of the window, with the time they were read.
+        read.landed = true
+        read.assigns.forEach { $0() }
+        if same() { updatedAt = Date(); recordEquity() }
         // Not waited for: a spammed address takes many pages, and the balances above shouldn't sit behind it.
         if !holdingsLoading { Task { await loadHoldings() } }
         if let w = previewWallet {
@@ -1555,9 +1635,19 @@ final class Workspace {
             }
         }
         await refreshQuote()
-        guard same() else { return }
-        updatedAt = Date()
-        recordEquity()
+    }
+
+    /// While refresh() reads the networks at once, what each one read waits and lands with the rest: the reads end a few
+    /// hundred milliseconds apart, and each assignment was its own redraw of the rail, the portfolio and its cards.
+    /// `landed`: a Task started inside the refresh keeps the task-local after it; what it reads then assigns at once.
+    final class RefreshReads { var assigns: [() -> Void] = [], landed = false }
+    /// Set for refresh()'s own reads only (a task-local reaches its `async let` children, not a loader called elsewhere,
+    /// which reads what it loaded right after).
+    @TaskLocal static var landings: RefreshReads?
+    /// Assigns now, or with the rest of the refresh it's part of. Its checks (still the same wallet?) go inside: they're
+    /// made when it lands.
+    func land(_ assign: @escaping () -> Void) {
+        if let read = Self.landings, !read.landed { read.assigns.append(assign) } else { assign() }
     }
 
     /// Every token on the other networks, read at once and assigned together (each assignment after an await is a
@@ -1605,29 +1695,34 @@ final class Workspace {
         async let rates: (aave: Decimal?, morpho: Decimal?) = stale ? (try? await AaveV3.verify(AaveV3.base), await MorphoRates.netAPY(MorphoVault.base)) : (nil, nil)
         // Awaited first, assigned together: every assignment after an await is one more redraw of the window.
         let u = try? await usdc, a = try? await supplied, m = try? await vault, e = try? await eth, arbitrum = try? await arb, r = await rates
-        guard me == hlAddress else { return }   // another wallet since: its own read follows
-        if let u, let a, let e {
-            let b = (usdc: Decimal(u) / 1_000_000, aave: Decimal(a) / 1_000_000, morpho: Decimal(m ?? 0) / 1_000_000,
-                     eth: Decimal(e) / Decimal(sign: .plus, exponent: 18, significand: 1))
-            // A tuple isn't Equatable: without this check @Observable redraws on every refresh.
-            if base.map({ $0 != b }) ?? true { base = b }
-        }
-        if let arbitrum { arbitrumUSDC = Decimal(arbitrum) / 1_000_000 }
-        if let apy = r.aave {
-            aaveAPY = apy
-            morphoAPY = r.morpho
-            aaveCheckedAt = Date()
+        land { [self] in
+            guard me == hlAddress else { return }   // another wallet since: its own read follows
+            if let u, let a, let e {
+                let b = (usdc: Decimal(u) / 1_000_000, aave: Decimal(a) / 1_000_000, morpho: Decimal(m ?? 0) / 1_000_000,
+                         eth: Decimal(e) / Decimal(sign: .plus, exponent: 18, significand: 1))
+                // A tuple isn't Equatable: without this check @Observable redraws on every refresh.
+                if base.map({ $0 != b }) ?? true { base = b }
+            }
+            if let arbitrum { arbitrumUSDC = Decimal(arbitrum) / 1_000_000 }
+            if let apy = r.aave {
+                aaveAPY = apy
+                morphoAPY = r.morpho
+                aaveCheckedAt = Date()
+            }
         }
     }
 
     func loadMarkets() async {
         do {
-            markets = try await Hyperliquid.markets()
-            marketsError = nil
-            let names = Dictionary(uniqueKeysWithValues: Market.Group.allCases.map { g in (g, markets(g, limit: g == .crypto ? 25 : 30).map(\.name)) })
-            if names != marketNames { marketNames = names }
+            let read = try await Hyperliquid.markets()
+            land { [self] in
+                markets = read
+                marketsError = nil
+                let names = Dictionary(uniqueKeysWithValues: Market.Group.allCases.map { g in (g, markets(g, limit: g == .crypto ? 25 : 30).map(\.name)) })
+                if names != marketNames { marketNames = names }
+            }
         } catch {
-            marketsError = error.localizedDescription
+            land { [self] in marketsError = error.localizedDescription }
         }
     }
 
@@ -1653,13 +1748,15 @@ final class Workspace {
             let l: [(vault: String, usdc: Decimal)] = ((await lendPositions) ?? []).filter { $0.assets > 0 }
                 .map { ($0.vault, Decimal($0.assets) / 1_000_000) }
             let k = await kaminoPositions, n = await nearBalance
-            guard current() else { return }
-            solana = s
-            solanaError = nil
-            // Tuples aren't Equatable: without this check @Observable redraws on every refresh.
-            if !l.elementsEqual(lend, by: ==) { lend = l }
-            if let k { kamino = k.reduce(0) { $0 + $1.valueUSD } }
-            if let n { near = n.near + n.wrapped }
+            land { [self] in
+                guard current() else { return }
+                solana = s
+                solanaError = nil
+                // Tuples aren't Equatable: without this check @Observable redraws on every refresh.
+                if !l.elementsEqual(lend, by: ==) { lend = l }
+                if let k { kamino = k.reduce(0) { $0 + $1.valueUSD } }
+                if let n { near = n.near + n.wrapped }
+            }
         } catch {
             // A failed read keeps the last balances: set to nil, the rail and the canvas's cards went blank until the next one.
             if current() { solanaError = error.localizedDescription }
@@ -1834,22 +1931,33 @@ nonisolated enum Keychain {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account]
     }
 
+    /// Each account as last read or saved here: a read is a round trip to securityd (≈ 4 ms), and every reply, the model
+    /// menu (all the providers) and Settings asked again. Only this app writes these items, always through `save` (a
+    /// refreshed token too), so what's kept stays true. A read that failed (a Keychain prompt turned down) isn't kept.
+    private static let known = OSAllocatedUnfairLock<[String: Credential?]>(initialState: [:])
+
     static func load(_ account: String) -> Credential? {
+        if let hit = known.withLock({ $0[account] }) { return hit }
         var q = query(account)
         q[kSecReturnData as String] = true
         q[kSecMatchLimit as String] = kSecMatchLimitOne
         var out: CFTypeRef?
-        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data else { return nil }
-        return try? JSONDecoder().decode(Credential.self, from: data)
+        let status = SecItemCopyMatching(q as CFDictionary, &out)
+        if status == errSecItemNotFound { known.withLock { $0[account] = .some(nil) }; return nil }
+        guard status == errSecSuccess, let data = out as? Data, let found = try? JSONDecoder().decode(Credential.self, from: data) else { return nil }
+        known.withLock { $0[account] = found }
+        return found
     }
 
     static func save(_ credential: Credential?, for account: String) {
         SecItemDelete(query(account) as CFDictionary)
-        guard let credential, let data = try? JSONEncoder().encode(credential) else { return }
+        guard let credential, let data = try? JSONEncoder().encode(credential) else { known.withLock { $0[account] = .some(nil) }; return }
         var q = query(account)
         q[kSecValueData as String] = data
         q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
-        SecItemAdd(q as CFDictionary, nil)
+        let added = SecItemAdd(q as CFDictionary, nil) == errSecSuccess
+        // Not written: read it again next time rather than trust what was meant to be there.
+        known.withLock { $0[account] = added ? .some(credential) : nil }
     }
 
 }

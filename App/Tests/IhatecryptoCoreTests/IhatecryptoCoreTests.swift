@@ -380,6 +380,23 @@ private struct StubModel: LLMClient {
     #expect(WalletCommand.sendSol(name: "Test", amount: 1).editableAmount == nil)   // a transfer's amount isn't edited from a card
 }
 
+// «All there is» when more is asked than held (shortChoices): the same move for what's there, said as words the chat
+// reads back as that move — the card's command goes through the parser again.
+@Test func allThereIsReadsBackAsTheSameMove() {
+    let sol = SpotAsset(symbol: "SOL", mint: "So11111111111111111111111111111111111111112", decimals: 9)
+    let moves: [WalletCommand] = [
+        .buy(sol, usdc: 150),
+        .swapOn("base", from: "ETH", to: "AERO", amount: 1),
+        .crossSwap(from: "SOL", on: "solana", to: "ETH", at: "arbitrum", amount: 2),
+        .buyOn("base", token: "AERO", usdc: 50, from: "base"),
+    ]
+    for move in moves {
+        let all = move.with(amount: Decimal(string: "0.5")!)
+        #expect(all != move)
+        #expect(WalletCommand.parse(all.summary) == all, "\(all.summary)")
+    }
+}
+
 // A price alert tied to a plan prepares it again from `command`: every field must come back as it was.
 @Test func planCommandReadsBackToTheSamePlan() throws {
     let markets: Set<String> = ["SOL", "ETH", "xyz:CL"]

@@ -231,7 +231,7 @@ struct AlertsCard: View {
 }
 
 /// The portfolio's value over time: a point every ten minutes, kept for 30 days (equity.json).
-struct EquityPoint: Codable, Equatable {
+nonisolated struct EquityPoint: Codable, Equatable {
     let at: Date
     let usd: Decimal
     /// The wallet it was measured for (P/L); nil in points kept before wallets were told apart.

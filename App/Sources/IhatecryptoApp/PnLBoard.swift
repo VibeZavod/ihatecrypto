@@ -95,8 +95,8 @@ extension Workspace {
         return out
     }
 
-    /// Every period at once, so the board's period switch needs no new request.
-    func pnlReports(coin: String?) async -> [PnL.Period: PnL.Report] {
+    /// The periods asked for; every one by default, so the board's period switch needs no new request.
+    func pnlReports(coin: String?, periods: [PnL.Period] = PnL.Period.allCases) async -> [PnL.Period: PnL.Report] {
         async let fillsCall = TradeHistory.fills(user: hlAddress)
         async let fundingCall = TradeHistory.funding(user: hlAddress)
         let fills = (try? await fillsCall) ?? [], funding = (try? await fundingCall) ?? []
@@ -105,11 +105,14 @@ extension Workspace {
         let equity = (equityHistory.filter { $0.wallet == pnlWallet } + (self.equity.map { [EquityPoint(at: Date(), usd: $0)] } ?? []))
             .map { (at: $0.at, usd: $0.usd) }
         let flows = ((LocalStore.load("flows.json") as [PnL.Flow]?) ?? []).filter { $0.wallet == pnlWallet }
-        var out: [PnL.Period: PnL.Report] = [:]
-        for period in PnL.Period.allCases {
-            out[period] = PnL.report(period, coin: coin, fills: fills, funding: funding, unrealized: unrealized, equity: equity, flows: flows)
-        }
-        return out
+        // Off the main thread: each period goes over every fill (up to 2,000) again.
+        return await Task.detached {
+            var out: [PnL.Period: PnL.Report] = [:]
+            for period in periods {
+                out[period] = PnL.report(period, coin: coin, fills: fills, funding: funding, unrealized: unrealized, equity: equity, flows: flows)
+            }
+            return out
+        }.value
     }
 
     func showPnL(_ command: PnLCommand, note: String? = nil) async {
@@ -156,7 +159,7 @@ extension Workspace {
 
     /// For the model's answers about money: the week and all time.
     func pnlFacts() async -> [String] {
-        let reports = await pnlReports(coin: nil)
+        let reports = await pnlReports(coin: nil, periods: [.week, .all])
         return [PnL.Period.week, .all].compactMap { reports[$0] }.flatMap { PnL.facts($0, pretty: IntentParser.pretty) }
     }
 }
