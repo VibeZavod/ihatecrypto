@@ -79,6 +79,9 @@ struct CanvasScroller<Content: View>: View {
 private struct CanvasRoot<Content: View>: View {
     let place: CanvasPlace
     let content: Content
+    /// Something of the window's is over the pointer: the chat, the rail, What's New. AppKit hands this hosting view
+    /// every move over its frame whatever is drawn on top, and the cards under them lit up and took the hover.
+    @State private var covered = false
 
     var body: some View {
         Color.clear
@@ -90,9 +93,14 @@ private struct CanvasRoot<Content: View>: View {
                         place.scroller?.contentChanged()
                     }
                     .scaleEffect(place.scale, anchor: .topLeading)
+                    .allowsHitTesting(!covered && !WhatsNew.shared.open)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
             .contentShape(Rectangle())
+            .onContinuousHover { phase in
+                let now = if case .active = phase { place.scroller?.pointerCovered() ?? false } else { false }
+                if now != covered { covered = now }
+            }
             // A drag that starts on a board pans too, as it did; a click on a button stays the button's. The pointer is
             // followed on the screen, not in the canvas, which moves under it.
             .gesture(DragGesture(minimumDistance: 6)
@@ -319,4 +327,14 @@ final class CanvasPanView: NSView {
         dragFrom = nil
         commit()
     }
+
+    /// The window's hit test at the pointer lands on something other than the canvas (a view drawn over it).
+    func pointerCovered() -> Bool { window.map { covered(at: $0.mouseLocationOutsideOfEventStream) } ?? false }
+
+    /// `p` in the window's coordinates.
+    func covered(at p: NSPoint) -> Bool {
+        guard let root = window?.contentView, let hit = root.hitTest(root.superview?.convert(p, from: nil) ?? p) else { return false }
+        return !hit.isDescendant(of: self)
+    }
 }
+
