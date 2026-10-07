@@ -237,7 +237,7 @@ extension Workspace {
         if net == "solana" {
             await loadSolana()
             there = solana?.usdc
-        } else if let n = EVMNetwork.named(net), let units = try? await n.rpc.tokenBalance(n.usdc, owner: hlAddress) {
+        } else if let n = EVMNetwork.named(net), let units = try? await n.usdcBalance(hlAddress) {
             // Tempo's fees come out of the USDC itself: a cent stays.
             there = max(0, Decimal(units) / 1_000_000 - (n.key == "tempo" ? Decimal(string: "0.01")! : 0))
         } else {

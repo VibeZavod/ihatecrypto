@@ -49,6 +49,11 @@ public enum UniswapV4 {
         case 999: Deployment(poolManager: "0x12d4fd9c5dedd00ab8a0bce2cf0167bbf94b6b1f", quoter: "0x108bfe38532c98f8cd8d7ab49c9ddaa3675a1c5e",
                              router: "0xed270a1bcdc63cf1356d695e7f40961d4819d6bf", positionManager: "0x0d7ab5b3db668128aff6f70c4ebc71d7d4da9bf9",
                              blockscout: "")
+        // BNB Chain: Universal Router 2.1.2 from Uniswap's deploy-addresses/bsc.json (its poolManager(), the V4Quoter's and
+        // the PositionManager's all 0x28e2…e9df, checked 2026-10-08). No Blockscout either.
+        case 56: Deployment(poolManager: "0x28e2ea090877bf75740558f6bfb36a5ffee9e9df", quoter: "0x9f75dd27d6664c475b90e105573e550ff69437b0",
+                            router: "0xdc264714f68d84cf29bc605589405e78bdbe7c9f", positionManager: "0x7a4a5c919ae2541aed11041a1aeee68f1287f95b",
+                            blockscout: "")
         default: nil
         }
     }

@@ -35,6 +35,13 @@ public enum UniswapV3 {
                             weth: "0x4200000000000000000000000000000000000006")
         case 999: Deployment(quoter: "0x7dfd4f31be6814d2906bde155c3e1b146eac1468", router: "0x7adf4701abcdbc5dcf5cb58b526f897e048f0d11",
                              weth: "0x5555555555555555555555555555555555555555")
+        // BNB Chain (checked 2026-10-08: SwapRouter02's WETH9() is WBNB and factory() the QuoterV2's, 0xdb1d…61f7; 10 USDC
+        // quoted ≈ 0.0129 WBNB at the 0.01% pool).
+        // Robinhood Chain: the router and quoter its stock trades use (router WETH9() 0x0bd7…ad73, both on factory
+        // 0x1f7d…2efa, checked 2026-10-08), so any token there swaps for any other too.
+        case 4663: Deployment(quoter: robinhoodQuoter, router: robinhoodRouter, weth: "0x0bd7d308f8e1639fab988df18a8011f41eacad73")
+        case 56: Deployment(quoter: "0x78d78e420da98ad378d7799be8f4af69033eb077", router: "0xb971ef87ede563556b2ed4b1c0b0019111dd85d2",
+                            weth: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c")
         default: nil
         }
     }

@@ -199,12 +199,14 @@ import WalletCore
     #expect(UniswapV3.on(8453)?.router == "0x2626664c2603336e57b271c5c0b26f421741e481" && UniswapV3.on(42161) != nil && UniswapV3.on(1) != nil && UniswapV3.on(137) != nil)
     // Optimism and HyperEVM too (2026-10-07); a network the app doesn't swap on has none.
     #expect(UniswapV3.on(10)?.weth == "0x4200000000000000000000000000000000000006" && UniswapV3.on(999)?.weth == "0x5555555555555555555555555555555555555555")
-    #expect(UniswapV3.on(56) == nil)
+    // BNB Chain (2026-10-08), WBNB its wrapped coin.
+    #expect(UniswapV3.on(56)?.weth == "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c" && UniswapV2.on(56) != nil && UniswapV4.on(56) != nil)
+    #expect(UniswapV3.on(43114) == nil)
 }
 
 @Test func signableNetworks() {
     // Polygon, Ethereum and Tempo join Base, Arbitrum and Robinhood Chain; nothing else is signed.
-    #expect(EVMRPC.signable == [1, 137, 42161, 8453, 4663, 4217, 999, 10])
+    #expect(EVMRPC.signable == [1, 137, 42161, 8453, 4663, 4217, 999, 10, 56])
     #expect(EVMRPC.polygon.chainId == 137 && EVMRPC.ethereum.chainId == 1)
 }
 
@@ -355,7 +357,9 @@ import WalletCore
     #expect(tx(1, 570_000, 80_000_000_000).feeText == "up to 0.0456 ETH")
     #expect(tx(42161, 10_000_000, 1_000_000_000_000).feeProblem != nil)        // 10 ETH of fees
     #expect(tx(137, UInt64.max, 2).feeProblem != nil)                          // overflows
-    #expect(tx(56, 21_000, 1).feeProblem != nil)                               // not a network ihatecrypto signs for
+    #expect(tx(43114, 21_000, 1).feeProblem != nil)                            // not a network ihatecrypto signs for
+    #expect(tx(56, 300_000, 50_000_000).feeProblem == nil)                     // a BNB Chain swap at 0.05 gwei
+    #expect(tx(56, 10_000_000, 10_000_000_000).feeProblem != nil)              // 0.1 BNB of fees
     #expect(tx(999, 200_000, 100_000_000).feeProblem == nil)                   // a HyperEVM call at 0.1 gwei
     #expect(tx(999, 10_000_000, 100_000_000_000).feeProblem != nil)            // 1 HYPE of fees
 }
@@ -433,4 +437,18 @@ import WalletCore
     #expect(EVMNetwork.source(arrive: 1000, onSolana: 0, target: "robinhood", held: { held[$0] })?.net.key == "ethereum")
     #expect(EVMNetwork.source(arrive: 350, onSolana: 0, target: "base", held: { $0 == "robinhood" ? 400 : $0 == "base" ? 9000 : nil })?.net.key == "robinhood")
     #expect(EVMNetwork.source(arrive: 9000, onSolana: 0, target: "base", held: { held[$0] }) == nil)
+}
+
+/// BNB Chain's USDC has 18 decimals (2026-10-08): the app's millionths cross to its own units and back, the signer's prompt
+/// says the dollars, not a trillion times them, and every other network's USDC stays as it was.
+@Test func bnbUSDCCountsInItsOwnDecimals() throws {
+    #expect(EVMNetwork.bnb.raw(1_000_000) == Decimal(string: "1000000000000000000")!)
+    #expect(EVMNetwork.bnb.micro(Decimal(string: "2500000000000000123")!) == 2_500_000)
+    #expect(EVMNetwork.base.raw(1_000_000) == 1_000_000 && EVMNetwork.base.micro(1_000_000) == 1_000_000)
+    // 20 USDC there is 2·10¹⁹ units, past 64 bits: the transfer word holds it whole.
+    let me = "0x3535353535353535353535353535353535353535"
+    let twenty = try ERC20.transfer(to: me, units: EVMNetwork.bnb.raw(20_000_000))
+    #expect(EVMCall.decode(twenty).summary(chainId: 56, to: EVMRPC.bnbUSDC, value: 0).hasPrefix("send 20 USDC to"))
+    #expect(EVMCall.decode(try ERC20.transfer(to: me, amount: 20_000_000)).summary(chainId: 8453, to: EVMRPC.baseUSDC, value: 0).hasPrefix("send 20 USDC to"))
+    #expect(EVMRPC.coin(56) == "BNB" && EVMRPC.names[56] == "BNB Chain")
 }

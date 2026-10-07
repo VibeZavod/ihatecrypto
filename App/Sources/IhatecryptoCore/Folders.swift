@@ -20,19 +20,20 @@ public enum FolderCommand: Equatable, Sendable {
         return near.count == 1 ? near[0] : nil
     }
 
-    /// Levenshtein's edit distance between two names.
+    /// The edit distance between two names: Levenshtein's, with two neighbours swapped as one slip («реесрч» for
+    /// «ресерч»), the typo a hand makes most.
     static func distance(_ a: [Character], _ b: [Character]) -> Int {
-        var row = Array(0...b.count)
-        for i in 1...max(a.count, 1) where !a.isEmpty {
-            var prev = row[0]
-            row[0] = i
-            for j in stride(from: 1, through: b.count, by: 1) {
-                let keep = row[j]
-                row[j] = min(row[j] + 1, row[j - 1] + 1, prev + (a[i - 1] == b[j - 1] ? 0 : 1))
-                prev = keep
+        guard !a.isEmpty, !b.isEmpty else { return max(a.count, b.count) }
+        var d = Array(repeating: Array(repeating: 0, count: b.count + 1), count: a.count + 1)
+        for i in 0...a.count { d[i][0] = i }
+        for j in 0...b.count { d[0][j] = j }
+        for i in 1...a.count {
+            for j in 1...b.count {
+                d[i][j] = min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] == b[j - 1] ? 0 : 1))
+                if i > 1, j > 1, a[i - 1] == b[j - 2], a[i - 2] == b[j - 1] { d[i][j] = min(d[i][j], d[i - 2][j - 2] + 1) }
             }
         }
-        return a.isEmpty ? b.count : row[b.count]
+        return d[a.count][b.count]
     }
 
     public static func parse(_ text: String) -> FolderCommand? {

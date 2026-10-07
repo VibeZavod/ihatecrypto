@@ -711,7 +711,7 @@ extension Executor {
                 piece = min(piece, there.rounded(2, .down))
             } else if let key = network(slice.place), money.moves.contains(where: { $0.to == key && $0.from != "solana" }), let net = EVMNetwork.named(key) {
                 // The same on an EVM network a move just reached.
-                let there = Decimal(try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)) / 1_000_000
+                let there = Decimal(try await net.usdcBalance(wallet.evm)) / 1_000_000
                 piece = min(piece, (there - Decimal(net.feeReserve) / 1_000_000).rounded(2, .down))
             }
             switch slice.place {

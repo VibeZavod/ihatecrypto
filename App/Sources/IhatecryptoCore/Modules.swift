@@ -4,7 +4,7 @@ import Foundation
 /// also from the chat). A protocol works only while it, its kind and every network it needs are on. Off means the
 /// assistant never plans a move through it; money already there still shows.
 public enum ModuleNetwork: String, CaseIterable, Sendable {
-    case solana, hyperliquid, base, near, arbitrum, robinhood, polygon, ethereum, tempo, hyperevm, optimism
+    case solana, hyperliquid, base, near, arbitrum, robinhood, polygon, ethereum, tempo, hyperevm, optimism, bnb
 
     public var name: String {
         switch self {
@@ -19,6 +19,7 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .tempo: "Tempo"
         case .hyperevm: "HyperEVM"
         case .optimism: "Optimism"
+        case .bnb: "BNB Chain"
         }
     }
 
@@ -43,6 +44,7 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .tempo: "USDC transfers · pay for services (MPP) · fees in USDC"
         case .hyperevm: "USDC in and out · HYPE for gas"
         case .optimism: "USDC in and out · Circle's CCTP"
+        case .bnb: "USDC in and out · BNB for gas · swaps"
         }
     }
 
@@ -60,6 +62,7 @@ public enum ModuleNetwork: String, CaseIterable, Sendable {
         case .tempo: "tempo"
         case .hyperevm: "hyperevm"
         case .optimism: "op"
+        case .bnb: "bnb"
         }
     }
 }
@@ -145,8 +148,8 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
         case .hlPerps: "BTC, ETH, SOL and more"
         case .jupiterDCA: "Solana · on-chain buys over time, from 100 USDC"
         case .xyz: "Oil, metals, stocks"
-        case .relay: "Solana ⇄ Base · Arbitrum · Polygon · Ethereum · Robinhood · Tempo · HyperEVM · Optimism"
-        case .uniswap: "Robinhood · Base · Arbitrum"
+        case .relay: "Solana ⇄ Base · Arbitrum · Polygon · Ethereum · Robinhood · Tempo · HyperEVM · Optimism · BNB Chain"
+        case .uniswap: "Base · Arbitrum · Polygon · Ethereum · Optimism · BNB Chain · Robinhood"
         case .aave: "Base · Arbitrum · Polygon · Ethereum"
         case .morpho: "Base · Arbitrum · Ethereum"
         case .oneClick: "NEAR ⇄ Solana"
@@ -254,6 +257,9 @@ public struct Modules: Equatable, Sendable {
             return isOn(.swaps) ? r(.relay, via: ModuleNetwork(place: place).map { [$0] } ?? [])
                 : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
         // One token for another on the network itself: Uniswap there, no bridge.
+        case .swapOn("solana", _, _, _):
+            return isOn(.swaps) ? r(.jupiter) : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
+        case .swapOn("hyperliquid", _, _, _): return refusal(network: .hyperliquid, ru: ru)
         case .swapOn("tempo", _, _, _):
             return isOn(.swaps) ? refusal(network: .tempo, ru: ru)
                 : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."

@@ -194,7 +194,7 @@ public actor Executor {
         // Idle USDC on the EVM networks is capital too, and the trade can be paid from it when Solana is short.
         var held: [String: Decimal] = [:]
         for net in EVMNetwork.searched {
-            held[net.key] = (try? await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)).map { Decimal($0) / 1_000_000 }
+            held[net.key] = (try? await net.usdcBalance(wallet.evm)).map { Decimal($0) / 1_000_000 }
         }
         equity += held.values.reduce(0, +)
         let intent = Plan.resolve(requested, market: market, equity: equity, policy: policy).intent
@@ -244,7 +244,7 @@ public actor Executor {
             case .arrive: try await Bridge.dryQuote(amount, newAccount: newAccount).amountIn
             }
             if viaSolana > solanaUSDC, let net = EVMNetwork.funding(viaSolana, held: { held[$0] }) {
-                let q = try await Bridge.dryQuote(.send(viaSolana), newAccount: newAccount, from: (net.relayChain, net.usdc))
+                let q = try await Bridge.dryQuote(.send(viaSolana), newAccount: newAccount, from: (net.relayChain, net.usdc, net.usdcDecimals))
                 // No gas coin there: a little comes from Solana first (ensureEVM), which needs half a dollar there.
                 let gas = net.feeToken == nil ? try await net.rpc.balance(wallet.evm) >= net.gasFloor : true
                 guard gas || solanaUSDC >= Decimal(string: "0.7")! else {

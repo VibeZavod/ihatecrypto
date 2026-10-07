@@ -130,7 +130,7 @@ extension Workspace {
         guard let address, isEVMAddress(address) else { return [:] }
         return await withTaskGroup(of: (String, Decimal?).self) { group in
             for n in EVMNetwork.all {
-                group.addTask { (n.key, (try? await n.rpc.tokenBalance(n.usdc, owner: address)).map { Decimal($0) / 1_000_000 }) }
+                group.addTask { (n.key, (try? await n.usdcBalance(address)).map { Decimal($0) / 1_000_000 }) }
             }
             var out: [String: Decimal] = [:]
             for await (key, usdc) in group { if let usdc { out[key] = usdc } }

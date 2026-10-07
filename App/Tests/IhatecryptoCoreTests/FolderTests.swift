@@ -31,6 +31,9 @@ import Testing
     #expect(FolderCommand.existing("research", among: folders) == "Research")
     #expect(FolderCommand.existing("Ресеррч", among: folders) == "Ресерч")
     #expect(FolderCommand.existing("ideaz", among: folders) == "ideas")
+    // Two neighbours swapped is one slip (route-check 2026-10-08: «реесрч»).
+    #expect(FolderCommand.existing("реесрч", among: folders) == "Ресерч")
+    #expect(FolderCommand.existing("Reserach", among: folders) == "Research")
     // Short or far names stay new folders: «idea» → no guess under 4 letters off the mark, «Travel» is new.
     #expect(FolderCommand.existing("Travel", among: folders) == nil)
     #expect(FolderCommand.existing("ui", among: folders) == nil)

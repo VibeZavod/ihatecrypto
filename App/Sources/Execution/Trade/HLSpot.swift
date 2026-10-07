@@ -63,6 +63,30 @@ extension Executor {
         return sell.map { "\(Fmt.num($0 * mid, maxFraction: 2)) USDC" }
     }
 
+    /// One spot token for another at the books' mids, for the card: «≈ 12.4 PURR». nil amount = what's free of `from`.
+    public static func spotSwapQuote(from: String, to: String, amount: Decimal) async throws -> String {
+        let a = try await spotPair(from), b = try await spotPair(to)
+        let out = amount * (try await spotMid(a)) / (try await spotMid(b))
+        return "\(Fmt.num(out, maxFraction: 6)) \(b.symbol)"
+    }
+
+    /// One spot token for another on Hyperliquid: its book trades each against USDC, so `from` is sold and the USDC it
+    /// fetched buys `to`, each order IOC within 1% of the mid. nil amount = all that's free of `from`.
+    public func hlSpotSwap(from: String, to: String, amount: Decimal?) async throws -> String {
+        let before = try await spotFree("USDC")
+        let sold = try await hlSpot(buy: false, symbol: from, usdc: nil, amount: amount)
+        var got: Decimal = 0
+        for _ in 0..<20 {
+            got = (try await spotFree("USDC") - before).rounded(2, .down)
+            if got > 0 { break }
+            try await Task.sleep(for: .milliseconds(500))
+        }
+        guard got >= Self.spotMinimum else {
+            return sold + " The \(Fmt.num(got)) USDC it fetched stays on spot: the book takes orders from 10 USDC, so no \(to.uppercased()) was bought."
+        }
+        return sold + " " + (try await hlSpot(buy: true, symbol: to, usdc: got, amount: nil))
+    }
+
     /// What's free on the spot balance of `coin` (total less what open orders hold).
     func spotFree(_ coin: String) async throws -> Decimal {
         guard let state = try await Self.hlInfo(["type": "spotClearinghouseState", "user": wallet.evm]) as? [String: Any],

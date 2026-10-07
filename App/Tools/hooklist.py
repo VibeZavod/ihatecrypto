@@ -13,7 +13,7 @@ import subprocess
 import sys
 import urllib.request
 
-CHAINS = {"base": 8453, "arbitrum": 42161, "ethereum": 1, "polygon": 137, "robinhood": 4663, "optimism": 10}
+CHAINS = {"base": 8453, "arbitrum": 42161, "ethereum": 1, "polygon": 137, "robinhood": 4663, "optimism": 10, "bnb": 56}
 OUT = "Sources/Chains/EVM/UniswapV4Hooks.swift"
 
 

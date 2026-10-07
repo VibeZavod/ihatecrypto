@@ -5,7 +5,7 @@ import Foundation
 /// An address is never guessed or corrected — a wrong one is refused with the reason.
 public enum AddressCheck {
     public enum Network: String, Codable, CaseIterable, Sendable {
-        case solana, hyperliquid, ethereum, arbitrum, base, robinhood, near, tempo, polygon, hyperevm, optimism
+        case solana, hyperliquid, ethereum, arbitrum, base, robinhood, near, tempo, polygon, hyperevm, optimism, bnb
         /// Networks ihatecrypto has no wallet on: NEAR Intents' 1Click delivers there to a saved address (an exchange's).
         case bitcoin, zcash, tron, xrp, dogecoin, sui
 
@@ -22,6 +22,7 @@ public enum AddressCheck {
             case .polygon: "Polygon"
             case .hyperevm: "HyperEVM"
             case .optimism: "Optimism"
+            case .bnb: "BNB Chain"
             case .bitcoin: "Bitcoin"
             case .zcash: "Zcash"
             case .tron: "TRON"
@@ -47,7 +48,7 @@ public enum AddressCheck {
                 return "Not a Solana address: 32–44 letters and digits in base58."
             }
             return nil
-        case .hyperliquid, .ethereum, .arbitrum, .base, .robinhood, .tempo, .polygon, .hyperevm, .optimism:
+        case .hyperliquid, .ethereum, .arbitrum, .base, .robinhood, .tempo, .polygon, .hyperevm, .optimism, .bnb:
             guard a.wholeMatch(of: /0x[0-9a-fA-F]{40}/) != nil else { return "Not an \(network.title) address: 0x and 40 hex characters." }
             let hex = a.dropFirst(2)
             // Mixed case carries an EIP-55 checksum: one wrong character breaks it.

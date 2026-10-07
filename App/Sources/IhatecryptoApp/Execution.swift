@@ -495,6 +495,13 @@ extension Workspace {
                 reply(try await e.revokeApproval(net, token: token, spender: spender, permit2: permit2), note: "\(net.name) · approvals")
                 approvalsChanged += 1
             case .sweepDust(let under): reply(try await e.sweepDust(dustTokens(under: under)), note: "Uniswap · dust into USDC")
+            case .swapOn("solana", let from, let to, let amount):
+                guard let a = await solanaAsset(from, note: nil), let b = await solanaAsset(to, note: nil) else {
+                    throw ExecutionError("Jupiter couldn't name both tokens of this swap. Nothing was signed.")
+                }
+                reply(try await e.convert(from: a, to: b, amount: amount), note: "Solana · Jupiter")
+            case .swapOn("hyperliquid", let from, let to, let amount):
+                reply(try await e.hlSpotSwap(from: from, to: to, amount: amount), note: "Hyperliquid · spot")
             case .swapOn(let place, let from, let to, let amount):
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't swap on \(place).") }
                 reply(try await e.swapOn(net, from: from, to: to, amount: amount), note: "\(net.name) · Uniswap")
@@ -635,7 +642,7 @@ extension Workspace {
         default: nil
         }
         guard let place, !["base", "arbitrum", "robinhood", "solana"].contains(place), let net = EVMNetwork.named(place), isEVMAddress(hlAddress),
-              let units = try? await net.rpc.tokenBalance(net.usdc, owner: hlAddress) else { return }
+              let units = try? await net.usdcBalance(hlAddress) else { return }
         let fresh = Holdings.dollar(place, contract: net.usdc, amount: Decimal(units) / 1_000_000,
                                     icon: otherTokens.first { $0.chain == place && $0.contract == net.usdc }?.icon)
         otherTokens = otherTokens.filter { !($0.chain == place && $0.contract == net.usdc) } + (units > 0 ? [fresh] : [])

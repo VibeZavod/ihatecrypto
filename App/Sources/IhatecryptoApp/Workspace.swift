@@ -78,6 +78,8 @@ final class Workspace {
     @ObservationIgnored var protocolsReadAt: Date?
     /// A read of the other networks' tokens is under way (refresh starts one and doesn't wait for it).
     @ObservationIgnored var holdingsLoading = false
+    /// Solana tokens a swap named, as Jupiter resolved them (TokensUI.solanaAsset): the card and the run read them again.
+    @ObservationIgnored var spotAssets: [String: SpotAsset] = [:]
     /// Every token beyond the balances read one by one, Solana's first. Stock tokens the Robinhood card already shows
     /// are left out here. Kept, not worked out on each read: the portfolio's cards read these tens of times a refresh.
     private(set) var holdings: [Holding] = []
@@ -221,6 +223,8 @@ final class Workspace {
     var acrossDeposit: AcrossDeposit?
     /// A market's price chart on the canvas (Modules.swift).
     var chart: ChartState?
+    /// The network whose coin row opened the chart: its Buy and Sell trade the coin there (Workspace.coinTrades).
+    var chartNetwork: String?
     /// The day's biggest movers on the canvas.
     var showMovers = false
     /// The price alerts as a board on the canvas, opened when one is set.
@@ -471,6 +475,7 @@ final class Workspace {
     var tempoUSDC: Decimal? { heldUSDC("tempo", EVMRPC.tempoUSDC) }
     var hyperevmUSDC: Decimal? { heldUSDC("hyperevm", EVMRPC.hyperevmUSDC) }
     var optimismUSDC: Decimal? { heldUSDC("optimism", EVMRPC.optimismUSDC) }
+    var bnbUSDC: Decimal? { heldUSDC("bnb", EVMRPC.bnbUSDC) }
     /// Robinhood Chain at our EVM address: USDG, ETH for gas, the Stock Tokens bought through ihatecrypto (StocksUI.swift).
     /// A tuple isn't Equatable, so @Observable would redraw on every refresh's assignment: the setter skips an unchanged one.
     var robinhood: (usdg: Decimal, eth: Decimal, stocks: [StockHolding])? {
@@ -1409,7 +1414,7 @@ final class Workspace {
             if b.usdc > 0 { c.balances.append("Base \(Fmt.num(b.usdc)) USDC idle") }
         }
         // The other EVM networks too: without them «send from Ethereum» read as «there's nothing there».
-        for net in ["arbitrum", "ethereum", "polygon", "tempo", "hyperevm", "optimism"] {
+        for net in ["arbitrum", "ethereum", "polygon", "tempo", "hyperevm", "optimism", "bnb"] {
             if let u = usdc(on: net), u > 0 { c.balances.append("\(WalletCommand.placeName(net)) \(Fmt.num(u)) USDC idle") }
         }
         for p in lendingElsewhere where p.usdc > 0 { c.balances.append("\(p.place) \(Fmt.num(p.usdc)) USDC") }
@@ -1669,11 +1674,14 @@ final class Workspace {
         async let tempo = evm ? await Holdings.evm("tempo", address: me, native: false, skip: []) : []
         async let hyperevm = evm ? await Holdings.evm("hyperevm", address: me, native: false, skip: []) : []
         async let optimism = evm ? await Holdings.evm("optimism", address: me, native: true, skip: []) : []
+        // BNB Chain has no explorer to list its tokens: the ones bought here are asked for by contract.
+        let boughtOnBNB = costBasis.keys.compactMap { $0.hasPrefix("bnb:") ? String($0.dropFirst(4)) : nil }
+        async let bnb = evm ? await Holdings.evm("bnb", address: me, native: true, skip: [], extra: boughtOnBNB) : []
         async let spot = evm ? await Holdings.hyperliquidSpot(user: me) : []
         async let near = nearAccount != nil ? await Holdings.near(account: nearAccount ?? "") : []
         // A network that didn't answer keeps its tokens from the last read instead of dropping out of the total.
         let read: [(chain: String, tokens: [Holding]?)] = [("base", await base), ("arbitrum", await arbitrum), ("ethereum", await ethereum),
-                                                           ("polygon", await polygon), ("robinhood", await robinhood), ("tempo", await tempo), ("hyperevm", await hyperevm), ("optimism", await optimism), ("hyperliquid", await spot),
+                                                           ("polygon", await polygon), ("robinhood", await robinhood), ("tempo", await tempo), ("hyperevm", await hyperevm), ("optimism", await optimism), ("bnb", await bnb), ("hyperliquid", await spot),
                                                            ("near", await near)]
         _ = await (lending, protocols)
         guard me == hlAddress, nearAccount == nearAddress else { return }   // another wallet since: its own read follows
@@ -1851,7 +1859,7 @@ final class Workspace {
             var q = try await Bridge.dryQuote(amount, newAccount: newAccount)
             // The executor picks the same way, from the same quote.
             let net = q.amountIn > (solana?.usdc ?? 0) ? EVMNetwork.funding(q.amountIn) { usdc(on: $0) } : nil
-            if let net { q = try await Bridge.dryQuote(.send(q.amountIn), newAccount: newAccount, from: (net.relayChain, net.usdc)) }
+            if let net { q = try await Bridge.dryQuote(.send(q.amountIn), newAccount: newAccount, from: (net.relayChain, net.usdc, net.usdcDecimals)) }
             if quotedKey == key { quote = q; fundingNet = net }
         } catch {
             if quotedKey == key { quoteError = error.localizedDescription; quotedKey = nil; fundingNet = nil }

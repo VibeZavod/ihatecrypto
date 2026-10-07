@@ -259,6 +259,12 @@ public enum Fmt {
         }
         return d.formatted(.number.precision(.fractionLength(0...fraction)).locale(locale))
     }
+    /// Said on a swap's card when fees take more than a tenth of what's paid (2026-10-08: $0.18 of a $1 UBTC buy went to
+    /// Relay): «fees take ≈ $0.18 (18%)». `worth` is what arrives in dollars after the fees and gas.
+    public static func feeWarning(paid: Decimal, worth: Decimal) -> String? {
+        guard paid > 0, worth > 0, paid - worth > paid / 10 else { return nil }
+        return "⚠️ fees take ≈ \(usd(paid - worth)) (\(num((paid - worth) / paid * 100, maxFraction: 0))%): a bigger amount loses less"
+    }
     public static func price(_ d: Decimal) -> String { d.formatted(.number.precision(.significantDigits(1...6)).locale(locale)) }
     public static func pct(_ d: Decimal) -> String { num(d) + "%" }
     /// «28 сент., 22:38»: no year, so a non-Gregorian system calendar does not show «2569 г. BE».

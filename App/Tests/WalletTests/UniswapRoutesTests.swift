@@ -30,7 +30,7 @@ private let baseUSDC = "0x833589fcd6edb6e08f4c7c32d4f71b54bda02913"
 /// The signer reads every v2 swap form: only this wallet may get what comes out, the router is a spender ihatecrypto knows
 /// on each network, and no other contract becomes one.
 @Test func signerReadsV2SwapsAndKnowsItsRouters() throws {
-    for chain: UInt64 in [8453, 42161, 1, 137, 4663, 10, 999] {
+    for chain: UInt64 in [8453, 42161, 1, 137, 4663, 10, 999, 56] {
         let v2 = try #require(UniswapV2.on(chain))
         #expect(EVMCall.knownSpenders(chainId: chain).contains(v2.router))
         for toETH in [false, true] {

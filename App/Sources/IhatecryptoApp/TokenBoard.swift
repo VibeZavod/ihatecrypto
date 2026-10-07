@@ -2,6 +2,7 @@ import AppKit
 import Charts
 import IhatecryptoCore
 import SwiftUI
+import TradeExecution
 
 extension Workspace {
     /// A token held on Robinhood Chain, opened on the canvas in place of the chain's card.
@@ -16,7 +17,20 @@ extension Workspace {
         if contract != "native", chain != "hyperliquid" { return { self.openToken(contract, chain: chain) } }
         let coin = symbol.uppercased()
         guard markets[coin] != nil else { return nil }
-        return { Task { await self.chartCommand(.chart(coin: coin, range: .day)) } }
+        return { self.chartNetwork = chain; Task { await self.chartCommand(.chart(coin: coin, range: .day)) } }
+    }
+
+    /// The network's own coin bought or sold for its dollar, as the chat takes it — the user: «газ токен открывался бы как
+    /// любой другой токен с бай и селл» — SOL through Jupiter, ETH, POL, BNB and HYPE straight on their network.
+    /// Robinhood's ETH has no USDG pool to trade it on, Tempo no coin: none there.
+    func coinTrades(_ coin: String, chain: String?) -> [(title: String, icon: String, phrase: String)] {
+        let c = coin.uppercased()
+        if c == "SOL", chain == nil || chain == "solana" {
+            return [("Buy SOL", "cart", "buy SOL for 2 USDC"), ("Sell", "arrow.down.right.circle", "sell 0.01 SOL")]
+        }
+        guard let chain, let net = EVMNetwork.named(chain), net.gasCoin == c, net.feeToken == nil, chain != "robinhood" else { return [] }
+        let some = ["POL": "5", "BNB": "0.002", "HYPE": "0.02"][c] ?? "0.001"
+        return [("Buy \(c)", "cart", "swap 2 USDC for \(c) on \(chain)"), ("Sell", "arrow.down.right.circle", "swap \(some) \(c) for USDC on \(chain)")]
     }
 
     /// The buy and the sale of a token as the chat takes them, by its network: Robinhood's stock tokens by ticker, a
@@ -26,20 +40,17 @@ extension Workspace {
         // The network's own dollar: buying it is selling the network's coin for it, selling it is buying that coin (the
         // user: «для соланы SOL, для всех остальных сетей эфириум»). Robinhood's USDG has no swap for ETH: no buttons.
         if TokenBoard.walletDollar(chain: chain, address: address) {
-            switch chain {
-            case "solana": return [("Buy \(symbol)", "cart", "sell 0.01 SOL"), ("Sell", "arrow.down.right.circle", "buy SOL for 2 USDC")]
-            case "base", "arbitrum", "polygon", "ethereum":
-                let coin = chain == "polygon" ? "POL" : "ETH", some = chain == "polygon" ? "5" : "0.001"
-                return [("Buy \(symbol)", "cart", "swap \(some) \(coin) for USDC on \(chain)"), ("Sell", "arrow.down.right.circle", "swap 2 USDC for \(coin) on \(chain)")]
-            default: return []
-            }
+            // Buying the dollar is selling the coin, selling it buying the coin.
+            let coin = coinTrades(chain == "solana" ? "SOL" : EVMNetwork.named(chain)?.gasCoin ?? "", chain: chain)
+            guard coin.count == 2 else { return [] }
+            return [("Buy \(symbol)", "cart", coin[1].phrase), ("Sell", "arrow.down.right.circle", coin[0].phrase)]
         }
         let pair: (buy: String, sell: String)? = switch chain {
         case "robinhood": stock ? ("buy \(symbol) stock for 2 USDC", "sell \(symbol) stock") : ("buy token \(address) for 2 USDC", "sell token \(address)")
         case "solana": verified ? ("buy \(symbol) on solana for 2 USDC", "sell \(symbol) on solana")
             : safeSearch ? nil : ("buy token \(address) for 2 USDC", "sell tokens \(address)")
-        case "base", "arbitrum", "polygon", "ethereum": ("buy token \(address) on \(chain) for 2 USDC", "sell tokens \(address) on \(chain)")
-        default: nil
+        // Every EVM network the app swaps on (Tempo has dollars only, its own form).
+        default: chain == "tempo" || EVMNetwork.named(chain) == nil ? nil : ("buy token \(address) on \(chain) for 2 USDC", "sell tokens \(address) on \(chain)")
         }
         guard let pair else { return [] }
         // Bridged USDC: first, the swap for Circle's own on the same network (Uniswap's 0.01% pool).
@@ -83,10 +94,9 @@ struct TokenMenu: ViewModifier {
                     Button(action: open) { Label(address == nil ? "Chart" : "Details", systemImage: address == nil ? "chart.xyaxis.line" : "info.circle") }
                 }
                 Button { ws.askAbout(symbol: symbol, chain: chain, address: address) } label: { Label("Ask in chat", systemImage: "bubble.left") }
-                if let address {
-                    ForEach(ws.tokenPhrases(chain: chain, address: address, symbol: symbol, stock: stock, verified: verified), id: \.phrase) { p in
-                        Button { ws.suggest(p.phrase) } label: { Label(p.title, systemImage: p.icon) }
-                    }
+                ForEach(address.map { ws.tokenPhrases(chain: chain, address: $0, symbol: symbol, stock: stock, verified: verified) }
+                        ?? ws.coinTrades(symbol, chain: chain), id: \.phrase) { p in
+                    Button { ws.suggest(p.phrase) } label: { Label(p.title, systemImage: p.icon) }
                 }
             }
             .labelStyle(.titleAndIcon)

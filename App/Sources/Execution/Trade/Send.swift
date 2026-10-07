@@ -25,6 +25,7 @@ extension Executor {
         case polygon(String)
         case hyperevm(String)
         case optimism(String)
+        case bnb(String)
     }
 
     public func sendUSDC(_ amount: Decimal, to destination: Destination, label: String) async throws -> String {
@@ -41,6 +42,7 @@ extension Executor {
         case .polygon(let recipient): return try await sendEVMUSDC(units, on: .polygon, to: recipient, label: label)
         case .hyperevm(let recipient): return try await sendEVMUSDC(units, on: .hyperevm, to: recipient, label: label)
         case .optimism(let recipient): return try await sendEVMUSDC(units, on: .optimism, to: recipient, label: label)
+        case .bnb(let recipient): return try await sendEVMUSDC(units, on: .bnb, to: recipient, label: label)
         }
     }
 
@@ -50,7 +52,7 @@ extension Executor {
         guard units > 0 else { throw ExecutionError("Nothing to pay.") }
         let net = EVMNetwork.tempo
         // Short there: a dollar comes over (or the price, if more), so the next requests don't each pay a bridge.
-        let there = try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)
+        let there = try await net.usdcBalance(wallet.evm)
         try await ensureEVM(net, usdc: there >= units + net.feeReserve ? units : max(units, Self.tempoFloat))
         let data = try memo.map { try ERC20.transfer(to: payee, amount: units, memo: $0) } ?? ERC20.transfer(to: payee, amount: units)
         return try await sendEVM(net.rpc, to: net.usdc, data: data, note: "Pay \(Self.usdc(units)) USDC to \(label)", recipients: [payee])
@@ -62,7 +64,7 @@ extension Executor {
 
     private func sendEVMUSDC(_ units: UInt64, on net: EVMNetwork, to recipient: String, label: String) async throws -> String {
         try await ensureEVM(net, usdc: units)
-        let hash = try await sendEVM(net.rpc, to: net.usdc, data: try ERC20.transfer(to: recipient, amount: units),
+        let hash = try await sendEVM(net.rpc, to: net.usdc, data: try ERC20.transfer(to: recipient, units: net.raw(units)),
                                      note: "Send \(Self.usdc(units)) USDC to \(label)", recipients: [recipient])
         return "Sent \(Self.usdc(units)) USDC to \(label) on \(net.name). \(net.explorer)/tx/\(hash)"
     }

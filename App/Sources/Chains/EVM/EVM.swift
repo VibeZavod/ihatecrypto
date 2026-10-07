@@ -116,10 +116,11 @@ public struct EVMTransaction: Sendable {
     /// broken or hostile request reaches it. Ethereum 0.05 ETH (≈ $150; a 570k-gas Morpho deposit at a 43 gwei base fee),
     /// Arbitrum, Base and Robinhood Chain 0.01 ETH (≈ $30; their calls cost cents), Polygon 10 POL (≈ $3, ten times a call
     /// at 1000 gwei; 64 bits of wei hold 18 POL at most), Tempo $10 (its fees are counted in attodollars), HyperEVM 0.02 HYPE
-    /// (≈ $2; a call costs a tenth of a cent at 0.1 gwei).
+    /// (≈ $2; a call costs a tenth of a cent at 0.1 gwei), BNB Chain 0.01 BNB (≈ $8; a swap costs a cent at 0.05 gwei).
     public static let feeCap: [UInt64: UInt64] = [1: 50_000_000_000_000_000, 42161: 10_000_000_000_000_000, 8453: 10_000_000_000_000_000,
                                                   4663: 10_000_000_000_000_000, 137: 10_000_000_000_000_000_000, 4217: 10_000_000_000_000_000_000,
-                                                  999: 20_000_000_000_000_000, 10: 10_000_000_000_000_000]
+                                                  999: 20_000_000_000_000_000, 10: 10_000_000_000_000_000,
+                                                  56: 10_000_000_000_000_000]
 
     /// Why the signer won't sign this fee, or nil: past the network's cap, or past 64 bits.
     public var feeProblem: String? {
@@ -365,17 +366,30 @@ public struct EVMRPC: Sendable {
     /// Circle's native USDC on Optimism, the one Relay delivers.
     public static let optimismUSDC = "0x0b2c639c533813f4aa9d7837caf62653d097ff85"
 
+    /// BNB Chain (BSC), gas in BNB at 0.05 gwei: drpc, then publicnode and BNB Chain's own seed node (each answered
+    /// chain id 56 and fees, 2026-10-08).
+    public static let bnb = EVMRPC(url: URL(string: "https://bsc.drpc.org")!, chainId: 56,
+                                   fallbacks: [URL(string: "https://bsc-rpc.publicnode.com")!, URL(string: "https://bsc-dataseed.bnbchain.org")!],
+                                   followsSettings: true)
+    /// Binance-Peg USDC on BNB Chain, the one Relay delivers — 18 decimals, not 6 (its decimals(), 2026-10-08).
+    public static let bnbUSDC = "0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d"
+
     /// The only networks the signer signs for: the app's signing process and the CLI check the same list.
-    public static let signable: Set<UInt64> = [1, 137, 42161, 8453, 4663, 4217, 999, 10]
+    public static let signable: Set<UInt64> = [1, 137, 42161, 8453, 4663, 4217, 999, 10, 56]
 
     /// The networks by name, for what the signer says it signs.
     public static let names: [UInt64: String] = [1: "Ethereum", 137: "Polygon", 42161: "Arbitrum", 8453: "Base", 4663: "Robinhood Chain", 4217: "Tempo",
-                                                 999: "HyperEVM", 10: "Optimism"]
-    /// What a network's fees and `value` are counted in: Polygon's POL, HyperEVM's HYPE, Tempo's dollars (it has no coin), else ETH.
-    public static func coin(_ chainId: UInt64) -> String { chainId == 137 ? "POL" : chainId == 999 ? "HYPE" : chainId == 4217 ? "USD" : "ETH" }
-    /// The dollars ihatecrypto moves, by contract: their symbol for the Touch ID prompt; all have 6 decimals.
+                                                 999: "HyperEVM", 10: "Optimism", 56: "BNB Chain"]
+    /// What a network's fees and `value` are counted in: Polygon's POL, HyperEVM's HYPE, BNB Chain's BNB, Tempo's dollars
+    /// (it has no coin), else ETH.
+    public static func coin(_ chainId: UInt64) -> String {
+        chainId == 137 ? "POL" : chainId == 999 ? "HYPE" : chainId == 56 ? "BNB" : chainId == 4217 ? "USD" : "ETH"
+    }
+    /// The dollars ihatecrypto moves, by contract: their symbol for the Touch ID prompt.
     public static let dollars: [String: String] = [baseUSDC: "USDC", arbitrumUSDC: "USDC", polygonUSDC: "USDC", ethereumUSDC: "USDC",
-                                                   tempoUSDC: "USDC", robinhoodUSDG: "USDG", hyperevmUSDC: "USDC", optimismUSDC: "USDC"]
+                                                   tempoUSDC: "USDC", robinhoodUSDG: "USDG", hyperevmUSDC: "USDC", optimismUSDC: "USDC", bnbUSDC: "USDC"]
+    /// Their decimals: 6, but BNB Chain's Binance-Peg USDC has 18 — the prompt would say a trillion times the amount.
+    public static func dollarDecimals(_ token: String) -> Int16 { token.lowercased() == bnbUSDC ? 18 : 6 }
 
     /// eth_call: the raw return value.
     public func read(_ to: String, _ data: Data) async throws -> Data {
@@ -491,9 +505,9 @@ extension Decimal {
 public struct EVMSimulation: Equatable, Sendable {
     public static let native = "0xeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee"
     /// WETH9 on Ethereum and Base; Arbitrum's WETH logs a Transfer on wrap.
-    /// WETH on Ethereum and the OP chains, WHYPE on HyperEVM (the same WETH9 code).
+    /// WETH on Ethereum and the OP chains, WHYPE on HyperEVM, WBNB on BNB Chain (the same WETH9 code).
     static let weth9: Set<String> = ["0xc02aaa39b223fe8d0a0e5c4f27ead9083c756cc2", "0x4200000000000000000000000000000000000006",
-                                     "0x5555555555555555555555555555555555555555"]
+                                     "0x5555555555555555555555555555555555555555", "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c"]
     static let transfer = "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef"
     static let deposit = "0xe1fffcc4923d04b559f4d29a8bfc6cda04eb5b0d3c460751c2402c5c5cc9109c"
     static let withdrawal = "0x7fcf532c15f0a6db0bd6d0e038bea71d30d808c7d98cb3bf7268a95bf5081b65"
@@ -626,7 +640,7 @@ public enum EVMCall: Equatable, Sendable {
         if case .plain = self { return "send \(coins) to \(short(to)) \(net)" }
         // A token the signer can't name shows its raw units: an amount on the prompt, never none.
         func amount(_ word: Data, of token: String) -> String {
-            EVMRPC.dollars[token.lowercased()].map { "\(units(word, 6)) \($0)" } ?? "\(units(word, 0)) units of the token \(short(token))"
+            EVMRPC.dollars[token.lowercased()].map { "\(units(word, EVMRPC.dollarDecimals(token))) \($0)" } ?? "\(units(word, 0)) units of the token \(short(token))"
         }
         // Coins that go into a wrap or a native swap are its input, not a payment: said once, in the sentence.
         switch self {

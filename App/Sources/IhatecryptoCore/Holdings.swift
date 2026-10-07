@@ -1,6 +1,7 @@
 import Foundation
 import LLMCore
 import RelayBridge
+import WalletCore
 
 /// A token the wallet holds, on any network, beyond the balances the app reads one by one (USDC, lending positions,
 /// stock tokens…). Found by listing the address on each network; priced where a market knows it.
@@ -42,9 +43,10 @@ public enum Holdings {
     /// Every ERC-20 at the address on one network, and its ETH when `native` (Base's and Robinhood's ETH is already
     /// counted as gas). `skip`: contracts the app counts elsewhere (USDC, Aave's aUSDC, the Morpho vault…), lowercased.
     /// nil when the network couldn't be read in full: the caller keeps what it had instead of showing a shorter list.
-    public static func evm(_ chain: String, address: String, native: Bool, skip: Set<String>) async -> [Holding]? {
+    public static func evm(_ chain: String, address: String, native: Bool, skip: Set<String>, extra: [String] = []) async -> [Holding]? {
         if chain == "tempo" { return await tempo(address) }
         if chain == "hyperevm" { return await hyperevm(address) }
+        if chain == "bnb" { return await bnb(address, extra: extra) }
         guard let host = blockscout[chain] else { return [] }
         async let pages = tokenPages(host, address: address)
         async let account: [String: Any]?? = native
@@ -127,29 +129,62 @@ public enum Holdings {
                                  ("0xfd739d4e423301ce9385c1fb8850539d657c296d", "kHYPE", 18, "")]
     static let hypeIcon = URL(string: "https://assets.coingecko.com/coins/images/50882/standard/hyperliquid.jpg")
     static func hyperevm(_ address: String) async -> [Holding]? {
+        await fromNode("hyperevm", node: "https://hyperliquid.drpc.org", coin: "HYPE", icon: hypeIcon, relayChain: Relay.Chain.hyperevm,
+                       wrapped: "WHYPE", dollars: ["USDC", "USD₮0"], dex: "hyperevm", tokens: hyperevmTokens, address: address)
+    }
+
+    /// BNB Chain, read from its node too (its explorers want an API key): BNB itself, Binance-Peg USDC and USDT (18
+    /// decimals), WBNB, the coins ihatecrypto names there (EVMTokens.bnb), and any token bought here (`extra`: an address
+    /// with no explorer would lose it otherwise). BNB priced by Relay, the rest by DexScreener (contracts read 2026-10-08).
+    static let bnbTokens = [("0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d", "USDC", 18, "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png"),
+                            ("0x55d398326f99059ff775485246999027b3197955", "USDT", 18, "https://coin-images.coingecko.com/coins/images/39963/large/usdt.png"),
+                            ("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", "WBNB", 18, "https://assets.relay.link/icons/currencies/bnb.png"),
+                            ("0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82", "CAKE", 18, ""),
+                            ("0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c", "BTCB", 18, ""),
+                            ("0x2170ed0880ac9a755fd29b2688956bd959f933f8", "ETH", 18, "")]
+    static let bnbIcon = URL(string: "https://assets.relay.link/icons/currencies/bnb.png")
+    static func bnb(_ address: String, extra: [String]) async -> [Holding]? {
+        await fromNode("bnb", node: "https://bsc-rpc.publicnode.com", coin: "BNB", icon: bnbIcon, relayChain: Relay.Chain.bnb,
+                       wrapped: "WBNB", dollars: ["USDC", "USDT"], dex: "bsc", tokens: bnbTokens, extra: extra, address: address)
+    }
+
+    /// A network read straight from its node: its coin, a fixed list of tokens, and `extra` contracts (their symbol and
+    /// decimals read too). The coin and its wrapped token priced by Relay, dollars at 1, the rest by DexScreener's `dex`.
+    /// nil when the node didn't answer.
+    static func fromNode(_ chain: String, node: String, coin: String, icon: URL?, relayChain: UInt64, wrapped: String, dollars: Set<String>,
+                         dex: String, tokens: [(String, String, Int, String)], extra: [String] = [], address: String) async -> [Holding]? {
         let owner = address.lowercased().replacingOccurrences(of: "0x", with: "")
         guard owner.count == 40 else { return [] }
-        let node = "https://hyperliquid.drpc.org"
-        func quantity(_ call: [String: Any]) async -> Decimal? {
-            guard let hex = (await retrying({ json(try await HTTP.post(node, json: call)) as? [String: Any] }))?["result"] as? String else { return nil }
-            return hex.dropFirst(2).reduce(Decimal(0)) { $0 * 16 + Decimal(Int(String($1), radix: 16) ?? 0) }
+        func answer(_ call: [String: Any]) async -> String? {
+            (await retrying({ json(try await HTTP.post(node, json: call)) as? [String: Any] }))?["result"] as? String
         }
-        let price = (try? await Relay.nativePrice(chainId: Relay.Chain.hyperevm)) ?? nil
-        guard let wei = await quantity(["jsonrpc": "2.0", "id": 1, "method": "eth_getBalance", "params": [address, "latest"]]) else { return nil }
+        func number(_ hex: String) -> Decimal { hex.dropFirst(2).reduce(Decimal(0)) { $0 * 16 + Decimal(Int(String($1), radix: 16) ?? 0) } }
+        func read(_ contract: String, _ data: String) async -> String? {
+            await answer(["jsonrpc": "2.0", "id": 1, "method": "eth_call", "params": [["to": contract, "data": data], "latest"]])
+        }
+        let price = (try? await Relay.nativePrice(chainId: relayChain)) ?? nil
+        guard let wei = await answer(["jsonrpc": "2.0", "id": 1, "method": "eth_getBalance", "params": [address, "latest"]]).map(number) else { return nil }
         var out: [Holding] = []
-        if wei > 0 { out.append(Holding(chain: "hyperevm", contract: "native", amount: wei / pow(10, 18), symbol: "HYPE", icon: hypeIcon, price: price, verified: true, native: true)) }
-        for (contract, symbol, decimals, icon) in hyperevmTokens {
-            guard let units = await quantity(["jsonrpc": "2.0", "id": 1, "method": "eth_call",
-                                              "params": [["to": contract, "data": "0x70a08231" + String(repeating: "0", count: 24) + owner], "latest"]]) else { return nil }
+        if wei > 0 { out.append(Holding(chain: chain, contract: "native", amount: wei / pow(10, 18), symbol: coin, icon: icon, price: price, verified: true, native: true)) }
+        var list = tokens
+        for contract in Set(extra.map { $0.lowercased() }).subtracting(tokens.map(\.0)).sorted() {
+            // symbol() as an ABI string: offset, length, bytes.
+            guard let d = await read(contract, "0x313ce567").map(number), let raw = await read(contract, "0x95d89b41"),
+                  let bytes = Data(hex: String(raw.dropFirst(2))), bytes.count >= 64 else { continue }
+            let length = Int(truncating: NSDecimalNumber(decimal: bytes[32..<64].reduce(Decimal(0)) { $0 * 256 + Decimal($1) }))
+            let symbol = bytes.count >= 64 + length ? String(decoding: bytes[64..<(64 + length)], as: UTF8.self) : String(contract.prefix(8))
+            list.append((contract, symbol, Int(truncating: NSDecimalNumber(decimal: d)), ""))
+        }
+        for (contract, symbol, decimals, icon) in list {
+            guard let units = await read(contract, "0x70a08231" + String(repeating: "0", count: 24) + owner).map(number) else { return nil }
             if units > 0 {
-                let dollar = symbol == "USDC" || symbol == "USD₮0"
-                out.append(Holding(chain: "hyperevm", contract: contract, amount: units / pow(10, decimals), symbol: symbol, icon: URL(string: icon),
-                                   price: symbol == "WHYPE" ? price : dollar ? 1 : nil, verified: true))
+                out.append(Holding(chain: chain, contract: contract, amount: units / pow(10, decimals), symbol: symbol, icon: URL(string: icon),
+                                   price: symbol == wrapped ? price : dollars.contains(symbol) ? 1 : nil, verified: true))
             }
         }
-        // The swapped coins (UBTC…) priced by their deepest pool; nothing asked when none is held.
+        // The swapped coins (UBTC, CAKE…) priced by their deepest pool; nothing asked when none is held.
         let unpriced = out.filter { $0.price == nil }.map(\.contract)
-        if !unpriced.isEmpty { out = dexPrices(out, try? await HTTP.get("https://api.dexscreener.com/tokens/v1/hyperevm/" + unpriced.joined(separator: ","))) }
+        if !unpriced.isEmpty { out = dexPrices(out, try? await HTTP.get("https://api.dexscreener.com/tokens/v1/\(dex)/" + unpriced.joined(separator: ","))) }
         return out
     }
 

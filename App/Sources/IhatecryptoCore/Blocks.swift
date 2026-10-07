@@ -20,7 +20,7 @@ public enum BlockCatalog {
         public var automatic = false
     }
 
-    public static let groups = ["Trade", "Triggers", "Move money", "Buy and sell", "Earn", "Tempo", "HyperEVM", "Optimism"]
+    public static let groups = ["Trade", "Triggers", "Move money", "Buy and sell", "Earn", "Tempo", "HyperEVM", "Optimism", "BNB Chain"]
 
     public static let all: [Block] = [
         Block(group: "Trade", label: "OPEN LONG · HYPERLIQUID", title: "Long or short", form: "long|short ASSET · risk $N · stop N% · take N% · leverage Nx",
@@ -39,7 +39,7 @@ public enum BlockCatalog {
         Block(group: "Triggers", label: "LATER · SCHEDULE", title: "Later or on repeat", form: "in N days: … · at HH:MM: … · every week: … · every month on the 1st: …",
               example: "in 1 week: rebalance USDC", fill: "check", logo: nil),
 
-        Block(group: "Move money", label: "BRIDGE · RELAY", title: "Between networks", form: "move N USDC between Solana, Base, Arbitrum, Polygon, Ethereum, Robinhood, Tempo, HyperEVM, Optimism — any two, straight",
+        Block(group: "Move money", label: "BRIDGE · RELAY", title: "Between networks", form: "move N USDC between Solana, Base, Arbitrum, Polygon, Ethereum, Robinhood, Tempo, HyperEVM, Optimism, BNB Chain — any two, straight",
               example: "move 5 USDC from Solana to Base", fill: "relay", logo: "relay"),
         Block(group: "Move money", label: "GAS · TOP UP", title: "Gas on any network", form: "add gas on Base|Arbitrum|Polygon|Ethereum|Robinhood for N USDC · moves top it up by themselves",
               example: "add gas on robinhood for 1 USDC", fill: "robinhood", logo: "eth"),
@@ -105,6 +105,21 @@ public enum BlockCatalog {
               example: "move 100 USDC from Optimism to Base via CCTP", fill: "relay", logo: "op"),
         Block(group: "Optimism", label: "SEND · ON OPTIMISM", title: "Send on Optimism", form: "send N USDC to NAME on Optimism · a saved 0x address",
               example: "send 5 USDC to Mom on optimism", fill: "relay", logo: "op"),
+
+        // BNB Chain (BSC): its Binance-Peg USDC in and out over Relay, BNB for its gas, tokens on Uniswap there or Relay's
+        // swap, whichever gives more (2026-10-08).
+        Block(group: "BNB Chain", label: "BRIDGE · TO BNB CHAIN", title: "USDC to BNB Chain", form: "move N USDC from Solana to BNB Chain · BNB for gas comes along",
+              example: "move 2 USDC from Solana to BNB", fill: "relay", logo: "bnb"),
+        Block(group: "BNB Chain", label: "BACK · BNB CHAIN → SOLANA", title: "USDC back to Solana", form: "move N USDC from BNB Chain to Solana · no N = all of it",
+              example: "move all USDC from BNB to Solana", fill: "relay", logo: "bnb"),
+        Block(group: "BNB Chain", label: "BUY · ON BNB CHAIN", title: "Buy a token there", form: "buy TICKER on BNB Chain for N USDC · CAKE, BTCB, ETH, LINK…",
+              example: "buy CAKE on bnb for 2 USDC", fill: "relay", logo: "bnb"),
+        Block(group: "BNB Chain", label: "SWAP · ON BNB CHAIN", title: "One token for another", form: "swap N BNB|TICKER for TICKER on BNB Chain · straight, no USDC between",
+              example: "swap 0.001 BNB for CAKE on bnb", fill: "relay", logo: "bnb"),
+        Block(group: "BNB Chain", label: "GAS · BNB", title: "BNB for gas", form: "add gas on BNB Chain [for $N] · ≈ a cent a transaction",
+              example: "add gas on bnb", fill: "relay", logo: "bnb"),
+        Block(group: "BNB Chain", label: "SEND · ON BNB CHAIN", title: "Send on BNB Chain", form: "send N USDC to NAME on BNB Chain · a saved 0x address",
+              example: "send 5 USDC to Mom on bnb", fill: "relay", logo: "bnb"),
 
         // Tempo: its money moves, then services paid per request in USDC there (MPP). Each example is a real endpoint
         // from mpp.dev's directory with the body its docs give, priced live by its 402 (2026-09-30); the card shows the price

@@ -44,7 +44,7 @@ extension Executor {
         }
         let label = "\(Fmt.num(Decimal(units) / 1_000_000)) USDC"
         try await ensureEVM(from, usdc: units)
-        let before = try await to.rpc.tokenBalance(to.usdc, owner: wallet.evm)
+        let before = try await to.usdcBalance(wallet.evm)
         let burn = try await approveAndSend(from.rpc, token: from.usdc, spender: CCTP.tokenMessenger, units: Decimal(units),
                                             approveNote: "Approve exactly \(label) to Circle's CCTP", to: CCTP.tokenMessenger,
                                             data: try CCTP.burn(units: units, to: destination, recipient: wallet.evm, usdc: from.usdc, maxFee: maxFee),
@@ -60,10 +60,10 @@ extension Executor {
             throw ExecutionError("Circle hasn't minted on \(to.name) within 15 minutes; the burn is \(from.explorer)/tx/\(burn), in transit on the portfolio.")
         }
         report("CCTP · Circle minted on \(to.name) in \(Int(Date().timeIntervalSince(started))) s. \(to.explorer)/tx/\(mint)")
-        var after = try await to.rpc.tokenBalance(to.usdc, owner: wallet.evm)
+        var after = try await to.usdcBalance(wallet.evm)
         for _ in 0..<30 where after <= before {
             try await Task.sleep(for: .seconds(2))
-            after = try await to.rpc.tokenBalance(to.usdc, owner: wallet.evm)
+            after = try await to.usdcBalance(wallet.evm)
         }
         try journal.append(.init(chain: "cctp", id: "\(source):\(burn)", kind: .settled, note: mint))
         return Decimal(after > before ? after - before : 0) / 1_000_000
@@ -71,7 +71,7 @@ extension Executor {
 
     /// «move 500 USDC from base to arbitrum via CCTP»: CCTP whatever Relay would land.
     public func cctpBridge(from: EVMNetwork, to: EVMNetwork, usdc: Decimal?) async throws -> String {
-        let held = try await from.rpc.tokenBalance(from.usdc, owner: wallet.evm)
+        let held = try await from.usdcBalance(wallet.evm)
         let units = usdc.map { NSDecimalNumber(decimal: ($0 * 1_000_000).rounded(0, .down)).uint64Value } ?? held
         guard units > 0, units <= held else { throw ExecutionError("\(Fmt.num(Decimal(held) / 1_000_000)) USDC on \(from.name). Nothing was signed.") }
         guard let q = await cctpQuote(from: from, to: to, units: units) else { throw ExecutionError("Circle didn't quote CCTP from \(from.name) to \(to.name) now. Nothing was signed.") }

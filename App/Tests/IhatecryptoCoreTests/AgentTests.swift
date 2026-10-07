@@ -240,7 +240,7 @@ private final class Script: LLMClient, @unchecked Sendable {
     // Not these: a contract without a network stays Robinhood's; moving USDC is a bridge.
     #expect(WalletCommand.parse("buy token \(aero) for 3 USDC") == .buyStock(symbol: aero, usdc: 3))
     #expect(WalletCommand.parse("move 2 USDC from Solana to Base") == .solanaTo("base", 2))
-    #expect(ChatRouter.forms.contains("buy <TICKER> on <base|arbitrum|polygon|ethereum|optimism|hyperevm> for N USDC") && ChatRouter.forms.contains("buy <TICKER> on solana for N USDC"))
+    #expect(ChatRouter.forms.contains("buy <TICKER> on <base|arbitrum|polygon|ethereum|optimism|bnb|hyperevm> for N USDC") && ChatRouter.forms.contains("buy <TICKER> on solana for N USDC"))
 }
 
 @Test func aTickerFindsJupitersVerifiedTokenNotItsNamesakes() throws {

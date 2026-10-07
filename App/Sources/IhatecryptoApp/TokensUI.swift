@@ -79,6 +79,18 @@ extension Workspace {
         return await spotToken(mint, note: note)
     }
 
+    /// A Solana token a swap names — USDC, a ticker or a mint — checked as a buy is (Jupiter's verified list, Safe search),
+    /// and kept for the card's quote and the run. nil: said why in the chat (`note`), or quietly when `note` is nil and
+    /// it isn't known yet.
+    func solanaAsset(_ ref: String, note: String?, quiet: Bool = false) async -> SpotAsset? {
+        if ref.uppercased() == "USDC" { return .usdc }
+        if let known = spotAssets[ref] { return known }
+        guard !quiet else { return nil }
+        guard let asset = await spotToken(ref.count >= 32 ? .byMint(ref) : .bySymbol(ref), note: note) else { return nil }
+        spotAssets[ref] = asset
+        return asset
+    }
+
     func spotToken(_ mint: String, note: String?) async -> SpotAsset? {
         guard let t = await TokenResearch.solanaToken(mint) else {
             reply(say("Jupiter doesn’t know the token \(mint), so there’s no route to trade it — nothing moved.",

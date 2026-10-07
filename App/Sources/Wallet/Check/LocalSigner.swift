@@ -529,7 +529,7 @@ func sweepEVM(to destination: String) async throws {
     let executor = Executor(wallet: signer.wallet, signer: signer, journal: journal, rpc: rpc) { print("[\(stamp())] \($0)") }
     for net in [EVMNetwork.base, .robinhood, .arbitrum] {
         let chain = net.rpc
-        let stable = try await chain.tokenBalance(net.usdc, owner: me)
+        let stable = try await net.usdcBalance(me)
         let wei = try await chain.balance(me)
         print("\(net.name): \(stable) stable units, \(wei) wei")
         guard send else { continue }

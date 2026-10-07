@@ -25,6 +25,9 @@ public struct EVMNetwork: Sendable {
     public var gasCoin = "ETH"
     /// A network with no coin of its own (Tempo): fees come out of this stablecoin, so there's no gas to bring.
     public var feeToken: String?
+    /// Its dollar's decimals: 6 everywhere but BNB Chain, whose Binance-Peg USDC has 18. The app counts dollars in
+    /// millionths on every network (UInt64); `raw`, `micro` and `usdcBalance` cross to the token's own units at the chain.
+    public var usdcDecimals = 6
 
     public static let base = EVMNetwork(name: "Base", key: "base", rpc: .base, usdc: EVMRPC.baseUSDC, relayChain: Relay.Chain.base,
                                         explorer: "https://basescan.org", gasFloor: 5_000_000_000_000, topupUSD: Decimal(string: "0.03")!)
@@ -63,7 +66,23 @@ public struct EVMNetwork: Sendable {
     public static let optimism = EVMNetwork(name: "Optimism", key: "optimism", rpc: .optimism, usdc: EVMRPC.optimismUSDC, relayChain: Relay.Chain.optimism,
                                             explorer: "https://optimistic.etherscan.io", gasFloor: 5_000_000_000_000, topupUSD: Decimal(string: "0.03")!)
 
-    public static let all = [base, arbitrum, robinhood, polygon, ethereum, tempo, hyperevm, optimism]
+    /// BNB Chain: gas in BNB at 0.05 gwei, a swap ≈ a cent (2026-10-08); 0.0001 BNB covers several calls, and Relay's
+    /// $0.15 top-up lands ≈ 0.0002 above it. Its USDC is Binance-Peg, 18 decimals.
+    public static let bnb = EVMNetwork(name: "BNB Chain", key: "bnb", rpc: .bnb, usdc: EVMRPC.bnbUSDC, relayChain: Relay.Chain.bnb,
+                                       explorer: "https://bscscan.com", gasFloor: 100_000_000_000_000, topupUSD: Decimal(string: "0.15")!,
+                                       gasCoin: "BNB", usdcDecimals: 18)
+
+    public static let all = [base, arbitrum, robinhood, polygon, ethereum, tempo, hyperevm, optimism, bnb]
+
+    /// Its USDC's own units for millionths of a dollar: the same number, but a trillion times it on BNB Chain.
+    public func raw(_ micro: UInt64) -> Decimal { Decimal(micro) * pow(10, usdcDecimals - 6) }
+    /// Millionths of a dollar for its USDC's own units, rounded down.
+    public func micro(_ raw: Decimal) -> UInt64 { NSDecimalNumber(decimal: (raw / pow(10, usdcDecimals - 6)).rounded(0, .down)).uint64Value }
+    /// Its USDC at `owner`, in millionths of a dollar (an 18-decimal balance doesn't fit the node's 64-bit read).
+    public func usdcBalance(_ owner: String) async throws -> UInt64 {
+        usdcDecimals == 6 ? try await rpc.tokenBalance(usdc, owner: owner)
+            : micro(ABI.decimal(in: try await rpc.read(usdc, try ERC20.balanceOf(owner)), word: 0) ?? 0)
+    }
 
     /// What to leave for fees when everything goes: a cent pays ten Tempo calls.
     // ponytail: fixed cent; read the base fee if Tempo's fees ever pass $0.001 a call.
@@ -141,10 +160,10 @@ extension Executor {
     /// After a withdrawal on `net`: back where the money lives, Solana — only the USDC the withdrawal brought, never what
     /// already lay there (a card that says 10 bridged all 2,970). `expected`: what it was for, while a node is a block behind.
     func bridgeBack(_ net: EVMNetwork, since before: UInt64, expected: UInt64) async throws -> String {
-        var there = try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)
+        var there = try await net.usdcBalance(wallet.evm)
         for _ in 0..<10 where there <= before {
             try await Task.sleep(for: .seconds(1))
-            there = try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)
+            there = try await net.usdcBalance(wallet.evm)
         }
         let got = there > before ? there - before : expected
         guard got >= 500_000 else {
@@ -165,7 +184,7 @@ extension Executor {
         // Where fees come out of the stablecoin, the fees ride on the USDC wanted and there's no coin to read.
         let want = want + net.feeReserve
         func gasThere() async throws -> UInt64 { net.feeToken == nil ? try await net.rpc.balance(me) : floor }
-        var there = try await net.rpc.tokenBalance(net.usdc, owner: me)
+        var there = try await net.usdcBalance(me)
         var gas = try await gasThere()
         guard there < want || gas < floor else { return }
         let short = Decimal(want > there ? want - there : 0) / 1_000_000
@@ -184,7 +203,7 @@ extension Executor {
                 return
             }
         }
-        let (step, changes) = try await prepareBridge(.arrive(arrive), to: net.relayChain, currency: net.usdc, decimals: 6,
+        let (step, changes) = try await prepareBridge(.arrive(arrive), to: net.relayChain, currency: net.usdc, decimals: net.usdcDecimals,
                                                       topupGasUSD: needGas ? topupUSD : nil)
         let stable = net.key == "robinhood" ? "USDG" : "USDC"
         report("Bridge to \(net.name): \(Fmt.num(step.spend)) USDC from Solana → \(Fmt.num(step.arriving)) \(stable)\(needGas ? " plus \(net.gasCoin) for gas" : ""). "
@@ -196,7 +215,7 @@ extension Executor {
                 throw ExecutionError("The USDC didn't reach \(net.name) within 4 minutes. Relay order \(step.requestId) is in the journal; nothing else was signed.")
             }
             try await Task.sleep(for: .seconds(2))
-            there = try await net.rpc.tokenBalance(net.usdc, owner: me)
+            there = try await net.usdcBalance(me)
             gas = try await gasThere()
         }
         report("On \(net.name) in \(Int(Date().timeIntervalSince(started))) s: \(show(there)) \(stable) and gas.")
@@ -213,7 +232,7 @@ extension Executor {
         let units = NSDecimalNumber(decimal: (usdc * 1_000_000).rounded(0, .down)).uint64Value
         guard units >= 500_000 else { throw ExecutionError("At least 0.5 USDC: less isn't worth the bridge.") }
         let stable = net.key == "robinhood" ? "USDG" : "USDC"
-        let before = try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)
+        let before = try await net.usdcBalance(wallet.evm)
         // With gas already there, NEAR Intents' 1Click may land more than Relay: both are quoted, the better one goes.
         if OneClick.Asset.usdc(onEVM: net.key) != nil, try await net.rpc.balance(wallet.evm) >= net.gasFloor,
            let relay = try? await Relay.quote(user: wallet.solana, recipient: wallet.evm, originChain: Relay.Chain.solana, destinationChain: net.relayChain,
@@ -225,7 +244,7 @@ extension Executor {
         } else {
             try await ensureEVM(net, usdc: before + units)
         }
-        let after = try await net.rpc.tokenBalance(net.usdc, owner: wallet.evm)
+        let after = try await net.usdcBalance(wallet.evm)
         return "Moved \(Fmt.num(Decimal(after > before ? after - before : 0) / 1_000_000)) \(stable) to \(net.name): \(Fmt.num(Decimal(after) / 1_000_000)) \(stable) there now. "
             + "Say “move \(stable) from \(net.name) to Solana” to bring it back."
     }
@@ -243,7 +262,7 @@ extension Executor {
         guard dest?.key != net.key else { throw ExecutionError("The money is already on \(net.name).") }
         let toSolana = dest == nil && !hyperliquid
         let there = hyperliquid ? "Hyperliquid" : dest?.name ?? "Solana", stable = dest?.key == "robinhood" ? "USDG" : "USDC"
-        let have = try await base.tokenBalance(usdc, owner: me)
+        let have = try await net.usdcBalance(me)
         // On Tempo the fees come out of this USDC: a cent of it stays.
         let spendable = have > net.feeReserve ? have - net.feeReserve : 0
         let amount = requested.map { min(NSDecimalNumber(decimal: ($0 * 1_000_000).rounded(0, .down)).uint64Value, spendable) } ?? spendable
@@ -256,7 +275,7 @@ extension Executor {
         let quote = try await Relay.quote(user: me, recipient: recipient, originChain: chain,
                                           destinationChain: hyperliquid ? Relay.Chain.hyperliquid : dest?.relayChain ?? Relay.Chain.solana, originCurrency: usdc,
                                           destinationCurrency: hyperliquid ? Relay.Currency.hyperliquidUSDC : dest?.usdc ?? Relay.Currency.solanaUSDC,
-                                          amount: amount, topupGasUSD: topup)
+                                          amount: amount, topupGasUSD: topup, units: "\(net.raw(amount))")
         let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": toSolana ? quote.recipient : quote.recipient.lowercased()],
                                          expected: ["sender": me.lowercased(), "recipient": toSolana ? recipient : recipient.lowercased()], subject: "Relay quote")
         guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
@@ -270,7 +289,7 @@ extension Executor {
         guard deposit.data.prefix(4).hex == "e8017952", args.count == 4 * 32,
               ABI.address(in: args, word: 0)?.lowercased() == me.lowercased(),
               ABI.address(in: args, word: 1)?.lowercased() == usdc,
-              ABI.uint(in: args, word: 2) == amount else {
+              ABI.decimal(in: args, word: 2) == net.raw(amount) else {
             throw ExecutionError("Relay's deposit asks for something else than \(show(amount)) USDC from this wallet. Nothing was signed.")
         }
         let arriving = Decimal(string: quote.amountOutFormatted) ?? 0
@@ -299,7 +318,7 @@ extension Executor {
             throw ExecutionError("Relay wants \(Fmt.num(spend)) USDC for \(Fmt.num(arriving)) on \(there): more than allowed.")
         }
         let before = try await relayLanded(dest, hyperliquid: hyperliquid)
-        let hash = try await approveAndSend(base, token: usdc, spender: depository, units: Decimal(amount), approveNote: "Approve exactly \(show(amount)) USDC to Relay",
+        let hash = try await approveAndSend(base, token: usdc, spender: depository, units: net.raw(amount), approveNote: "Approve exactly \(show(amount)) USDC to Relay",
                                             to: deposit.to, data: deposit.data, note: "Relay deposit \(show(amount)) USDC on \(net.name)")
         try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "\(net.name) USDC→\(there) \(show(amount)), tx \(hash)"))
         let requestId = quote.requestId, gas = topup != nil, sent = show(amount)
@@ -319,7 +338,7 @@ extension Executor {
     /// network's USDC, or Solana's.
     private func relayLanded(_ dest: EVMNetwork?, hyperliquid: Bool) async throws -> UInt64 {
         if hyperliquid { return NSDecimalNumber(decimal: try await Hyperliquid.balance(user: wallet.evm).withdrawable * 1_000_000).uint64Value }
-        if let dest { return try await dest.rpc.tokenBalance(dest.usdc, owner: wallet.evm) }
+        if let dest { return try await dest.usdcBalance(wallet.evm) }
         return try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)
     }
 
@@ -497,14 +516,14 @@ extension Executor {
     private func swapForGas(_ net: EVMNetwork, usd: Decimal) async throws {
         let me = wallet.evm, rpc = net.rpc, chain = net.relayChain
         let units = NSDecimalNumber(decimal: (usd * 1_000_000).rounded(0, .up)).uint64Value
-        guard try await rpc.tokenBalance(net.usdc, owner: me) >= units else {
+        guard try await net.usdcBalance(me) >= units else {
             throw ExecutionError("No gas on \(net.name), and neither Solana nor \(net.name) has \(Fmt.usd(usd)) of USDC to buy it. Top up either first.")
         }
         guard let proxy = try await Relay.approvalProxy(chainId: chain)?.lowercased() else { throw ExecutionError("Relay publishes no approval proxy for \(net.name).") }
         /// Relay's quote with every check: from and to this wallet, its call to the proxy after an exact approve, what it gives.
         func checked() async throws -> Relay.EVMStep {
             let quote = try await Relay.quote(user: me, recipient: me, originChain: chain, destinationChain: chain, originCurrency: net.usdc,
-                                              destinationCurrency: "0x0000000000000000000000000000000000000000", amount: units)
+                                              destinationCurrency: "0x0000000000000000000000000000000000000000", amount: units, units: "\(net.raw(units))")
             let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": quote.recipient.lowercased()],
                                              expected: ["sender": me.lowercased(), "recipient": me.lowercased()], subject: "Relay quote")
             guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
@@ -512,7 +531,7 @@ extension Executor {
                   quote.evm.dropLast().allSatisfy({ step in
                       let args = Data(step.data.dropFirst(4))
                       return step.to.lowercased() == net.usdc && step.data.prefix(4).hex == "095ea7b3"
-                          && ABI.address(in: args, word: 0)?.lowercased() == proxy && ABI.decimal(in: args, word: 1) == Decimal(units)
+                          && ABI.address(in: args, word: 0)?.lowercased() == proxy && ABI.decimal(in: args, word: 1) == net.raw(units)
                   }) else {
                 throw ExecutionError("Relay's transactions don't go to the approval proxy it publishes for \(net.name), for exactly this amount. Nothing was signed.")
             }
@@ -526,12 +545,12 @@ extension Executor {
         let before = try await rpc.balance(me)
         // Batched (EIP-7702), the approve goes with the swap; otherwise first, on its own.
         let approveNote = "Approve exactly \(Fmt.num(usd)) USDC to Relay for gas"
-        if !canBatch(rpc) { try await approve(rpc, token: net.usdc, spender: proxy, amount: units, note: approveNote) }
+        if !canBatch(rpc) { try await approve(rpc, token: net.usdc, spender: proxy, units: net.raw(units), note: approveNote) }
         // Quoted again after the approve's wait, and once more if its dry run reverts: a route is priced for its moment.
         for attempt in 0..<2 {
             let call = try await checked()
             do {
-                _ = try await approveAndSend(rpc, token: net.usdc, spender: proxy, units: Decimal(units), approveNote: approveNote,
+                _ = try await approveAndSend(rpc, token: net.usdc, spender: proxy, units: net.raw(units), approveNote: approveNote,
                                              to: call.to, data: call.data, note: "Relay: \(Fmt.usd(usd)) of USDC into \(net.gasCoin) on \(net.name)")
                 break
             } catch where attempt == 0 && "\(error.localizedDescription)".contains("eth_estimateGas") {

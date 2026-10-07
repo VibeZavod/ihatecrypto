@@ -35,7 +35,7 @@ private let calls = [Batch7702.Call(to: baseUSDC, data: approve), Batch7702.Call
     #expect(Batch7702.problems(good, owner: owner, chainId: 8453).isEmpty)
     for chain: UInt64 in [1, 137, 42161, 8453, 4663, 10] { #expect(Batch7702.problems(good, owner: owner, chainId: chain).isEmpty) }
     // Networks without the audited account or Prague: Tempo, HyperEVM, and chain 0 (an authorization good on every network).
-    for chain: UInt64 in [4217, 999, 0] { #expect(!Batch7702.problems(good, owner: owner, chainId: chain).isEmpty) }
+    for chain: UInt64 in [4217, 999, 56, 0] { #expect(!Batch7702.problems(good, owner: owner, chainId: chain).isEmpty) }
     // A call into the wallet itself would run the batch account's executeBatch with calls nobody read.
     #expect(!Batch7702.problems(good + [.init(to: owner.lowercased(), data: Data([1, 2, 3, 4]))], owner: owner, chainId: 8453).isEmpty)
     // The one-call rules hold inside: an unlimited approve, a swap paying someone else.

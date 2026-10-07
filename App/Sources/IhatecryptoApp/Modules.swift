@@ -121,6 +121,16 @@ struct ChartBoard: View {
                     Label("As of \(Fmt.date(at))", systemImage: "clock").font(.ui(10)).foregroundStyle(.secondary)
                 }
                 Spacer()
+                // A network's coin trades like any token: its Buy and Sell into the chat.
+                ForEach(ws.coinTrades(state.coin, chain: ws.chartNetwork), id: \.phrase) { p in
+                    let sell = p.title == "Sell"
+                    Button { ws.suggest(p.phrase) } label: {
+                        Label(p.title, systemImage: p.icon).font(.ui(11, .semibold)).foregroundStyle(sell ? Brand.loss : Brand.accentInk)
+                            .padding(.horizontal, 10).padding(.vertical, 4)
+                            .background(Capsule().fill((sell ? Brand.loss : Brand.accent).opacity(0.1)))
+                    }
+                    .buttonStyle(.plain).pointerStyle(.link).help("Puts “\(p.phrase)” into the chat")
+                }
                 Button {
                     refreshing = true
                     Task { await ws.openChart(state.coin, range: state.range); refreshing = false }

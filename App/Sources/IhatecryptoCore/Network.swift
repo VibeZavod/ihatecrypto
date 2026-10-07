@@ -292,7 +292,7 @@ public enum Bridge {
     /// user's Hyperliquid account doesn't exist yet, so the quote goes to a fresh random address and carries the same
     /// one-time opening fee the real deposit will. `origin`: the USDC leaves an EVM network instead (chain, token) —
     /// Relay only, straight to Hyperliquid.
-    public static func dryQuote(_ amount: Amount, newAccount: Bool = false, from origin: (chain: UInt64, usdc: String)? = nil) async throws -> BridgeQuote {
+    public static func dryQuote(_ amount: Amount, newAccount: Bool = false, from origin: (chain: UInt64, usdc: String, decimals: Int)? = nil) async throws -> BridgeQuote {
         let recipient = newAccount ? "0x" + (0..<20).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined() : placeholderRecipient
         async let relay = try? relayQuote(amount, recipient: recipient, from: origin)
         async let oneClick = origin == nil ? try? oneClickQuote(amount, recipient: recipient) : nil
@@ -305,15 +305,15 @@ public enum Bridge {
         return best
     }
 
-    static func relayQuote(_ amount: Amount, recipient: String = placeholderRecipient, from origin: (chain: UInt64, usdc: String)? = nil) async throws -> BridgeQuote {
+    static func relayQuote(_ amount: Amount, recipient: String = placeholderRecipient, from origin: (chain: UInt64, usdc: String, decimals: Int)? = nil) async throws -> BridgeQuote {
         let (exactOutput, units): (Bool, Decimal) = switch amount {
         case .arrive(let v): (true, v * 100_000_000) // Hyperliquid perp USDC in Relay: 8 decimals
-        case .send(let v): (false, v * 1_000_000)   // USDC on Solana and the EVM networks: 6
+        case .send(let v): (false, v * pow(10, origin?.decimals ?? 6))   // USDC on Solana and the EVM networks: 6, BNB Chain's 18
         }
         let q = try await Relay.quote(user: origin == nil ? placeholderRefund : placeholderRecipient, recipient: recipient,
                                       originChain: origin?.chain ?? Relay.Chain.solana, destinationChain: Relay.Chain.hyperliquid,
                                       originCurrency: origin?.usdc ?? Relay.Currency.solanaUSDC, destinationCurrency: Relay.Currency.hyperliquidUSDC,
-                                      amount: NSDecimalNumber(decimal: units.rounded(0, .up)).uint64Value, exactOutput: exactOutput)
+                                      amount: 0, exactOutput: exactOutput, units: "\(units.rounded(0, .up))")
         // Measured 2026-09-25: 4 s from send to credit on Hyperliquid from Solana; from an EVM network, Relay's estimate.
         return BridgeQuote(provider: "Relay", amountIn: try dec(q.amountInFormatted), reserve: 0, amountOut: try dec(q.amountOutFormatted),
                            time: origin == nil ? "Seconds: 4 s to credit in live runs." : "Seconds: ≈ \(max(q.seconds, 1)) s by Relay's estimate.")

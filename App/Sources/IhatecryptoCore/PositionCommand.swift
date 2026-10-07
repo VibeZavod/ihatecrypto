@@ -238,7 +238,7 @@ public enum WalletCommand: Equatable, Sendable {
         if q.contains(Self.jupiterDCAWords) { return jupiterDCA(q) }
         // «add gas on robinhood for 3 USDC», «добавь газа на робингуд на 3 бакса», «докинь газ в полигон».
         if q.contains(/\bgas\b|\bгаз\w*/), q.contains(/\badd\b|top\s*up|\bbring\b|\bget\b|\bbuy\b|добав\w*|доки\w*|пополн\w*|закин\w*|подкин\w*|купи\w*|нуж\w*/),
-           let word = q.firstMatch(of: /\b(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet)\b/),
+           let word = q.firstMatch(of: /\b(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|binance\s+smart\s+chain|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet)\b/),
            let net = Self.network(String(word.1)) {
             let usd = (q.firstMatch(of: /\$\s*(\d+(?:[.,]\d+)?)/)?.1 ?? q.firstMatch(of: /(\d+(?:[.,]\d+)?)\s*(?:usdc|usdg|\$|долл|dollars?|bucks|бакс)/)?.1)
                 .flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
@@ -322,7 +322,7 @@ public enum WalletCommand: Equatable, Sendable {
         // A token on one network for one on another, through Relay: «swap 0.1 SOL on Solana for ETH on Arbitrum», «swap all
         // AERO on base for SOL on solana», «обменяй 0.1 SOL на ETH в арбитруме» (SOL comes from Solana). USDC for USDC is
         // a bridge; a swap on one network is the rule below.
-        if let m = text.firstMatch(of: /(?i)\b(?:swap|exchange|convert|поменя\w*|обменя\w*|свапн\w*|свопн\w*|конверт\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь|всю)\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:(?:on|from|in|на|в|во|с|со)\s+(solana|солан\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|robinhood|робинхуд\w*)(?:\s+chain)?\s+)?(?:for|to|into|на|в)\s+\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:on|in|at|на|в|во)\s+(solana|солан\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|robinhood|робинхуд\w*)\b/) {
+        if let m = text.firstMatch(of: /(?i)\b(?:swap|exchange|convert|поменя\w*|обменя\w*|свапн\w*|свопн\w*|конверт\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь|всю)\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:(?:on|from|in|на|в|во|с|со)\s+(solana|солан\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|robinhood|робинхуд\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*)(?:\s+chain)?\s+)?(?:for|to|into|на|в)\s+\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:on|in|at|на|в|во)\s+(solana|солан\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|robinhood|робинхуд\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*)\b/) {
             func place(_ w: Substring) -> String { w.lowercased().hasPrefix("sol") || w.lowercased().hasPrefix("сол") ? "solana" : Self.network(String(w)) ?? "base" }
             let a = String(m.2), b = String(m.4), to = place(m.5)
             if let from = m.3.map(place) ?? (a.uppercased() == "SOL" ? "solana" : nil), from != to {
@@ -333,9 +333,29 @@ public enum WalletCommand: Equatable, Sendable {
         }
         // One token for another on an EVM network: «swap 0.01 ETH for AERO on base», «swap all DEGEN to AERO on base»,
         // «поменяй 0.01 ETH на AERO на бейсе». USDC on one side is a buy or a sale there, with the money on that network.
-        if let m = text.firstMatch(of: /(?i)\b(?:swap|exchange|convert|поменя\w*|обменя\w*|свапн\w*|свопн\w*|конверт\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь|всю)\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:for|to|into|на|в)\s+\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:on|на|в|во)\s+(base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|tempo|темпо\w*|optimism|оптимизм\w*|hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*)\b/) {
-            let from = String(m.2), to = String(m.3), place = Self.network(String(m.4)) ?? "base"
+        if let m = text.firstMatch(of: /(?i)\b(?:swap|exchange|convert|поменя\w*|обменя\w*|свапн\w*|свопн\w*|конверт\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь|всю)\s+)?\$?(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:for|to|into|на|в)\s+\$?(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:on|на|в|во)\s+(?:the\s+)?(solana|солан\w*|near|неар\w*|robinhood|робин[гх]уд\w*|hyperliquid(?:\s+spot)?|хайперликвид\w*(?:\s+спот\w*)?|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|tempo|темпо\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|binance\s+smart\s+chain|hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*)\b/) {
+            let from = String(m.2), to = String(m.3), word = String(m.4).lowercased()
+            let place = word.hasPrefix("sol") || word.hasPrefix("сол") ? "solana" : word.hasPrefix("near") || word.hasPrefix("неар") ? "near"
+                : Self.network(word) ?? "base"
             let count = m.1.flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
+            // NEAR's account holds NEAR alone: for USDC or back it's 1Click's sale or buy.
+            if place == "near", from.uppercased() == "NEAR", to.uppercased() == "USDC" { return .sellNear(amount: count) }
+            if place == "near", from.uppercased() == "USDC", to.uppercased() == "NEAR" { return .buyNear(usdc: count) }
+            // Solana, through Jupiter: USDC on a side is a buy or a sale there; any other two tokens straight, by ticker or mint.
+            if place == "solana" {
+                func asset(_ t: String) -> SpotAsset { t.count >= 32 ? .byMint(t) : .bySymbol(t) }
+                if from.uppercased() == "USDC" { return .buy(asset(to), usdc: count) }
+                if to.uppercased() == "USDC" { return .sell(asset(from), amount: count) }
+                return .swapOn(place, from: from.count >= 32 ? from : from.uppercased(), to: to.count >= 32 ? to : to.uppercased(), amount: count)
+            }
+            // Hyperliquid's spot book trades everything against USDC: one token for another is a sale and a buy.
+            if place == "hyperliquid" {
+                if from.uppercased() == "USDC" { return .hlSpotBuy(symbol: to.uppercased(), usdc: count) }
+                if to.uppercased() == "USDC" { return .hlSpotSell(symbol: from.uppercased(), amount: count) }
+                return .swapOn(place, from: from.uppercased(), to: to.uppercased(), amount: count)
+            }
+            // Robinhood Chain: Stock Tokens and tokens for one another, USDG too, straight on Uniswap there.
+            if place == "robinhood" { return .swapOn(place, from: from, to: to, amount: count) }
             // Tempo's dollars for one another on its own exchange: USDC on a side is a swap there too.
             if place == "tempo" { return .swapOn(place, from: from, to: to, amount: count) }
             // HyperEVM's money isn't in Uniswap's pools: a swap there is Relay's own on the network (Executor.pairSwap),
@@ -343,14 +363,14 @@ public enum WalletCommand: Equatable, Sendable {
             if place == "hyperevm" { return .swapOn(place, from: from, to: to, amount: count) }
             // The network's own coin (ETH, POL) for its USDC or back stays a swap: Uniswap's ETH pools take it as it is,
             // while a buy or a sale looks the token up on Uniswap's list, where ETH isn't.
-            let coin: Set<String> = place == "polygon" ? ["POL", "MATIC"] : place == "hyperevm" ? ["HYPE"] : ["ETH"]
+            let coin: Set<String> = place == "polygon" ? ["POL", "MATIC"] : place == "hyperevm" ? ["HYPE"] : place == "bnb" ? ["BNB"] : ["ETH"]
             if from.lowercased() == "usdc", !coin.contains(to.uppercased()) { return .buyOn(place, token: to, usdc: count, from: place) }
             if to.lowercased() == "usdc", !coin.contains(from.uppercased()) { return .sellOn(place, token: from, amount: count, keep: true) }
             return .swapOn(place, from: from, to: to, amount: count)
         }
         // A token on a named network: «buy AERO on base for 5 USDC», «sell all DEGEN on base», «buy BONK on solana for 5
         // USDC», «купи ARB на арбитруме на 5$», «buy token 0x… on arbitrum for 3 USDC».
-        if let m = text.firstMatch(of: /(?i)\b(buy|купи\w*|sell|прода\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь)\s+)?(?:(?:the\s+)?tokens?\s+|токен\w*\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11})\s+(?:on|на|в)\s+(solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|optimism|оптимизм\w*|hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*)\b/),
+        if let m = text.firstMatch(of: /(?i)\b(buy|купи\w*|sell|прода\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь)\s+)?(?:(?:the\s+)?tokens?\s+|токен\w*\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11})\s+(?:on|на|в)\s+(solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|binance\s+smart\s+chain|hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*)\b/),
            !["usdc", "usdg", "tokens", "token"].contains(String(m.3).lowercased()) {
             let token = String(m.3), place = String(m.4).lowercased()
             let chain = place.hasPrefix("sol") || place.hasPrefix("сол") ? "solana" : Self.network(place) ?? "base"
@@ -364,7 +384,7 @@ public enum WalletCommand: Equatable, Sendable {
             if chain != "solana" {
                 // «… from solana», «… с арбитрума»; «… and keep the USDC there», «… оставь USDC на base».
                 let rest = String(text[m.range.upperBound...])
-                let from = rest.firstMatch(of: /(?i)\b(?:from|с|со|из)\s+(solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфир\w*|mainnet|robinhood|робинхуд\w*|optimism|оптимизм\w*|hyperevm|хайперевм\w*|гиперевм\w*)/)
+                let from = rest.firstMatch(of: /(?i)\b(?:from|с|со|из)\s+(solana|солан\w*|base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфир\w*|mainnet|robinhood|робинхуд\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|binance\s+smart\s+chain|hyperevm|хайперевм\w*|гиперевм\w*)/)
                     .map { String($0.1).lowercased() }.map { $0.hasPrefix("sol") || $0.hasPrefix("сол") ? "solana" : Self.network($0) ?? $0 }
                 let keep = rest.contains(/(?i)\bkeep\b|\bstays?\b|остав\w*|остан\w*|не\s+выводи/)
                 return sell ? .sellOn(chain, token: token, amount: count, keep: keep) : .buyOn(chain, token: token, usdc: amount, from: from)
@@ -405,13 +425,13 @@ public enum WalletCommand: Equatable, Sendable {
         // Out of the Solana wallet: «move 3 USDC from Solana to Robinhood», «переведи 3 USDC из соланы в робингуд».
         // «из соланы в aave на арбитрум» is a deposit into Aave there, not an idle transfer: it's read further down.
         if !q.contains(/\baave\b|ааве|morpho|морфо/),
-           let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)/) {
+           let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(?:solana|солан\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|binance\s+smart\s+chain|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)/) {
             return .solanaTo(Self.network(String(m.1)) ?? "robinhood", amount)
         }
         // Between two EVM networks, or from one to Hyperliquid, straight over Relay: «move 20 USDC from Base to Robinhood»,
         // «из бейза в робингуд», «с бейза на гипер».
         if !q.contains(/\baave\b|ааве|morpho|морфо/),
-           let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*|hyperliquid|гипер\w*|хайпер\w*|hl\b)/),
+           let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|binance\s+smart\s+chain|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|binance\s+smart\s+chain|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*|hyperliquid|гипер\w*|хайпер\w*|hl\b)/),
            let from = Self.network(String(m.1)), let to = Self.network(String(m.2)), from != to {
             // «… via CCTP», «… через Circle»: Circle's burn and mint, whatever Relay would land.
             if q.contains(/\bcctp\b|\bcircle\b|циркл|сиркл/), !["hyperliquid", "robinhood", "tempo"].contains(from), !["hyperliquid", "robinhood", "tempo"].contains(to) {
@@ -488,7 +508,7 @@ public enum WalletCommand: Equatable, Sendable {
         }
         // «send all RAY on solana to Bybit», «отправь 1973 AI в робинхуде на New wallet»: any token, as it is, to a saved
         // address. SOL with a number, NEAR, and USDC with a number but no network keep their own forms below.
-        if let m = text.firstMatch(of: /(?i)^\s*(?:send|transfer|отправь\w*|переведи|перевести|скинь|кинь)\s+(all|весь|всё|все|\d+(?:[.,]\d+)?)\s+(?:(?:the|my|мои|мой|моих)\s+)?\$?(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|[A-Za-z][A-Za-z0-9._-]{0,19})(?:\s+tokens?)?(?:\s+(?:on|in|в|на|по)\s+(?:the\s+)?(?:сети\s+)?(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|solana|солан\w*|base|бейс\w*|бейз\w*|баз[еыау]|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфир\w*|mainnet|robinhood|робин[гх]уд\w*|tempo|темпо\w*|bitcoin|биткоин\w*|zcash|tron|трон\w*|xrp|ripple|dogecoin|sui)(?:\s+(?:network|chain|сети))?)?\s+(?:to|на|для)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/) {
+        if let m = text.firstMatch(of: /(?i)^\s*(?:send|transfer|отправь\w*|переведи|перевести|скинь|кинь)\s+(all|весь|всё|все|\d+(?:[.,]\d+)?)\s+(?:(?:the|my|мои|мой|моих)\s+)?\$?(0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|[A-Za-z][A-Za-z0-9._-]{0,19})(?:\s+tokens?)?(?:\s+(?:on|in|в|на|по)\s+(?:the\s+)?(?:сети\s+)?(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|binance\s+smart\s+chain|solana|солан\w*|base|бейс\w*|бейз\w*|баз[еыау]|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфир\w*|mainnet|robinhood|робин[гх]уд\w*|tempo|темпо\w*|bitcoin|биткоин\w*|zcash|tron|трон\w*|xrp|ripple|dogecoin|sui)(?:\s+(?:network|chain|сети))?)?\s+(?:to|на|для)\s+[«"“]?(.+?)[»"”]?\s*[.!]?$/) {
             let amount = Decimal(string: String(m.1).replacingOccurrences(of: ",", with: "."))
             let token = String(m.2), t = token.uppercased(), name = String(m.4).trimmingCharacters(in: .whitespaces)
             let network = m.3.map { w -> String in
@@ -557,9 +577,9 @@ public enum WalletCommand: Equatable, Sendable {
             var name = String(m.2).trimmingCharacters(in: .whitespaces)
             // «… to Mom on ethereum», «… на main wallet по эфир сети»: the network goes, the name stays.
             var network: String?
-            if let tail = name.firstMatch(of: /(?i)\s+(?:on|in|via|по|в|на|через)\s+(?:the\s+)?(?:сети\s+)?(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|ethereum|эфир\w*|mainnet|base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|robinhood|робинхуд\w*|tempo|темпо|solana|солан\w*|hyperliquid|хайперликвид\w*)(?:\s+(?:network|chain|mainnet|сет[иья]))?\s*$/) {
+            if let tail = name.firstMatch(of: /(?i)\s+(?:on|in|via|по|в|на|через)\s+(?:the\s+)?(?:сети\s+)?(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|binance\s+smart\s+chain|ethereum|эфир\w*|mainnet|base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|robinhood|робинхуд\w*|tempo|темпо|solana|солан\w*|hyperliquid|хайперликвид\w*)(?:\s+(?:network|chain|mainnet|сет[иья]))?\s*$/) {
                 let word = String(tail.1).lowercased()
-                network = ["hyperevm", "optimism"].contains(Self.network(word) ?? "") ? Self.network(word) : word.hasPrefix("эфир") || word == "mainnet" ? "ethereum" : word.hasPrefix("бейс") ? "base" : word.hasPrefix("арбитрум") ? "arbitrum"
+                network = ["hyperevm", "optimism", "bnb"].contains(Self.network(word) ?? "") ? Self.network(word) : word.hasPrefix("эфир") || word == "mainnet" ? "ethereum" : word.hasPrefix("бейс") ? "base" : word.hasPrefix("арбитрум") ? "arbitrum"
                     : word.hasPrefix("полигон") ? "polygon" : word.hasPrefix("робинхуд") ? "robinhood" : word == "темпо" ? "tempo"
                     : word.hasPrefix("солан") ? "solana" : word.hasPrefix("хайперликвид") ? "hyperliquid" : word
                 name = String(name[..<tail.range.lowerBound])
@@ -573,7 +593,7 @@ public enum WalletCommand: Equatable, Sendable {
         if !fromSolana, q.contains(/arbitrum|арбитрум/), q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .arbitrumToSolana(amount)
         }
-        if !fromSolana, let net = Self.network(in: q), ["polygon", "ethereum", "tempo", "hyperevm", "optimism"].contains(net),
+        if !fromSolana, let net = Self.network(in: q), ["polygon", "ethereum", "tempo", "hyperevm", "optimism", "bnb"].contains(net),
            q.contains(/(?:выв[её]д\w*|верн\w*|перевед\w*|перенес\w*|withdraw\w*|move|send|bring|bridge)(?:[^.]|\.(?=\d))*(?:solana|солан)/) {
             return .evmToSolana(net, amount)
         }
@@ -744,7 +764,7 @@ extension WalletCommand {
     }
 
     public static func placeName(_ place: String) -> String {
-        ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood", "polygon": "Polygon", "ethereum": "Ethereum", "tempo": "Tempo", "hyperevm": "HyperEVM", "optimism": "Optimism"][place] ?? place.capitalized
+        ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood", "polygon": "Polygon", "ethereum": "Ethereum", "tempo": "Tempo", "hyperevm": "HyperEVM", "optimism": "Optimism", "bnb": "BNB Chain"][place] ?? place.capitalized
     }
 
     /// The EVM network a word names: «арбитрум» → «arbitrum», «полигон» → «polygon», «эфириум» or «mainnet» → «ethereum».
@@ -753,6 +773,8 @@ extension WalletCommand {
         // HyperEVM before Hyperliquid: both start with «hyper».
         if w.hasPrefix("hyperevm") || w.wholeMatch(of: /hyper\s+evm/) != nil || w.hasPrefix("хайперевм") || w.hasPrefix("гиперевм") { return "hyperevm" }
         if w.hasPrefix("optimism") || w.hasPrefix("оптимизм") { return "optimism" }
+        // BNB Chain before Base: both start with «b».
+        if w.hasPrefix("bnb") || w.hasPrefix("bsc") || w.hasPrefix("бнб") || w.hasPrefix("бсц") || w.hasPrefix("binance") { return "bnb" }
         return w.hasPrefix("b") || w.hasPrefix("бейс") || w.hasPrefix("бейз") ? "base" : w.hasPrefix("arb") || w.hasPrefix("арб") ? "arbitrum"
             : w.hasPrefix("rob") || w.hasPrefix("роб") ? "robinhood" : w.hasPrefix("pol") || w.hasPrefix("пол") ? "polygon"
             : w.hasPrefix("eth") || w.hasPrefix("эфир") || w.hasPrefix("main") || w.hasPrefix("мейн") ? "ethereum"
@@ -762,7 +784,7 @@ extension WalletCommand {
 
     /// The first EVM network the text names, if any.
     static func network(in q: String) -> String? {
-        q.firstMatch(of: /\b(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|tempo|темпо\w*)\b/).flatMap { network(String($0.1)) }
+        q.firstMatch(of: /\b(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|binance\s+smart\s+chain|base|бейс\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|tempo|темпо\w*)\b/).flatMap { network(String($0.1)) }
     }
 
     /// «1», «1 USDC», «$1.5», «да, 2», «ok 3», «1,000» — a short reply that is only an amount, with the unit it names:
@@ -858,12 +880,12 @@ extension WalletCommand {
             return "sell \(n(x)) \(t.hasPrefix("0x") ? "of the token \(t)" : t.uppercased()) on \(Self.placeName(place)) " + (keep ? "and keep the USDC there" : "for USDC on Solana")
         // The amount without grouping, the contracts whole: the text parses back to the same swap.
         case .swapOn(let place, let a, let b, let x):
-            func name(_ t: String) -> String { t.hasPrefix("0x") ? t : t.uppercased() }
-            return "swap \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(name(a)) for \(name(b)) on \(Self.placeName(place))"
+            func name(_ t: String) -> String { t.hasPrefix("0x") || t.count >= 32 ? t : t.uppercased() }   // a mint keeps its case
+            return "swap \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(name(a)) for \(name(b)) on \(place == "hyperliquid" ? "Hyperliquid spot" : Self.placeName(place))"
         case .receiveAcross(let net, let t, let x):
             return "receive \(x.map { NSDecimalNumber(decimal: $0).stringValue + " " } ?? "")\(t) from \(AddressCheck.Network(rawValue: net)?.title ?? net) as USDC on Solana"
         case .crossSwap(let a, let from, let b, let to, let x):
-            func name(_ t: String) -> String { t.hasPrefix("0x") ? t : t.uppercased() }
+            func name(_ t: String) -> String { t.hasPrefix("0x") || t.count >= 32 ? t : t.uppercased() }   // a mint keeps its case
             return "swap \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(name(a)) on \(Self.placeName(from)) for \(name(b)) on \(Self.placeName(to))"
         case .solanaTo(let place, let x): return "move \(n(x)) USDC from Solana to \(Self.placeName(place))"
         case .pay(let method, let url, _): return "pay for \(method) \(url) in USDC on Tempo"

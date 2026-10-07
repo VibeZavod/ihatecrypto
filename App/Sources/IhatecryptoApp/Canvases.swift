@@ -1754,6 +1754,26 @@ extension Workspace {
         let name = WalletCommand.placeName(place)
         let fill = RouteFill(rawValue: place) ?? .check
         let logo = ModuleNetwork(place: place)?.logo ?? place
+        let gets = quotedGets(.swapOn(place, from: from, to: to, amount: amount)).map { "≈ \($0)" }
+        func short(_ t: String) -> String { t.count >= 32 ? spotAssets[t]?.symbol ?? "\(t.prefix(4))…\(t.suffix(4))" : t.uppercased() }
+        if place == "solana" {
+            // Jupiter's best route, simulated before signing: at least its minimum must land in this wallet.
+            let moving = "\(amount.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(short(from))"
+            return MoveRoute(title: "Swap \(moving) → \(short(to)) on Solana",
+                             footer: "One swap on Solana through Jupiter's best route, no USDC in the middle: simulated before signing, and at least Jupiter's minimum must arrive in this wallet. SOL keeps 0.01 for fees. Press Confirm.",
+                             steps: [step("sol", "FROM · SOLANA", moving, "your wallet", .solana),
+                                     step("jup", "SWAP · JUPITER", short(to), gets ?? "Jupiter's best route", .jupiter),
+                                     step("sol", "TO · SOLANA", short(to), "your wallet ✓", .solana)])
+        }
+        if place == "hyperliquid" {
+            // Its book trades against USDC: a sale, then a buy with what it fetched.
+            let moving = "\(amount.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(from.uppercased())"
+            return MoveRoute(title: "Swap \(moving) → \(to.uppercased()) on Hyperliquid spot",
+                             footer: "Two spot orders on Hyperliquid's book, each IOC within 1% of the mid: \(from.uppercased()) sold for USDC, that USDC buys \(to.uppercased()). The book takes orders from 10 USDC. Press Confirm.",
+                             steps: [step("hyperliquid", "FROM · SPOT BALANCE", moving, "on Hyperliquid", .hyperliquid),
+                                     step("hyperliquid", "SELL · SPOT ORDER", "→ USDC", "IOC · at most 1% under the mid", .hyperliquid),
+                                     step("hyperliquid", "BUY · SPOT ORDER", to.uppercased(), gets.map { "\($0) · at the mids" } ?? "IOC · at most 1% over the mid", .hyperliquid)])
+        }
         if place == "tempo" {
             // Dollars for dollars on Tempo's own exchange: an exact approve, the swap, fees out of the USDC.
             let quoted = swapQuote.flatMap { q in q.command == .swapOn(place, from: from, to: to, amount: amount) ? q.ways : nil }
@@ -1903,6 +1923,22 @@ extension Workspace {
         case .sellOn(let p, let t, let a, _): (place, token, usdc, sell) = (p, t, nil, a)
         case .buyStock(let s, let u?): await quoteStock(command, s, usdc: u, sell: nil); return
         case .sellStock(let s, let a): await quoteStock(command, s, usdc: nil, sell: a); return
+        // Solana through Jupiter, Hyperliquid's spot book at its mids: the other two «token for token» places.
+        case .swapOn("solana", let a, let b, let x?):
+            if let from = await solanaAsset(a, note: nil, quiet: true), let to = await solanaAsset(b, note: nil, quiet: true) {
+                await quoteJupiter(command, from: from, to: to, amount: x)
+            }
+            return
+        case .swapOn("hyperliquid", let a, let b, let x?):
+            while !Task.isCancelled {
+                if let gets = try? await Executor.spotSwapQuote(from: a, to: b, amount: x) {
+                    guard !Task.isCancelled else { return }
+                    swapQuote = (command, [("Hyperliquid", gets, 0)])
+                    return
+                }
+                try? await Task.sleep(for: .seconds(15))
+            }
+            return
         case .swapOn(let p, let a, let b, let x): await quotePair(command, p, a, b, x); return
         case .crossSwap(let a, let from, let b, let to, let x): await quoteCross(command, a, from, b, to, x); return
         // Solana through Jupiter: what the buy gets, or the sale leaves.
@@ -2014,6 +2050,10 @@ extension Workspace {
             if dollars.contains(pays.symbol.uppercased()) { line += " · 1 \(got) ≈ $\(Fmt.price(pays.amount / out))" }
             else if dollars.contains(got.uppercased()) { line += " · 1 \(pays.symbol) ≈ $\(Fmt.price(out / pays.amount))" }
             else { line += " · 1 \(pays.symbol) ≈ \(Fmt.price(out / pays.amount)) \(got)" }
+            // Dollars in, and what arrives valued in dollars (the way's worth, or a cross-network quote's «≈ $X»).
+            let worth = best.worth > 0 ? best.worth
+                : best.gets.firstMatch(of: /≈\s*\$([\d,]+(?:\.\d+)?)/).flatMap { Decimal(string: String($0.1).replacingOccurrences(of: ",", with: "")) }
+            if dollars.contains(pays.symbol.uppercased()), let worth, let warning = Fmt.feeWarning(paid: pays.amount, worth: worth) { line += " · " + warning }
         }
         return line
     }
@@ -2196,6 +2236,7 @@ extension Workspace {
         case "tempo": tempoUSDC
         case "hyperevm": hyperevmUSDC
         case "optimism": optimismUSDC
+        case "bnb": bnbUSDC
         case "hyperliquid": hl?.withdrawable
         default: nil
         }
@@ -2500,6 +2541,9 @@ extension Workspace {
         case .jupiterDCACancel(let a?) where !a.resolved:
             guard let token = await spotToken(a, note: note) else { return }
             command = .jupiterDCACancel(token)
+        // Both sides of a Solana swap checked as a buy is, before the card draws.
+        case .swapOn("solana", let a, let b, _):
+            guard await solanaAsset(a, note: note) != nil, await solanaAsset(b, note: note) != nil else { return }
         default: break
         }
         updateActivity { $0.understood = command.summary }

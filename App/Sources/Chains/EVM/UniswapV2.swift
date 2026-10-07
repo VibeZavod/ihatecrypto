@@ -22,6 +22,8 @@ public enum UniswapV2 {
         // Optimism and HyperEVM: their Router02's WETH() is WETH and WHYPE (checked 2026-10-07).
         case 10: Deployment(router: "0x4a7b5da61326a6379179b40d00f57e5bbdc962c2", weth: "0x4200000000000000000000000000000000000006")
         case 999: Deployment(router: "0x1f7d7550b1b028f7571e69a784071f0205fd2efa", weth: "0x5555555555555555555555555555555555555555")
+        // BNB Chain: Router02's WETH() is WBNB, its factory 0x8909…8ec6 (checked 2026-10-08).
+        case 56: Deployment(router: "0x4752ba5dbc23f44d87826276bf6fd6b1c372ad24", weth: "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c")
         default: nil
         }
     }
