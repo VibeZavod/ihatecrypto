@@ -548,7 +548,8 @@ extension Executor {
         }
         guard let route else {
             // No Uniswap pool: Relay's swap on the network itself, if it quotes the pair (the coin goes in wrapped).
-            if allowedWays(net).relay, let out = try? await relayPairQuote(net, from: tokenIn.address, to: coinOut ? UniswapV4.native : tokenOut.address, units: units).out {
+            if allowedWays(net).relay, let out = try? await relayPairQuote(net, from: tokenIn.address, to: coinOut ? UniswapV4.native : tokenOut.address,
+                                                                           units: units, capped: !quoteOnly).out {
                 return PairSwap(tokenIn: tokenIn, tokenOut: tokenOut, coinIn: coinIn, coinOut: coinOut, units: units, route: nil, relayOut: out)
             }
             throw ExecutionError("Neither Uniswap nor Relay swaps \(tokenIn.symbol) for \(tokenOut.symbol) on \(net.name) right now. Nothing was signed.")
@@ -560,7 +561,8 @@ extension Executor {
     /// wallet, the steps an exact approve of what goes in to the approval proxy Relay publishes for the network and then
     /// a call to that same proxy with no coins, and at most 3% (or $0.15) lost by Relay's own valuation. `to` 0x0…0 is
     /// the network's coin.
-    func relayPairQuote(_ net: EVMNetwork, from: String, to: String, units: Decimal) async throws -> (quote: Relay.Quote, call: Relay.EVMStep, proxy: String, out: Decimal) {
+    /// `capped` false: for the card, which shows what it costs instead of stopping at it.
+    func relayPairQuote(_ net: EVMNetwork, from: String, to: String, units: Decimal, capped: Bool = true) async throws -> (quote: Relay.Quote, call: Relay.EVMStep, proxy: String, out: Decimal) {
         let me = wallet.evm
         let quote = try await Relay.quote(user: me, recipient: me, originChain: net.relayChain, destinationChain: net.relayChain,
                                           originCurrency: from, destinationCurrency: to, amount: 0, units: "\(units)")
@@ -575,9 +577,8 @@ extension Executor {
         }
         let out = Decimal(string: quote.amountOut) ?? 0
         let worthIn = Decimal(string: quote.amountInUSD) ?? 0, worthOut = Decimal(string: quote.amountOutUSD) ?? 0
-        guard out > 0, worthIn - worthOut <= max(worthIn * Decimal(string: "0.03")!, Decimal(string: "0.15")!) else {
-            throw ExecutionError("Relay gives \(Fmt.usd(worthOut)) for \(Fmt.usd(worthIn)): more lost than allowed. Nothing was signed.")
-        }
+        guard out > 0 else { throw ExecutionError("Relay doesn't quote this swap on \(net.name) now. Nothing was signed.") }
+        if capped { try Self.checkLoss(worthIn - worthOut, paid: worthIn, cap: max(worthIn * Decimal(string: "0.03")!, Decimal(string: "0.15")!), what: "Relay's swap") }
         return (quote, call, proxy, out)
     }
 
@@ -679,9 +680,8 @@ extension Executor {
         }
         let arriving = (Decimal(string: quote.amountOut) ?? 0) / 1_000_000
         let worthIn = Decimal(string: quote.amountInUSD) ?? 0
-        guard arriving > 0, worthIn - arriving <= max(worthIn * Decimal(string: "0.03")!, Decimal(string: "0.15")!) else {
-            throw ExecutionError("Relay gives \(Fmt.num(arriving)) USDC for \(Fmt.usd(worthIn)) of \(token.symbol): more lost than allowed. Nothing was signed.")
-        }
+        guard arriving > 0 else { throw ExecutionError("Relay doesn't quote \(token.symbol) for USDC now. Nothing was signed.") }
+        try Self.checkLoss(worthIn - arriving, paid: worthIn, cap: max(worthIn * Decimal(string: "0.03")!, Decimal(string: "0.15")!), what: "Relay's swap")
         let mint = Relay.Currency.solanaUSDC
         let solBefore = try await rpc.tokenBalance(owner: wallet.solana, mint: mint)
         let hash = try await approveAndSend(net.rpc, token: token.address, spender: proxy, units: units,

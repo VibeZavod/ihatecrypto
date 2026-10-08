@@ -15,6 +15,36 @@ public enum OneClick {
     private static let lock = NSLock()
     nonisolated(unsafe) private static var own: String?
 
+    /// A token 1Click swaps: its asset id, network (its `blockchain`: «sol», «base», «near»…), symbol, decimals, contract.
+    public struct Token: Sendable, Equatable {
+        public let assetId: String
+        public let blockchain: String
+        public let symbol: String
+        public let decimals: Int
+        public let contract: String?
+        public let price: Decimal?
+    }
+
+    /// Every token 1Click swaps (/v0/tokens: ≈ 200 on 37 networks, 2026-10-08), read again after ten minutes.
+    public static func tokens() async throws -> [Token] {
+        if let (at, list) = lock.withLock({ cached }), Date().timeIntervalSince(at) < 600 { return list }
+        let (data, _) = try await URLSession.shared.data(for: request(URL(string: base + "/tokens")!))
+        let list = parseTokens(data)
+        guard !list.isEmpty else { throw OneClickError(data) }
+        lock.withLock { cached = (Date(), list) }
+        return list
+    }
+    nonisolated(unsafe) private static var cached: (Date, [Token])?
+
+    public static func parseTokens(_ data: Data) -> [Token] {
+        ((try? JSONSerialization.jsonObject(with: data)) as? [[String: Any]] ?? []).compactMap { t in
+            guard let id = t["assetId"] as? String, let chain = t["blockchain"] as? String, let symbol = t["symbol"] as? String,
+                  let decimals = (t["decimals"] as? NSNumber)?.intValue else { return nil }
+            return Token(assetId: id, blockchain: chain, symbol: symbol, decimals: decimals, contract: (t["contractAddress"] as? String)?.lowercased(),
+                         price: (t["price"] as? NSNumber).map { Decimal($0.doubleValue) })
+        }
+    }
+
     /// A request to 1Click, with the partner key when there is one.
     static func request(_ url: URL) -> URLRequest {
         var r = URLRequest(url: url, timeoutInterval: 30)

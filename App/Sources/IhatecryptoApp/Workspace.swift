@@ -385,6 +385,8 @@ final class Workspace {
     var takeChoices: [TakeStyle]?
     /// The ways to go on the model offered with its last answer, as cards on the canvas (Agent.swift).
     var nextSteps: NextSteps?
+    /// A move the loss cap stopped (CostlyMove) and what it would lose: «Send anyway» runs it again with that accepted.
+    @ObservationIgnored var costlyMove: (command: WalletCommand, lost: Decimal)?
     /// The last answer's cards while the next message or picked card is handled: drawn as they were, not clickable,
     /// until the answer is on the canvas. Cleared at once for the logic, they'd leave the canvas blank while the model thinks.
     var heldAnswer: (steps: NextSteps?, yields: [Yields.Option]?, takes: [TakeStyle]?)?

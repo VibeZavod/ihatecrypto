@@ -189,9 +189,8 @@ extension Executor {
             let out = (Decimal(string: quote.amountOut) ?? 0) / outScale
             // What goes in and what comes out, in dollars: USDG counts as a dollar, the token at Relay's own valuation.
             let worthIn = buy ? amountIn : Decimal(string: quote.amountInUSD) ?? 0, worthOut = buy ? Decimal(string: quote.amountOutUSD) ?? 0 : out
-            guard out > 0, worthIn - worthOut <= max(worthIn * Decimal(string: "0.03")!, Decimal(string: "0.15")!) else {
-                throw ExecutionError("Relay gives \(Fmt.usd(worthOut)) for \(Fmt.usd(worthIn)) of \(inSymbol): more lost than allowed. Nothing was signed.")
-            }
+            guard out > 0 else { throw ExecutionError("Relay doesn't quote \(inSymbol) now. Nothing was signed.") }
+            try Self.checkLoss(worthIn - worthOut, paid: worthIn, cap: max(worthIn * Decimal(string: "0.03")!, Decimal(string: "0.15")!), what: "Relay's swap")
             let price = buy ? amountIn / out : out / amountIn
             if let p = listing.priceUSD, price > p * Decimal(string: "1.05")! || price < p * Decimal(string: "0.95")! {
                 throw ExecutionError("Relay's price \(Fmt.usd(price)) is off DexScreener's \(Fmt.usd(p)) by more than 5%. Nothing was signed.")

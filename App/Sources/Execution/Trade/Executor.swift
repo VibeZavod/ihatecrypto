@@ -81,6 +81,19 @@ public struct ExecutionError: LocalizedError {
     public var errorDescription: String? { message }
 }
 
+/// A move that would lose more than ihatecrypto lets one lose by itself — 3% of it, 15¢ on a small one, $1 at most (5%
+/// for gas): stopped before anything is signed, with the numbers, so the user can take it anyway («Send anyway»).
+public struct CostlyMove: LocalizedError, Sendable {
+    public let lost: Decimal
+    public let paid: Decimal
+    /// Who keeps it: «Relay», «Relay's swap».
+    public let what: String
+    public var errorDescription: String? {
+        "\(what) keeps ≈ \(Fmt.usd(lost)) of \(Fmt.usd(paid)) (\(Fmt.num(lost / max(paid, Decimal(string: "0.01")!) * 100, maxFraction: 0))%): "
+            + "more than a move may lose on its own. Nothing was signed."
+    }
+}
+
 /// Runs an approved plan on mainnet: bridge if the trading balance is short, leverage, entry, stop and take,
 /// then checks on the exchange that the position is protected. A position is never left without its stop:
 /// if the stop cannot be placed, the position is closed at once.
@@ -113,6 +126,15 @@ public actor Executor {
         return arrive
     }
     static let slippage = Decimal(string: "0.01")!
+
+    /// Dollars the user agreed to lose on this run: «Send anyway» on a move the cap stopped (CostlyMove).
+    @TaskLocal public static var lossAccepted: Decimal = 0
+
+    /// What a move may lose: up to `cap` by itself, up to what the user accepted with «Send anyway»; past both it stops.
+    static func checkLoss(_ lost: Decimal, paid: Decimal, cap: Decimal, what: String) throws {
+        guard lost > cap, lost > lossAccepted else { return }
+        throw CostlyMove(lost: lost, paid: paid, what: what)
+    }
     /// Market stop and take fill up to this far past the trigger, as Hyperliquid's own interface does.
     static let triggerSlippage = Decimal(string: "0.1")!
 
@@ -693,10 +715,8 @@ public actor Executor {
         // Bridge costs are capped: over what arrives (and the gas asked for) at most 3%, never more than $1; small bridges
         // may cost up to $0.15, Relay's floor for delivering gas (measured 2026-09-26: ≈ $0.10 on a $2 bridge to Base).
         let worth = swap ? Decimal(string: quote.amountOutUSD) ?? 0 : arriving
-        guard spend - worth - (topupGasUSD ?? 0) - opening <= min(max(worth * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1) else {
-            throw ExecutionError(swap ? "Relay's swap gives \(Fmt.usd(worth)) worth for \(Fmt.num(spend)) USDC: more lost than allowed."
-                                      : "The Relay bridge wants \(Fmt.num(spend)) USDC for \(Fmt.num(arriving)): more than allowed.")
-        }
+        try Self.checkLoss(spend - worth - (topupGasUSD ?? 0) - opening, paid: spend,
+                           cap: min(max(worth * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1), what: swap ? "Relay's swap" : "Relay")
         let have = try await rpc.tokenBalance(owner: wallet.solana, mint: usdcMint)
         guard have >= spendUnits else { throw ExecutionError("\(Fmt.num(Decimal(have) / 1_000_000)) USDC on Solana; the bridge needs \(Fmt.num(spend)).") }
 

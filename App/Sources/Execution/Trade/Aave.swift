@@ -314,9 +314,8 @@ extension Executor {
                                              label: "\(show(amount)) USDC")
             return "Moved \(show(amount)) USDC from \(net.name) to \(there) through NEAR Intents' 1Click in \(Int(Date().timeIntervalSince(started))) s: \(Fmt.num(got)) USDC arrived."
         }
-        guard spend - arriving - (topup ?? 0) <= min(max(arriving * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1) else {
-            throw ExecutionError("Relay wants \(Fmt.num(spend)) USDC for \(Fmt.num(arriving)) on \(there): more than allowed.")
-        }
+        try Self.checkLoss(spend - arriving - (topup ?? 0), paid: spend, cap: min(max(arriving * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1),
+                           what: "Relay")
         let before = try await relayLanded(dest, hyperliquid: hyperliquid)
         let hash = try await approveAndSend(base, token: usdc, spender: depository, units: net.raw(amount), approveNote: "Approve exactly \(show(amount)) USDC to Relay",
                                             to: deposit.to, data: deposit.data, note: "Relay deposit \(show(amount)) USDC on \(net.name)")
@@ -536,9 +535,8 @@ extension Executor {
                 throw ExecutionError("Relay's transactions don't go to the approval proxy it publishes for \(net.name), for exactly this amount. Nothing was signed.")
             }
             let worthOut = Decimal(string: quote.amountOutUSD) ?? 0
-            guard worthOut > 0, usd - worthOut <= max(usd * Decimal(string: "0.05")!, Decimal(string: "0.15")!) else {
-                throw ExecutionError("Relay gives \(Fmt.usd(worthOut)) of \(net.gasCoin) for \(Fmt.usd(usd)): more lost than allowed. Nothing was signed.")
-            }
+            guard worthOut > 0 else { throw ExecutionError("Relay doesn't quote \(net.gasCoin) for \(Fmt.usd(usd)) now. Nothing was signed.") }
+            try Self.checkLoss(usd - worthOut, paid: usd, cap: max(usd * Decimal(string: "0.05")!, Decimal(string: "0.15")!), what: "Relay's swap")
             return call
         }
         _ = try await checked()

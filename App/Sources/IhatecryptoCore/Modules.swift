@@ -260,6 +260,10 @@ public struct Modules: Equatable, Sendable {
         case .swapOn("solana", _, _, _):
             return isOn(.swaps) ? r(.jupiter) : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
         case .swapOn("hyperliquid", _, _, _): return refusal(network: .hyperliquid, ru: ru)
+        case .swapOn("near", _, _, _): return r(.oneClick, via: [.near])
+        case .crossSwap(_, let from, _, let to, _) where from == "near" || to == "near":
+            return isOn(.swaps) ? r(.oneClick, via: [from, to].compactMap(ModuleNetwork.init(place:)))
+                : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
         case .swapOn("tempo", _, _, _):
             return isOn(.swaps) ? refusal(network: .tempo, ru: ru)
                 : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."

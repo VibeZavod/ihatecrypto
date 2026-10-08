@@ -20,17 +20,25 @@ extension Workspace {
         return { self.chartNetwork = chain; Task { await self.chartCommand(.chart(coin: coin, range: .day)) } }
     }
 
-    /// The network's own coin bought or sold for its dollar, as the chat takes it — the user: «газ токен открывался бы как
-    /// любой другой токен с бай и селл» — SOL through Jupiter, ETH, POL, BNB and HYPE straight on their network.
-    /// Robinhood's ETH has no USDG pool to trade it on, Tempo no coin: none there.
+    /// The Buy and Sell of a network's coin, as the chat takes them — on every coin, never hidden (the user: «газ токен
+    /// открывался бы как любой другой токен с бай и селл», «не отключай вообще кнопки»): SOL through Jupiter, NEAR
+    /// through 1Click, a Hyperliquid spot token on its book, ETH, POL, BNB and HYPE on their network (the row's, else
+    /// the first that pays gas in it: ETH → Base; USDG on Robinhood Chain), any other coin wherever the chat finds it.
+    /// A move that can't go says so when it's sent.
     func coinTrades(_ coin: String, chain: String?) -> [(title: String, icon: String, phrase: String)] {
         let c = coin.uppercased()
-        if c == "SOL", chain == nil || chain == "solana" {
-            return [("Buy SOL", "cart", "buy SOL for 2 USDC"), ("Sell", "arrow.down.right.circle", "sell 0.01 SOL")]
+        func pair(_ buy: String, _ sell: String) -> [(title: String, icon: String, phrase: String)] {
+            [("Buy \(c)", "cart", buy), ("Sell", "arrow.down.right.circle", sell)]
         }
-        guard let chain, let net = EVMNetwork.named(chain), net.gasCoin == c, net.feeToken == nil, chain != "robinhood" else { return [] }
-        let some = ["POL": "5", "BNB": "0.002", "HYPE": "0.02"][c] ?? "0.001"
-        return [("Buy \(c)", "cart", "swap 2 USDC for \(c) on \(chain)"), ("Sell", "arrow.down.right.circle", "swap \(some) \(c) for USDC on \(chain)")]
+        if c == "SOL", chain == nil || chain == "solana" { return pair("buy SOL for 2 USDC", "sell 0.01 SOL") }
+        if c == "NEAR" { return pair("buy NEAR for 2 USDC", "sell 1 NEAR") }
+        if chain == "hyperliquid" { return pair("buy \(c) on hyperliquid spot for 10 USDC", "sell all \(c) on hyperliquid spot") }
+        if let net = EVMNetwork.named(chain ?? "").flatMap({ $0.gasCoin == c ? $0 : nil })
+            ?? EVMNetwork.all.first(where: { $0.gasCoin == c && $0.feeToken == nil }) {
+            let some = ["POL": "5", "BNB": "0.002", "HYPE": "0.02"][c] ?? "0.001", dollar = net.key == "robinhood" ? "USDG" : "USDC"
+            return pair("swap 2 \(dollar) for \(c) on \(net.key)", "swap \(some) \(c) for \(dollar) on \(net.key)")
+        }
+        return pair("buy \(c) for 2 USDC", "sell all \(c)")
     }
 
     /// The buy and the sale of a token as the chat takes them, by its network: Robinhood's stock tokens by ticker, a
@@ -38,21 +46,20 @@ extension Workspace {
     /// networks by contract. Each goes into the chat's field for the user to send.
     func tokenPhrases(chain: String, address: String, symbol: String, stock: Bool, verified: Bool) -> [(title: String, icon: String, phrase: String)] {
         // The network's own dollar: buying it is selling the network's coin for it, selling it is buying that coin (the
-        // user: «для соланы SOL, для всех остальных сетей эфириум»). Robinhood's USDG has no swap for ETH: no buttons.
+        // user: «для соланы SOL, для всех остальных сетей эфириум»); Robinhood's USDG against its ETH.
         if TokenBoard.walletDollar(chain: chain, address: address) {
             // Buying the dollar is selling the coin, selling it buying the coin.
-            let coin = coinTrades(chain == "solana" ? "SOL" : EVMNetwork.named(chain)?.gasCoin ?? "", chain: chain)
-            guard coin.count == 2 else { return [] }
+            let coin = coinTrades(chain == "solana" ? "SOL" : EVMNetwork.named(chain)?.gasCoin ?? "ETH", chain: chain)
             return [("Buy \(symbol)", "cart", coin[1].phrase), ("Sell", "arrow.down.right.circle", coin[0].phrase)]
         }
-        let pair: (buy: String, sell: String)? = switch chain {
+        // Never hidden: an unverified Solana token with Safe search on, say, hears why when the phrase is sent.
+        let pair: (buy: String, sell: String) = switch chain {
         case "robinhood": stock ? ("buy \(symbol) stock for 2 USDC", "sell \(symbol) stock") : ("buy token \(address) for 2 USDC", "sell token \(address)")
-        case "solana": verified ? ("buy \(symbol) on solana for 2 USDC", "sell \(symbol) on solana")
-            : safeSearch ? nil : ("buy token \(address) for 2 USDC", "sell tokens \(address)")
-        // Every EVM network the app swaps on (Tempo has dollars only, its own form).
-        default: chain == "tempo" || EVMNetwork.named(chain) == nil ? nil : ("buy token \(address) on \(chain) for 2 USDC", "sell tokens \(address) on \(chain)")
+        case "solana": verified ? ("buy \(symbol) on solana for 2 USDC", "sell \(symbol) on solana") : ("buy token \(address) for 2 USDC", "sell tokens \(address)")
+        case "tempo": ("swap 2 USDC for \(symbol) on tempo", "swap all \(symbol) for USDC on tempo")
+        default: EVMNetwork.named(chain) != nil ? ("buy token \(address) on \(chain) for 2 USDC", "sell tokens \(address) on \(chain)")
+            : ("buy \(symbol) for 2 USDC", "sell all \(symbol)")
         }
-        guard let pair else { return [] }
         // Bridged USDC: first, the swap for Circle's own on the same network (Uniswap's 0.01% pool).
         let bridged: [(title: String, icon: String, phrase: String)] = symbol == "USDC.e"
             ? [("Swap to Circle's USDC", "arrow.triangle.2.circlepath", "swap all USDC.e for USDC on \(chain)")] : []

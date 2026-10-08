@@ -322,10 +322,13 @@ public enum WalletCommand: Equatable, Sendable {
         // A token on one network for one on another, through Relay: «swap 0.1 SOL on Solana for ETH on Arbitrum», «swap all
         // AERO on base for SOL on solana», «обменяй 0.1 SOL на ETH в арбитруме» (SOL comes from Solana). USDC for USDC is
         // a bridge; a swap on one network is the rule below.
-        if let m = text.firstMatch(of: /(?i)\b(?:swap|exchange|convert|поменя\w*|обменя\w*|свапн\w*|свопн\w*|конверт\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь|всю)\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:(?:on|from|in|на|в|во|с|со)\s+(solana|солан\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|robinhood|робинхуд\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*)(?:\s+chain)?\s+)?(?:for|to|into|на|в)\s+\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:on|in|at|на|в|во)\s+(solana|солан\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|robinhood|робинхуд\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*)\b/) {
-            func place(_ w: Substring) -> String { w.lowercased().hasPrefix("sol") || w.lowercased().hasPrefix("сол") ? "solana" : Self.network(String(w)) ?? "base" }
+        if let m = text.firstMatch(of: /(?i)\b(?:swap|exchange|convert|поменя\w*|обменя\w*|свапн\w*|свопн\w*|конверт\w*)\s+(?:(\d+(?:[.,]\d+)?|all|все|всё|весь|всю)\s+)?\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:(?:on|from|in|на|в|во|с|со)\s+(solana|солан\w*|near|неар\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|robinhood|робинхуд\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*)(?:\s+chain)?\s+)?(?:for|to|into|на|в)\s+\$?(0x[0-9a-fA-F]{40}|[A-Za-z][A-Za-z0-9]{1,11}(?:\.e)?)\s+(?:on|in|at|на|в|во)\s+(solana|солан\w*|near|неар\w*|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|polygon|полигон\w*|ethereum|эфириум\w*|mainnet|мейннет\w*|robinhood|робинхуд\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*)\b/) {
+            func place(_ w: Substring) -> String {
+                let w = w.lowercased()
+                return w.hasPrefix("sol") || w.hasPrefix("сол") ? "solana" : w.hasPrefix("near") || w.hasPrefix("неар") ? "near" : Self.network(w) ?? "base"
+            }
             let a = String(m.2), b = String(m.4), to = place(m.5)
-            if let from = m.3.map(place) ?? (a.uppercased() == "SOL" ? "solana" : nil), from != to {
+            if let from = m.3.map(place) ?? (a.uppercased() == "SOL" ? "solana" : a.uppercased() == "NEAR" ? "near" : nil), from != to {
                 let count = m.1.flatMap { Decimal(string: String($0).replacingOccurrences(of: ",", with: ".")) }
                 if a.uppercased() == "USDC", b.uppercased() == "USDC" { return from == "solana" ? .solanaTo(to, count) : .bridge(from: from, to: to, count) }
                 return .crossSwap(from: a, on: from, to: b, at: to, amount: count)
@@ -341,6 +344,8 @@ public enum WalletCommand: Equatable, Sendable {
             // NEAR's account holds NEAR alone: for USDC or back it's 1Click's sale or buy.
             if place == "near", from.uppercased() == "NEAR", to.uppercased() == "USDC" { return .sellNear(amount: count) }
             if place == "near", from.uppercased() == "USDC", to.uppercased() == "NEAR" { return .buyNear(usdc: count) }
+            // Anything else on NEAR, one token for another there: NEAR Intents.
+            if place == "near" { return .swapOn(place, from: from.uppercased(), to: to.uppercased(), amount: count) }
             // Solana, through Jupiter: USDC on a side is a buy or a sale there; any other two tokens straight, by ticker or mint.
             if place == "solana" {
                 func asset(_ t: String) -> SpotAsset { t.count >= 32 ? .byMint(t) : .bySymbol(t) }
@@ -764,7 +769,7 @@ extension WalletCommand {
     }
 
     public static func placeName(_ place: String) -> String {
-        ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood", "polygon": "Polygon", "ethereum": "Ethereum", "tempo": "Tempo", "hyperevm": "HyperEVM", "optimism": "Optimism", "bnb": "BNB Chain"][place] ?? place.capitalized
+        ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood", "polygon": "Polygon", "ethereum": "Ethereum", "tempo": "Tempo", "hyperevm": "HyperEVM", "optimism": "Optimism", "bnb": "BNB Chain", "near": "NEAR"][place] ?? place.capitalized
     }
 
     /// The EVM network a word names: «арбитрум» → «arbitrum», «полигон» → «polygon», «эфириум» or «mainnet» → «ethereum».

@@ -500,6 +500,10 @@ extension Workspace {
                     throw ExecutionError("Jupiter couldn't name both tokens of this swap. Nothing was signed.")
                 }
                 reply(try await e.convert(from: a, to: b, amount: amount), note: "Solana · Jupiter")
+            case .swapOn("near", let from, let to, let amount):
+                guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
+                nearAddress = account
+                reply(try await e.intentSwap(from, on: "near", for: to, on: "near", amount: amount, near: account), note: "NEAR Intents · 1Click")
             case .swapOn("hyperliquid", let from, let to, let amount):
                 reply(try await e.hlSpotSwap(from: from, to: to, amount: amount), note: "Hyperliquid · spot")
             case .swapOn(let place, let from, let to, let amount):
@@ -519,7 +523,13 @@ extension Workspace {
                 }
             case .receiveAcross: break   // no card: the deposit address goes on the canvas (prepareReceiveAcross)
             case .crossSwap(let a, let from, let b, let to, let amount):
-                reply(try await e.crossSwap(a, on: from, for: b, on: to, amount: amount),
+                // NEAR's side: the wallet's NEAR account, which only the signer derives.
+                var near = nearAddress
+                if from == "near" || to == "near" {
+                    near = try await SignerClient().send(.nearAddress).nearAddress
+                    nearAddress = near
+                }
+                reply(try await e.crossSwap(a, on: from, for: b, on: to, amount: amount, near: near),
                       note: "Relay · \(WalletCommand.placeName(from)) → \(WalletCommand.placeName(to))")
             case .robinhoodToSolana(let amount): reply(try await e.evmToSolana(.robinhood, usdc: amount), note: "Relay · Robinhood → Solana")
             case .solanaTo(let place, let amount):
@@ -613,7 +623,19 @@ extension Workspace {
         } catch {
             // Sent, but no outcome came back: it may well have gone through, and a second try would pay twice.
             let sent = ownsBoard ? unsettled(since: started) : []
-            if sent.isEmpty {
+            if sent.isEmpty, let costly = error as? CostlyMove {
+                // More lost than a move may lose on its own: asked, not refused (the user: «показывать диалог и спрашивать
+                // Send anyway?»). The cards run it again with that loss accepted, or leave it.
+                costlyMove = (command, costly.lost)
+                reply(costly.localizedDescription + say(" Send it anyway?", " Отправить всё равно?"))
+                withAnimation(StudioView.spring) {
+                    nextSteps = NextSteps(options: [
+                        ChatRouter.Option(title: say("Send anyway · ≈ \(Fmt.usd(costly.lost)) lost", "Отправить всё равно · потеря ≈ \(Fmt.usd(costly.lost))"),
+                                          comment: costly.localizedDescription, command: Self.sendAnyway),
+                        ChatRouter.Option(title: say("Cancel", "Отмена"), comment: say("Nothing was signed", "Ничего не подписано"), command: Self.leaveCostly),
+                    ], userText: "", found: [], canvas: canvasID)
+                }
+            } else if sent.isEmpty {
                 reply(say("Failed: ", "Не вышло: ") + error.localizedDescription)
             } else {
                 reply(say("Sent, status unknown: ", "Отправлено, статус неизвестен: ") + error.localizedDescription + " "
@@ -623,6 +645,9 @@ extension Workspace {
         }
         await refresh()
     }
+
+    /// The two cards after a move the loss cap stopped: what they carry instead of a chat command.
+    static let sendAnyway = "send anyway", leaveCostly = "leave it as is"
 
     private func movesMoney(_ command: WalletCommand, confirmed: Bool) -> Bool {
         switch command {

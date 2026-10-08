@@ -46,7 +46,8 @@ extension Executor {
 
     /// Relay's quote for the swap, checked: from this wallet to this wallet, and no more value lost than allowed.
     /// `amount` nil = all of a token (never all of a coin: its fees come from it).
-    func crossQuote(_ a: String, on from: String, for b: String, on to: String, amount: Decimal?)
+    /// `capped` false: for the card, which shows the cost instead of stopping at it.
+    func crossQuote(_ a: String, on from: String, for b: String, on to: String, amount: Decimal?, capped: Bool = true)
         async throws -> (quote: Relay.Quote, origin: CrossSide, destination: CrossSide, units: Decimal) {
         guard from != to else { throw ExecutionError("Both sides are on \(WalletCommand.placeName(from)): that's a swap there, not between networks.") }
         async let o = crossSide(a, on: from)
@@ -75,23 +76,40 @@ extension Executor {
                                          expected: ["sender": me, "recipient": recipient], subject: "Relay quote")
         guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
         let worthIn = Decimal(string: quote.amountInUSD) ?? 0, worthOut = Decimal(string: quote.amountOutUSD) ?? 0
-        guard worthOut > 0, worthIn - worthOut <= max(worthIn * Decimal(string: "0.03")!, Decimal(string: "0.15")!) else {
-            throw ExecutionError("Relay gives \(quote.amountOutFormatted) \(destination.symbol) (≈ \(Fmt.usd(worthOut))) for \(Fmt.usd(worthIn)) of \(origin.symbol): "
-                                 + "more lost than the 3% (or 15 cents) allowed. A bigger amount loses less. Nothing was signed.")
-        }
+        guard worthOut > 0 else { throw ExecutionError("Relay doesn't quote \(origin.symbol) for \(destination.symbol) now. Nothing was signed.") }
+        if capped { try Self.checkLoss(worthIn - worthOut, paid: worthIn, cap: max(worthIn * Decimal(string: "0.03")!, Decimal(string: "0.15")!), what: "Relay's swap") }
         return (quote, origin, destination, units)
     }
 
     /// The swap's quote for the card: what arrives, its worth, and how long Relay says it takes. Nothing is signed.
-    public func crossQuoteText(_ a: String, on from: String, for b: String, on to: String, amount: Decimal?) async throws -> (gets: String, way: String) {
-        let (q, _, d, _) = try await crossQuote(a, on: from, for: b, on: to, amount: amount)
-        return ("\(Fmt.num(Decimal(string: q.amountOutFormatted) ?? 0, maxFraction: 8)) \(d.symbol) ≈ \(Fmt.usd(Decimal(string: q.amountOutUSD) ?? 0))", "≈ \(max(q.seconds, 1)) s")
+    /// NEAR's side, or a pair Relay has no route for, is NEAR Intents' (IntentSwap.swift).
+    public func crossQuoteText(_ a: String, on from: String, for b: String, on to: String, amount: Decimal?, near: String? = nil) async throws -> (gets: String, way: String) {
+        if from == "near" || to == "near" {
+            guard let amount else { throw ExecutionError("Say how much \(a.uppercased()).") }
+            return try await intentQuoteText(a, on: from, for: b, on: to, amount: amount, near: near)
+        }
+        do {
+            let (q, _, d, _) = try await crossQuote(a, on: from, for: b, on: to, amount: amount, capped: false)
+            return ("\(Fmt.num(Decimal(string: q.amountOutFormatted) ?? 0, maxFraction: 8)) \(d.symbol) ≈ \(Fmt.usd(Decimal(string: q.amountOutUSD) ?? 0))", "≈ \(max(q.seconds, 1)) s")
+        } catch {
+            guard let amount, let other = try? await intentQuoteText(a, on: from, for: b, on: to, amount: amount, near: near) else { throw error }
+            return other
+        }
     }
 
     /// The swap: Relay's quote checked, its one transaction signed on the origin network, then Relay's word that it landed.
-    public func crossSwap(_ a: String, on from: String, for b: String, on to: String, amount: Decimal?) async throws -> String {
+    /// NEAR's side goes through NEAR Intents, and so does a pair Relay has no route for when 1Click lists both tokens.
+    public func crossSwap(_ a: String, on from: String, for b: String, on to: String, amount: Decimal?, near: String? = nil) async throws -> String {
+        if from == "near" || to == "near" { return try await intentSwap(a, on: from, for: b, on: to, amount: amount, near: near) }
         if let why = Modules.current.refusal(.relay) { throw ExecutionError(why) }
-        let (quote, origin, destination, units) = try await crossQuote(a, on: from, for: b, on: to, amount: amount)
+        let quoted: (quote: Relay.Quote, origin: CrossSide, destination: CrossSide, units: Decimal)
+        do { quoted = try await crossQuote(a, on: from, for: b, on: to, amount: amount) }
+        catch where !(error is CostlyMove) {
+            guard let amount, (try? await intentQuote(a, on: from, for: b, on: to, amount: amount, near: near, dry: true)) != nil else { throw error }
+            report("Relay: \(error.localizedDescription) NEAR Intents has a route: taking it.")
+            return try await intentSwap(a, on: from, for: b, on: to, amount: amount, near: near)
+        }
+        let (quote, origin, destination, units) = quoted
         let scale = Decimal(sign: .plus, exponent: origin.decimals, significand: 1)
         let sent = "\(Fmt.num(units / scale, maxFraction: 8)) \(origin.symbol)"
         let gets = "\(Fmt.num(Decimal(string: quote.amountOutFormatted) ?? 0, maxFraction: 8)) \(destination.symbol)"

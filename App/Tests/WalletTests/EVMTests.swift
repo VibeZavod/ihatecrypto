@@ -452,3 +452,14 @@ import WalletCore
     #expect(EVMCall.decode(try ERC20.transfer(to: me, amount: 20_000_000)).summary(chainId: 8453, to: EVMRPC.baseUSDC, value: 0).hasPrefix("send 20 USDC to"))
     #expect(EVMRPC.coin(56) == "BNB" && EVMRPC.names[56] == "BNB Chain")
 }
+
+/// A move losing more than its cap is asked about, not refused (2026-10-08: Relay keeps ≈ $0.23 of a small BNB Chain →
+/// Solana move): it stops with the numbers, and the same move passes once the user takes that loss («Send anyway»).
+@Test func aCostlyMoveIsAskedNotRefused() throws {
+    let cap = Decimal(string: "0.15")!, lost = Decimal(string: "0.23")!
+    #expect(throws: CostlyMove.self) { try Executor.checkLoss(lost, paid: 2, cap: cap, what: "Relay") }
+    try Executor.checkLoss(Decimal(string: "0.1")!, paid: 2, cap: cap, what: "Relay")
+    try Executor.$lossAccepted.withValue(Decimal(string: "0.34")!) { try Executor.checkLoss(lost, paid: 2, cap: cap, what: "Relay") }
+    #expect(CostlyMove(lost: lost, paid: 2, what: "Relay").localizedDescription
+            == "Relay keeps ≈ $0.23 of $2.00 (12%): more than a move may lose on its own. Nothing was signed.")
+}

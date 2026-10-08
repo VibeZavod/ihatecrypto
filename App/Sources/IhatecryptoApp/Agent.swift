@@ -268,6 +268,18 @@ extension Workspace {
         defer { thinking = false }
         beginActivity(.request, request: option.title)
         defer { snapshotCanvas(); saveCanvas() }
+        // «Send anyway» on a move the loss cap stopped: the same move, that loss accepted with a quarter more for prices
+        // moving meanwhile; Touch ID still signs it.
+        if option.command == Self.sendAnyway || option.command == Self.leaveCostly {
+            let costly = costlyMove
+            costlyMove = nil
+            guard option.command == Self.sendAnyway, let costly else {
+                reply(say("Left as is: nothing was signed.", "Оставил как есть: ничего не подписано."))
+                return
+            }
+            await Executor.$lossAccepted.withValue(costly.lost * Decimal(string: "1.25")! + Decimal(string: "0.05")!) { await move(costly.command) }
+            return
+        }
         if await !runCanonical(option.command, userText: steps.userText, before: intent) {
             reply(say("ihatecrypto can’t do “\(option.command)” yet — nothing moved.", "ihatecrypto пока не умеет «\(option.command)» — ничего не ушло."))
         }

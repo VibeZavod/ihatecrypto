@@ -1765,6 +1765,15 @@ extension Workspace {
                                      step("jup", "SWAP · JUPITER", short(to), gets ?? "Jupiter's best route", .jupiter),
                                      step("sol", "TO · SOLANA", short(to), "your wallet ✓", .solana)])
         }
+        if place == "near" {
+            // NEAR Intents on NEAR itself: NEAR (as wNEAR) to 1Click's deposit account, the other token back to this one.
+            let moving = "\(amount.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(from.uppercased())"
+            return MoveRoute(title: "Swap \(moving) → \(to.uppercased()) on NEAR",
+                             footer: "One deposit to the 1Click address NEAR Intents binds to this quote — checked with 1Click before signing — and \(to.uppercased()) comes back to your own NEAR account; a refund goes there too. Press Confirm.",
+                             steps: [step("near", "FROM · NEAR", moving, "your NEAR account", .near),
+                                     step("near", "SWAP · NEAR INTENTS", to.uppercased(), gets ?? "quoting…", .near),
+                                     step("near", "TO · NEAR", to.uppercased(), "your NEAR account ✓", .near)])
+        }
         if place == "hyperliquid" {
             // Its book trades against USDC: a sale, then a buy with what it fetched.
             let moving = "\(amount.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(from.uppercased())"
@@ -1814,6 +1823,15 @@ extension Workspace {
         let coinIn = a.uppercased() == (from == "solana" ? "SOL" : EVMNetwork.named(from)?.gasCoin ?? "ETH")
         let quote = swapQuote.flatMap { $0.command == .crossSwap(from: a, on: from, to: b, at: to, amount: amount) ? $0.ways : nil }
         let moving = "\(amount.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label(a))"
+        // NEAR on a side, or a pair only 1Click quotes: one deposit to the address NEAR Intents binds to the quote.
+        if from == "near" || to == "near" || quote?.first?.way.hasPrefix("NEAR Intents") == true {
+            return MoveRoute(title: "Swap \(moving) on \(fromName) → \(label(b)) on \(toName)",
+                             footer: "One deposit on \(fromName) to the 1Click address NEAR Intents binds to this quote — checked with 1Click before signing; Touch ID allows that address the first time — and \(label(b)) comes to your own address on \(toName); a refund comes back to \(fromName). Press Confirm.",
+                             steps: [step(logo(from), "FROM · \(fromName.uppercased())", moving, "your own address there", fill(from)),
+                                     step("near", "SWAP ACROSS · NEAR INTENTS", label(b),
+                                          quote.map { $0.first.map { "≈ \($0.gets) · \($0.way)" } ?? "no quote now · asked again every 30 s" } ?? "quoting…", .near),
+                                     step(logo(to), "TO · \(toName.uppercased())", label(b), "your own address there", fill(to))])
+        }
         var steps = [step(logo(from), "FROM · \(fromName.uppercased())", moving, coinIn ? "your \(label(a)) · its fees stay" : "on \(fromName)", fill(from))]
         if from != "solana", !coinIn { steps.append(approve(moving, for: "Relay", logo: "relay", fill(from))) }
         steps.append(step("relay", "SWAP ACROSS · RELAY", label(b),
@@ -1928,6 +1946,9 @@ extension Workspace {
             if let from = await solanaAsset(a, note: nil, quiet: true), let to = await solanaAsset(b, note: nil, quiet: true) {
                 await quoteJupiter(command, from: from, to: to, amount: x)
             }
+            return
+        case .swapOn("near", let a, let b, let x?):
+            await quoteCross(command, a, "near", b, "near", x)
             return
         case .swapOn("hyperliquid", let a, let b, let x?):
             while !Task.isCancelled {
@@ -2097,7 +2118,7 @@ extension Workspace {
         guard let wallet = previewWallet else { return }
         pricedCommand = command
         while !Task.isCancelled {
-            let q = try? await executor(wallet).crossQuoteText(a, on: from, for: b, on: to, amount: amount)
+            let q = try? await executor(wallet).crossQuoteText(a, on: from, for: b, on: to, amount: amount, near: nearAddress)
             guard !Task.isCancelled else { return }
             if let q { swapQuote = (command, [(q.way, q.gets, 0)]); return }
             if swapQuote?.command != command { swapQuote = (command, []) }

@@ -18,9 +18,14 @@ import Testing
     // Robinhood Chain: Stock Tokens for one another.
     #expect(WalletCommand.parse("swap 1 TSLA for NVDA on robinhood") == .swapOn("robinhood", from: "TSLA", to: "NVDA", amount: 1))
     #expect(WalletCommand.parse("поменяй 1 TSLA на NVDA на робингуде") == .swapOn("robinhood", from: "TSLA", to: "NVDA", amount: 1))
-    // NEAR's account holds NEAR alone: for USDC and back through 1Click.
+    // NEAR through NEAR Intents: any of its tokens for another there, and to or from any network; NEAR for USDC and
+    // back stays 1Click's sale and buy.
     #expect(WalletCommand.parse("swap 2 NEAR for USDC on near") == .sellNear(amount: 2))
     #expect(WalletCommand.parse("swap 5 USDC for NEAR on near") == .buyNear(usdc: 5))
+    #expect(WalletCommand.parse("swap 1 NEAR for AURORA on near") == .swapOn("near", from: "NEAR", to: "AURORA", amount: 1))
+    #expect(WalletCommand.parse("поменяй 1 NEAR на AURORA на неар") == .swapOn("near", from: "NEAR", to: "AURORA", amount: 1))
+    #expect(WalletCommand.parse("swap 1 NEAR for SOL on solana") == .crossSwap(from: "NEAR", on: "near", to: "SOL", at: "solana", amount: 1))
+    #expect(WalletCommand.parse("swap 0.1 SOL on solana for NEAR on near") == .crossSwap(from: "SOL", on: "solana", to: "NEAR", at: "near", amount: Decimal(string: "0.1")!))
     // The EVM networks as before, and across networks to and from the new ones.
     #expect(WalletCommand.parse("swap 0.01 ETH for AERO on base") == .swapOn("base", from: "ETH", to: "AERO", amount: Decimal(string: "0.01")!))
     #expect(WalletCommand.parse("swap 0.1 SOL for CAKE on bnb") == .crossSwap(from: "SOL", on: "solana", to: "CAKE", at: "bnb", amount: Decimal(string: "0.1")!))
@@ -28,7 +33,9 @@ import Testing
     #expect(WalletCommand.parse("swap all UBTC on hyperevm for SOL on solana") == .crossSwap(from: "UBTC", on: "hyperevm", to: "SOL", at: "solana", amount: nil))
     for c in [WalletCommand.swapOn("solana", from: "SOL", to: "BONK", amount: 1), .swapOn("solana", from: "JUP", to: bonk, amount: 2),
               .swapOn("hyperliquid", from: "HYPE", to: "PURR", amount: 1), .swapOn("robinhood", from: "TSLA", to: "NVDA", amount: nil),
-              .crossSwap(from: "SOL", on: "solana", to: "CAKE", at: "bnb", amount: 1), .crossSwap(from: "OP", on: "optimism", to: "UBTC", at: "hyperevm", amount: 1)] {
+              .crossSwap(from: "SOL", on: "solana", to: "CAKE", at: "bnb", amount: 1), .crossSwap(from: "OP", on: "optimism", to: "UBTC", at: "hyperevm", amount: 1),
+              .swapOn("near", from: "NEAR", to: "AURORA", amount: 1), .crossSwap(from: "NEAR", on: "near", to: "SOL", at: "solana", amount: 1),
+              .crossSwap(from: "SOL", on: "solana", to: "NEAR", at: "near", amount: 1)] {
         #expect(WalletCommand.parse(c.summary) == c, "\(c.summary)")
     }
 }
