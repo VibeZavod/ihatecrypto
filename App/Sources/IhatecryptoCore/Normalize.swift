@@ -193,8 +193,10 @@ public enum ChatRouter {
       <chain>.blockscout.com/api/v2/search?q=<NAME> lists contracts and tokens by name with their addresses and whether their source
       is verified (eth.blockscout.com for Ethereum), or DefiLlama, or the protocol's API — then check it: call asset()(address),
       decimals()(uint8), previewDeposit(uint256)(uint256). Never an address from memory.
-      ihatecrypto refuses a contract without verified source unless the user pasted it, simulates the call and shows what each
-      balance does; the card waits for Confirm. «положи 10 USDC в Fluid на арбитруме» with the vault found at 0xF… = call arbitrum
+      A call spends only what is already on its network: with the USDC there (the balances say so), the call alone — no move
+      first; only when it isn't there, the straight move as a step before it. ihatecrypto blocks a protocol outside its own
+      list that has unverified code, is under a month old, holds under $1M by DefiLlama's prices or is on a scam list, caps
+      what such a call puts at risk (Settings › Wallet), simulates it and shows what each balance does; the card waits for Confirm. «положи 10 USDC в Fluid на арбитруме» with the vault found at 0xF… = call arbitrum
       0xF… deposit(uint256,address) 10e6 me approving 10 USDC; its withdrawal = call arbitrum 0xF… redeem(uint256,address,address)
       <SHARES> me me; «застейкай 0.01 ETH в Lido» with stETH found at 0xS… = call ethereum 0xS… submit(address)
       0x0000000000000000000000000000000000000000 with 0.01 ETH. Say «ihatecrypto can't» only after this form can't do it either)

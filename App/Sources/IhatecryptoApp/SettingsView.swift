@@ -19,6 +19,7 @@ struct SettingsView: View {
     static let tabKey = "settingsTab"
     @AppStorage(SettingsView.tabKey) private var tab = Tab.general
     @AppStorage(Executor.batchKey) private var batches = false
+    @AppStorage(ContractCallGuard.capKey) private var contractCap = 50.0
 
     /// Raw values also serve links from the chat and the networks menu.
     enum Tab: String, CaseIterable {
@@ -440,6 +441,13 @@ struct SettingsView: View {
                 SettingsRow("One transaction for approve and swap", icon: "square.stack.3d.up",
                             info: "On Base, Arbitrum, Ethereum, Polygon and Robinhood, an approve and the swap, deposit or bridge that spends it go out as one transaction under one Touch ID (EIP-7702). For that, from the first such move on a network your wallet there runs the code of an audited account contract (eth-infinitism's Simple7702Account): it takes coins and tokens as before, only you can make it act, and every call in it is checked like a single one. Off: two transactions, two Touch IDs, as before; a network already switched stays so.") {
                     Toggle("One transaction for approve and swap", isOn: $batches).toggleStyle(AccentSwitch()).labelsHidden()
+                }
+                SettingsRow("Cap for unknown protocols", icon: "shield.lefthalf.filled",
+                            info: "A contract the chat calls outside ihatecrypto's own list (Aave, Morpho, Uniswap, Relay…) may put at most this much at risk in one call — what leaves the wallet, its approve and the coins sent with it. It must also have verified code, be a month old, hold $1M or more by DefiLlama and be on no scam list. Every check can be fooled; this caps what that costs.") {
+                    Picker("Cap for unknown protocols", selection: $contractCap) {
+                        ForEach([10.0, 25, 50, 100, 250, 500, 1000], id: \.self) { Text(Fmt.usd(Decimal($0))).tag($0) }
+                    }
+                    .labelsHidden().pickerStyle(.menu).fixedSize()
                 }
             }
         }

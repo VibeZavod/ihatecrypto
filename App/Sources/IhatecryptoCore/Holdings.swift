@@ -25,6 +25,12 @@ public struct Holding: Sendable, Identifiable, Equatable {
 
     /// The key the user's show/hide choice is kept under: the mint on Solana, «chain:contract» elsewhere.
     public var id: String { chain == "solana" ? contract : "\(chain):\(contract.lowercased())" }
+
+    public init(chain: String, contract: String, amount: Decimal, symbol: String, icon: URL? = nil, price: Decimal? = nil,
+                verified: Bool = false, liquidity: Decimal? = nil, native: Bool = false, change24h: Decimal? = nil) {
+        (self.chain, self.contract, self.amount, self.symbol, self.icon, self.price) = (chain, contract, amount, symbol, icon, price)
+        (self.verified, self.liquidity, self.native, self.change24h) = (verified, liquidity, native, change24h)
+    }
     public var usd: Decimal? { price.map { $0 * amount } }
     /// Airdropped look-alikes are unverified with no real pool behind them: they stay out of sight until the user
     /// asks. A token the user bought has a pool (or a market list's check) and shows.
@@ -67,7 +73,46 @@ public enum Holdings {
             let chunk = asked[start..<min(start + 30, asked.count)]
             out = dexPrices(out, try? await HTTP.get("https://api.dexscreener.com/tokens/v1/\(chain)/" + chunk.joined(separator: ",")))
         }
+        return await llamaPriced(chain, out)
+    }
+
+    /// DefiLlama's names for the networks it prices; Robinhood Chain and Tempo it doesn't.
+    public static let llamaChain = ["base": "base", "arbitrum": "arbitrum", "ethereum": "ethereum", "polygon": "polygon", "optimism": "optimism",
+                                    "bnb": "bsc", "hyperevm": "hyperliquid"]
+
+    /// Dollar prices DefiLlama gives these contracts (lowercased keys), and whether it's sure (confidence ≥ 0.9). It prices
+    /// a vault's or a lending market's shares by what's under them — Fluid's fUSDC, Compound's cUSDCv3, Moonwell's mUSDC,
+    /// Spark's sUSDC — which no market list or pool does.
+    public static func llamaPrices(_ chain: String, _ contracts: [String]) async -> [String: (price: Decimal, sure: Bool)] {
+        guard let name = llamaChain[chain], !contracts.isEmpty else { return [:] }
+        var out: [String: (price: Decimal, sure: Bool)] = [:]
+        for start in stride(from: 0, to: min(contracts.count, 200), by: 50) {
+            let chunk = contracts[start..<min(start + 50, contracts.count)]
+            guard let coins = (json(try? await HTTP.get("https://coins.llama.fi/prices/current/" + chunk.map { "\(name):\($0)" }.joined(separator: ","), timeout: 15))
+                    as? [String: Any])?["coins"] as? [String: [String: Any]] else { continue }
+            for (key, c) in coins {
+                guard let p = number(c["price"]) else { continue }
+                let confidence = (c["confidence"] as? NSNumber)?.doubleValue ?? 0
+                guard confidence >= 0.5 else { continue }
+                out[String(key.split(separator: ":").last ?? "").lowercased()] = (p, confidence >= 0.9)
+            }
+        }
         return out
+    }
+
+    /// The tokens no list or pool priced, priced by DefiLlama; a sure price makes a position real (not an airdrop's
+    /// look-alike), so a deposit in any vault shows with its worth.
+    public static func llamaPriced(_ chain: String, _ tokens: [Holding]) async -> [Holding] {
+        let unpriced = tokens.filter { $0.price == nil && !$0.native }.map(\.contract)
+        let prices = await llamaPrices(chain, unpriced)
+        guard !prices.isEmpty else { return tokens }
+        return tokens.map { t in
+            guard t.price == nil, let p = prices[t.contract.lowercased()] else { return t }
+            var priced = t
+            priced.price = p.price
+            if p.sure { priced.verified = true }
+            return priced
+        }
     }
 
     /// What the wallet paid for what it holds of one token on an EVM network (CostBasis.replay); nil off Blockscout's

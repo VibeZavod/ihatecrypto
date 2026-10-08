@@ -572,7 +572,9 @@ enum Signer {
     /// Money to an address outside the wallet: each new address is confirmed in person once, with the address on
     /// the prompt, and remembered in the signer's own Keychain. The app saying «the user approved it» isn't enough.
     static func approve(_ recipients: [String]) throws {
-        guard !holdsPublicTestWallet else { return }
+        // The Test wallet signs without Touch ID by design (a few dollars for checks): asking it about a new address
+        // only stops the check. Its approvals are its own (RecipientStore is per wallet), so no other wallet skips one.
+        guard !holdsPublicTestWallet, Wallets.active?.isTest != true else { return }
         let own = Set([try? address("solana"), (try? address("evm"))?.lowercased()].compactMap { $0 })
         // An address saved in the book was confirmed in person, whole, when it was saved.
         let known = RecipientStore.all().union(AddressBookStore.all().map { RecipientStore.key($0.address) })

@@ -524,6 +524,29 @@ public struct EVMSimulation: Equatable, Sendable {
     public var changes: [String: Decimal] = [:]
     /// ERC-721 collections among `changes`.
     public var nfts: Set<String> = []
+    /// Rights this wallet hands out in the simulated calls, read from the events standard contracts emit: an approve, all
+    /// NFTs, Permit2, an operator, Morpho's authorization, Aave's credit delegation, a contract's ownership. A balance
+    /// that doesn't move can still be given away: this is what the card's balances can't show.
+    public var grants: [Grant] = []
+
+    public struct Grant: Equatable, Sendable {
+        /// approve, nft, all, permit2, operator, authorization, credit, ownership
+        public let kind: String
+        /// The contract that logged it (the token, Permit2, Morpho…).
+        public let asset: String
+        /// Who gets the right.
+        public let to: String
+        public let unlimited: Bool
+        public init(kind: String, asset: String, to: String, unlimited: Bool) { (self.kind, self.asset, self.to, self.unlimited) = (kind, asset, to, unlimited) }
+    }
+
+    /// (event, kind, topic of the owner, topic of whoever gets the right; nil = word 0 of the data says how much or whether)
+    static let grantEvents: [(topic: String, kind: String, owner: Int, to: Int)] = [
+        ("Approval(address,address,uint256)", "approve", 1, 2), ("ApprovalForAll(address,address,bool)", "all", 1, 2),
+        ("Approval(address,address,address,uint160,uint48)", "permit2", 1, 3), ("OperatorSet(address,address,bool)", "operator", 1, 2),
+        ("SetAuthorization(address,address,address,bool)", "authorization", 2, 3),
+        ("BorrowAllowanceDelegated(address,address,address,uint256)", "credit", 1, 2), ("OwnershipTransferred(address,address)", "ownership", 1, 2),
+    ].map { ("0x" + Keccak.hash256(Data($0.0.utf8)).hex, $0.1, $0.2, $0.3) }
 
     public init(_ result: Any, owner: String) throws {
         guard let calls = (result as? [[String: Any]])?.first?["calls"] as? [[String: Any]], !calls.isEmpty else {
@@ -537,6 +560,9 @@ public struct EVMSimulation: Equatable, Sendable {
         let me = owner.lowercased().dropFirst(2)
         for log in calls.flatMap({ $0["logs"] as? [[String: Any]] ?? [] }) {
             guard let asset = (log["address"] as? String)?.lowercased(), let topics = log["topics"] as? [String], let event = topics.first else { continue }
+            if let g = Self.grant(asset: asset, topics: topics.map { $0.lowercased() }, data: Data(hex: log["data"] as? String ?? "0x") ?? Data(), me: String(me)) {
+                grants.append(g)
+            }
             let amount = Data(hex: log["data"] as? String ?? "0x").flatMap { ABI.decimal(in: $0, word: 0) } ?? 0
             var from = "", to = "", n = amount
             switch (event, topics.count) {
@@ -550,6 +576,20 @@ public struct EVMSimulation: Equatable, Sendable {
             if to.lowercased().hasSuffix(me) { changes[asset, default: 0] += n }
         }
         changes = changes.filter { $0.value != 0 }
+    }
+
+    /// A right `me` gives in this log, or nil (another owner, or a revoke: zero, false).
+    static func grant(asset: String, topics: [String], data: Data, me: String) -> Grant? {
+        guard let e = grantEvents.first(where: { $0.topic == topics.first }), topics.count > max(e.owner, e.to), topics[e.owner].hasSuffix(me) else { return nil }
+        let to = "0x" + topics[e.to].suffix(40)
+        // An ERC-721 approve carries its token id as a fourth topic: one NFT, no amount in the data.
+        if e.kind == "approve", topics.count == 4 { return Grant(kind: "nft", asset: asset, to: to, unlimited: false) }
+        if e.kind == "ownership" { return Grant(kind: e.kind, asset: asset, to: to, unlimited: true) }
+        let word = data.count >= 32 ? Data(data.prefix(32)) : Data(count: 32)
+        guard word.contains(where: { $0 != 0 }) else { return nil }
+        // A bool says only yes; an amount past 2^128 is as good as unlimited (max uint256, max uint160).
+        let flag = ["all", "operator", "authorization"].contains(e.kind)
+        return Grant(kind: e.kind, asset: asset, to: to, unlimited: flag || word.prefix(16).contains { $0 != 0 })
     }
 }
 

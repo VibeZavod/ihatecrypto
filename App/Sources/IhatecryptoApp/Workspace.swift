@@ -1725,8 +1725,10 @@ final class Workspace {
                                                            ("polygon", await polygon), ("robinhood", await robinhood), ("tempo", await tempo), ("hyperevm", await hyperevm), ("optimism", await optimism), ("bnb", await bnb), ("hyperliquid", await spot),
                                                            ("near", await near)]
         _ = await (lending, protocols)
+        var found = read.flatMap { r in r.tokens ?? otherTokens.filter { $0.chain == r.chain } }
+        // A vault's shares a contract call just brought, before the explorer lists them.
+        if evm { found += await missingDeposits(found, owner: me) }
         guard me == hlAddress, nearAccount == nearAddress else { return }   // another wallet since: its own read follows
-        let found = read.flatMap { r in r.tokens ?? otherTokens.filter { $0.chain == r.chain } }
         if found != otherTokens { otherTokens = found }
     }
 
