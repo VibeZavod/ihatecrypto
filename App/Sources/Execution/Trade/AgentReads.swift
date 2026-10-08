@@ -67,6 +67,14 @@ public enum AgentReads {
             + " (numbers in the token's smallest units: divide by 10^decimals)"
     }
 
+    /// «deposit(uint256,address)» with its arguments as written («me» = `me`): the call's data.
+    public static func calldata(_ function: String, _ args: [String], me: String) throws -> Data {
+        guard let m = function.wholeMatch(of: /(\w+)\(([^()]*)\)/) else { throw LLMError("«\(function)» isn't a function like deposit(uint256,address).") }
+        let types = list(m.2)
+        guard types.count == args.count else { throw LLMError("\(m.1) takes \(types.count) arguments; \(args.count) given.") }
+        return try encode(String(m.1), types, args.map { $0 == "me" ? me : $0 })
+    }
+
     /// The call's data: the function's 4-byte selector, then a word per argument.
     static func encode(_ name: String, _ types: [String], _ args: [String]) throws -> Data {
         var data = Data(Keccak.hash256(Data("\(name)(\(types.joined(separator: ",")))".utf8)).prefix(4))
@@ -159,7 +167,8 @@ public enum AgentReads {
         guard let json = try JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any], json["type"] != nil else {
             throw LLMError("Write it as: hl {\"type\": \"…\", …} — the body of a Hyperliquid info request.")
         }
-        return shaped(try await HTTP.post("https://api.hyperliquid.xyz/info", json: json, timeout: 20), find: find)
+        let data = try await cached("hl " + text) { try await HTTP.post("https://api.hyperliquid.xyz/info", json: json, timeout: 20) }
+        return shaped(data, find: find)
     }
 
     // MARK: fetch <URL> [find <words>]
@@ -171,7 +180,34 @@ public enum AgentReads {
         guard hosts.contains(host) || host.hasSuffix(".blockscout.com") else {
             throw LLMError("\(host) isn't among the public APIs read here: \(hosts.sorted().joined(separator: ", ")), <chain>.blockscout.com.")
         }
-        return shaped(try await HTTP.get(url.absoluteString, timeout: 20), find: find)
+        // Blockscout turns away clients that don't look like a browser (403).
+        let headers = hosts.contains(host) && host != "explorer.optimism.io" ? [:] : ContractTrust.browser
+        return shaped(try await cached(url.absoluteString) { try await HTTP.get(url.absoluteString, headers: headers, timeout: 30) }, find: find)
+    }
+
+    /// The same request within five minutes answers from memory: a follow-up about DefiLlama's 11 MB of pools doesn't
+    /// download them again (≈ 5 s each). The last eight answers are kept.
+    static func cached(_ key: String, _ load: () async throws -> Data) async throws -> Data {
+        if let hit = Store.shared.get(key) { return hit }
+        let data = try await load()
+        Store.shared.put(key, data)
+        return data
+    }
+
+    final class Store: @unchecked Sendable {
+        static let shared = Store()
+        private let lock = NSLock()
+        private var kept: [String: (at: Date, data: Data)] = [:]
+        func get(_ key: String) -> Data? {
+            lock.withLock { kept[key].flatMap { Date().timeIntervalSince($0.at) < 300 ? $0.data : nil } }
+        }
+        func put(_ key: String, _ data: Data) {
+            lock.withLock {
+                kept[key] = (Date(), data)
+                // ponytail: oldest-first eviction over eight entries; an LRU if reads ever repeat across many URLs.
+                while kept.count > 8, let oldest = kept.min(by: { $0.value.at < $1.value.at })?.key { kept[oldest] = nil }
+            }
+        }
     }
 
     /// «<what> find <words>»: the words keep only the list items holding all of them.
@@ -215,9 +251,17 @@ public enum AgentReads {
         return best
     }
 
+    /// JSON in one line, without the nulls and empty values that fill half of an API's rows.
     static func compact(_ json: Any) -> String {
-        (try? JSONSerialization.data(withJSONObject: json, options: [.fragmentsAllowed, .withoutEscapingSlashes]))
+        (try? JSONSerialization.data(withJSONObject: pruned(json), options: [.fragmentsAllowed, .withoutEscapingSlashes]))
             .map { String(decoding: $0, as: UTF8.self) } ?? "\(json)"
+    }
+
+    static func pruned(_ json: Any) -> Any {
+        func empty(_ v: Any) -> Bool { v is NSNull || (v as? String)?.isEmpty == true || (v as? [Any])?.isEmpty == true || (v as? [String: Any])?.isEmpty == true }
+        if let d = json as? [String: Any] { return d.mapValues(pruned).filter { !empty($0.value) } }
+        if let a = json as? [Any] { return a.map(pruned) }
+        return json
     }
 
     /// The user's own addresses, back as `me`.

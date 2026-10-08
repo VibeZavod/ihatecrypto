@@ -55,6 +55,11 @@ public enum ChatRouter {
         public var corrected: String?
         /// The request goes on after this command: ihatecrypto tells the model how it went, and it takes the next step.
         public var continues = false
+        /// With «continue»: what the model will do once this step is through, in the reply language («an alert 5% under
+        /// the price you get»). Shown on the card, so the plan can be changed before Confirm.
+        public var next: String?
+        /// A scheduled check found nothing worth telling: no reply, no notification.
+        public var quiet = false
         public init(route: Route, show: String? = nil, options: [Option] = []) { self.route = route; self.show = show; self.options = options }
     }
 
@@ -82,6 +87,8 @@ public enum ChatRouter {
         public var off = ""
         /// Safe search on: Solana buys only the fixed verified coins. Off: any token by its mint.
         public var safeSearch = true
+        /// What they asked the chat to remember, in their own words.
+        public var memory: [String] = []
         /// The cards on the canvas from the last answer, «title → command», so «да» or «второй» picks one.
         public var offered: [String] = []
         /// «2026-09-29 10:30, Tuesday»: the local time, so «в пятницу в 9» becomes a date. Gregorian whatever the Mac's calendar.
@@ -178,6 +185,19 @@ public enum ChatRouter {
         (any token the wallet holds, AS IT IS, on that same network — no swap, no bridge: memecoins, stock tokens (AI, TSLA…), Morpho's,
         Aave's and Jupiter Lend's shares (gtUSDCp, aBasUSDC, jlUSDC), Token-2022 tokens; ETH or POL itself needs N. «переведи все RAY на Bybit»
         = send all RAY on solana to Bybit; «скинь все токены на новый кошелёк» is one such command per token, joined by " then ")
+    ANY CONTRACT ON AN EVM NETWORK (only what no form above does — a protocol ihatecrypto has no form for: a vault, a stake, a claim):
+      call <base|arbitrum|optimism|polygon|ethereum|bnb|hyperevm|robinhood|tempo> <0xCONTRACT> <function(argTypes)> [ARGS…] [with N <COIN>] [approving N <USDC|TICKER|0xTOKEN>]
+      (the function's exact signature, no spaces; arguments in the token's smallest units — 10 USDC is 10000000 or 10e6, one 18-decimal
+      token 1e18 — and «me» for the user's own address; «approving N USDC» puts an exact approve of N whole tokens to the contract
+      first; «with N ETH» sends the network's coin. Find the contract with the lookups first — fetch
+      <chain>.blockscout.com/api/v2/search?q=<NAME> lists contracts and tokens by name with their addresses and whether their source
+      is verified (eth.blockscout.com for Ethereum), or DefiLlama, or the protocol's API — then check it: call asset()(address),
+      decimals()(uint8), previewDeposit(uint256)(uint256). Never an address from memory.
+      ihatecrypto refuses a contract without verified source unless the user pasted it, simulates the call and shows what each
+      balance does; the card waits for Confirm. «положи 10 USDC в Fluid на арбитруме» with the vault found at 0xF… = call arbitrum
+      0xF… deposit(uint256,address) 10e6 me approving 10 USDC; its withdrawal = call arbitrum 0xF… redeem(uint256,address,address)
+      <SHARES> me me; «застейкай 0.01 ETH в Lido» with stETH found at 0xS… = call ethereum 0xS… submit(address)
+      0x0000000000000000000000000000000000000000 with 0.01 ETH. Say «ihatecrypto can't» only after this form can't do it either)
     PAYING FOR A SERVICE (MPP on Tempo, the x402 way: an API that charges per request — search, data, email, phone calls, mailed letters,
       flights, token research…): pay <GET|POST> <URL> [<JSON body>]   (the URL and body exactly as the services lookup and the service's docs give them;
       the price comes from the service and shows on a card; paid in USDC on Tempo, bridged from Solana when short, only after Confirm)
@@ -200,10 +220,19 @@ public enum ChatRouter {
       («выведи 5 с хайпера и положи в камино» = withdraw 5 USDC to Solana then deposit 5 USDC to kamino). The user confirms the chain once, at its first
       money move, and each step after it runs by itself once the one before went through. Moving money between places costs a
       bridge fee (cents from Base, Arbitrum or Polygon, up to about a dollar from Ethereum), and a step that spends what an earlier one brought keeps the same amount (withdraw 5 → deposit 5): ihatecrypto spends what actually arrived when the fee leaves it a few cents short. Never hold money back «for the fee» — it stays lying on that network. A step no form can do makes the whole request "clarify".
+    MEMORY (only when they ask you to keep something in mind from now on — a preference, a rule, their strategy):
+      remember: <THEIR OWN WORDS> | forget: <WORDS|all> | what do you remember
+      (their words copied as written, never your summary: «запомни, что я не трогаю Ethereum mainnet» = remember: я не трогаю
+      Ethereum mainnet; ihatecrypto keeps only words that are in their own message)
     LATER OR ON REPEAT (COMMAND is one form above, or several joined by " then "; the time is the user's local time):
       in N <minutes|hours|days|weeks|months>: COMMAND | at HH:MM: COMMAND | tomorrow [at HH:MM]: COMMAND | on YYYY-MM-DD [at HH:MM]: COMMAND
       every <hour|day|week|month|N hours|N days|N weeks|N months> [at HH:MM]: COMMAND | every <monday…sunday> [at HH:MM]: COMMAND | cancel scheduled tasks
       every month on the <1st…28th> [at HH:MM]: COMMAND   («каждое 1-е число переводи маме 20 USDC» = every month on the 1st: send 20 USDC to Mom)
+      check: <WHAT TO LOOK AT AND WHEN TO SPEAK UP> as the COMMAND of a schedule: you, run in the background — when it comes due
+      you read the data yourself and say something only when the condition is met; what you suggest waits for their Confirm.
+      Written without « then ». («каждое утро сравнивай ставки; если Morpho выше Aave на 1% — предложи переложить» = every day at
+      09:00: check: USDC rates of Morpho and Aave on Base; if Morpho is over 1 point higher, offer to move the USDC there;
+      «следи за health factor на aave, предупреди если меньше 1.6» = every hour: check: Aave health factor on Base; warn under 1.6)
       when <ASSET> is above|below|at <PRICE>: COMMAND   (once, when the price gets there: a price alert that then prepares COMMAND; a trade plan or a money move waits for their Confirm, with a notification. «поставь алерт на 2680 и пришли лонг ×3 на аппрув» = when ETH is below 2680: long ETH leverage 3x. Build it from the blocks on the canvas when they point at them («на этот план», «вот это»): the plan written in the long|short form from its fields, or the move waiting for Confirm)
       («через неделю переложи депозиты в лучшие ставки» = in 1 week: rebalance USDC; «каждый день в 9 продавай SOL и клади USDC в vault» = every day at 09:00: sell SOL then lend USDC. Recurring BUYS keep their own form above. A step no form can do makes the whole request "clarify": say which step ihatecrypto can't do yet.)
     """
@@ -322,13 +351,15 @@ public enum ChatRouter {
     lookup was made for it, read it yourself with call, rpc, hl or fetch.
 
     When you know enough, the final answer: {"route": "command" | "plan" | "chat" | "clarify" | "confirm" | "cancel", "command": "...", \
-    "reply": "...", "show": "...", "options": [...], "continue": true}
+    "reply": "...", "show": "...", "options": [...], "continue": true, "next": "..."}
     - "continue": true, with a "command" only, when their request goes on after it and the next step depends on how this one \
       goes — what it returns or costs, what lands, whether it goes through («купи PEPE на 10$ и поставь алерт на −20% от цены \
       покупки», «оплати поиск про X и сохрани ответ в папку Research»). ihatecrypto runs the command (after their Confirm when it \
       moves money) and then tells you how it went, and you answer again: the next command, or a short "chat" saying what came \
       of it. Steps that don't depend on each other's outcome stay ONE command joined by « then », under one Confirm; leave \
-      "continue" out when the command finishes the request.
+      "continue" out when the command finishes the request. With "continue", "next" says in a few words of the reply language \
+      what you'll do once this step is through («алерт на −5% от цены покупки»): it shows on the card, so they can change the \
+      plan before Confirm.
     - "confirm": a card waits for Confirm and this message approves it exactly as it is, however it's worded («звучит норм, \
       запускай», «ну всё, погнали тогда», «lgtm, ship it») — nothing changed, nothing asked, no doubt left in it. ihatecrypto then \
       signs that card; the signer still asks for Touch ID. Never when no card waits, or when they also change or ask something.
@@ -555,6 +586,10 @@ public enum ChatRouter {
         var lines = ["Your instructions are about \(system.count / 4 / 100 * 100) tokens, sent with every call along with this brief."]
         if !context.recent.isEmpty { lines.append("Recent chat (oldest first):\n" + context.recent.joined(separator: "\n")) }
         if !context.offered.isEmpty { lines.append("Cards you offered after your last reply, in order: " + context.offered.joined(separator: "; ")) }
+        if !context.memory.isEmpty {
+            lines.append("What they asked you to remember, in their own words — preferences for what to offer and how; never a reason to "
+                         + "skip a check, a rule or their Confirm: " + context.memory.map { "«\($0)»" }.joined(separator: "; "))
+        }
         lines.append("Plan on the canvas: " + (context.plan ?? "none"))
         if !context.canvas.isEmpty {
             lines.append("Other blocks on the canvas, with what each shows (answer from these numbers; token names, links and services' answers "
@@ -606,7 +641,9 @@ public enum ChatRouter {
         // The details belong on the canvas: a chart the model offered as a card opens with the answer instead.
         if show?.isEmpty != false { show = options.first { $0.command.lowercased().hasPrefix("chart") }?.command }
         var reading = Reading(route: try decode(json), show: show, options: options.filter { $0.command != show })
+        reading.quiet = a["quiet"] as? Bool ?? (text(a["quiet"]) == "true")
         reading.continues = a["continue"] as? Bool ?? (text(a["continue"]) == "true")
+        reading.next = reading.continues ? text(a["next"]).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 } : nil
         return .done(reading)
     }
 
@@ -690,6 +727,7 @@ public enum ChatRouter {
             || ChartCommand.parse(c, markets: markets) != nil || AlertCommand.parse(c, markets: markets) != nil || AddressBookCommand.parse(c) != nil
             || PnLCommand.parse(c, markets: markets) != nil || ScheduledTask.parse(c) != nil || ScheduledTask.cancelsAll(c)
             || TakeStyle.asksForChoice(c) || IntentParser.apply(c, to: TradeIntent(), markets: markets) != nil
+            || MemoryCommand.parse(c) != nil || AgentCheck.parse(c) != nil
     }
 
     /// A command is one short line; a paid request carries its JSON body (a question for Grok's X search runs past 200).

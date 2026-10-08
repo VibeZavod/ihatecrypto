@@ -65,7 +65,9 @@ public struct ScheduledTask: Codable, Equatable, Sendable, Identifiable {
             text[i...].prefixMatch(of: /:\d\d:/) != nil ? text.index(i, offsetBy: 3) : i
         }) else { return nil }
         let head = text[..<colon].lowercased().trimmingCharacters(in: .whitespaces)
-        let steps = text[text.index(after: colon)...].split(separator: /\s+then\s+|\s*;\s*/)
+        let rest = text[text.index(after: colon)...].trimmingCharacters(in: .whitespacesAndNewlines)
+        // A background check (AgentCheck) is one step however it's worded: its «;» and «then» are the model's to read.
+        let steps = AgentCheck.parse(rest) != nil ? [rest] : rest.split(separator: /\s+then\s+|\s*;\s*/)
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         guard !steps.isEmpty, steps.allSatisfy({ parse($0) == nil }) else { return nil }   // no task inside a task
         let cal = calendar

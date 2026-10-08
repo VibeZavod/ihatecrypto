@@ -1214,6 +1214,7 @@ extension Workspace {
             if let r = try? acrossRecipient(name, token: token, network: network) { acrossRoute(command, r, amount) }
             else { tokenOutRoute(to: name, token: token, amount: amount, network: network) }
         case .pay: payRoute(command)
+        case .contractCall: callRoute(command)
         case .bridge(let from, let to, let amount): bridgeRoute(from, to, amount)
         case .cctp(let from, let to, let amount): bridgeRoute(from, to, amount, cctp: true)
         case .aaveBorrow(let x?, let net), .aaveCollateral(let x?, let net): aaveDebtRoute(command, x, net)
@@ -2566,7 +2567,7 @@ struct WithdrawBoard: View {
                         Spacer(minLength: 12)
                         PendingButtons()
                     }
-                    RouteCards(steps: route.steps + ws.chainSteps(), footer: route.footer, pending: command, build: true)
+                    RouteCards(steps: route.steps + ws.chainSteps() + ws.agentNextSteps(), footer: route.footer, pending: command, build: true)
                     // What will be signed and what's checked: read before Confirm, so it reads as text, not as fine print.
                     Label(route.footer, systemImage: "signature").font(.ui(12)).foregroundStyle(.primary.opacity(0.78)).lineSpacing(2)
                         .frame(maxWidth: 560, alignment: .leading)

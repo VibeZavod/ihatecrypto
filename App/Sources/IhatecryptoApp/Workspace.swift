@@ -209,6 +209,8 @@ final class Workspace {
     var pendingText: String?
     /// A paid API's price as its 402 named it, for the «pay …» card waiting for Confirm (Payments.swift).
     var payment: PaymentQuote?
+    /// A contract call the chat wrote, checked and simulated, for its card (ContractCalls.swift).
+    var callReview: CallReview?
     /// What the paid (or free) service sent back, on the canvas.
     var serviceAnswer: ServiceAnswer?
     /// What Merkl owes the wallet, asked for before a «claim rewards» card (Rewards.swift).
@@ -396,6 +398,8 @@ final class Workspace {
     var agentStep: String?
     /// A request the model carries out over several commands (Agent.swift `continueAgent`).
     var agentGoal: AgentGoal?
+    /// The last scheduled check found nothing worth telling (Agent.swift `runCheck`): no notification.
+    var checkQuiet = false
     var schedules: [Schedule] = (UserDefaults.standard.data(forKey: Workspace.scoped("schedules")).flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) }) ?? [] {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(schedules), forKey: Workspace.scoped("schedules", activeWalletID)) }
     }
@@ -1338,12 +1342,16 @@ final class Workspace {
                 await editPlanWithModel(text, client: client, before: before)
                 if let off = tradeRefusal { reply(off, note: model) }
             }
+        case .chat(let r)? where reading?.quiet == true:
+            // A scheduled check with nothing to tell: said on its own canvas, no notification (runDueTask).
+            checkQuiet = true
+            reply(say("Checked: nothing to tell you now.", "Проверил: сейчас сообщать нечего.") + (r.isEmpty ? "" : " " + r), note: note)
         case .chat(let r)?, .clarify(let r)?: reply(r, note: note)
         case .command(let canonical)?:
             // A new command takes the place of the card that waited; a chart or the rates beside it don't.
             if !Self.displays(canonical) { dropWaiting(keepAction: aboutStep) }
             guard ChatRouter.addressesAllowed(canonical, userText: said ?? text, known: favoriteTokens.map(\.address), found: reading?.found ?? [],
-                                              displays: Self.displays, markets: Set(markets.keys)) else {
+                                              displays: Self.foundAllowed, markets: Set(markets.keys)) else {
                 reply(say("I read that as “\(canonical)”, but its address is neither in your message nor among your favorites, so I won’t use it. Paste the address itself.",
                           "Я понял это как «\(canonical)», но этого адреса нет ни в твоём сообщении, ни в избранном, поэтому я его не использую. Вставь сам адрес."), note: model)
                 return
@@ -1354,7 +1362,8 @@ final class Workspace {
                           "Я понял это как «\(canonical)», но ihatecrypto пока так не умеет — ничего не ушло. Скажи иначе или спроси, что ihatecrypto умеет."), note: model)
             } else if reading?.continues == true {
                 // Their request goes on after this step: the model hears how it went now, or after the Confirm when it moves money.
-                agentGoal = AgentGoal(request: said ?? text, command: canonical, mark: mark, canvas: canvasID, since: Date(), round: round)
+                agentGoal = AgentGoal(request: said ?? text, command: canonical, mark: mark, canvas: canvasID, since: Date(), round: round, next: reading?.next)
+                if let next = reading?.next { reply(say("Next, once this is through: ", "Дальше, когда это пройдёт: ") + next, note: model) }
                 Task { await continueAgent() }
             }
         }
@@ -1421,6 +1430,7 @@ final class Workspace {
         // With its network, so «по эфир сети» to a Base entry is answered with Base, not a guess.
         c.addressBook = addressBook.map { "\($0.name) (\($0.network.title))" }
         c.replyLanguage = replyLanguage
+        c.memory = agentMemory
         c.off = Modules.current.offSummary
         c.safeSearch = safeSearch
         c.capital = equity.map { Fmt.usd($0) }
@@ -1486,6 +1496,14 @@ final class Workspace {
         // A paid request before any other reading: its body is free text, where a contract, «then» or «chart» belongs to
         // the question, not to another command (Grok's X search about MOO opened MOO's token card instead).
         if case .pay? = WalletCommand.parse(canonical), let command = WalletCommand.parse(canonical) { await handleWallet(command, note: note); return true }
+        if let command = MemoryCommand.parse(canonical) { memoryCommand(command, note: note); return true }
+        if let check = AgentCheck.parse(canonical) { await runCheck(check, note: note); return true }
+        // Any contract's function: its addresses are checked against the user's own words and the explorer there.
+        if case .contractCall? = WalletCommand.parse(canonical), let command = WalletCommand.parse(canonical) {
+            if let off = moduleRefusal(command) { reply(off, note: note); return true }
+            await prepareContractCall(command, note: note)
+            return true
+        }
         // «6 USDC then leverage 4x» is one change to the plan.
         if let merged = ChatRouter.planChange(canonical, markets: Set(markets.keys)) {
             return await runCanonical(merged, userText: text, before: before)

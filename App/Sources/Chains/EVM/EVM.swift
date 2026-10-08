@@ -473,8 +473,14 @@ public struct EVMRPC: Sendable {
 
     /// Runs the transaction on the latest block without sending it (eth_simulateV1): what `from` gains and loses.
     public func simulate(from: String, to: String, value: UInt64, data: Data) async throws -> EVMSimulation {
-        let tx: [String: Any] = ["from": from, "to": to, "value": "0x" + String(value, radix: 16), "data": "0x" + data.hex]
-        return try EVMSimulation(try await call("eth_simulateV1", [["blockStateCalls": [["calls": [tx]]], "traceTransfers": true], "latest"]), owner: from)
+        try await simulate(from: from, calls: [(to, value, data)])
+    }
+
+    /// Several calls one after another in one block (an approve, then the call that spends it): the changes of all of
+    /// them together, or the first one's revert.
+    public func simulate(from: String, calls: [(to: String, value: UInt64, data: Data)]) async throws -> EVMSimulation {
+        let txs: [[String: Any]] = calls.map { ["from": from, "to": $0.to, "value": "0x" + String($0.value, radix: 16), "data": "0x" + $0.data.hex] }
+        return try EVMSimulation(try await call("eth_simulateV1", [["blockStateCalls": [["calls": txs]], "traceTransfers": true], "latest"]), owner: from)
     }
 
     /// Waits for a receipt; true if the transaction succeeded.
@@ -520,15 +526,16 @@ public struct EVMSimulation: Equatable, Sendable {
     public var nfts: Set<String> = []
 
     public init(_ result: Any, owner: String) throws {
-        guard let call = ((result as? [[String: Any]])?.first?["calls"] as? [[String: Any]])?.first else {
+        guard let calls = (result as? [[String: Any]])?.first?["calls"] as? [[String: Any]], !calls.isEmpty else {
             throw WalletError("eth_simulateV1: unexpected reply")
         }
-        if call["status"] as? String != "0x1" {
-            revert = (call["error"] as? [String: Any])?["message"] as? String ?? "reverted"
+        if let failed = calls.firstIndex(where: { $0["status"] as? String != "0x1" }) {
+            let why = (calls[failed]["error"] as? [String: Any])?["message"] as? String ?? "reverted"
+            revert = calls.count > 1 ? "call \(failed + 1) of \(calls.count): \(why)" : why
             return
         }
         let me = owner.lowercased().dropFirst(2)
-        for log in call["logs"] as? [[String: Any]] ?? [] {
+        for log in calls.flatMap({ $0["logs"] as? [[String: Any]] ?? [] }) {
             guard let asset = (log["address"] as? String)?.lowercased(), let topics = log["topics"] as? [String], let event = topics.first else { continue }
             let amount = Data(hex: log["data"] as? String ?? "0x").flatMap { ABI.decimal(in: $0, word: 0) } ?? 0
             var from = "", to = "", n = amount

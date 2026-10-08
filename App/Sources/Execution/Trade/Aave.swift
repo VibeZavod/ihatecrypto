@@ -373,12 +373,12 @@ extension Executor {
     }
 
     /// The same for any amount (256-bit words): a thousand tokens of 18 decimals don't fit 64 bits.
-    func approve(_ rpc: EVMRPC, token: String, spender: String, units amount: Decimal, note: String) async throws {
+    func approve(_ rpc: EVMRPC, token: String, spender: String, units amount: Decimal, note: String, recipients: [String] = []) async throws {
         func allowance() async throws -> Decimal {
             ABI.decimal(in: try await rpc.read(token, try ERC20.allowance(owner: wallet.evm, spender: spender)), word: 0) ?? 0
         }
         guard try await allowance() < amount else { return }
-        _ = try await sendEVM(rpc, to: token, data: try ERC20.approve(spender: spender, units: amount), note: note)
+        _ = try await sendEVM(rpc, to: token, data: try ERC20.approve(spender: spender, units: amount), note: note, recipients: recipients)
         for _ in 0..<15 {
             if try await allowance() >= amount { return }
             try await Task.sleep(for: .seconds(1))
@@ -409,7 +409,7 @@ extension Executor {
                 return try await sendEVM(rpc, to: wallet.evm, data: Data(), note: "\(approveNote) + \(note)", recipients: recipients, batch: calls)
             }
         } else {
-            try await approve(rpc, token: token, spender: spender, units: units, note: approveNote)
+            try await approve(rpc, token: token, spender: spender, units: units, note: approveNote, recipients: recipients)
         }
         return try await sendEVM(rpc, to: to, data: data, note: note, recipients: recipients)
     }

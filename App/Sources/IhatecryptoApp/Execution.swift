@@ -539,6 +539,7 @@ extension Workspace {
                 reply(try await e.solanaToEVM(net, usdc: amount ?? 0), note: "Relay · Solana → \(net.name)")
             case .sendTo(let name, let amount, let net): prepareTransfer(amount, to: name, network: net)
             case .pay: reply(try await pay(command, e), note: "MPP · Tempo")
+            case .contractCall(let c): reply(try await runContractCall(command, e), note: "\(WalletCommand.placeName(c.network)) · contract call")
             case .gas(let place, let usd):
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't top up gas on \(place).") }
                 reply(try await e.topUpGas(net, usd: usd ?? 1), note: "Gas · \(net.name)")

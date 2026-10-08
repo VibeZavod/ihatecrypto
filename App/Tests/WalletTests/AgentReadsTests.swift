@@ -21,6 +21,7 @@ import WalletCore
     let out = AgentReads.shaped(Data(pools.utf8), find: ["fluid", "arbitrum"])
     #expect(out.hasPrefix("1 of 2 items hold «fluid arbitrum»:"))
     #expect(out.contains("fluid-lending") && !out.contains("aave-v3"))
+    #expect(AgentReads.compact(["a": NSNull(), "b": "", "c": [Any](), "d": 1]) == #"{"d":1}"#)
     #expect(AgentReads.split("https://x.io/a find Morpho base") == ("https://x.io/a", ["morpho", "base"]))
     let me = AgentReads.Me(evm: "0xAbCdEf0000000000000000000000000000000001", solana: nil)
     #expect(AgentReads.masked("from 0xabcdef0000000000000000000000000000000001 to 0x2", me) == "from me to 0x2")

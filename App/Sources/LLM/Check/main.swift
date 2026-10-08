@@ -74,7 +74,11 @@ if prompt == "--route" {
     if let b = env["IHATECRYPTO_ROUTE_BALANCES"] { context.balances = b.components(separatedBy: "|") }
     // `IHATECRYPTO_ROUTE_POSITIONS="long ETH|short WTI oil (xyz:CL)"`: open positions, for «стоп в безубыток», «закрой половину».
     if let p = env["IHATECRYPTO_ROUTE_POSITIONS"] { context.positions = p.components(separatedBy: "|") }
-    let client = try provider.client(credential, save: { _ in })
+    // `IHATECRYPTO_ROUTE_MEMORY="не трогай Ethereum mainnet|риск 1%"`: what the user asked the chat to remember.
+    if let m = env["IHATECRYPTO_ROUTE_MEMORY"] { context.memory = m.components(separatedBy: "|") }
+    // Counted: the model calls of each message and what went in and out of them, for the agent checks.
+    let counter = CallCounter()
+    let client = CountingClient(base: try provider.client(credential, save: { _ in }), counter: counter)
     // `IHATECRYPTO_MARKETS="BTC,ETH,…,xyz:CL"`: Hyperliquid's real list, for the plans test.
     let markets: Set<String> = env["IHATECRYPTO_MARKETS"].map { Set($0.components(separatedBy: ",")) } ?? ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]
     // Real token lookups; the app's own data (portfolio, markets, rates) is what the context above says.
@@ -94,6 +98,7 @@ if prompt == "--route" {
         return line
     }
     for m in args.dropFirst(2) {
+        counter.reset()
         message = m
         context.replyLanguage = ChatLanguage.auto.name(recentUserMessages: [m])
         let started = Date()
@@ -135,6 +140,11 @@ if prompt == "--route" {
                 }
                 if let intent, let data = try? JSONEncoder().encode(intent) { out["intent"] = try? JSONSerialization.jsonObject(with: data) }
                 if let d = reading.doubt { out["doubt"] = d }
+                out["lookups"] = reading.lookups.map { "\($0.tool) \($0.arg)" }
+                if reading.continues { out["continue"] = true }
+                if let next = reading.next { out["next"] = next }
+                if reading.quiet { out["quiet"] = true }
+                (out["calls"], out["in_chars"], out["out_chars"]) = counter.totals
                 if let show = reading.show { out["show"] = show }
                 if let c = reading.corrected { out["corrected"] = c }
                 out["options"] = reading.options.map(\.command)
@@ -163,4 +173,31 @@ do {
 } catch {
     fputs("\(provider.info.name) · \(model): \(error.localizedDescription)\n", stderr)
     exit(1)
+}
+
+
+/// Counts a message's model calls and the characters that went in (system and dialogue) and came out: ≈ 4 a token.
+final class CallCounter: @unchecked Sendable {
+    private let lock = NSLock()
+    private var calls = 0, inChars = 0, outChars = 0
+    func reset() { lock.withLock { (calls, inChars, outChars) = (0, 0, 0) } }
+    func add(_ r: LLMRequest, _ out: String) {
+        lock.withLock { calls += 1; inChars += r.messages.reduce(0) { $0 + $1.text.count }; outChars += out.count }
+    }
+    var totals: (Int, Int, Int) { lock.withLock { (calls, inChars, outChars) } }
+}
+
+struct CountingClient: LLMClient {
+    let base: any LLMClient
+    let counter: CallCounter
+    func complete(_ r: LLMRequest) async throws -> String {
+        let out = try await base.complete(r)
+        counter.add(r, out)
+        return out
+    }
+    func stream(_ r: LLMRequest, partial: @escaping @Sendable (String) -> Void) async throws -> String {
+        let out = try await base.stream(r, partial: partial)
+        counter.add(r, out)
+        return out
+    }
 }

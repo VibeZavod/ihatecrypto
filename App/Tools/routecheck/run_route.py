@@ -22,6 +22,36 @@ def norm(c):
 
 
 def judge(case, out):
+    return judge_route(case, out) + judge_agent(case["expect"], out)
+
+
+def judge_agent(e, out):
+    """The agent's side: what it looked up, whether it goes on after the command and says what's next, whether a check
+    stays quiet, what the reply says, what the cards must not offer, a number in the command."""
+    why, looks = [], out.get("lookups") or []
+    if "lookups_any" in e and not any(re.search(r, l, re.I) for r in e["lookups_any"] for l in looks):
+        why.append(f"lookups {looks}, expected one matching {e['lookups_any']}")
+    for key in ("continue", "quiet"):
+        if key in e and bool(out.get(key)) != e[key]:
+            why.append(f"{key} = {bool(out.get(key))}, expected {e[key]}")
+    if "next" in e and bool(out.get("next")) != e["next"]:
+        why.append(f"next = {out.get('next')!r}, expected {'one' if e['next'] else 'none'}")
+    if "reply_re" in e and not any(re.search(r, out.get("reply") or "", re.I) for r in e["reply_re"]):
+        why.append(f"reply {(out.get('reply') or '')[:140]!r} matches none of {e['reply_re']}")
+    texts = [norm(o) for o in out.get("options") or []] + [norm(out.get("command"))]
+    for r in e.get("options_not_re", []):
+        hit = next((t for t in texts if t and re.search(r, t)), None)
+        if hit:
+            why.append(f"offers {hit!r}, which matches {r}")
+    if "number" in e:
+        n = e["number"]
+        m = re.search(n["re"], norm(out.get("command")))
+        if not m or abs(float(m.group(1)) - n["value"]) > n["tol"]:
+            why.append(f"number in {out.get('command')!r} isn't {n['value']} ± {n['tol']}")
+    return why
+
+
+def judge_route(case, out):
     e, why = case["expect"], []
     route = out.get("route")
     want = e.get("route")

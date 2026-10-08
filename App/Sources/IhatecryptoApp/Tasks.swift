@@ -41,7 +41,10 @@ extension Workspace {
         // The Schedule canvas shows it in detail: the chat keeps one line.
         scheduleItem = "task:\(task.id)"
         showSchedule = true
-        let how = wallets.contains(where: \.isAutomation) && task.untrusted != true
+        let how = task.steps.allSatisfy({ AgentCheck.parse($0) != nil })
+            ? say(" I'll look myself each time and write only when it's met; what I suggest waits for your Confirm.",
+                  " Я буду смотреть сам и напишу, только когда условие выполнится; что предложу — будет ждать твоего Confirm.")
+            : wallets.contains(where: \.isAutomation) && task.untrusted != true
             ? say(" Its moves run by themselves from the automation wallet, no Touch ID.", " Движения пойдут сами с кошелька автоматизации, без Touch ID.")
             : say(" Its moves will wait for your Confirm; to run them by themselves, say «create an automation wallet».",
                   " Движения будут ждать твоего Confirm; чтобы шли сами, скажи «создай кошелёк автоматизации».")
@@ -96,6 +99,7 @@ extension Workspace {
         // through the debug API. Without one, each move waits on its canvas for Confirm.
         let automation = task.untrusted == true ? nil : wallets.first(where: \.isAutomation)
         if let automation { reply(say("From the automation wallet «\(automation.label)», no Touch ID.", "С кошелька автоматизации «\(automation.label)», без Touch ID.")) }
+        checkQuiet = false
         await TaskRun.$automation.withValue(automation) { await runSteps(task.steps, confirmed: automation != nil) }
         let failed = finishedAction?.outcome.ok == false
         // Short of SOL, it fails the same way every run: said with what to do, and the way to do it as a card.
@@ -113,12 +117,13 @@ extension Workspace {
         // A trade plan waits for Execute the way a move waits for Confirm; one a rule stops needs the user just as much.
         let plan = intent != TradeIntent() && !managesPosition
         let waits = pendingAction != nil || pendingAllocation != nil || plan
-        // The run is already in the history as its request.
-        notify(waits ? .confirm : .moves, request,
+        // A check with nothing to tell says so on its canvas and stays quiet; the run is already in the history.
+        let quiet = checkQuiet && !waits && !failed
+        if !quiet { notify(waits ? .confirm : .moves, request,
                plan ? (planIsReady ? say("The plan is ready on its canvas — press Execute.", "План готов на своём канвасе — нажми Execute.")
                                    : say("The plan is on its canvas, but a rule stops it — open it to fix.", "План на своём канвасе, но его стопорит правило — открой и поправь."))
                     : waits ? say("Ready on its canvas — press Confirm.", "Готово на своём канвасе — нажми Confirm.")
-                            : messages.last.map(\.text) ?? "", record: false)
+                            : messages.last.map(\.text) ?? "", record: false) }
         // Nothing here for the user: back where they were, as it was. «Run now» and an alert's task stay to be seen.
         guard !asked, !waits, !failed, draft.isEmpty, messages.filter(\.fromUser).count <= 1,
               let back, let c = canvases.first(where: { $0.id == back }) else { return }
@@ -175,7 +180,8 @@ extension Workspace {
                 reply(say("ihatecrypto can’t do “\(step)” — the steps stop here.", "ihatecrypto не умеет «\(step)» — на этом шаги останавливаются."))
                 break
             }
-            if confirmed, pendingAction != nil || pendingAllocation != nil {
+            // A contract call is never carried out on a chain's Confirm: its own card, simulated, waits for its own.
+            if confirmed, pendingAction != nil || pendingAllocation != nil, ContractCall.parse(step) == nil, AgentCheck.parse(step) == nil {
                 finishedAction = nil
                 if let p = pendingAction {
                     pendingAction = nil

@@ -3,3 +3,4 @@ results*.jsonl
 *.log
 LLMCheck
 followups.jsonl
+agent*.jsonl

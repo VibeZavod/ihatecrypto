@@ -14,6 +14,10 @@ for r in rows:
 ok = sum(r["ok"] for r in rows)
 secs = [r["out"]["seconds"] for r in rows if "seconds" in r.get("out", {})]
 print(f"{ok}/{len(rows)} ok ({100*ok/max(len(rows),1):.1f}%), median {statistics.median(secs) if secs else 0:.1f} s")
+calls = [r["out"]["calls"] for r in rows if "calls" in r.get("out", {})]
+if calls:
+    toks = [(r["out"]["in_chars"] + r["out"]["out_chars"]) / 4 for r in rows if "in_chars" in r.get("out", {})]
+    print(f"model calls a message: median {statistics.median(calls)}, max {max(calls)}; ≈ tokens a message (uncached): median {statistics.median(toks):.0f}, max {max(toks):.0f}")
 print("by language:", {k: f"{v[0]}/{v[1]}" for k, v in sorted(lang.items())})
 print("weakest kinds:", ", ".join(f"{k} {v[0]}/{v[1]}" for k, v in sorted(by.items(), key=lambda x: x[1][0] / x[1][1]) if v[0] < v[1]))
 errs = collections.Counter(r["why"][0].split(":")[0] for r in rows if not r["ok"])

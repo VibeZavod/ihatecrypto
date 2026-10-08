@@ -38,9 +38,64 @@ struct AgentGoal {
     let canvas: UUID?
     let since: Date
     let round: Int
+    /// What the model said it will do after this step: on the card waiting for Confirm.
+    var next: String?
 }
 
 extension Workspace {
+    /// The step the model plans after the card that waits: drawn after the card's own route.
+    func agentNextSteps() -> [ActivityBubble] {
+        guard let goal = agentGoal, goal.canvas == canvasID, let next = goal.next else { return [] }
+        return [ActivityBubble(kind: "step", label: say("NEXT · AFTER THIS", "ДАЛЬШЕ · ПОСЛЕ ЭТОГО"), title: next,
+                               lines: [say("the chat goes on once this is through · write a change before Confirm",
+                                           "чат продолжит, когда это пройдёт · изменение напиши до Confirm")], fill: .check)]
+    }
+
+    /// What they asked the chat to keep in mind, their own words (MemoryCommand), at most 30.
+    var agentMemory: [String] {
+        get { UserDefaults.standard.stringArray(forKey: "agentMemory") ?? [] }
+        set { UserDefaults.standard.set(Array(newValue.suffix(30)), forKey: "agentMemory") }
+    }
+
+    func memoryCommand(_ c: MemoryCommand, note: String) {
+        switch c {
+        case .remember(let words):
+            // Only words of their own last message: a page, a note or a token's name can't plant a preference.
+            guard MemoryCommand.inTheirWords(words, messages.last(where: \.fromUser)?.text ?? "") else {
+                reply(say("I keep only your own words. Write «remember: …» and I'll keep exactly that.",
+                          "Запоминаю только твои собственные слова. Напиши «запомни: …» — сохраню ровно это."), note: note)
+                return
+            }
+            let kept = String(words.prefix(300))
+            agentMemory = agentMemory.filter { $0.lowercased() != kept.lowercased() } + [kept]
+            reply(say("I'll keep in mind: «\(kept)». «What do you remember» lists it; «forget …» drops it.",
+                      "Запомнил: «\(kept)». «Что ты помнишь» — весь список; «забудь …» — убрать."), note: note)
+        case .forget(let words):
+            let before = agentMemory.count, w = words.lowercased()
+            agentMemory = w == "all" ? [] : agentMemory.filter { !$0.lowercased().contains(w) }
+            reply(before == agentMemory.count ? say("Nothing I keep has those words.", "Среди запомненного таких слов нет.")
+                                              : say("Forgotten.", "Забыл."), note: note)
+        case .list:
+            reply(agentMemory.isEmpty ? say("I don't keep anything yet: say «remember: …».", "Пока ничего не запомнено: скажи «запомни: …».")
+                  : say("I keep in mind:\n", "Помню:\n") + agentMemory.enumerated().map { "\($0.offset + 1). \($0.element)" }.joined(separator: "\n"), note: note)
+        }
+    }
+
+    /// «check: …» from the schedule (or said now): the model reads what it needs and speaks only when the condition is met;
+    /// what it suggests is a card waiting for Confirm (runSteps never carries out a check's card by itself).
+    func runCheck(_ check: AgentCheck, note: String) async {
+        guard let client = llmClient() else {
+            reply(say("No model is connected, so the check can't run.", "Модель не подключена — проверка не может пройти."), note: note)
+            return
+        }
+        checkQuiet = false
+        await routeWithModel("""
+            [ihatecrypto's schedule, not the user] Check now: \(check.what). Read what you need with the lookups yourself. When \
+            nothing needs them now, answer {"route": "chat", "reply": "", "quiet": true}. When it does, say it in 1–3 sentences \
+            with the numbers and offer what to do as cards; a move waits for their Confirm.
+            """, client: client, before: intent, said: "")
+    }
+
     /// Steps of one request the model may take before it has to answer the user.
     static let agentRounds = 5
 
@@ -79,6 +134,10 @@ extension Workspace {
         if case .yields? = WalletCommand.parse(command) { return true }
         return false
     }
+
+    /// A command that may use an address a lookup found: one that only shows something, or a contract call, whose contract
+    /// and arguments prepareContractCall checks against the user's own words and the explorer.
+    nonisolated static func foundAllowed(_ command: String) -> Bool { displays(command) || ContractCall.parse(command) != nil }
 
     /// One lookup the model asked for, answered from what this Mac knows and public market data.
     func agentLookup(_ l: ChatRouter.Lookup) async -> String {
@@ -283,7 +342,7 @@ extension Workspace {
         let options = reading.options.filter { o in
             o.command != reading.show && ChatRouter.parses(o.command, markets: markets)
                 && ChatRouter.addressesAllowed(o.command, userText: userText, known: favoriteTokens.map(\.address), found: reading.found,
-                                               displays: Self.displays, markets: markets)
+                                               displays: Self.foundAllowed, markets: markets)
         }
         guard !options.isEmpty else { return }
         withAnimation(StudioView.spring) { nextSteps = NextSteps(options: options, userText: userText, found: reading.found, canvas: canvasID) }

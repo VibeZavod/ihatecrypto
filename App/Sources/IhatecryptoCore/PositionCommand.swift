@@ -225,8 +225,11 @@ public enum WalletCommand: Equatable, Sendable {
     case showApprovals
     /// Sets one approval to zero: the token's own approve(spender, 0), or Permit2's (`permit2`).
     case revokeApproval(String, token: String, spender: String, permit2: Bool)
+    /// Any contract's function the chat wrote out (ContractCall): checked on the explorer, simulated, then a card.
+    case contractCall(ContractCall)
 
     public static func parse(_ text: String) -> WalletCommand? {
+        if let call = ContractCall.parse(text) { return .contractCall(call) }
         // «pay POST https://… {"q": 1}»: the URL and the body kept as written.
         if let m = text.firstMatch(of: /(?is)^\s*pay\s+(?:(get|post|put|patch|delete)\s+)?(https:\/\/[^\s{}\[\]]+)(?:\s+(?:with\s+)?([\{\[].*[\}\]]))?\s*$/) {
             let body = m.3.map(String.init)
@@ -894,6 +897,7 @@ extension WalletCommand {
             return "swap \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(name(a)) on \(Self.placeName(from)) for \(name(b)) on \(Self.placeName(to))"
         case .solanaTo(let place, let x): return "move \(n(x)) USDC from Solana to \(Self.placeName(place))"
         case .pay(let method, let url, _): return "pay for \(method) \(url) in USDC on Tempo"
+        case .contractCall(let c): return "call \(c.name) on \(c.contract.prefix(6))…\(c.contract.suffix(4)) on \(Self.placeName(c.network))"
         case .gas(let place, let usd): return "add ≈ \(Fmt.usd(usd ?? 1)) of gas on \(Self.placeName(place))"
         case .bridge(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to))" + (to == "robinhood" ? " (arrives as USDG)" : "")
         case .cctp(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to)) via CCTP"
@@ -917,5 +921,46 @@ extension IntentParser {
     /// it would otherwise turn into the default «long ETH».
     public static func startsPlan(_ text: String, markets: Set<String> = []) -> Bool {
         text.lowercased().contains(/лонг|шорт|\blong\b|\bshort\b|\bbuy\b|\bsell\b/) || namedAsset(text, markets: markets) != nil
+    }
+}
+
+/// «call arbitrum 0x… deposit(uint256,address) 10e6 me approving 10 USDC»: any contract's function on an EVM network
+/// ihatecrypto signs on, from its signature, the arguments as written («me» is this wallet), in the token's smallest units.
+/// The app encodes it, checks the contract on the network's explorer, simulates it with its exact approve and shows the
+/// card; the signer reads the calldata again and refuses what drains (unlimited approvals, paying someone else).
+public struct ContractCall: Equatable, Sendable {
+    public struct Approve: Equatable, Sendable {
+        public let amount: Decimal
+        /// The token's ticker on the network (USDC, a stablecoin) or its contract.
+        public let token: String
+    }
+    /// The EVM network's key (base, arbitrum, …).
+    public let network: String
+    public let contract: String
+    /// «deposit(uint256,address)»
+    public let function: String
+    public let args: [String]
+    /// The network's own coin sent with the call, in whole coins.
+    public let value: Decimal?
+    /// An exact approve of this much of the token to the contract, made first.
+    public let approve: Approve?
+
+    public var name: String { String(function.prefix { $0 != "(" }) }
+    public static let networks: Set<String> = ["base", "arbitrum", "robinhood", "polygon", "ethereum", "tempo", "hyperevm", "optimism", "bnb"]
+
+    public static func parse(_ text: String) -> ContractCall? {
+        guard let m = text.wholeMatch(of: /(?i)\s*call\s+(\S+)\s+(0x[0-9a-f]{40})\s+(\w+\([a-z0-9,]*\))(.*?)(?:\s+with\s+(\d+(?:\.\d+)?)\s+[a-z]+)?(?:\s+approving\s+(\d+(?:\.\d+)?)\s+(\S+))?\s*[.]?\s*/),
+              let net = WalletCommand.network(String(m.1)), networks.contains(net) else { return nil }
+        let args = m.4.split(whereSeparator: \.isWhitespace).map(String.init)
+        return ContractCall(network: net, contract: String(m.2), function: String(m.3), args: args,
+                            value: m.5.flatMap { Decimal(string: String($0)) },
+                            approve: m.6.flatMap { Decimal(string: String($0)) }.map { Approve(amount: $0, token: String(m.7 ?? "")) })
+    }
+
+    /// The command as the chat writes it.
+    public var text: String {
+        "call \(network) \(contract) \(function)" + args.map { " " + $0 }.joined()
+            + (value.map { " with \(NSDecimalNumber(decimal: $0).stringValue) coins" } ?? "")
+            + (approve.map { " approving \(NSDecimalNumber(decimal: $0.amount).stringValue) \($0.token)" } ?? "")
     }
 }
