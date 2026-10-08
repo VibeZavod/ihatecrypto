@@ -7,8 +7,18 @@ import ServiceManagement
 import SignerAPI
 import SwiftUI
 
+/// Opening ihatecrypto again while it waits in the menu bar (Finder, Spotlight, the Dock) brings its window back.
+final class AppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
+        if !flag { MainActor.assumeIsolated { StatusItem.shared.openMain() } }
+        return true
+    }
+    func applicationShouldTerminateAfterLastWindowClosed(_ sender: NSApplication) -> Bool { false }
+}
+
 @main
 struct AppMain: App {
+    @NSApplicationDelegateAdaptor(AppDelegate.self) private var delegate
     /// The main window's title; DebugAPI and the window test find the window by it.
     static let mainTitle = "ihatecrypto"
     /// Created once with the app, so the watch loop below outlives the window.
@@ -36,6 +46,8 @@ struct AppMain: App {
             // menu bar until ⌘Q.
             let ws = workspace
             Task { await ws.watch() }
+            // Quit Completely rested Keep running's agent; opened again, it watches again.
+            KeepRunning.resume()
             Updater.shared.start(ws)
             #if DEBUG
             // `-browserResultAfter N`: after N seconds prints the browser page's text and quits (the browser test).
@@ -93,6 +105,13 @@ struct AppMain: App {
             // Settings open in the main window, in place of the canvas: no separate Settings window.
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { workspace.openSettings(); StatusItem.shared.openMain() }.keyboardShortcut(",")
+            }
+            // ⌘Q leaves ihatecrypto in the menu bar, its schedule, stops and alerts going on (the user: «оставить в меню
+            // баре чтобы можно было следить за скедуал транзакциями»); before, Keep running's agent brought a quit app
+            // back with its window within a minute. ⌥⌘Q quits for real.
+            CommandGroup(replacing: .appTermination) {
+                Button("Quit to Menu Bar") { StatusItem.shared.toMenuBar() }.keyboardShortcut("q")
+                Button("Quit Completely") { StatusItem.shared.quitCompletely() }.keyboardShortcut("q", modifiers: [.command, .option])
             }
             // Only in the copy from the site: a local build has no feed.
             CommandGroup(after: .appInfo) {
@@ -181,8 +200,23 @@ struct AppMain: App {
 
     func openMain() {
         popover.performClose(nil)
+        NSApp.setActivationPolicy(.regular)
         openWindow?(id: "main")
         NSApp.activate()
+    }
+
+    /// ⌘Q: the windows close and the Dock icon goes; ihatecrypto keeps running from the menu bar coin.
+    func toMenuBar() {
+        popover.performClose(nil)
+        NSApp.windows.filter { $0.styleMask.contains(.titled) }.forEach { $0.close() }
+        NSApp.setActivationPolicy(.accessory)
+    }
+
+    /// Quits for real: Keep running's agent rests until ihatecrypto is opened again or the next login, or it would
+    /// start it again within a minute.
+    func quitCompletely() {
+        KeepRunning.pause()
+        NSApp.terminate(nil)
     }
 }
 
@@ -196,7 +230,7 @@ struct MenuBarContent: View {
                 BrandLogo(size: 28)
                 VStack(alignment: .leading, spacing: 1) {
                     Text("ihatecrypto").font(.brand(15))
-                    Text(ws.positions.isEmpty && ws.schedules.isEmpty ? "Nothing running" : "Window closed — ihatecrypto keeps working")
+                    Text(ws.positions.isEmpty && ws.scheduleEntries.isEmpty && ws.alerts.isEmpty ? "Nothing running" : "ihatecrypto keeps working here")
                         .font(.ui(10)).foregroundStyle(.secondary)
                 }
                 Spacer()
@@ -212,8 +246,31 @@ struct MenuBarContent: View {
             ForEach(ws.exitRules.keys.sorted(), id: \.self) { coin in
                 Label("ihatecrypto manages the stop: \(IntentParser.pretty(coin))", systemImage: "shield.lefthalf.filled").font(.ui(10))
             }
-            ForEach(ws.schedules, id: \.symbol) { s in
-                Label("Buy \(s.symbol) for \(Fmt.usd(s.usdc)) · \(Fmt.date(s.next))", systemImage: "arrow.triangle.2.circlepath").font(.ui(10))
+            // The schedule, next first, and how each one's last run went: a click opens it on its own canvas.
+            let scheduled = ws.scheduleEntries.filter { $0.next != nil }
+            if !scheduled.isEmpty {
+                Text("SCHEDULE").font(.ui(9, .semibold)).tracking(1.1).foregroundStyle(.secondary)
+                ForEach(scheduled.prefix(6)) { e in
+                    let last = ws.activities.last { $0.schedule == e.id }
+                    Button {
+                        StatusItem.shared.openMain()
+                        ws.openScheduleCanvas(e.id)
+                    } label: {
+                        HStack(alignment: .top, spacing: 8) {
+                            Image(systemName: e.paused ? "pause.circle" : e.icon).font(.system(size: 11)).foregroundStyle(.secondary).frame(width: 14)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(e.title).font(.ui(11, .semibold)).lineLimit(1)
+                                Text((e.paused ? "paused" : e.next.map { "next \(Fmt.date($0))" } ?? e.when)
+                                     + (last.map { " · last \($0.failed == true ? "failed" : "ran") \(Fmt.date($0.at))" } ?? ""))
+                                    .font(.ui(10)).foregroundStyle(last?.failed == true ? Brand.loss : .secondary).lineLimit(1)
+                            }
+                            Spacer(minLength: 0)
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).pointerStyle(.link)
+                }
+                if scheduled.count > 6 { Text("+ \(scheduled.count - 6) more on the Schedule").font(.ui(10)).foregroundStyle(.secondary) }
             }
             ForEach(ws.alerts) { a in
                 Label("\(IntentParser.pretty(a.coin)) \(a.above ? "above" : "below") \(Fmt.price(a.price))", systemImage: "bell").font(.ui(10))
@@ -229,15 +286,15 @@ struct MenuBarContent: View {
             }
             HStack {
                 Button { StatusItem.shared.openMain() } label: {
-                    Text("Open ihatecrypto").font(.ui(13, .semibold)).foregroundStyle(Brand.onAccent)
+                    Text("Open ihatecrypto").font(.ui(13, .semibold)).foregroundStyle(Brand.onAccent).lineLimit(1).fixedSize()
                         .padding(.horizontal, 14).padding(.vertical, 7)
                         .background(Capsule().fill(Brand.accent))
                 }
                 .buttonStyle(.plain)
                 Spacer()
-                Button("Quit") { NSApp.terminate(nil) }.keyboardShortcut("q")
+                Button { StatusItem.shared.quitCompletely() } label: { Text("Quit Completely").font(.ui(12)).lineLimit(1).fixedSize() }
             }
-            Text("Quit stops the guardian and scheduled buys; the stop and take-profit on the exchange stay.")
+            Text("⌘Q keeps ihatecrypto here: the schedule, alerts and the guardian go on. Quit Completely stops them until you open it again; the stop and take-profit on the exchange stay.")
                 .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
         .padding(14)
@@ -268,9 +325,12 @@ struct ContentView: View {
             StatusItem.shared.openWindow = openWindow
             StatusItem.shared.install(ws)
             if UserDefaults.standard.bool(forKey: "debugAPI") { DebugAPI.shared.start(ws) }
-            // Launched from `swift run`, the process is not a regular app until told so.
-            NSApp.setActivationPolicy(.regular)
-            NSApp.activate()
+            // Started hidden by Keep running (`open -g -j`, at login or after a crash): it stays in the menu bar, its
+            // window closed, instead of coming to the front. Otherwise a regular app (from `swift run` too).
+            if NSApp.isHidden { StatusItem.shared.toMenuBar() } else {
+                NSApp.setActivationPolicy(.regular)
+                NSApp.activate()
+            }
             // Launch flags for checking the app end to end (Debug builds only). Written as `-key YES` pairs: a lone
             // argument would be taken by macOS as a file to open, and the main window would not appear.
             #if DEBUG
