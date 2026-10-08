@@ -126,8 +126,7 @@ extension Executor {
         }
         let signature = Base58.encode(signed.subdata(in: 1..<65))
         try journal.append(.init(chain: "solana", id: signature, kind: .signed, note: "send \(f(units)) \(symbol) to \(label); valid until block \(lastValid)"))
-        _ = try await rpc.send(signed)
-        switch try await rpc.waitForConfirmation(signature, lastValidBlockHeight: lastValid) {
+        switch try await broadcastSolana(signed, signature: signature, lastValid: lastValid) {
         case .confirmed:
             try journal.append(.init(chain: "solana", id: signature, kind: .confirmed))
             return "Sent \(f(units)) \(symbol) to \(label) on Solana. https://solscan.io/tx/\(signature)"
@@ -213,8 +212,7 @@ extension Executor {
         }
         let signature = Base58.encode(signed.subdata(in: 1..<65))
         try journal.append(.init(chain: "solana", id: signature, kind: .signed, note: "send \(Fmt.num(sol, maxFraction: 9)) SOL to \(label); valid until block \(lastValid)"))
-        _ = try await rpc.send(signed)
-        switch try await rpc.waitForConfirmation(signature, lastValidBlockHeight: lastValid) {
+        switch try await broadcastSolana(signed, signature: signature, lastValid: lastValid) {
         case .confirmed:
             try journal.append(.init(chain: "solana", id: signature, kind: .confirmed))
             return "Sent \(Fmt.num(sol, maxFraction: 9)) SOL to \(label) on Solana. https://solscan.io/tx/\(signature)"

@@ -566,7 +566,14 @@ final class Workspace {
 
     var provider: any LLMProvider { LLMCatalog.provider(id: providerID) ?? LLMCatalog.all[0] }
     var model: String {
-        get { modelChoices[providerID] ?? provider.info.defaultModel }
+        get {
+            let chosen = modelChoices[providerID] ?? provider.info.defaultModel
+            // A subscription that doesn't offer the chosen model now answers 400 for it (a lapsed ChatGPT plan lists only
+            // gpt-6-luna and 5.6): its first listed model stands in, and the choice comes back once the list has it again.
+            // ponytail: the list kept is its first four; a choice further down would be stood in for too.
+            if provider.info.kind == .subscription, let live = liveModels[providerID], let first = live.first, !live.contains(chosen) { return first }
+            return chosen
+        }
         set { modelChoices[providerID] = newValue }
     }
     var credential: Credential? {

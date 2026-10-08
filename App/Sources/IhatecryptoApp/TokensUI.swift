@@ -86,7 +86,9 @@ extension Workspace {
         if ref.uppercased() == "USDC" { return .usdc }
         if let known = spotAssets[ref] { return known }
         guard !quiet else { return nil }
-        guard let asset = await spotToken(ref.count >= 32 ? .byMint(ref) : .bySymbol(ref), note: note) else { return nil }
+        // USDT, USDS and USDe by their mints: a ticker search can land on a lookalike.
+        let ref2 = Stablecoins.find(ref, on: "solana")?.address ?? ref
+        guard let asset = await spotToken(ref2.count >= 32 ? .byMint(ref2) : .bySymbol(ref2), note: note) else { return nil }
         spotAssets[ref] = asset
         return asset
     }

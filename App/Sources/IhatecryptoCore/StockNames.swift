@@ -11,7 +11,7 @@ public enum StockNames {
         (try! Regex(#"\bamd\b"#), "AMD"), (try! Regex(#"robinhood\s+(?:stock|shares?|акци)|акци\w*\s+робинхуд"#), "HOOD"), (try! Regex(#"\bcircle\b"#), "CRCL"),
     ]
     /// Words that look like tickers but aren't stocks here.
-    static let notStocks: Set<String> = ["USDC", "USDG", "USD", "ETH", "SOL", "BTC", "JUP", "HYPE", "USDT", "SPOT", "BUY", "SELL", "FOR", "ON", "THE", "ALL"]
+    static let notStocks: Set<String> = Set(["USDC", "USDG", "USD", "ETH", "SOL", "BTC", "JUP", "HYPE", "USDT", "SPOT", "BUY", "SELL", "FOR", "ON", "THE", "ALL"]).union(Stablecoins.dollars)
 
     public static func symbol(in text: String) -> String? {
         let q = text.lowercased()

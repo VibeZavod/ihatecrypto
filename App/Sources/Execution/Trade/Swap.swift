@@ -32,6 +32,10 @@ public enum EVMTokens {
 
     public static func find(_ symbol: String, chainId: UInt64) async throws -> Token? {
         let want = symbol.uppercased().trimmingCharacters(in: CharacterSet(charactersIn: "$"))
+        // The big five stablecoins by ihatecrypto's own table: Uniswap's list misses USDe and USDS on most networks.
+        if let key = EVMNetwork.all.first(where: { $0.rpc.chainId == chainId })?.key, let c = Stablecoins.find(want, on: key) {
+            return Token(symbol: c.symbol, name: c.symbol, address: c.address, decimals: c.decimals)
+        }
         if chainId == 999 { return hyperevm.first { $0.symbol.uppercased() == want } }
         if chainId == 56, let own = bnb.first(where: { $0.symbol.uppercased() == want }) { return own }
         let (data, _) = try await URLSession.shared.data(from: URL(string: "https://tokens.uniswap.org")!)
@@ -546,12 +550,14 @@ extension Executor {
             }
             route = direct
         }
+        // No Uniswap pool, or only a thin one (price impact over 3%: USDS on Arbitrum, USDT0 on Optimism sit in dead v2
+        // pools): Relay's swap on the network itself, if it quotes the pair and gives more (the coin goes in wrapped).
+        if route == nil || (route?.impact ?? 0) > Decimal(string: "0.03")!, allowedWays(net).relay,
+           let out = try? await relayPairQuote(net, from: tokenIn.address, to: coinOut ? UniswapV4.native : tokenOut.address, units: units, capped: !quoteOnly).out,
+           out > route?.out ?? 0 {
+            return PairSwap(tokenIn: tokenIn, tokenOut: tokenOut, coinIn: coinIn, coinOut: coinOut, units: units, route: nil, relayOut: out)
+        }
         guard let route else {
-            // No Uniswap pool: Relay's swap on the network itself, if it quotes the pair (the coin goes in wrapped).
-            if allowedWays(net).relay, let out = try? await relayPairQuote(net, from: tokenIn.address, to: coinOut ? UniswapV4.native : tokenOut.address,
-                                                                           units: units, capped: !quoteOnly).out {
-                return PairSwap(tokenIn: tokenIn, tokenOut: tokenOut, coinIn: coinIn, coinOut: coinOut, units: units, route: nil, relayOut: out)
-            }
             throw ExecutionError("Neither Uniswap nor Relay swaps \(tokenIn.symbol) for \(tokenOut.symbol) on \(net.name) right now. Nothing was signed.")
         }
         return PairSwap(tokenIn: tokenIn, tokenOut: tokenOut, coinIn: coinIn, coinOut: coinOut, units: units, route: route)
@@ -585,7 +591,11 @@ extension Executor {
     /// What the card shows while a token-for-token swap waits: «≈ 25.31 AERO · price impact 0.4%», and the route's name.
     public func pairQuote(_ net: EVMNetwork, from a: String, to b: String, amount: Decimal?) async throws -> (gets: String, way: String) {
         if net.key == "tempo" {
-            let q = try await tempoQuote(from: a, to: b, amount: amount)
+            let q: (units: UInt64, out: UInt64, from: String, to: String)
+            do { q = try await tempoQuote(from: a, to: b, amount: amount, quoteOnly: true) } catch {
+                guard let r = try await tempoRelay(from: a, to: b, amount: amount, quoteOnly: true) else { throw error }
+                return ("\(Fmt.num(r.out / 1_000_000, maxFraction: 6)) \(r.y.symbol)", "Relay's swap")
+            }
             return ("\(Fmt.num(Decimal(q.out) / 1_000_000, maxFraction: 6)) \(q.to)", "Tempo's exchange")
         }
         let p = try await pairSwap(net, from: a, to: b, amount: amount, quoteOnly: true)

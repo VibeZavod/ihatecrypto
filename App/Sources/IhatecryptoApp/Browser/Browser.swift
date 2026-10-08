@@ -772,7 +772,7 @@ struct ApprovalSheet: View {
     }
 
     private func delta(_ d: (symbol: String, mint: String, amount: Decimal), in r: TxReview) -> some View {
-        let price: Decimal? = ["USDC", "USDT", "USDG", "PYUSD"].contains(d.symbol) ? 1
+        let price: Decimal? = Stablecoins.isDollar(d.symbol) ? 1
             : d.symbol == "SOL" ? ws.markets["SOL"]?.markPx : ws.holdings.first { $0.contract == d.mint }?.price
         return HStack(spacing: 10) {
             TokenLogo(name: d.symbol.lowercased(), size: 26)

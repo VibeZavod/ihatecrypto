@@ -880,9 +880,9 @@ extension WalletCommand {
         case .sellStock(let s, let x): return "sell \(n(x)) \(s.hasPrefix("0x") ? "of the token \(s)" : "\(s) stock tokens") on Robinhood Chain"
         case .robinhoodToSolana(let x): return "move \(n(x)) USDG from Robinhood Chain to Solana"
         case .buyOn(let place, let t, let u, let from):
-            return "buy \(t.hasPrefix("0x") ? "the token \(t)" : t.uppercased()) on \(Self.placeName(place)) for \(n(u)) USDC" + (from.map { " from \(Self.placeName($0))" } ?? "")
+            return "buy \(t.hasPrefix("0x") ? "the token \(t)" : Stablecoins.find(t, on: place)?.symbol ?? t.uppercased()) on \(Self.placeName(place)) for \(n(u)) USDC" + (from.map { " from \(Self.placeName($0))" } ?? "")
         case .sellOn(let place, let t, let x, let keep):
-            return "sell \(n(x)) \(t.hasPrefix("0x") ? "of the token \(t)" : t.uppercased()) on \(Self.placeName(place)) " + (keep ? "and keep the USDC there" : "for USDC on Solana")
+            return "sell \(n(x)) \(t.hasPrefix("0x") ? "of the token \(t)" : Stablecoins.find(t, on: place)?.symbol ?? t.uppercased()) on \(Self.placeName(place)) " + (keep ? "and keep the USDC there" : "for USDC on Solana")
         // The amount without grouping, the contracts whole: the text parses back to the same swap.
         case .swapOn(let place, let a, let b, let x):
             func name(_ t: String) -> String { t.hasPrefix("0x") || t.count >= 32 ? t : t.uppercased() }   // a mint keeps its case

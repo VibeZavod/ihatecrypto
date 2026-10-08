@@ -29,6 +29,12 @@ let credential = env["IHATECRYPTO_LLM_KEY"].map(Credential.apiKey) ?? provider.e
 let model = env["IHATECRYPTO_LLM_MODEL"] ?? provider.info.defaultModel
 let prompt = args.dropFirst().first ?? "Answer in one word: working"
 
+// `--models`: the list the app's model menu shows, live from the provider.
+if prompt == "--models" {
+    print(try await provider.models(credential).joined(separator: "\n"))
+    exit(0)
+}
+
 // `--verify "message" "command"`: the second reading alone, as the chat runs it on every command.
 if prompt == "--verify", args.count >= 4 {
     var context = ChatRouter.Context()

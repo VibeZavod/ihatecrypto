@@ -19,8 +19,10 @@ public enum TokenLookup {
     /// A symbol to warn about: letters outside ASCII (a Cyrillic «С» in «USDС»), or a major coin's ticker on a
     /// contract that isn't one of that coin's `genuine` (lowercased) contracts.
     public static func suspicious(_ symbol: String, contract: String, genuine: Set<String>) -> Bool {
+        // A genuine contract's own symbol may be outside ASCII: USD₮0 on its own contract.
+        if Stablecoins.byNetwork.values.joined().contains(where: { $0.address.lowercased() == contract.lowercased() && ([$0.symbol] + $0.also).contains(symbol) }) { return false }
         if symbol.unicodeScalars.contains(where: { !$0.isASCII }) { return true }
-        let majors: Set = ["USDC", "USDT", "USDG", "DAI", "ETH", "WETH", "BTC", "WBTC", "SOL"]
+        let majors: Set = ["USDC", "USDT", "USDT0", "USDG", "DAI", "USDS", "USDE", "ETH", "WETH", "BTC", "WBTC", "SOL"]
         return majors.contains(symbol.uppercased()) && !genuine.contains(contract.lowercased())
     }
 

@@ -181,7 +181,7 @@ public struct CostBasis: Codable, Equatable, Sendable {
     }
 
     /// Dollars, as far as a cost goes.
-    static let stablecoins: Set<String> = ["USDC", "USDG", "USDT", "USDT0", "USDC.E", "USDBC", "DAI", "PYUSD", "PATHUSD"]
+    static let stablecoins = Stablecoins.dollars
 
     /// What an EVM wallet paid for a token, from Blockscout's token transfers of each transaction that moved it, oldest
     /// first: tokens in with stablecoins leaving the wallet in the same transaction were bought for them; tokens out

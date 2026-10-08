@@ -20,6 +20,7 @@ public struct ChatGPTSubscription: LLMProvider {
             note: "Plus or Pro. Same sign-in as Codex CLI, OpenClaw and OpenCode; usage counts against the subscription limits.",
             signInLabel: "Sign in with ChatGPT", existingLoginLabel: "Use the Codex CLI login",
             // All answer through this sign-in (checked 2026-09-30). 6.1 Sol read 1,000 test messages as well as 6 Sol, as fast.
+            // Without a paid plan Codex lists only gpt-6-luna and 5.6 (2026-10-08): Workspace.model stands in with those.
             models: ["gpt-6.1-sol", "gpt-6-astra", "gpt-6-sol", "gpt-6-luna"]
         )
     }

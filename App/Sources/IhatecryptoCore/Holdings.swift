@@ -122,15 +122,17 @@ public enum Holdings {
     /// by DexScreener.
     static let hyperevmTokens = [("0xb88339cb7199b77e23db6e890353e22632ba630f", "USDC", 6, "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png"),
                                  ("0xb8ce59fc3717ada4c02eadf9682a9e934f625ebb", "USD₮0", 6, "https://coin-images.coingecko.com/coins/images/53705/large/usdt0.jpg"),
+                                 ("0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34", "USDe", 18, usdeIcon),
                                  ("0x5555555555555555555555555555555555555555", "WHYPE", 18, "https://coin-images.coingecko.com/coins/images/54469/large/_UP3jBsi_400x400.jpg"),
                                  ("0x9fdbda0a5e284c32744d2f17ee5c74b284993463", "UBTC", 8, ""),
                                  ("0xbe6727b535545c67d5caa73dea54865b92cf7907", "UETH", 18, ""),
                                  ("0x068f321fa8fb9f0d135f290ef6a3e2813e1c8a29", "USOL", 9, ""),
                                  ("0xfd739d4e423301ce9385c1fb8850539d657c296d", "kHYPE", 18, "")]
+    static let usdeIcon = "https://coin-images.coingecko.com/coins/images/33613/large/usde.png"
     static let hypeIcon = URL(string: "https://assets.coingecko.com/coins/images/50882/standard/hyperliquid.jpg")
     static func hyperevm(_ address: String) async -> [Holding]? {
         await fromNode("hyperevm", node: "https://hyperliquid.drpc.org", coin: "HYPE", icon: hypeIcon, relayChain: Relay.Chain.hyperevm,
-                       wrapped: "WHYPE", dollars: ["USDC", "USD₮0"], dex: "hyperevm", tokens: hyperevmTokens, address: address)
+                       wrapped: "WHYPE", dollars: Stablecoins.dollars, dex: "hyperevm", tokens: hyperevmTokens, address: address)
     }
 
     /// BNB Chain, read from its node too (its explorers want an API key): BNB itself, Binance-Peg USDC and USDT (18
@@ -138,6 +140,8 @@ public enum Holdings {
     /// with no explorer would lose it otherwise). BNB priced by Relay, the rest by DexScreener (contracts read 2026-10-08).
     static let bnbTokens = [("0x8ac76a51cc950d9822d68b83fe1ad97b32cd580d", "USDC", 18, "https://coin-images.coingecko.com/coins/images/6319/large/usdc.png"),
                             ("0x55d398326f99059ff775485246999027b3197955", "USDT", 18, "https://coin-images.coingecko.com/coins/images/39963/large/usdt.png"),
+                            ("0x5d3a1ff2b6bab83b63cd9ad0787074081a52ef34", "USDe", 18, usdeIcon),
+                            ("0x1af3f329e8be154074d8769d1ffa4ee058b1dbc3", "DAI", 18, "https://coin-images.coingecko.com/coins/images/9956/large/Badge_Dai.png"),
                             ("0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c", "WBNB", 18, "https://assets.relay.link/icons/currencies/bnb.png"),
                             ("0x0e09fabb73bd3ade0a17ecc321fd13a19e81ce82", "CAKE", 18, ""),
                             ("0x7130d2a12b9bcbfae4f2634d864a1ee1ce3ead9c", "BTCB", 18, ""),
@@ -145,7 +149,7 @@ public enum Holdings {
     static let bnbIcon = URL(string: "https://assets.relay.link/icons/currencies/bnb.png")
     static func bnb(_ address: String, extra: [String]) async -> [Holding]? {
         await fromNode("bnb", node: "https://bsc-rpc.publicnode.com", coin: "BNB", icon: bnbIcon, relayChain: Relay.Chain.bnb,
-                       wrapped: "WBNB", dollars: ["USDC", "USDT"], dex: "bsc", tokens: bnbTokens, extra: extra, address: address)
+                       wrapped: "WBNB", dollars: Stablecoins.dollars, dex: "bsc", tokens: bnbTokens, extra: extra, address: address)
     }
 
     /// A network read straight from its node: its coin, a fixed list of tokens, and `extra` contracts (their symbol and

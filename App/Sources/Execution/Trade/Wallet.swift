@@ -399,8 +399,7 @@ extension Executor {
         }
         let signature = Base58.encode(signed.subdata(in: 1..<65))
         try journal.append(.init(chain: "solana", id: signature, kind: .signed, note: "\(note); valid until block \(lastValid)"))
-        _ = try await rpc.send(signed)
-        switch try await rpc.waitForConfirmation(signature, lastValidBlockHeight: lastValid) {
+        switch try await broadcastSolana(signed, signature: signature, lastValid: lastValid) {
         case .confirmed: try journal.append(.init(chain: "solana", id: signature, kind: .confirmed))
         case .failed(let e):
             try journal.append(.init(chain: "solana", id: signature, kind: .failed, note: e))

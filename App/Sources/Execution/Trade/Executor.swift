@@ -695,6 +695,17 @@ public actor Executor {
         throw ExecutionError("the stop isn't among open orders")
     }
 
+    /// Sends a signed Solana transaction already journaled as signed, and waits for its outcome. A node that refuses it at
+    /// preflight (its simulation failed: the route moved since the check) hasn't sent it — unless an earlier node in the
+    /// retry chain had — so it's waited out to its last valid block like any other: one that never lands is «expired», a
+    /// move that failed with nothing sent, never one of unknown outcome that the chat won't let the user retry.
+    func broadcastSolana(_ signed: Data, signature: String, lastValid: UInt64) async throws -> SolanaRPC.Outcome {
+        do { _ = try await rpc.send(signed) } catch let e as WalletError where e.message.contains("simulation failed") {
+            report("Solana refused the transaction at its check before sending (the route moved): making sure it didn't land.")
+        }
+        return try await rpc.waitForConfirmation(signature, lastValidBlockHeight: lastValid)
+    }
+
     static func leverageAction(asset: Int, leverage: Int) -> MsgPack {
         .map([("type", .string("updateLeverage")), ("asset", .uint(UInt64(asset))), ("isCross", .bool(false)), ("leverage", .uint(UInt64(leverage)))])
     }
@@ -783,7 +794,10 @@ public actor Executor {
             "Solana USDC: \(usdc(have)) → \(usdc(usdcAfter)) (−\(usdc(have - min(have, usdcAfter)))), simulated.",
             "Solana SOL: \(sol(solBefore)) → \(sol(solAfter)) (network fee), simulated.",
         ]
-        if !quote.gasTopup.isEmpty { changes.append("Gas for the destination: +\(quote.gasTopup) ETH arrives with the USDC.") }
+        if let gas = Decimal(string: quote.gasTopup), gas > 0 {
+            let coin = EVMNetwork.all.first { $0.relayChain == chain }?.gasCoin ?? "ETH"
+            changes.append("Gas for the destination: +\(Fmt.num(gas, maxFraction: 6)) \(coin) arrives with the USDC.")
+        }
         return (BridgeStep(requestId: quote.requestId, unsigned: unsigned, accounts: message.staticKeys, tokenOwners: owners,
                            lastValid: lastValid, spend: spend, arriving: arriving, feesUSD: quote.feesUSD, chain: chain, opening: opening), changes)
     }
@@ -801,8 +815,7 @@ public actor Executor {
         try journal.append(.init(chain: "relay", id: b.requestId, kind: .signed, note: "\(b.note ?? "Solana USDC→\(toHyperliquid ? "Hyperliquid" : "chain \(b.chain)")"), tx \(signature)"))
         try journal.append(.init(chain: "solana", id: signature, kind: .signed, note: "Relay deposit \(b.requestId); valid until block \(b.lastValid)"))
         let started = Date()
-        _ = try await rpc.send(signed)
-        switch try await rpc.waitForConfirmation(signature, lastValidBlockHeight: b.lastValid) {
+        switch try await broadcastSolana(signed, signature: signature, lastValid: b.lastValid) {
         case .confirmed: try journal.append(.init(chain: "solana", id: signature, kind: .confirmed))
         // Relay's order ends with its deposit: left «signed», the app would take the move for one still on its way.
         case .failed(let e):

@@ -37,6 +37,7 @@ import WalletCore
 //   return <USDC> [--yes]         HyperCore spot USDC → Solana USDC through 1Click (spotSend to the deposit address)
 //   reconcile                     check every signed-but-unfinished entry of the journal on chain
 //   hl-sig                        testnet signature check with a random key
+//   stables [network]             the big five stablecoins on every network, quoted live both ways against USDC
 //   ledger [sign] [--speculos|--ble] a Ledger's app and address (USB, the emulator or Bluetooth); `sign`: the moves' requests signed on it (see LedgerCheck.swift)
 
 setvbuf(stdout, nil, _IONBF, 0) // show every line even if the process dies
@@ -83,6 +84,7 @@ do {
     case "close": try await closePosition(args.dropFirst().first { $0 != "--yes" } ?? "ETH")
     case "position": try await printPosition()
     case "manage": try await managePosition(args.dropFirst().filter { $0 != "--yes" }.joined(separator: " "))
+    case "stables": await stablesCheck(args.dropFirst().first)
     case "move": try await moveMoney(args.dropFirst().filter { $0 != "--yes" }.joined(separator: " "))
     case "plan": try await explainPlan(args.dropFirst().joined(separator: " "))
     case "kamino": try await kaminoCommand(Array(args.dropFirst().filter { !$0.hasPrefix("--") }))

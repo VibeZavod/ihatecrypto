@@ -132,7 +132,12 @@ public enum ChatRouter {
       swap <N> <NEAR|TICKER> for <TICKER> on near   (one NEAR token for another through NEAR Intents: AURORA, SWEAT, RHEA, stNEAR, USDC, USDT…; «поменяй 1 NEAR на AURORA»; to or from another network it's the swap across above, through NEAR Intents too)
       swap <N|all> <TICKER> for <TICKER> on hyperliquid spot   (one spot token for another on Hyperliquid's book: a sale and a buy, from 10 USDC; «поменяй HYPE на PURR на споте»)
       swap <N|all> <TICKER|USDG|0xCONTRACT> for <TICKER|USDG|0xCONTRACT> on robinhood   (Stock Tokens and tokens for one another on Robinhood Chain: «поменяй 1 TSLA на NVDA на робингуде»)
-      swap <N|all> <USDC|pathUSD|OUSD|USDT0> for <another of them> on tempo   (dollars for dollars on Tempo's own exchange; «поменяй 5 USDC на pathUSD в темпо» = swap 5 USDC for pathUSD on tempo)
+      swap <N|all> <USDC|pathUSD|OUSD|USDT0> for <another of them> on tempo   (dollars for dollars on Tempo's own exchange, or Relay's swap where it has none, as for USDT0; «поменяй 5 USDC на pathUSD в темпо» = swap 5 USDC for pathUSD on tempo)
+    STABLECOINS — the five biggest (USDT, USDC, USDS, USDe, DAI), each by its ticker on every network it's on, all counted as dollars:
+      \(Stablecoins.brief)
+      They trade with the forms above: «поменяй 5 USDC на USDe на base» = buy USDe on base for 5 USDC from base; «поменяй весь DAI на USDC на полигоне» = sell all DAI on polygon and keep the USDC there;
+      neither side USDC: «USDT в DAI в эфире» = swap 2 USDT for DAI on ethereum; Solana: «купи USDT на 3 USDC» = buy USDT on solana for 3 USDC; Hyperliquid (USDT there is USDT0, from 10 USDC):
+      «купи USDT0 на споте хайпера на 11$» = buy USDT0 on hyperliquid spot for 11 USDC; Tempo: «поменяй 2 USDC на USDT в темпо» = swap 2 USDC for USDT0 on tempo; NEAR: «USDC в USDT на NEAR» = swap 2 USDC for USDT on near.
       swap <N|all> <SOL|ETH|NEAR|TICKER|0xCONTRACT> on <solana|base|arbitrum|polygon|ethereum|optimism|bnb|hyperevm|robinhood|near> for <SOL|ETH|NEAR|TICKER|0xCONTRACT> on <another of them>   (a token on one network for a token on another in one signature, through Relay; «обменяй 0.1 SOL на ETH в арбитруме» = swap 0.1 SOL on solana for ETH on arbitrum, «AERO с бейса в SOL на солане» = swap all AERO on base for SOL on solana; SOL is always on solana)
     ANY SOLANA TOKEN BY ITS MINT (Jupiter; only while Safe search is off): buy token <MINT> for N USDC | sell [N] tokens <MINT>
     EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault") | withdraw [N] <USDC|SOL> from the vault

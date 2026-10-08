@@ -38,7 +38,8 @@ extension Executor {
     }
 
     static func spotPair(_ symbol: String, tokens: [[String: Any]], universe: [[String: Any]]) throws -> SpotPair {
-        let want = symbol.uppercased()
+        // «USDT» is USDT0 there, «USDe» USDE.
+        let want = (Stablecoins.find(symbol, on: "hyperliquid")?.symbol ?? symbol).uppercased()
         guard let token = tokens.first(where: { ($0["name"] as? String)?.uppercased() == want }),
               let index = (token["index"] as? NSNumber)?.intValue, let szDecimals = (token["szDecimals"] as? NSNumber)?.intValue,
               let pair = universe.first(where: { ($0["tokens"] as? [NSNumber])?.map(\.intValue) == [index, 0] }),
