@@ -4,6 +4,18 @@
     "date": "2026-10-08",
     "stories": [
       {
+        "title": "The chat looks things up itself",
+        "text": "Ask about anything on-chain — your Aave health factor, a pool's rate on DefiLlama, your past Hyperliquid fills — and the chat reads the contract, the network or the public data itself, with no feature built for it first.",
+        "symbol": "magnifyingglass",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "It carries on after a move",
+        "text": "Ask for something that depends on how a move goes — «buy SOL for $1, then an alert 5% under my price» — and after your Confirm the chat takes the next step from what actually happened.",
+        "symbol": "arrow.turn.down.right",
+        "color": "5856D6"
+      },
+      {
         "title": "Every big stablecoin, everywhere",
         "text": "USDT, USDC, USDS, USDe and DAI by their names on every network they're on — swap one for another, send them, move them across networks. They count as dollars in your portfolio, «not earning» like USDC.",
         "symbol": "dollarsign.circle",
