@@ -56,6 +56,8 @@ func oneClickPaysNearSalesOnEVMNetworks() async throws {
 @Test func oneClickUSDCOnTheBridgedPlaces() {
     #expect(Executor.oneClickUSDC(nil) == OneClick.Asset.solanaUSDC)
     for net in ["base", "arbitrum", "ethereum"] { #expect(Executor.oneClickUSDC(net) == OneClick.Asset.usdc(onEVM: net)) }
+    // A new Hyperliquid account opened through 1Click lands on the perp balance.
+    #expect(Executor.oneClickUSDC("hyperliquid") == OneClick.Asset.hyperCoreUSDC)
     #expect(Executor.oneClickUSDC("polygon") == nil && Executor.oneClickUSDC("robinhood") == nil)
 }
 

@@ -43,3 +43,16 @@ import Testing
     #expect(Fmt.feeWarning(paid: 100, worth: Decimal(string: "99.5")!) == nil)
     #expect(Fmt.feeWarning(paid: 1, worth: 0) == nil)
 }
+
+/// A module a later version brings starts switched off until the user answers; what this Mac already knew stays as it was.
+@Test func aNewModuleWaitsForTheUser() {
+    let known = Set(Modules.allIDs).subtracting(["network.bnb", "protocol.oneClick"])
+    var m = Modules(stored: "", known: known)
+    #expect(!m.isOn(ModuleNetwork.bnb) && m.isOn(ModuleNetwork.base) && !m.isOn(ModuleProtocol.oneClick) && m.isOn(ModuleProtocol.relay))
+    #expect(m.newIDs == ["network.bnb", "protocol.oneClick"])
+    m.choices["network.bnb"] = true
+    #expect(m.isOn(ModuleNetwork.bnb) && m.newIDs == ["protocol.oneClick"])
+    // Nothing recorded yet: every module as before.
+    #expect(Modules(stored: "", known: nil).isOn(ModuleNetwork.bnb) && Modules(stored: "", known: nil).newIDs.isEmpty)
+    #expect(Modules.name("network.bnb") == "BNB Chain")
+}

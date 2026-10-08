@@ -265,3 +265,39 @@ struct ModulesSettings: View {
         }
     }
 }
+
+extension Workspace {
+    /// Modules a later version brings start switched off and are asked about once, on the canvas: «New in ihatecrypto:
+    /// BNB Chain — turn it on?» with a card for each and one to keep them off. The first run of this mechanism records
+    /// every module there is as known, so nothing the user already has changes.
+    func offerNewModules() {
+        let d = UserDefaults.standard
+        guard d.stringArray(forKey: Modules.knownKey) != nil else { d.set(Modules.allIDs, forKey: Modules.knownKey); return }
+        let new = Modules.current.newIDs
+        guard !new.isEmpty, (d.string(forKey: "onboardingStep") ?? "").isEmpty, nextSteps == nil else { return }
+        let names = new.map(Modules.name).joined(separator: ", ")
+        reply(say("New in ihatecrypto: \(names). It stays off until you say — turn it on?",
+                  "Новое в ihatecrypto: \(names). Пока выключено — включить?"))
+        nextSteps = NextSteps(options: new.prefix(4).map { id in
+            ChatRouter.Option(title: say("Turn on \(Modules.name(id))", "Включить \(Modules.name(id))"), comment: "Settings › Modules", command: Self.moduleOn + id)
+        } + [ChatRouter.Option(title: say("Keep it off", "Оставить выключенным"),
+                               comment: say("Settings › Modules turns it on any time", "Включить можно в Settings › Modules"), command: Self.moduleKeepOff)],
+                              userText: "", found: [], canvas: canvasID)
+    }
+
+    /// The two answers' cards, carried instead of a chat command.
+    static let moduleOn = "turn on module ", moduleKeepOff = "keep the new modules off"
+
+    func answerNewModules(_ command: String) {
+        var m = Modules.current
+        if command.hasPrefix(Self.moduleOn) {
+            let id = String(command.dropFirst(Self.moduleOn.count))
+            m.choices[id] = true
+            reply(say("\(Modules.name(id)) is on.", "\(Modules.name(id)) включено."))
+        } else {
+            for id in m.newIDs { m.choices[id] = false }
+            reply(say("Left off. Settings › Modules turns it on any time.", "Оставил выключенным. Включить можно в Settings › Modules."))
+        }
+        UserDefaults.standard.set(m.stored, forKey: Modules.key)
+    }
+}

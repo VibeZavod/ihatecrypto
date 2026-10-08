@@ -257,12 +257,13 @@ extension Workspace {
         await planReviewTask?.value
         if let missing = missingTradingKey { executionError = missing; return }
         if let off = tradeRefusal { executionError = off; return }
+        if openVia1Click == nil, let q = quote, q.opening, fundingNet == nil, q.alternativeFee != nil { askOpeningRoute(q); return }
         preparing = true
         executionError = nil
         txReview = nil
         defer { preparing = false }
         do {
-            let p = try await executor(wallet).prepare(intent, policy: policy)
+            let p = try await executor(wallet).prepare(intent, policy: policy, openVia1Click: openVia1Click == true)
             prepared = p
             if jevScreening, let key = openRouterKey {
                 txReview = try? await JevReviewer.transactions(plan: planLines, signatures: p.steps, changes: p.changes, apiKey: key)

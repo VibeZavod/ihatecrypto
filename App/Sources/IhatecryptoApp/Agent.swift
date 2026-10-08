@@ -270,6 +270,8 @@ extension Workspace {
         defer { snapshotCanvas(); saveCanvas() }
         // «Send anyway» on a move the loss cap stopped: the same move, that loss accepted with a quarter more for prices
         // moving meanwhile; Touch ID still signs it.
+        if option.command.hasPrefix(Self.moduleOn) || option.command == Self.moduleKeepOff { answerNewModules(option.command); return }
+        if option.command.hasPrefix(Self.openVia) { await chooseOpening(option.command); return }
         if option.command == Self.sendAnyway || option.command == Self.leaveCostly {
             let costly = costlyMove
             costlyMove = nil

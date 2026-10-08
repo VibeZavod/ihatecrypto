@@ -1991,7 +1991,7 @@ extension Workspace {
                 if let q = quote {
                     lines2 = [row("sends", "\(Fmt.num(q.amountIn)) USDC"), row("arrives", "\(Fmt.num(q.amountOut)) USDC"),
                               row("fee", Fmt.usd(q.amountIn - q.reserve - q.amountOut) + (q.time.firstMatch(of: /\d+\s*s\b/).map { " · \($0.0)" } ?? ""))]
-                    if q.opening { lines2.append("incl. Hyperliquid's one-time account fee") }
+                    if q.opening { lines2.append(q.provider == "Relay" ? "incl. Hyperliquid's one-time account fee" : "opens the account, no opening fee") }
                 } else {
                     lines2 = (send.map { [row("sends", "≈ \(Fmt.num($0)) USDC")] } ?? []) + ["quoted once the position passes the checks"]
                 }

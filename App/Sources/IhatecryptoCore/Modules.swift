@@ -175,7 +175,7 @@ public enum ModuleProtocol: String, CaseIterable, Sendable {
         }
     }
 
-    /// A module added in a later version starts switched off: the user turns it on when they want it.
+    /// The protocol's default before any version marks it new (Modules.isNew decides that for every module).
     public var onByDefault: Bool { true }
 }
 
@@ -184,10 +184,27 @@ public struct Modules: Equatable, Sendable {
     /// id → on, for the switches the user touched. Ids: "network.base", "kind.perps", "protocol.kamino".
     public var choices: [String: Bool]
 
-    public init(choices: [String: Bool] = [:]) { self.choices = choices }
+    /// The modules this Mac has met (`Modules.knownKey`): one outside it came with a later version and starts switched
+    /// off until the user says (the user: «для след блокчейнов или моделей будет всплывать диалог с вопросом включаем или
+    /// нет»). nil: nothing recorded yet, every module as it was.
+    public var known: Set<String>?
+
+    public init(choices: [String: Bool] = [:], known: Set<String>? = nil) { self.choices = choices; self.known = known }
+
+    public static let knownKey = "modulesKnown"
+    /// Every module's id, as the switches store them.
+    public static var allIDs: [String] {
+        ModuleNetwork.allCases.map { "network.\($0.rawValue)" } + ModuleKind.allCases.map { "kind.\($0.rawValue)" }
+            + ModuleProtocol.allCases.map { "protocol.\($0.rawValue)" }
+    }
+    /// Came with this version and not yet answered: off until the user turns it on.
+    public func isNew(_ id: String) -> Bool { choices[id] == nil && known.map { !$0.contains(id) } == true }
+    /// The new modules waiting for the user's word.
+    public var newIDs: [String] { Self.allIDs.filter(isNew) }
 
     /// «protocol.kamino=0,network.arbitrum=1»: the form kept in UserDefaults under `Modules.key`.
-    public init(stored: String) {
+    public init(stored: String, known: Set<String>? = Modules.storedKnown) {
+        self.known = known
         var c: [String: Bool] = [:]
         for pair in stored.split(separator: ",") {
             let kv = pair.split(separator: "=")
@@ -201,11 +218,23 @@ public struct Modules: Equatable, Sendable {
     public static let key = "modules"
     /// What's switched on right now, read from UserDefaults: cheap, and never stale after a switch in Settings.
     public static var current: Modules { Modules(stored: UserDefaults.standard.string(forKey: key) ?? "") }
+    public static var storedKnown: Set<String>? { UserDefaults.standard.stringArray(forKey: knownKey).map(Set.init) }
 
-    public func isOn(_ n: ModuleNetwork) -> Bool { choices["network.\(n.rawValue)"] ?? true }
-    public func isOn(_ k: ModuleKind) -> Bool { choices["kind.\(k.rawValue)"] ?? true }
+    public func isOn(_ n: ModuleNetwork) -> Bool { choices["network.\(n.rawValue)"] ?? !isNew("network.\(n.rawValue)") }
+    public func isOn(_ k: ModuleKind) -> Bool { choices["kind.\(k.rawValue)"] ?? !isNew("kind.\(k.rawValue)") }
     /// The protocol's own switch, whatever its kind and networks say.
-    public func isOn(_ p: ModuleProtocol) -> Bool { choices["protocol.\(p.rawValue)"] ?? p.onByDefault }
+    public func isOn(_ p: ModuleProtocol) -> Bool { choices["protocol.\(p.rawValue)"] ?? (p.onByDefault && !isNew("protocol.\(p.rawValue)")) }
+
+    /// A module's name for the question, by its id.
+    public static func name(_ id: String) -> String {
+        let parts = id.split(separator: ".", maxSplits: 1).map(String.init)
+        guard parts.count == 2 else { return id }
+        switch parts[0] {
+        case "network": return ModuleNetwork(rawValue: parts[1])?.name ?? parts[1]
+        case "kind": return ModuleKind(rawValue: parts[1])?.name ?? parts[1]
+        default: return ModuleProtocol(rawValue: parts[1])?.name ?? parts[1]
+        }
+    }
 
     public mutating func set(_ n: ModuleNetwork, _ on: Bool) { choices["network.\(n.rawValue)"] = on }
     public mutating func set(_ k: ModuleKind, _ on: Bool) { choices["kind.\(k.rawValue)"] = on }

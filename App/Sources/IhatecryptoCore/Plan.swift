@@ -116,6 +116,8 @@ public struct BridgeQuote: Sendable, Equatable {
     public let time: String
     /// The other provider's price, for comparison.
     public var alternative: String?
+    /// The other provider's fee, for the choice of how to open a new Hyperliquid account.
+    public var alternativeFee: Decimal?
     /// The first deposit into a Hyperliquid account that doesn't exist yet: the price includes its one-time opening fee.
     public var opening = false
 
@@ -261,7 +263,10 @@ public enum Plan {
                 : "Fees and spread ≈ \(Fmt.usd(q.amountIn - q.amountOut)).",
             q.time,
         ]
-        if q.opening { lines.append("Your Hyperliquid account is new: this first deposit includes its one-time opening fee.") }
+        if q.opening {
+            lines.append(q.provider == "Relay" ? "Your Hyperliquid account is new: this first deposit includes its one-time opening fee."
+                                               : "Your Hyperliquid account is new: NEAR Intents opens it without the opening fee.")
+        }
         // Worth saying before the signature: a bridge that costs more than the take-profit earns makes the trade a loss.
         let costly = e.sizing?.profitAtTakeUSD.map { q.amountIn - q.reserve - q.amountOut > $0 } ?? false
         if costly, let profit = e.sizing?.profitAtTakeUSD {

@@ -103,6 +103,8 @@ final class Workspace {
     var hlError: String?
     var quote: BridgeQuote?
     var quoteError: String?
+    /// How a new Hyperliquid account opens, as the user chose on the cards: true = NEAR Intents, false = Relay, nil = not asked.
+    var openVia1Click: Bool?
     /// The EVM network the plan's USDC leaves from, straight to Hyperliquid, when Solana is short; nil = Solana.
     var fundingNet: EVMNetwork?
     var updatedAt: Date? {
@@ -1851,14 +1853,14 @@ final class Workspace {
         // A new Hyperliquid account pays a one-time opening fee on its first deposit; the plan shows it up front.
         let newAccount = if amount != nil, let evm = previewWallet?.evm { (try? await Hyperliquid.isNewAccount(evm)) ?? false } else { false }
         // Solana's USDC is in the key: when it's short, the money comes straight from an EVM network that has it.
-        let key = amount.map { "\($0) \(newAccount) \(solana?.usdc ?? 0)" }
+        let key = amount.map { "\($0) \(newAccount) \(solana?.usdc ?? 0) \(openVia1Click == true)" }
         guard key != quotedKey else { return }
         quotedKey = key
         quote = nil
         quoteError = nil
         guard let amount else { fundingNet = nil; return }
         do {
-            var q = try await Bridge.dryQuote(amount, newAccount: newAccount)
+            var q = try await Bridge.dryQuote(amount, newAccount: newAccount, oneClickFirst: newAccount && openVia1Click == true)
             // The executor picks the same way, from the same quote.
             let net = q.amountIn > (solana?.usdc ?? 0) ? EVMNetwork.funding(q.amountIn) { usdc(on: $0) } : nil
             if let net { q = try await Bridge.dryQuote(.send(q.amountIn), newAccount: newAccount, from: (net.relayChain, net.usdc, net.usdcDecimals)) }
@@ -1866,6 +1868,36 @@ final class Workspace {
         } catch {
             if quotedKey == key { quoteError = error.localizedDescription; quotedKey = nil; fundingNet = nil }
         }
+    }
+
+    /// A new Hyperliquid account opens with this trade: the user picks the bridge on two cards, with what each costs and
+    /// how long it takes. Relay lands in seconds and carries Hyperliquid's one-time opening fee (≈ $1.20, 2026-09-28);
+    /// NEAR Intents charges none but takes 2–4 min, and the entry then waits for the price to hold.
+    func askOpeningRoute(_ q: BridgeQuote) {
+        let fee = q.amountIn - q.reserve - q.amountOut, other = q.alternativeFee ?? 0
+        let (relay, near) = q.provider == "Relay" ? (fee, other) : (other, fee)
+        reply(say("Your Hyperliquid account opens with this trade. How should the USDC come from Solana?",
+                  "Аккаунт Hyperliquid откроется этой сделкой. Как довезти USDC с Solana?"))
+        nextSteps = NextSteps(options: [
+            ChatRouter.Option(title: say("Open via Relay", "Открыть через Relay"),
+                              comment: say("seconds · ≈ \(Fmt.usd(relay)), incl. Hyperliquid's one-time opening fee",
+                                           "секунды · ≈ \(Fmt.usd(relay)), включая разовую плату Hyperliquid за открытие"),
+                              command: Self.openVia + "relay"),
+            ChatRouter.Option(title: say("Open via NEAR Intents", "Открыть через NEAR Intents"),
+                              comment: say("2–4 min · ≈ \(Fmt.usd(near)), no opening fee; the entry waits for the price to hold",
+                                           "2–4 мин · ≈ \(Fmt.usd(near)), без платы за открытие; вход — если цена устоит"),
+                              command: Self.openVia + "oneclick"),
+        ], userText: "", found: [], canvas: canvasID)
+    }
+
+    static let openVia = "open hyperliquid via "
+
+    /// The card picked: the quote follows the choice and the trade is prepared with it.
+    func chooseOpening(_ command: String) async {
+        openVia1Click = command.hasSuffix("oneclick")
+        quotedKey = nil
+        await refreshQuote()
+        await prepareExecution()
     }
 
     /// The plan again from now: balances, prices and a new bridge quote, then a fresh preparation. For a canvas that has

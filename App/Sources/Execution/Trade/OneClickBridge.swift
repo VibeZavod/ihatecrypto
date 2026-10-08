@@ -12,9 +12,9 @@ import WalletCore
 /// live quote must stay within 1% of the one compared, and 1Click itself must have that address bound to our recipient,
 /// our refund address, the asset and the amount (DepositGuard) before anything is sent.
 extension Executor {
-    /// 1Click's asset for USDC on a place: an EVM network's key, or nil for Solana.
+    /// 1Click's asset for USDC on a place: an EVM network's key, Hyperliquid's perp balance, or nil for Solana.
     static func oneClickUSDC(_ place: String?) -> String? {
-        place.map { OneClick.Asset.usdc(onEVM: $0) } ?? OneClick.Asset.solanaUSDC
+        place == "hyperliquid" ? OneClick.Asset.hyperCoreUSDC : place.map { OneClick.Asset.usdc(onEVM: $0) } ?? OneClick.Asset.solanaUSDC
     }
 
     /// What 1Click lands for `units` of USDC from `from` to `to` (nil = Solana), dry: nothing is issued. nil when it doesn't

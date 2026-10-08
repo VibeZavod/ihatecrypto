@@ -191,6 +191,9 @@ public actor Executor {
         public var dexTransfer: (dex: String, usdc: Decimal)?
         /// Solana was short: this much USDC goes straight from an EVM network to Hyperliquid instead of `bridge`.
         public var fundFrom: (net: EVMNetwork, usdc: Decimal)?
+        /// A new Hyperliquid account opened through NEAR Intents' 1Click instead of `bridge`, as the user chose: USDC units
+        /// sent from Solana and what 1Click's quote lands.
+        public var openVia1Click: (units: UInt64, arriving: Decimal)?
         /// «Solana USDC: 5.80 → 3.75 (−2.05)», one line per balance.
         public let changes: [String]
         /// One line per signature, in order.
@@ -205,7 +208,8 @@ public actor Executor {
 
     /// Fresh prices and balances, the bridge quote and transaction, and a simulation of it. Nothing is signed.
     /// The risk rules are applied here too, on fresh balances: the UI showing a green plan is not enough.
-    public func prepare(_ requested: TradeIntent, policy: RiskPolicy = RiskPolicy()) async throws -> Prepared {
+    /// `openVia1Click`: a new Hyperliquid account opens through NEAR Intents (2–4 min, no opening fee) instead of Relay.
+    public func prepare(_ requested: TradeIntent, policy: RiskPolicy = RiskPolicy(), openVia1Click: Bool = false) async throws -> Prepared {
         let markets = try await Hyperliquid.markets()
         guard var market = markets[requested.asset], market.index >= 0 else { throw ExecutionError("No \(requested.asset) market on Hyperliquid.") }
         market.atrPct = try? await Hyperliquid.atrPct(coin: market.name)
@@ -257,6 +261,7 @@ public actor Executor {
         }
         var prepared: (step: BridgeStep, changes: [String])?
         var fund: (net: EVMNetwork, usdc: Decimal, quote: BridgeQuote, gas: Bool, have: Decimal)?
+        var opening: (units: UInt64, arriving: Decimal)?
         if let amount {
             // Solana first. Short there, the money goes straight from an EVM network that holds it — the same choice,
             // from the same dry quote, as the plan's card.
@@ -273,6 +278,8 @@ public actor Executor {
                     throw ExecutionError("\(net.name) has the USDC but no \(net.gasCoin) for gas, and Solana has too little USDC to bring it. Send a little \(net.gasCoin) to \(net.name) or USDC to Solana.")
                 }
                 fund = (net, viaSolana, q, gas, held[net.key] ?? 0)
+            } else if newAccount, openVia1Click {
+                opening = try await oneClickOpening(amount, solanaUSDC: solanaUSDC)
             } else {
                 prepared = try await prepareBridge(amount)
             }
@@ -290,7 +297,13 @@ public actor Executor {
                          + "fee ≈ \(Fmt.usd(f.quote.amountIn - f.quote.amountOut)). Solana has \(Fmt.num(solanaUSDC)) USDC, less than the trade needs.")
             changes.append("\(f.net.name) USDC: \(Fmt.num(f.have)) → \(Fmt.num(f.have - f.usdc)) (−\(Fmt.num(f.usdc))).")
         }
-        let arriving = bridge?.arriving ?? fund?.quote.amountOut ?? 0
+        if let o = opening {
+            let send = Decimal(o.units) / 1_000_000
+            steps.append("NEAR Intents opens your Hyperliquid account: \(Fmt.num(send)) USDC from Solana → ≈ \(Fmt.num(o.arriving)) USDC on Hyperliquid, "
+                         + "fee \(Fmt.usd(send - o.arriving)), no opening fee. Usually 2–4 min; the trade waits for it and re-checks the price.")
+            changes.append("Solana USDC: \(Fmt.num(solanaUSDC)) → \(Fmt.num(solanaUSDC - send)) (−\(Fmt.num(send))).")
+        }
+        let arriving = bridge?.arriving ?? fund?.quote.amountOut ?? opening?.arriving ?? 0
         let side = intent.side == .long ? "Long" : "Short"
         if let t = dexTransfer {
             steps.append("Transfer \(Fmt.num(t.usdc)) USDC from the main Hyperliquid balance to the \(t.dex) exchange — its markets have their own margin.")
@@ -311,7 +324,24 @@ public actor Executor {
                          changes: changes, steps: steps, preparedAt: Date())
         p.dexTransfer = dexTransfer
         p.fundFrom = fund.map { ($0.net, $0.usdc) }
+        p.openVia1Click = opening
         return p
+    }
+
+    /// The USDC from Solana that opens a new Hyperliquid account through 1Click, and what its quote lands.
+    func oneClickOpening(_ amount: Bridge.Amount, solanaUSDC: Decimal) async throws -> (units: UInt64, arriving: Decimal) {
+        let send: Decimal = switch amount {
+        case .send(let v): v
+        case .arrive: try await Bridge.oneClickQuote(amount).amountIn
+        }
+        guard send <= solanaUSDC else {
+            throw ExecutionError("Solana has \(Fmt.num(solanaUSDC)) USDC; opening through NEAR Intents needs \(Fmt.num(send)). Nothing was signed.")
+        }
+        let units = NSDecimalNumber(decimal: (send * 1_000_000).rounded(0, .up)).uint64Value
+        guard let q = await oneClickQuote(from: nil, to: "hyperliquid", units: units), let out = Decimal(string: q.amountOutFormatted), out > 0 else {
+            throw ExecutionError("NEAR Intents didn't quote Solana → Hyperliquid just now. Nothing was signed; Relay can open it instead.")
+        }
+        return (units, out)
     }
 
     // MARK: Open
@@ -319,12 +349,21 @@ public actor Executor {
     /// Signs and sends what `prepare` showed. Prices may move inside the approved limits; outside them it stops.
     public func execute(_ p: Prepared) async throws -> Opened {
         guard p.isFresh else { throw ExecutionError("This confirmation is stale: the numbers need a refresh.") }
-        let market = try await Hyperliquid.markets()[p.market.name] ?? p.market
+        var market = try await Hyperliquid.markets()[p.market.name] ?? p.market
         guard abs(market.markPx - p.market.markPx) / p.market.markPx <= Self.slippage else {
             throw ExecutionError("\(market.name) moved more than 1% since you confirmed. Nothing was signed.")
         }
         let long = p.intent.side == .long
         if let b = p.bridge { try await sendBridge(b) }
+        if let o = p.openVia1Click {
+            let got = try await oneClickMove(from: nil, to: "hyperliquid", units: o.units, compared: o.arriving, label: "USDC that opens Hyperliquid")
+            report("\(Fmt.num(got)) USDC are on Hyperliquid: the account is open.")
+            // Minutes have passed: the entry goes in only at the price confirmed.
+            market = try await Hyperliquid.markets()[p.market.name] ?? market
+            guard abs(market.markPx - p.market.markPx) / p.market.markPx <= Self.slippage else {
+                throw ExecutionError("\(market.name) moved more than 1% while the USDC travelled. No trade; the money is on your Hyperliquid balance.")
+            }
+        }
         if let f = p.fundFrom {
             try await ensureEVM(f.net, usdc: 0)
             report(try await bridge(f.net, to: nil, hyperliquid: true, usdc: f.usdc))

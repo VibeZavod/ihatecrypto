@@ -282,7 +282,7 @@ public enum Near {
 public enum Bridge {
     // Dry quotes do not depend on addresses, so the user's own addresses are not sent.
     static let placeholderRefund = "So11111111111111111111111111111111111111112"
-    static let placeholderRecipient = "0x0000000000000000000000000000000000000001"
+    public static let placeholderRecipient = "0x0000000000000000000000000000000000000001"
 
     /// `arrive` = exact USDC to land on HyperCore; `send` = exact USDC to spend from Solana.
     public enum Amount: Sendable { case arrive(Decimal), send(Decimal) }
@@ -291,15 +291,17 @@ public enum Bridge {
     /// asks for it); 1Click is shown for comparison and stands in only when Relay doesn't answer. `newAccount`: the
     /// user's Hyperliquid account doesn't exist yet, so the quote goes to a fresh random address and carries the same
     /// one-time opening fee the real deposit will. `origin`: the USDC leaves an EVM network instead (chain, token) —
-    /// Relay only, straight to Hyperliquid.
-    public static func dryQuote(_ amount: Amount, newAccount: Bool = false, from origin: (chain: UInt64, usdc: String, decimals: Int)? = nil) async throws -> BridgeQuote {
+    /// Relay only, straight to Hyperliquid. `oneClickFirst`: the user chose to open a new account through 1Click.
+    public static func dryQuote(_ amount: Amount, newAccount: Bool = false, from origin: (chain: UInt64, usdc: String, decimals: Int)? = nil,
+                                oneClickFirst: Bool = false) async throws -> BridgeQuote {
         let recipient = newAccount ? "0x" + (0..<20).map { _ in String(format: "%02x", UInt8.random(in: 0...255)) }.joined() : placeholderRecipient
         async let relay = try? relayQuote(amount, recipient: recipient, from: origin)
         async let oneClick = origin == nil ? try? oneClickQuote(amount, recipient: recipient) : nil
-        let options = [await relay, await oneClick].compactMap { $0 }
+        let options = (oneClickFirst ? [await oneClick, await relay] : [await relay, await oneClick]).compactMap { $0 }
         guard var best = options.first else { throw NetError(message: "No bridge quotes: Relay and 1Click didn't respond.") }
         if let other = options.dropFirst().first {
             best.alternative = "\(other.provider): send \(Fmt.num(other.amountIn)) → receive \(Fmt.num(other.amountOut)), \(other.time.lowercased())"
+            best.alternativeFee = other.amountIn - other.reserve - other.amountOut
         }
         best.opening = newAccount
         return best
@@ -319,7 +321,7 @@ public enum Bridge {
                            time: origin == nil ? "Seconds: 4 s to credit in live runs." : "Seconds: ≈ \(max(q.seconds, 1)) s by Relay's estimate.")
     }
 
-    static func oneClickQuote(_ amount: Amount, recipient: String = placeholderRecipient) async throws -> BridgeQuote {
+    public static func oneClickQuote(_ amount: Amount, recipient: String = placeholderRecipient) async throws -> BridgeQuote {
         let (exactOutput, units): (Bool, Decimal) = switch amount {
         case .arrive(let v): (true, v * 100_000_000) // HyperCore USDC has 8 decimals
         case .send(let v): (false, v * 1_000_000)    // Solana USDC has 6 decimals
