@@ -1,5 +1,23 @@
 [
   {
+    "version": "0.5.7",
+    "date": "2026-10-08",
+    "stories": [
+      {
+        "title": "Quit to the menu bar",
+        "text": "⌘Q now keeps ihatecrypto in the menu bar: your schedule, alerts and stops go on, and the window no longer pops back on its own. ⌥⌘Q — or Quit Completely in the menu bar — quits for real.",
+        "symbol": "menubar.rectangle",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Your schedule in the menu bar",
+        "text": "Click the coin to see what runs next — tasks and recurring buys — and how each one's last run went. A click opens it.",
+        "symbol": "calendar.badge.clock",
+        "color": "2775CA"
+      }
+    ]
+  },
+  {
     "version": "0.5.6",
     "date": "2026-10-08",
     "stories": [
