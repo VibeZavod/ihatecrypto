@@ -97,6 +97,8 @@ public enum AgentReads {
         case "address": return try ABI.address(value)
         case "bool": return ABI.uint(["true", "1"].contains(value.lowercased()) ? 1 : 0)
         case let t where t.hasPrefix("uint") || t.hasPrefix("int"):
+            // «max»: all of it (type(uint256).max), the way vaults and Compound take «everything».
+            if value.lowercased() == "max", t.hasPrefix("uint") { return Data(repeating: 0xff, count: 32) }
             if value.hasPrefix("0x"), let d = Data(hex: value), d.count <= 32 { return Data(count: 32 - d.count) + d }
             guard let n = Decimal(string: value), n >= 0 else { throw LLMError("«\(value)» isn't a whole number ≥ 0 for \(t).") }
             return try ABI.word(n)

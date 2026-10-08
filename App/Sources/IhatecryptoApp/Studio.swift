@@ -2606,6 +2606,8 @@ private struct ChatComposer: View {
             choose(row)
             return true
         case .escape:
+            // Esc stops the model, as the Stop button does.
+            if ws.modelRunning, suggestions.isEmpty { ws.stopModel(); return true }
             guard !suggestions.isEmpty else { return false }
             dismissed = ws.draft
             return true
@@ -2819,16 +2821,32 @@ private struct ChatComposer: View {
             }
             .buttonStyle(.hoverIcon)
             .help("Speak instead of typing")
-            Button(action: send) {
-                Image(systemName: "arrow.up").font(.system(size: 13, weight: .bold))
-                    .foregroundStyle(ws.draft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Brand.onAccent))
-                    .frame(width: 34, height: 34)
-                    .background(Circle().fill(ws.draft.isEmpty ? Color.primary.opacity(0.08) : Brand.accent))
+            if ws.modelRunning || ws.executing {
+                // Stop while the model answers; a signed move can't be called back, so then it waits, saying why.
+                Button { ws.stopModel() } label: {
+                    Image(systemName: "stop.fill").font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(ws.executing ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Brand.onAccent))
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(ws.executing ? Color.primary.opacity(0.08) : Brand.accent))
+                }
+                .buttonStyle(.plain)
+                .pointerStyle(ws.executing ? nil : .link)
+                .disabled(ws.executing)
+                .help(ws.executing ? "A signed move is going through: it can't be called back. The chat says when it lands."
+                                   : "Stop — the model stops, nothing runs (Esc)")
+                .accessibilityLabel("Stop")
+            } else {
+                Button(action: send) {
+                    Image(systemName: "arrow.up").font(.system(size: 13, weight: .bold))
+                        .foregroundStyle(ws.draft.isEmpty ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Brand.onAccent))
+                        .frame(width: 34, height: 34)
+                        .background(Circle().fill(ws.draft.isEmpty ? Color.primary.opacity(0.08) : Brand.accent))
+                }
+                .buttonStyle(.plain)
+                .pointerStyle(ws.draft.isEmpty || ws.busy ? nil : .link)
+                .disabled(ws.draft.isEmpty || ws.busy)
+                .keyboardShortcut(.return, modifiers: .command)
             }
-            .buttonStyle(.plain)
-            .pointerStyle(ws.draft.isEmpty || ws.busy ? nil : .link)
-            .disabled(ws.draft.isEmpty || ws.busy)
-            .keyboardShortcut(.return, modifiers: .command)
         }
         .padding(.vertical, 5).padding(.leading, 5).padding(.trailing, 5)
         // A glass pill on the glass chat: white in light mode, faint in dark.

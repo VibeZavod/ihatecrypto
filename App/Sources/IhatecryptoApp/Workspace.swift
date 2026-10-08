@@ -400,6 +400,12 @@ final class Workspace {
     var agentGoal: AgentGoal?
     /// The last scheduled check found nothing worth telling (Agent.swift `runCheck`): no notification.
     var checkQuiet = false
+    /// The model is answering or looking things up (`modelCall`): the send button is Stop.
+    var modelRunning = false
+    /// Stop was pressed while the model read this message: nothing it would lead to runs.
+    var stopRequested = false
+    /// Cancels the model call running now; nil when none runs.
+    @ObservationIgnored var cancelModel: (() -> Void)?
     var schedules: [Schedule] = (UserDefaults.standard.data(forKey: Workspace.scoped("schedules")).flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) }) ?? [] {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(schedules), forKey: Workspace.scoped("schedules", activeWalletID)) }
     }
@@ -1224,6 +1230,7 @@ final class Workspace {
     func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent, offered: [ChatRouter.Option] = [], aboutStep: Bool = false,
                         said: String? = nil, round: Int = 0) async {
         busy = true
+        stopRequested = false
         var reading: ChatRouter.Reading?
         var failure = "", unreadable = false
         let context = routerContext(offered: offered, messageShown: said == nil)
@@ -1252,13 +1259,16 @@ final class Workspace {
         }
         var check: (@Sendable (String) async -> String?)?
         if jevScreening { check = secondReading }
-        for _ in 0..<2 where reading == nil {
+        let routeMarkets = markets.isEmpty ? nil : Set(markets.keys), checker = check
+        for _ in 0..<2 where reading == nil && !stopRequested {
             do {
                 // Before the markets load a trade can't be checked: the model's command goes through as it is.
-                reading = try await ChatRouter.route(text, context: context, client: client, model: model,
-                                                     markets: markets.isEmpty ? nil : Set(markets.keys), lookup: lookup, check: check,
-                                                     draft: { [weak self] words in Task { @MainActor in self?.showDraft(words) } })
+                reading = try await modelCall {
+                    try await ChatRouter.route(text, context: context, client: client, model: model, markets: routeMarkets, lookup: lookup, check: checker,
+                                               draft: { [weak self] words in Task { @MainActor in self?.showDraft(words) } })
+                }
             } catch {
+                if stopRequested { break }
                 failure = error.localizedDescription
                 unreadable = error is ChatRouter.Unreadable
                 FileHandle.standardError.write(Data("ihatecrypto router: \(error)\n".utf8))
@@ -1269,6 +1279,12 @@ final class Workspace {
         }
         busy = false
         agentStep = nil
+        // Stop: the model was cut off; nothing it would have led to runs.
+        if stopRequested {
+            draftReply = nil
+            reply(say("Stopped — nothing ran. Write what you'd like instead.", "Остановил — ничего не запускал. Напиши, что сделать вместо этого."), note: model)
+            return
+        }
         if let reading, !reading.lookups.isEmpty {
             updateActivity { $0.understood = "looked up " + reading.lookups.map { "\($0.tool) \($0.arg)" }.joined(separator: ", ") }
         }
@@ -1350,7 +1366,7 @@ final class Workspace {
         case .command(let canonical)?:
             // A new command takes the place of the card that waited; a chart or the rates beside it don't.
             if !Self.displays(canonical) { dropWaiting(keepAction: aboutStep) }
-            guard ChatRouter.addressesAllowed(canonical, userText: said ?? text, known: favoriteTokens.map(\.address), found: reading?.found ?? [],
+            guard ChatRouter.addressesAllowed(canonical, userText: said ?? text, known: knownContracts, found: reading?.found ?? [],
                                               displays: Self.foundAllowed, markets: Set(markets.keys)) else {
                 reply(say("I read that as “\(canonical)”, but its address is neither in your message nor among your favorites, so I won’t use it. Paste the address itself.",
                           "Я понял это как «\(canonical)», но этого адреса нет ни в твоём сообщении, ни в избранном, поэтому я его не использую. Вставь сам адрес."), note: model)
@@ -1382,6 +1398,9 @@ final class Workspace {
 
     /// What the model may know besides the message: the chat, the plan, positions, favorites, address book names and
     /// the main balances. Never keys or the user's own addresses.
+    /// What the model is given besides the message, for the debug API's /context.
+    var debugContext: ChatRouter.Context { routerContext(messageShown: false) }
+
     private func routerContext(offered: [ChatRouter.Option] = [], messageShown: Bool = true) -> ChatRouter.Context {
         var c = ChatRouter.Context()
         c.recent = Array(recentChat().dropLast(messageShown ? 1 : 0))   // the last line is the message itself
@@ -1461,6 +1480,11 @@ final class Workspace {
             c.balances.append("Robinhood Chain \(Fmt.num(r.usdg)) USDG" + r.stocks.map { ", \(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol) stock" }.joined())
         }
         for t in favoriteTokens { if let held = tokenBalances[t.id], held > 0 { c.balances.append("\(t.symbol) token on \(t.chainTitle) \(Fmt.num(held, maxFraction: 4))") } }
+        // Tokens the portfolio shows on the other networks — a vault's shares among them (fUSDC, mUSDC…), read from the chain.
+        for t in shownTokens where t.chain != "solana" && !t.native && t.symbol.uppercased() != "USDC" && (t.usd ?? 0) >= Decimal(string: "0.5")!
+            && !favoriteTokens.contains(where: { $0.id == t.id }) {
+            c.balances.append("\(Fmt.num(t.amount, maxFraction: 6)) \(t.symbol) (\(t.contract)) on \(WalletCommand.placeName(t.chain)) ≈ \(Fmt.usd(t.usd ?? 0))")
+        }
         return c
     }
 
@@ -1469,7 +1493,8 @@ final class Workspace {
         busy = true
         let note = "\(model) · \(provider.info.name)"
         do {
-            let (edited, answer) = try await ChatModel.edit(intent, message: text, client: client, model: model, history: recentChat(), replyLanguage: replyLanguage)
+            let plan = intent, model = model, history = recentChat(), language = replyLanguage
+            let (edited, answer) = try await modelCall { try await ChatModel.edit(plan, message: text, client: client, model: model, history: history, replyLanguage: language) }
             busy = false
             let next = edited.map(Self.started)
             if let next, await editExecuted(from: before, to: next) { return }

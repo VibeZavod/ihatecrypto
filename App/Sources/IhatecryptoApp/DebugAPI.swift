@@ -147,6 +147,16 @@ final class DebugAPI {
             await SignerClient.$untrusted.withValue(true) { await ws.pick(options[index]) }
             testTasks.formUnion(ws.tasks.map(\.id).filter { !knownTasks.contains($0) })
             return (200, "application/json", json(state(ws, since: before)))
+        case ("GET", "/context"):
+            // What the model reads besides the message: balances, canvas blocks, the chat, memory.
+            let c = ws.debugContext
+            return (200, "application/json", json(["balances": c.balances, "canvas": c.canvas, "recent": c.recent, "memory": c.memory,
+                                                   "favorites": c.favorites, "positions": c.positions, "off": c.off]))
+        case ("POST", "/stop"):
+            // The Stop button: cuts the model off mid-answer (never a signed move).
+            let running = ws.modelRunning
+            ws.stopModel()
+            return (200, "application/json", json(["stopped": running && !ws.executing]))
         case ("POST", "/cancel"):
             guard !ws.busy else { return (409, "text/plain", Data("busy\n".utf8)) }
             let before = ws.messages.count

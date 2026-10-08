@@ -134,6 +134,13 @@ extension Workspace {
             return
         }
         if let revert = sim.revert { refuse("the simulation says it would fail — \(revert).", "симуляция говорит, что он не пройдёт — \(revert)."); return }
+        // A call that moves nothing failed quietly: Compound-style markets (Moonwell…) return an error code instead of
+        // reverting — no cash to withdraw, a paused market. Signed, it would only cost gas.
+        if sim.changes.isEmpty {
+            refuse("the simulation shows it changes nothing in your wallet: the protocol refused it without failing (a market with no cash left to withdraw, or paused). Signing it would only pay gas.",
+                   "симуляция показывает, что он ничего не меняет в кошельке: протокол отказал, не откатив вызов (в рынке нет свободных денег для вывода или он на паузе). Подпись лишь потратила бы газ.")
+            return
+        }
         // Rights the balances can't show: an approve, an operator, ownership — only a limited approve to the contract passes.
         if let why = ContractCallGuard.grantProblem(sim.grants, contract: c.contract) { refuse(why + ".", why + "."); return }
         // A protocol outside the list may put at most the cap at risk: what leaves, its approve and the coins sent.

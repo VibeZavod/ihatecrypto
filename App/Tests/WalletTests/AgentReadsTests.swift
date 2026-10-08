@@ -8,6 +8,7 @@ import WalletCore
     #expect(try AgentReads.encode("balanceOf", ["address"], [owner]).hex == "70a08231" + String(repeating: "0", count: 24) + owner.dropFirst(2))
     #expect(try AgentReads.encode("convertToAssets", ["uint256"], ["1000000"]).suffix(3).hex == "0f4240")
     #expect(throws: (any Error).self) { try AgentReads.encode("f", ["string"], ["x"]) }
+    #expect(try AgentReads.encode("withdraw", ["uint256"], ["max"]).dropFirst(4) == Data(repeating: 0xff, count: 32))
 
     let max = Data(repeating: 0xff, count: 32)
     let abc = Data(count: 31) + [0x20] + Data(count: 31) + [3] + Data("abc".utf8) + Data(count: 29)

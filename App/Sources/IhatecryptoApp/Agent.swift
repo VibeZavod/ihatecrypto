@@ -96,6 +96,25 @@ extension Workspace {
             """, client: client, before: intent, said: "")
     }
 
+    /// A model call the Stop button can cancel. It runs as its own task, so cancelling reaches only the model and its
+    /// lookups, never a signature: moves run outside it, under `executing`.
+    func modelCall<T: Sendable>(_ work: @escaping @Sendable () async throws -> T) async throws -> T {
+        let task = Task { try await work() }
+        cancelModel = { task.cancel() }
+        modelRunning = true
+        defer { cancelModel = nil; modelRunning = false }
+        return try await task.value
+    }
+
+    /// The Stop button (and Esc): the model stops answering and looking things up, nothing it would have led to runs, and
+    /// the request it was carrying on with is dropped. A move already signed goes on: it can't be called back.
+    func stopModel() {
+        guard !executing, let cancel = cancelModel else { return }
+        stopRequested = true
+        agentGoal = nil
+        cancel()
+    }
+
     /// Steps of one request the model may take before it has to answer the user.
     static let agentRounds = 5
 
@@ -138,6 +157,13 @@ extension Workspace {
     /// A command that may use an address a lookup found: one that only shows something, or a contract call, whose contract
     /// and arguments prepareContractCall checks against the user's own words and the explorer.
     nonisolated static func foundAllowed(_ command: String) -> Bool { displays(command) || ContractCall.parse(command) != nil }
+
+    /// Contracts a command may name without the user writing them: tokens they hold, their favorites, and each network's
+    /// dollars (USDC and the big stablecoins) — tokens, never recipients (money goes to an address-book name or this wallet).
+    var knownContracts: [String] {
+        favoriteTokens.map(\.address) + shownTokens.map(\.contract)
+            + EVMNetwork.all.flatMap { net in [net.usdc] + Stablecoins.top.compactMap { Stablecoins.find($0, on: net.key)?.address } }
+    }
 
     /// One lookup the model asked for, answered from what this Mac knows and public market data.
     func agentLookup(_ l: ChatRouter.Lookup) async -> String {
@@ -341,7 +367,7 @@ extension Workspace {
         let markets = Set(markets.keys)
         let options = reading.options.filter { o in
             o.command != reading.show && ChatRouter.parses(o.command, markets: markets)
-                && ChatRouter.addressesAllowed(o.command, userText: userText, known: favoriteTokens.map(\.address), found: reading.found,
+                && ChatRouter.addressesAllowed(o.command, userText: userText, known: knownContracts, found: reading.found,
                                                displays: Self.foundAllowed, markets: markets)
         }
         guard !options.isEmpty else { return }

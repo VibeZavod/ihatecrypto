@@ -13,6 +13,9 @@ import Testing
     #expect(ContractCall.parse("call solana \(vault) deposit(uint256) 1") == nil)
     #expect(WalletCommand.parse("call base \(vault) claim()") == .contractCall(ContractCall(network: "base", contract: vault, function: "claim()", args: [], value: nil, approve: nil)))
     #expect(ChatRouter.parses("call base \(vault) claim()", markets: []))
+    // max uint256 is a number, not a mint: the address rule passes a call that withdraws everything.
+    let all = "call base \(vault) withdraw(address,uint256) 0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913 " + "115792089237316195423570985008687907853269984665640564039457584007913129639935"
+    #expect(ChatRouter.addressesAllowed(all, userText: "", known: [vault, "0x833589fCD6eDb6E08f4c7C32D4f71b54bdA02913"]))
 }
 
 @Test func memoryKeepsOnlyTheUsersOwnWordsAndChecksAreSchedulable() {
