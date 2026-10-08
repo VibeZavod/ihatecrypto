@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.5.8",
+    "date": "2026-10-08",
+    "stories": [
+      {
+        "title": "Every big stablecoin, everywhere",
+        "text": "USDT, USDC, USDS, USDe and DAI by their names on every network they're on — swap one for another, send them, move them across networks. They count as dollars in your portfolio, «not earning» like USDC.",
+        "symbol": "dollarsign.circle",
+        "color": "26A17B"
+      },
+      {
+        "title": "The amount, not «all»",
+        "text": "A card that moves all of a coin shows how much that is, with «all available» under it.",
+        "symbol": "number",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Open Hyperliquid your way",
+        "text": "Your first trade asks how to open the account: Relay in seconds with Hyperliquid's $1.20 opening fee, or NEAR Intents in 2–4 minutes without it.",
+        "symbol": "arrow.triangle.branch",
+        "color": "2775CA"
+      },
+      {
+        "title": "New networks wait for you",
+        "text": "Networks and protocols a later version brings arrive switched off and ask once whether to turn them on.",
+        "symbol": "switch.2",
+        "color": "8E8E93"
+      }
+    ]
+  },
+  {
     "version": "0.5.7",
     "date": "2026-10-08",
     "stories": [
