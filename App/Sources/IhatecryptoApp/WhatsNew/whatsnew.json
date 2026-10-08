@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.5.6",
+    "date": "2026-10-08",
+    "stories": [
+      {
+        "title": "BNB Chain",
+        "text": "USDC to BNB Chain and back from Solana or any network, BNB for its gas coming along, sends to saved addresses, and its tokens in the portfolio. «move 5 USDC from Solana to BNB», «buy CAKE on bnb for 5 USDC».",
+        "symbol": "hexagon.fill",
+        "color": "F0B90B"
+      },
+      {
+        "title": "Any token for any other",
+        "text": "On every network: «swap 0.1 SOL for BONK on solana», «swap 1 TSLA for NVDA on robinhood», «swap 1 HYPE for PURR on hyperliquid spot», «swap 1 NEAR for AURORA on near» through NEAR Intents, and across networks — SOL for CAKE on BNB Chain, NEAR for SOL.",
+        "symbol": "arrow.left.arrow.right",
+        "color": "2775CA"
+      },
+      {
+        "title": "Buy and Sell on every coin",
+        "text": "SOL, ETH, BNB, HYPE, POL and NEAR open with Buy and Sell like any token, on their chart and in the right-click menu. No token hides its buttons: if a move can't go, it says why when you send it.",
+        "symbol": "cart.fill",
+        "color": "0B7A55"
+      },
+      {
+        "title": "Send anyway?",
+        "text": "A move that would lose more than usual to fees no longer just stops: it says how much — «Relay keeps ≈ $0.23 of $2.00» — and asks. Send anyway, or cancel. A swap's card warns when fees take more than a tenth.",
+        "symbol": "exclamationmark.triangle.fill",
+        "color": "FF7A2F"
+      }
+    ]
+  },
+  {
     "version": "0.5.5",
     "date": "2026-10-08",
     "stories": [
