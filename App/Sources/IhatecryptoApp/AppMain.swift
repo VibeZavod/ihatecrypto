@@ -198,17 +198,31 @@ struct AppMain: App {
         }
     }
 
+    /// The main window back: the one ⌘Q put away, as it was, else a new one.
     func openMain() {
         popover.performClose(nil)
         NSApp.setActivationPolicy(.regular)
-        openWindow?(id: "main")
+        // Started hidden (`open -j`) or put away, the app is still hidden: its window wouldn't come up until it isn't.
+        NSApp.unhide(nil)
+        if let main = NSApp.windows.first(where: { $0.title == AppMain.mainTitle }) {
+            // On the Space the user is on now: with a full-screen app or another display in front, the window came up
+            // where it was put away, out of sight, when macOS didn't let the app activate.
+            let behavior = main.collectionBehavior
+            main.collectionBehavior.insert(.moveToActiveSpace)
+            main.makeKeyAndOrderFront(nil)
+            main.orderFrontRegardless()
+            main.collectionBehavior = behavior
+        } else {
+            openWindow?(id: "main")
+        }
         NSApp.activate()
     }
 
-    /// ⌘Q: the windows close and the Dock icon goes; ihatecrypto keeps running from the menu bar coin.
+    /// ⌘Q: the windows go out of sight and the Dock icon goes; ihatecrypto keeps running from the menu bar coin. Put
+    /// away, not closed: a SwiftUI window closed this way stayed off screen when it was opened again.
     func toMenuBar() {
         popover.performClose(nil)
-        NSApp.windows.filter { $0.styleMask.contains(.titled) }.forEach { $0.close() }
+        NSApp.windows.filter { $0.styleMask.contains(.titled) && $0.isVisible }.forEach { $0.orderOut(nil) }
         NSApp.setActivationPolicy(.accessory)
     }
 
