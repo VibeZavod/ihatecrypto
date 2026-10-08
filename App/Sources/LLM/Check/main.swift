@@ -2,12 +2,14 @@ import Foundation
 import LLMCatalog
 import IhatecryptoCore
 import LLMCore
+import TradeExecution
 
 // Checks one provider from the terminal, without the app:
 //   swift run LLMCheck                      list providers and existing logins
 //   swift run LLMCheck chatgpt "hello"      reuse an existing login (Codex CLI, Claude Code)
 //   IHATECRYPTO_LLM_KEY=sk-… swift run LLMCheck deepseek "hello"
 //   IHATECRYPTO_LLM_MODEL=… overrides the default model.
+//   swift run LLMCheck chatgpt --models                    the models the app offers, live
 //   swift run LLMCheck chatgpt --route "купи AI на $2" …   how the chat router reads each message
 
 let args = Array(CommandLine.arguments.dropFirst())
@@ -79,7 +81,10 @@ if prompt == "--route" {
     let balances = context.balances.joined(separator: "; ")
     let lookup: @Sendable (ChatRouter.Lookup) async -> String = { l in
         l.tool == "token" ? await TokenResearch.report(l.arg) : l.tool == "portfolio" ? "Balances: \(balances). No open positions."
-            : l.tool == "services" ? await MPP.search(l.arg) : l.tool == "service" ? await MPP.service(l.arg) : "Not available in this check."
+            : l.tool == "services" ? await MPP.search(l.arg) : l.tool == "service" ? await MPP.service(l.arg)
+            // `IHATECRYPTO_ROUTE_EVM=0x…` / `IHATECRYPTO_ROUTE_SOLANA=…`: the addresses «me» stands for in the raw reads.
+            : AgentReads.tools.contains(l.tool) ? await AgentReads.answer(l.tool, l.arg, me: .init(evm: env["IHATECRYPTO_ROUTE_EVM"], solana: env["IHATECRYPTO_ROUTE_SOLANA"]))
+            : "Not available in this check."
     }
     var message = ""
     func verdict(_ c: String, found: [String] = []) -> String {
@@ -136,7 +141,7 @@ if prompt == "--route" {
                 print(String(decoding: try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys]), as: UTF8.self))
                 continue
             }
-            var line = "\(reading.route)"
+            var line = "\(reading.route)" + (reading.continues ? "  [continue]" : "")
             if case .command(let c) = reading.route { line += "  " + verdict(c) }
             for l in reading.lookups { line += "\n   lookup: \(l.tool) \(l.arg)" }
             if let show = reading.show { line += "\n   show: \(show)  " + verdict(show, found: reading.found) }

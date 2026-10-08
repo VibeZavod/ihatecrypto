@@ -225,6 +225,8 @@ extension Workspace {
         snapshotCanvas()
         saveCanvas()
         taskQueue = rest.isEmpty ? nil : (canvasID, rest, Date(), arrived)
+        // A confirmed chain is through (or stopped): the model goes on with the request it was a step of.
+        if confirmed { await continueAgent() }
     }
 
     /// A step that spends money on a network, run after a move landed there: when the move's fee left it a little short

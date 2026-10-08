@@ -146,7 +146,7 @@ final class Workspace {
     }
     var preparing = false
     var executing = false {
-        didSet { if oldValue, !executing { lastOwnMove = Date(); endSigningSession(); continueTask() } }
+        didSet { if oldValue, !executing { lastOwnMove = Date(); endSigningSession(); continueTask(); Task { await continueAgent() } } }
     }
 
     /// One Touch ID covers one move: once it's done the next signature asks again, unless the user chose 5–30 minutes.
@@ -394,6 +394,8 @@ final class Workspace {
     var heldAnswer: (steps: NextSteps?, yields: [Yields.Option]?, takes: [TakeStyle]?)?
     /// What the model is looking up right now («Looking at the token»), under the chat's thinking dots.
     var agentStep: String?
+    /// A request the model carries out over several commands (Agent.swift `continueAgent`).
+    var agentGoal: AgentGoal?
     var schedules: [Schedule] = (UserDefaults.standard.data(forKey: Workspace.scoped("schedules")).flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) }) ?? [] {
         didSet { UserDefaults.standard.set(try? JSONEncoder().encode(schedules), forKey: Workspace.scoped("schedules", activeWalletID)) }
     }
@@ -832,6 +834,8 @@ final class Workspace {
     func send(_ raw: String, shown: String? = nil) async {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !busy else { return }
+        // Anything they write takes over from what the model was carrying out; the Confirm button carries it on.
+        if !Self.pressed { agentGoal = nil }
         if SeedGuard.containsMnemonic(text) {
             reply(say("That looks like a recovery phrase. I don’t show it, store it or send it anywhere. Import a phrase in its own window.",
                       "Похоже на фразу восстановления. Я её не показываю, не храню и никуда не отправляю. Импортируй фразу в отдельном окне."))
@@ -1211,11 +1215,14 @@ final class Workspace {
     /// The model's reading of the message (ChatRouter) — the only reading while a model is connected: keywords guess,
     /// and a wrong guess about money is worse than a question. The model is asked twice; if it still can't be reached,
     /// nothing is done and the chat says so.
-    private func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent, offered: [ChatRouter.Option] = [], aboutStep: Bool = false) async {
+    /// `said`: the user's own words when `text` is ihatecrypto telling the model how its last step went (`continueAgent`);
+    /// addresses still count only from them. `round`: how many steps of their request the model has taken.
+    func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent, offered: [ChatRouter.Option] = [], aboutStep: Bool = false,
+                        said: String? = nil, round: Int = 0) async {
         busy = true
         var reading: ChatRouter.Reading?
         var failure = "", unreadable = false
-        let context = routerContext(offered: offered)
+        let context = routerContext(offered: offered, messageShown: said == nil)
         // The model's lookups run here, on this canvas's data; the chat shows which one is under way.
         let lookup: @Sendable (ChatRouter.Lookup) async -> String = { [weak self] l in await self?.agentLookup(l) ?? "" }
         // A second reader of every command: Jev when OpenRouter is connected, else the model reading it again.
@@ -1262,8 +1269,8 @@ final class Workspace {
             updateActivity { $0.understood = "looked up " + reading.lookups.map { "\($0.tool) \($0.arg)" }.joined(separator: ", ") }
         }
         // The block the answer points to opens with it; the cards follow the reply.
-        if let reading { await show(reading, userText: text) }
-        defer { if let reading { offer(reading, userText: text) } }
+        if let reading { await show(reading, userText: said ?? text) }
+        defer { if let reading { offer(reading, userText: said ?? text) } }
         var note = reading.map { $0.lookups.isEmpty ? model : "\(model) · looked at \(Set($0.lookups.map(\.tool)).sorted().joined(separator: ", "))" } ?? model
         if let why = reading?.corrected, why != unchecked { note += " · corrected after a second reading" }
         // The second reader still disagrees after the model tried again, or couldn't be read: nothing runs, the user decides.
@@ -1313,7 +1320,7 @@ final class Workspace {
                                                  : say("it isn't downloaded in \(provider.info.name)", "она не скачана в \(provider.info.name)"))
                 : String(failure.prefix(140))
             // What reads the same without a model — a chart, a token, P/L — still shows; nothing that could move money.
-            if !aboutStep, await readWithoutModel(text) {
+            if !aboutStep, said == nil, await readWithoutModel(text) {
                 reply(say("\(model) isn't answering (\(why)), so I read this one myself. Pick another model above for the rest.",
                           "\(model) не отвечает (\(why)), поэтому это я прочитал сам. Для остального выбери другую модель сверху."), note: model)
             } else {
@@ -1335,15 +1342,20 @@ final class Workspace {
         case .command(let canonical)?:
             // A new command takes the place of the card that waited; a chart or the rates beside it don't.
             if !Self.displays(canonical) { dropWaiting(keepAction: aboutStep) }
-            guard ChatRouter.addressesAllowed(canonical, userText: text, known: favoriteTokens.map(\.address), found: reading?.found ?? [],
+            guard ChatRouter.addressesAllowed(canonical, userText: said ?? text, known: favoriteTokens.map(\.address), found: reading?.found ?? [],
                                               displays: Self.displays, markets: Set(markets.keys)) else {
                 reply(say("I read that as “\(canonical)”, but its address is neither in your message nor among your favorites, so I won’t use it. Paste the address itself.",
                           "Я понял это как «\(canonical)», но этого адреса нет ни в твоём сообщении, ни в избранном, поэтому я его не использую. Вставь сам адрес."), note: model)
                 return
             }
-            if await !runCanonical(canonical, userText: text, before: before) {
+            let mark = messages.count
+            if await !runCanonical(canonical, userText: said ?? text, before: before) {
                 reply(say("I read that as “\(canonical)”, but ihatecrypto can’t do that yet — nothing moved. Tell me another way, or ask what ihatecrypto can do.",
                           "Я понял это как «\(canonical)», но ihatecrypto пока так не умеет — ничего не ушло. Скажи иначе или спроси, что ihatecrypto умеет."), note: model)
+            } else if reading?.continues == true {
+                // Their request goes on after this step: the model hears how it went now, or after the Confirm when it moves money.
+                agentGoal = AgentGoal(request: said ?? text, command: canonical, mark: mark, canvas: canvasID, since: Date(), round: round)
+                Task { await continueAgent() }
             }
         }
     }
@@ -1361,9 +1373,9 @@ final class Workspace {
 
     /// What the model may know besides the message: the chat, the plan, positions, favorites, address book names and
     /// the main balances. Never keys or the user's own addresses.
-    private func routerContext(offered: [ChatRouter.Option] = []) -> ChatRouter.Context {
+    private func routerContext(offered: [ChatRouter.Option] = [], messageShown: Bool = true) -> ChatRouter.Context {
         var c = ChatRouter.Context()
-        c.recent = Array(recentChat().dropLast())   // the last line is the message itself
+        c.recent = Array(recentChat().dropLast(messageShown ? 1 : 0))   // the last line is the message itself
         c.offered = offered.map { "\($0.title) → \($0.command)\($0.recommended ? " (recommended)" : "")" }
         if intent != TradeIntent(), let json = try? JSONEncoder().encode(intent) { c.plan = String(decoding: json, as: UTF8.self) }
         if let ch = chart {
