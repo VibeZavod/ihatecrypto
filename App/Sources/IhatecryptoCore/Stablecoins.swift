@@ -73,6 +73,11 @@ public enum Stablecoins {
     public static let dollars: Set<String> = Set(byNetwork.values.joined().flatMap { [$0.symbol] + $0.also }.map { $0.uppercased() })
         .union(["USDG", "PATHUSD", "OUSD", "USDC.E", "USDBC", "PYUSD", "USD1"])
 
+    /// Whether a held token is one of the five on its own contract (or Hyperliquid spot name) there — not a lookalike.
+    public static func isGenuine(_ contract: String, on network: String) -> Bool {
+        byNetwork[network]?.contains { $0.address.lowercased() == contract.lowercased() } == true
+    }
+
     /// Whether a ticker is a dollar stablecoin ihatecrypto counts at $1.
     public static func isDollar(_ ticker: String) -> Bool { dollars.contains(ticker.uppercased()) }
 

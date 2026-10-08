@@ -1727,7 +1727,10 @@ struct HoldingRow: View {
             }
             .frame(width: 20, height: 20).clipShape(Circle())
             // What it made or lost since bought here, after the amount: in the hint alone it looked as if there was none.
-            CoinName(symbol: token.symbol, amount: Fmt.num(token.amount, maxFraction: 4), verified: token.verified, pnl: ws.purchasePnL(token))
+            // One of the big five stablecoins reads like idle USDC: dollars not earning, no day's move or P/L to show.
+            let dollar = Stablecoins.isGenuine(token.contract, on: token.chain)
+            CoinName(symbol: token.symbol, amount: Fmt.num(token.amount, maxFraction: 4) + (dollar ? " · not earning" : ""), verified: token.verified,
+                     pnl: dollar ? nil : ws.purchasePnL(token))
             Spacer(minLength: 4)
             // 20 pt, under the row's own height: at the usual 28 the row grew while the pointer was on it, and the card's
             // new height redrew the whole canvas on every row the pointer crossed. Kept out of the row until hovered: one
@@ -1738,7 +1741,7 @@ struct HoldingRow: View {
             }
             // A network's own coin (ETH on Arbitrum) without a pool's word: Hyperliquid's market of it.
             CoinValue(value: token.usd.map(Fmt.usd) ?? "no price",
-                      change: token.change24h ?? (token.native ? ws.markets[token.symbol.uppercased()]?.change24h : nil))
+                      change: dollar ? nil : token.change24h ?? (token.native ? ws.markets[token.symbol.uppercased()]?.change24h : nil))
         }
         .opacity(shown ? 1 : 0.6)
         .contentShape(Rectangle())

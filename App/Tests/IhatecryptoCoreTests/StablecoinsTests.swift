@@ -38,3 +38,11 @@ import Testing
     #expect(WalletCommand.parse("swap 2 USDC for USDT on near") == .swapOn("near", from: "USDC", to: "USDT", amount: 2))
     if case .buy(let asset, let usdc) = WalletCommand.parse("swap 3 USDC for USDT on solana") { #expect(asset.symbol == "USDT" && usdc == 3) } else { Issue.record("USDT on Solana") }
 }
+
+@Test func stablecoinSendsAndMovesParse() {
+    #expect(WalletCommand.parse("send 5 USDT on arbitrum to Mom") == .sendToken(name: "Mom", token: "USDT", amount: 5, network: "arbitrum"))
+    #expect(WalletCommand.parse("send 3 DAI on polygon to Mom") == .sendToken(name: "Mom", token: "DAI", amount: 3, network: "polygon"))
+    #expect(WalletCommand.parse("swap 5 USDT on arbitrum for USDC on solana") == .crossSwap(from: "USDT", on: "arbitrum", to: "USDC", at: "solana", amount: 5))
+    #expect(WalletCommand.parse("swap 2 USDe on base for USDe on solana") == .crossSwap(from: "USDe", on: "base", to: "USDe", at: "solana", amount: 2))
+    #expect(Stablecoins.isGenuine("0xFd086bC7CD5C481DCC9C85ebE478A1C0b69FCbb9", on: "arbitrum") && !Stablecoins.isGenuine("0xdead", on: "arbitrum"))
+}

@@ -262,8 +262,10 @@ struct NetworkCard: View {
         case .tempo:
             return "USDC for paid services"
         default:
+            // Idle is every dollar not earning: USDC's line and the other big stablecoins held there (USDT, USDe…).
+            let stables = ws.shownTokens.filter { $0.chain == network.rawValue && Stablecoins.isGenuine($0.contract, on: $0.chain) }.reduce(Decimal(0)) { $0 + ($1.usd ?? 0) }
             let sums = [("earning", NetworkLine.Kind.earning), ("idle", .idle)]
-                .map { name, kind in (name, lines.filter { $0.kind == kind }.reduce(Decimal(0)) { $0 + $1.usd }) }
+                .map { name, kind in (name, lines.filter { $0.kind == kind }.reduce(Decimal(0)) { $0 + $1.usd } + (kind == .idle ? stables : 0)) }
                 .filter { $0.1 >= Decimal(string: "0.01")! }.sorted { $0.1 > $1.1 }
             // No count of tokens: the rows under it show them (the user: «убери слово 5 tokens»).
             if !sums.isEmpty { return sums.map { "\($0.0) \(Fmt.usd($0.1))" }.joined(separator: " · ") }

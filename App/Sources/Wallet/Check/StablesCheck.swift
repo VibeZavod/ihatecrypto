@@ -37,5 +37,18 @@ func stablesCheck(_ only: String?) async {
             }
         }
     }
+    // Across networks (Relay's cross-chain swap, NEAR Intents where Relay has no route): each coin to its own kind on Solana.
+    if only == nil || only == "across" {
+        for (a, from, b, to) in [("USDT", "arbitrum", "USDT", "solana"), ("USDe", "base", "USDe", "solana"), ("USDS", "ethereum", "USDS", "solana"),
+                                 ("DAI", "polygon", "USDC", "solana"), ("USDT", "bnb", "USDC", "base"), ("USDC", "solana", "USDT", "near")] {
+            do {
+                let q = try await executor.crossQuoteText(a, on: from, for: b, on: to, amount: 2)
+                print("✓ across 2 \(a) on \(from) → \(q.gets) on \(to) · \(q.way)")
+            } catch {
+                failed += 1
+                print("✗ across 2 \(a) on \(from) → \(b) on \(to): \(error.localizedDescription)")
+            }
+        }
+    }
     print(failed == 0 ? "All quoted." : "\(failed) without a quote.")
 }

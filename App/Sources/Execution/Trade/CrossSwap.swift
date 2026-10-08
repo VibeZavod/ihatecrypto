@@ -33,7 +33,9 @@ extension Executor {
             case "SOL": return CrossSide(chain: Relay.Chain.solana, currency: Relay.Currency.solanaSOL, decimals: 9, symbol: "SOL", coin: true)
             case "USDC": return CrossSide(chain: Relay.Chain.solana, currency: Relay.Currency.solanaUSDC, decimals: 6, symbol: "USDC", coin: false)
             default:
-                let mint = token.count >= 32 ? token : await TokenResearch.solanaMint(symbol: token)
+                // USDT, USDS and USDe by their mints (Stablecoins): a ticker search can land on a lookalike.
+                let stable = Stablecoins.find(token, on: "solana")?.address
+                let mint = token.count >= 32 ? token : stable != nil ? stable : await TokenResearch.solanaMint(symbol: token)
                 guard let mint, let info = await TokenResearch.solanaToken(mint) else { throw ExecutionError("Jupiter knows no verified \(token) on Solana. Nothing was signed.") }
                 return CrossSide(chain: Relay.Chain.solana, currency: mint, decimals: info.decimals, symbol: info.symbol, coin: false, token2022: info.token2022)
             }
@@ -46,7 +48,8 @@ extension Executor {
 
     /// Relay's quote for the swap, checked: from this wallet to this wallet, and no more value lost than allowed.
     /// `amount` nil = all of a token (never all of a coin: its fees come from it).
-    /// `capped` false: for the card, which shows the cost instead of stopping at it.
+    /// `capped` false: for the card, which shows the cost instead of stopping at it, priced at the amount asked even when
+    /// the wallet holds less (the run checks it).
     func crossQuote(_ a: String, on from: String, for b: String, on to: String, amount: Decimal?, capped: Bool = true)
         async throws -> (quote: Relay.Quote, origin: CrossSide, destination: CrossSide, units: Decimal) {
         guard from != to else { throw ExecutionError("Both sides are on \(WalletCommand.placeName(from)): that's a swap there, not between networks.") }
@@ -66,7 +69,7 @@ extension Executor {
         }
         let units = (amount * scale).whole
         guard units > 0 else { throw ExecutionError("\(Fmt.num(amount)) \(origin.symbol) is less than its smallest unit.") }
-        guard units <= held else {
+        guard units <= held || !capped else {
             throw ExecutionError("\(Fmt.num(held / scale, maxFraction: 8)) \(origin.symbol) on \(WalletCommand.placeName(from)); \(Fmt.num(amount, maxFraction: 8)) is more. Nothing was signed.")
         }
         let me = from == "solana" ? wallet.solana : wallet.evm, recipient = to == "solana" ? wallet.solana : wallet.evm
