@@ -2618,7 +2618,8 @@ private struct ChatComposer: View {
     /// The move waiting for Confirm, said in the field's own head; nil when nothing waits.
     private var waiting: String? {
         guard let text = ws.pendingText ?? ws.pendingAllocation.map({ ws.readable($0.summary) }) else { return nil }
-        return text.prefix(1).uppercased() + text.dropFirst()
+        let shown = ws.withAmounts(text)
+        return shown.prefix(1).uppercased() + shown.dropFirst()
     }
 
     private var suggestions: [ComposerSuggestion] { ws.draft == dismissed ? [] : ComposerSuggestion.for(ws.draft, caret: caret, ws: ws) }

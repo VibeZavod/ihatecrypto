@@ -1226,7 +1226,10 @@ extension Workspace {
             } else {
                 "One Solana signature, checked and simulated before it’s signed. Press Confirm; Cancel or “cancel” drops it."
             }
-            return MoveRoute(title: readable(command.summary.prefix(1).uppercased() + command.summary.dropFirst()), footer: footer, steps: around(command, [from, to]))
+            // «Sell all USDT» reads as the amount its first step found held: «Sell 0.999604 USDT».
+            let held = from.title.hasPrefix("all") ? nil : from.title.split(separator: " ").last.map { "all \($0)" }
+            let title = readable(command.summary.prefix(1).uppercased() + command.summary.dropFirst())
+            return MoveRoute(title: held.map { title.replacingOccurrences(of: $0, with: from.title) } ?? title, footer: footer, steps: around(command, [from, to]))
         }
         }
     }
@@ -1234,8 +1237,8 @@ extension Workspace {
     private func step(_ logo: String, _ label: String, _ title: String, _ line: String, _ fill: RouteFill) -> ActivityBubble {
         // «all USDT» reads as the amount itself, «all available» small under it: the user wants the number, not «all».
         if title.hasPrefix("all "), let (x, symbol) = heldForAll(String(title.dropFirst(4)), fill: fill, label: label) {
-            return ActivityBubble(kind: "step", label: label, title: "\(Fmt.num(x, maxFraction: 8)) \(symbol)",
-                                  lines: [line.isEmpty ? "all available" : "all available · \(line)"], logo: logo, fill: fill)
+            let all = label.hasPrefix("APPROVE") || line.hasPrefix("all available") ? line : line.isEmpty ? "all available" : "all available · \(line)"
+            return ActivityBubble(kind: "step", label: label, title: "\(Fmt.num(x, maxFraction: 8)) \(symbol)", lines: [all], logo: logo, fill: fill)
         }
         return ActivityBubble(kind: "step", label: label, title: title, lines: [line], logo: logo, fill: fill)
     }
@@ -1255,6 +1258,13 @@ extension Workspace {
         let found = (holdings + (solana?.tokens ?? [])).filter { $0.symbol.uppercased() == want && (place == nil || $0.chain == place) }
         guard let h = found.first, found.allSatisfy({ $0.chain == h.chain && $0.contract == h.contract }) else { return nil }
         return (h.amount, h.symbol)
+    }
+
+    /// «Sell all USDT» with the amount held for each «all X» the wallet holds in one place only: «Sell 0.999604 USDT».
+    func withAmounts(_ text: String) -> String {
+        text.replacing(/\ball ([A-Za-z][A-Za-z0-9₮.]*)/) { m in
+            heldForAll(String(m.1), fill: .check).map { "\(Fmt.num($0.0, maxFraction: 8)) \($0.1)" } ?? String(m.0)
+        }
     }
 
     /// A route's title for `amount` of `label` on `place`: the number, «all» only when what's held can't be read.
@@ -1789,10 +1799,10 @@ extension Workspace {
         func short(_ t: String) -> String { t.count >= 32 ? spotAssets[t]?.symbol ?? "\(t.prefix(4))…\(t.suffix(4))" : t.uppercased() }
         if place == "solana" {
             // Jupiter's best route, simulated before signing: at least its minimum must land in this wallet.
-            let moving = "\(amount.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(short(from))"
+            let moving = amountOrAll(amount, short(from), on: "solana")
             return MoveRoute(title: "Swap \(moving) → \(short(to)) on Solana",
                              footer: "One swap on Solana through Jupiter's best route, no USDC in the middle: simulated before signing, and at least Jupiter's minimum must arrive in this wallet. SOL keeps 0.01 for fees. Press Confirm.",
-                             steps: [step("sol", "FROM · SOLANA", moving, "your wallet", .solana),
+                             steps: [step("sol", "FROM · SOLANA", moving, amount == nil ? "all available · your wallet" : "your wallet", .solana),
                                      step("jup", "SWAP · JUPITER", short(to), gets ?? "Jupiter's best route", .jupiter),
                                      step("sol", "TO · SOLANA", short(to), "your wallet ✓", .solana)])
         }
@@ -1807,23 +1817,25 @@ extension Workspace {
         }
         if place == "hyperliquid" {
             // Its book trades against USDC: a sale, then a buy with what it fetched.
-            let moving = "\(amount.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(from.uppercased())"
+            let moving = amountOrAll(amount, from.uppercased(), on: "hyperliquid")
             return MoveRoute(title: "Swap \(moving) → \(to.uppercased()) on Hyperliquid spot",
                              footer: "Two spot orders on Hyperliquid's book, each IOC within 1% of the mid: \(from.uppercased()) sold for USDC, that USDC buys \(to.uppercased()). The book takes orders from 10 USDC. Press Confirm.",
-                             steps: [step("hyperliquid", "FROM · SPOT BALANCE", moving, "on Hyperliquid", .hyperliquid),
+                             steps: [step("hyperliquid", "FROM · SPOT BALANCE", moving, amount == nil ? "all available · on Hyperliquid" : "on Hyperliquid", .hyperliquid),
                                      step("hyperliquid", "SELL · SPOT ORDER", "→ USDC", "IOC · at most 1% under the mid", .hyperliquid),
                                      step("hyperliquid", "BUY · SPOT ORDER", to.uppercased(), gets.map { "\($0) · at the mids" } ?? "IOC · at most 1% over the mid", .hyperliquid)])
         }
         if place == "tempo" {
             // Dollars for dollars on Tempo's own exchange: an exact approve, the swap, fees out of the USDC.
             let quoted = swapQuote.flatMap { q in q.command == .swapOn(place, from: from, to: to, amount: amount) ? q.ways : nil }
-            let moving = "\(amount.map { Fmt.num($0) } ?? "all") \(from.uppercased() == "PATHUSD" ? "pathUSD" : from.uppercased())"
+            // Where Tempo's exchange has no liquidity for the pair (USDT0), Relay's swap on Tempo is the way the quote found.
+            let relay = quoted?.first?.way == "Relay's swap", via = relay ? "Relay" : "Tempo's exchange"
+            let moving = amountOrAll(amount, from.uppercased() == "PATHUSD" ? "pathUSD" : Stablecoins.find(from, on: place)?.symbol ?? from.uppercased(), on: place)
             return MoveRoute(title: "Swap \(moving) → \(to.uppercased() == "PATHUSD" ? "pathUSD" : to.uppercased()) on Tempo",
-                             footer: "An exact approve to Tempo's own exchange, then the swap at no less than 0.1% under its quote, paying only this wallet; "
+                             footer: "An exact approve to \(relay ? "Relay's swap on Tempo" : "Tempo's own exchange"), then the swap at no less than \(relay ? "Relay's checked quote" : "0.1% under its quote"), paying only this wallet; "
                                 + "Tempo's fees come out of the USDC, a tenth of a cent each. Press Confirm.",
-                             steps: [step(logo, "FROM · TEMPO", moving, "on Tempo", fill),
-                                     approve(moving, for: "Tempo's exchange", logo: logo, fill),
-                                     step(logo, "SWAP · TEMPO'S EXCHANGE", to.uppercased() == "PATHUSD" ? "pathUSD" : to.uppercased(),
+                             steps: [step(logo, "FROM · TEMPO", moving, amount == nil ? "all available · on Tempo" : "on Tempo", fill),
+                                     approve(moving, for: via, logo: relay ? "relay" : logo, fill),
+                                     step(relay ? "relay" : logo, relay ? "SWAP · RELAY ON TEMPO" : "SWAP · TEMPO'S EXCHANGE", to.uppercased() == "PATHUSD" ? "pathUSD" : to.uppercased(),
                                           quoted.map { $0.first.map { "≈ \($0.gets)" } ?? "no liquidity now · asked again every 30 s" } ?? "quoting…", fill)])
         }
         func label(_ t: String) -> String { t.hasPrefix("0x") ? tokenSymbol(t) ?? "\(t.prefix(6))…\(t.suffix(4))" : t.uppercased() }
