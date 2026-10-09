@@ -53,7 +53,8 @@ extension Workspace {
             for r in owed where r.chainId == chain {
                 steps.append(ActivityBubble(kind: "step", label: "CLAIM · MERKL ON \(name.uppercased())", title: Self.shown(r),
                                             lines: (r.worthUSD.map { ["worth\t≈ \(Fmt.usd($0))"] } ?? []) + ["from Merkl's distributor"],
-                                            logo: TokenLogo.name(forAsset: r.symbol) ?? logo, fill: fill))
+                                            logo: TokenLogo.name(forAsset: r.symbol) ?? logo, fill: fill,
+                                            money: net.map { tokenMove(r.symbol, on: $0.key, by: r.claimable) }))
             }
             steps.append(ActivityBubble(kind: "step", label: "TO · \(name.uppercased())", title: "this wallet",
                                         lines: ["the rewards stay there as tokens"], logo: logo, fill: fill))

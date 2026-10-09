@@ -149,9 +149,10 @@ extension Workspace {
                                    title: "\(Fmt.num(src == nil ? need : (need + 1).rounded(2, .up), maxFraction: 6)) USDC",
                                    lines: [say("a float for ≈ \(requests) requests like this · Relay ≈ $0.02", "запас на ≈ \(requests) таких запросов · Relay ≈ $0.02"),
                                            src.map { "\(Fmt.num(usdc(on: $0.key) ?? 0)) USDC on \($0.name)" } ?? solana.map { "\(Fmt.num($0.usdc)) USDC on Solana" } ?? "from your Solana USDC"],
-                                   logo: src.flatMap { ModuleNetwork(place: $0.key)?.logo } ?? "sol", fill: src.flatMap { RouteFill(rawValue: $0.key) } ?? .solana)
-                  : ActivityBubble(kind: "step", label: "FROM · TEMPO", title: "\(Fmt.num(there)) → \(Fmt.num(there - c.usdc)) USDC", lines: ["your USDC on Tempo"],
-                                   logo: "tempo", fill: .tempo),
+                                   logo: src.flatMap { ModuleNetwork(place: $0.key)?.logo } ?? "sol", fill: src.flatMap { RouteFill(rawValue: $0.key) } ?? .solana,
+                                   money: moneyMove("USDC", on: src?.key ?? "solana", by: -(src == nil ? need : (need + 1).rounded(2, .up))))
+                  : ActivityBubble(kind: "step", label: "FROM · TEMPO", title: "\(price) USDC", lines: ["your USDC on Tempo"],
+                                   logo: "tempo", fill: .tempo, money: [MoneyMove(place: "Tempo", symbol: "USDC", was: there, after: max(0, there - c.usdc))]),
             ActivityBubble(kind: "step", label: "PAY · MPP", title: "\(price) USDC", lines: [c.purpose ?? "one request"], logo: "tempo", fill: .tempo),
             ActivityBubble(kind: "step", label: "TO · \(quote.service.uppercased())", title: "the answer comes here", lines: [host], logo: "tempo", fill: .check),
         ])

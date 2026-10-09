@@ -391,6 +391,10 @@ struct ContentView: View {
             case "schedule": ws.showSchedule = true
             // `schedule:task:<id>`, `schedule:buy:SOL`, `schedule:perp:BTC`: that item in detail.
             case let item? where item.hasPrefix("schedule:"): ws.openScheduleCanvas(String(item.dropFirst(9))); ws.showSchedule = true
+            // `chart:solana:SOL`: a network's coin, as a click on its row in the portfolio opens it.
+            case let item? where item.hasPrefix("chart:"):
+                let parts = item.split(separator: ":", maxSplits: 2).map(String.init)
+                if parts.count == 3 { ws.opener(chain: parts[1], contract: "native", symbol: parts[2])?() }
             case "settings": ws.openSettings()
             case let place?: ws.detail = place
             case nil: break

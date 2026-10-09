@@ -45,6 +45,19 @@ nonisolated struct ActivityBubble: Codable, Hashable, Sendable {
     var fill: RouteFill?
     /// A paid request's last step: what the service answered, kept with the move (Payments.swift).
     var answer: ServiceAnswer?
+    /// A money move's step: the balances it changes, read when the route was drawn (the card's «now → after»).
+    var money: [MoneyMove]?
+}
+
+/// A balance a route step changes: on `place`, `symbol` goes from `was` to `after`; `approx` when the after is a quote.
+nonisolated struct MoneyMove: Codable, Hashable, Sendable, Identifiable {
+    var place: String
+    var symbol: String
+    var was: Decimal
+    var after: Decimal
+    var approx = false
+
+    var id: String { place + "·" + symbol }
 }
 
 extension Workspace {
@@ -117,8 +130,9 @@ extension Workspace {
         let from = drawn.enumerated().map { k, s in
             let there = a.sources.first { $0.place == s.place }?.amount
             return ActivityBubble(kind: "step", label: "FROM · \(s.place.uppercased())", title: amount(s.amount),
-                                  lines: (there.map { ["free there\t\(amount($0))"] } ?? []) + (k == 0 && a.leftover > 0 ? ["stays free\t\(amount(a.leftover))"] : []),
-                                  logo: a.asset == "SOL" ? "sol" : "usdc", fill: fill(s.place))
+                                  lines: k == 0 && a.leftover > 0 ? ["stays free\t\(amount(a.leftover))"] : [],
+                                  logo: a.asset == "SOL" ? "sol" : "usdc", fill: fill(s.place),
+                                  money: there.map { [MoneyMove(place: s.place, symbol: a.asset, was: $0, after: max(0, $0 - s.amount))] })
         }
         let moves = a.moves.map { m in
             ActivityBubble(kind: "step", label: "BRIDGE · RELAY", title: amount(m.amount), lines: ["\(m.from) → \(m.to)"], logo: "relay", fill: .relay)
@@ -128,7 +142,8 @@ extension Workspace {
                            lines: ["a year\t\(year)", "max per place\t\(Fmt.pct(a.maxShare))"], logo: "usdc", fill: .jupiter),
         ] + a.slices.map { slice in
             ActivityBubble(kind: "step", label: "INTO · \(slice.place.uppercased())", title: amount(slice.amount),
-                           lines: ["rate\t\(Fmt.num(slice.apy.rounded(2, .plain)))% a year"], logo: Self.logo(for: slice.place), fill: .place(slice.place))
+                           lines: ["rate\t\(Fmt.num(slice.apy.rounded(2, .plain)))% a year"], logo: Self.logo(for: slice.place), fill: .place(slice.place),
+                           money: a.asset == "USDC" ? deposited(in: slice.place).map { [MoneyMove(place: slice.place, symbol: "USDC", was: $0, after: $0 + slice.amount)] } : nil)
         }
     }
 

@@ -5,7 +5,7 @@ import SwiftUI
 // MARK: What a step is
 
 /// What a route step does, read from its label («BRIDGE · RELAY», «INTO · KAMINO LEND», «FROM · SOLANA»…): it picks
-/// the drawing at the bottom of its card. A trade plan's steps have their own: the rules' checklist, Jev's magnifier,
+/// the drawing on top of its card. A trade plan's steps have their own: the rules' checklist, Jev's magnifier,
 /// the price line the position rides, the shield of its stop and take, and the two ways it can end. A price alert the
 /// plan waits for («WHEN · PRICE FALLS TO») draws the price reaching its level, with the bell; a task for later
 /// («LATER · SCHEDULE») a calendar with its day marked; the best rates one amount branching into three vaults. The
@@ -160,7 +160,7 @@ struct CardLook {
 
 /// A money move's route, or a trade plan's: one card per step in its place's color, arrows between them, rows of three
 /// that wrap with an arrow back to the start of the next row; a longer route is the same cards smaller, four to a row.
-/// Each card says its state with the coin's face, opens its details on a click and has Why / Edit / Send to chat /
+/// Each card says its state in words on its picture, opens its details on a click and has Why / Edit / Send to chat /
 /// Copy on a right click. A new route is laid out by the assistant's coin cursor, card by card; the cards fade in
 /// where they stand and never move.
 struct RouteCards: View {
@@ -183,10 +183,10 @@ struct RouteCards: View {
     /// it passes the plan itself: the cards are laid out again when the plan changes, not when a price does.
     var buildKey: String?
 
-    /// Every card is square, as the user asked.
-    static let cardWidth: CGFloat = 236, cardHeight: CGFloat = 236, gap: CGFloat = 40, perRow = 3
+    /// The picture on top, its words under it (the user's pick of the card designs, 2026-10-09).
+    static let cardWidth: CGFloat = 236, cardHeight: CGFloat = 292, gap: CGFloat = 40, perRow = 3
     /// Four to a row: a plan of six or seven cards, the portfolio beside it, fits the window with its buttons in view.
-    static let smallWidth: CGFloat = 220, smallHeight: CGFloat = 220, smallGap: CGFloat = 26, smallPerRow = 4
+    static let smallWidth: CGFloat = 220, smallHeight: CGFloat = 272, smallGap: CGFloat = 26, smallPerRow = 4
     /// Over three steps the cards are the small ones.
     static func compact(_ count: Int) -> Bool { count > perRow }
     /// What the route takes across: a row of cards and the arrows between them.
@@ -239,7 +239,7 @@ struct RouteCards: View {
     }
 
     private func card(_ i: Int) -> some View {
-        RouteCard(step: steps[i], state: state(i), isOpen: open == i, compact: Self.compact(steps.count))
+        RouteCard(step: steps[i], state: state(i), isOpen: open == i, compact: Self.compact(steps.count), opens: true)
             .opacity(i < placed ? 1 : 0)
             .onGeometryChange(for: CGRect.self) { $0.frame(in: .named("route")) } action: { frames[i] = $0 }
             .onTapGesture { toggle(i) }
@@ -308,7 +308,7 @@ struct RouteCards: View {
     /// Confirm keeps waiting (a message in the chat would cancel it).
     private func why(_ i: Int) {
         let s = steps[i]
-        let facts = ([ws.readable(s.title)] + s.lines.filter { !$0.isEmpty }.map(\.rowText)).joined(separator: " · ")
+        let facts = ([ws.readable(s.title)] + (s.money ?? []).map(MoneyLine.text) + s.lines.filter { !$0.isEmpty }.map(\.rowText)).joined(separator: " · ")
         ws.reply(ws.say("Why this way — \(StepDetails.pretty(s.label)): \(facts).", "Почему так — \(StepDetails.pretty(s.label)): \(facts).")
                  + (footer.map { " " + $0 } ?? ""), note: "from the route")
     }
@@ -320,7 +320,7 @@ struct RouteCards: View {
 
     private func copy(_ i: Int) {
         let s = steps[i]
-        let text = ([name(i)] + s.lines.filter { !$0.isEmpty }.map(\.rowText) + (footer.map { [$0] } ?? [])).joined(separator: "\n")
+        let text = ([name(i)] + (s.money ?? []).map(MoneyLine.text) + s.lines.filter { !$0.isEmpty }.map(\.rowText) + (footer.map { [$0] } ?? [])).joined(separator: "\n")
         NSPasteboard.general.clearContents()
         NSPasteboard.general.setString(text, forType: .string)
     }
@@ -390,9 +390,10 @@ struct RouteCard: View {
     var isOpen = false
     /// The history draws the same card narrower.
     var width = RouteCards.cardWidth
-    /// A long route's small card: its label, the coin for its state, its title, its numbers as rows and its drawing;
-    /// the rest opens on a click.
+    /// A long route's small card: the same parts a size smaller, fewer of its numbers; the rest opens on a click.
     var compact = false
+    /// A route's card opens its details on a click: its last line says so («Details ›», «Close ×» while open).
+    var opens = false
     /// The tooltip; the block library says what a pick does instead.
     var hint = "Details · right-click for more"
     @State private var hover = false
@@ -401,47 +402,27 @@ struct RouteCard: View {
         let kind = StepKind(step)
         let look = CardLook(fill: step.fill ?? .solana, state: state, kind: kind)
         let w = compact ? RouteCards.smallWidth : width
-        let radius: CGFloat = compact ? 14 : 20
-        ZStack(alignment: .topLeading) {
-            StepScene(kind: kind, look: look, state: state, ticker: ticker)
-                .frame(width: w, height: 84 * w / RouteCards.cardWidth)
-                .opacity(look.pale ? 0.55 : 1)
-                .frame(maxHeight: .infinity, alignment: .bottom)
-            if compact {
-                VStack(alignment: .leading, spacing: 4) {
-                    HStack(alignment: .top, spacing: 4) {
-                        Text(step.label).font(.ui(10, .heavy)).tracking(0.6).foregroundStyle(look.label)
-                            .lineLimit(2).minimumScaleFactor(0.8).fixedSize(horizontal: false, vertical: true)
-                        Spacer(minLength: 0)
-                        // What the result comes to is an estimate, not a step with a state.
-                        if state != .plain, kind != .result { StateChip(state: state, fill: look.fill, compact: true) }
-                    }
-                    StepTitle(step: step, ink: look.ink, size: 18)
-                    // As many rows as fit above the drawing on the square card; the rest open with a click.
-                    ViewThatFits(in: .vertical) {
-                        rows(4, look); rows(3, look); rows(2, look); rows(1, look)
-                    }
-                    .padding(.top, 2)
-                }
-                .padding(.horizontal, 13).padding(.top, 12)
-                .frame(height: RouteCards.smallHeight * 0.67, alignment: .top)
-            } else {
-                VStack(alignment: .leading, spacing: 5) {
-                    HStack(alignment: .top) {
-                        LogoBadge(step: step)
-                        Spacer(minLength: 6)
-                        if state != .plain { StateChip(state: state, fill: look.fill) }
-                    }
-                    Text(step.label).font(.ui(10, .heavy)).tracking(0.7).foregroundStyle(look.label)
-                        .lineLimit(1).minimumScaleFactor(0.75).padding(.top, 4)
-                    StepTitle(step: step, ink: look.ink)
-                    if let line = step.lines.first(where: { !$0.isEmpty }) { StepLine(line: line, look: look, size: 11) }
-                }
-                .padding(16)
+        let radius: CGFloat = compact ? 16 : 20
+        // The drawing's 340 × 120 grid, with a strip above it for the state.
+        let k = w / 340
+        VStack(alignment: .leading, spacing: 0) {
+            // The picture: what the step does, the coin in it wearing the step's face, and the state in words on it —
+            // the first thing the eye finds. Nothing in the other corner.
+            ZStack(alignment: .topLeading) {
+                look.background
+                StepScene(kind: kind, look: look, state: state, ticker: ticker)
+                    .frame(width: w, height: 120 * k)
+                    .offset(y: 10 * k)
+                    .opacity(look.pale ? 0.55 : 1)
+                // What the result comes to is an estimate, not a step with a state.
+                if state != .plain, kind != .result { StateChip(state: state, fill: look.fill, compact: compact).padding(compact ? 8 : 10) }
             }
+            .frame(width: w, height: 140 * k, alignment: .topLeading)
+            .clipped()
+            info(kind)
         }
         .frame(width: w, height: compact ? RouteCards.smallHeight : RouteCards.cardHeight * width / RouteCards.cardWidth, alignment: .topLeading)
-        .background { look.background }
+        .background(Brand.card)
         .clipShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
         .overlay { edges(look, kind: kind, radius: radius) }
         .contentShape(RoundedRectangle(cornerRadius: radius, style: .continuous))
@@ -451,13 +432,106 @@ struct RouteCard: View {
         .accessibilityElement(children: .combine)
     }
 
-    /// A small card's first rows: what stops the step first, in red.
-    private func rows(_ n: Int, _ look: CardLook) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            ForEach(Array(step.lines.filter { !$0.isEmpty }.prefix(n).enumerated()), id: \.offset) { i, line in
-                StepLine(line: line, look: look, alert: state == .blocked && i == 0)
+    /// Under the picture: what the step does and with what («BRIDGE · Relay»), the move itself, its numbers — the
+    /// balances it changes, now → after (was → now once done), or what it checks — and one line of the rest.
+    private func info(_ kind: StepKind) -> some View {
+        let parts = step.label.components(separatedBy: "·").map { $0.trimmingCharacters(in: .whitespaces) }
+        let place = parts.count > 1 ? Self.pretty(parts.dropFirst().joined(separator: " · ")) : nil
+        let money = step.money ?? []
+        let rows = step.lines.filter { $0.contains("\t") }
+        // «free: 29.39 USDC» says again what the money box shows.
+        let notes = step.lines.filter { line in
+            !line.isEmpty && !line.contains("\t") && (money.isEmpty || !(["free:", "held:", "in the vault:"].contains(where: line.hasPrefix)
+                || line.wholeMatch(of: /≈ [\d.,]+ \S+/) != nil))
+        }
+        // A step with no numbers says itself in the box; one with numbers keeps its first sentence for the last line.
+        let said = money.isEmpty && rows.isEmpty ? notes : []
+        let foot = said.isEmpty ? notes.first : nil
+        let paper = CardLook(fill: .check, state: .ready, kind: kind)
+        return VStack(alignment: .leading, spacing: compact ? 6 : 8) {
+            HStack(spacing: 6) {
+                Text(parts.first ?? step.label).font(.ui(compact ? 9.5 : 10, .heavy)).tracking(0.7).foregroundStyle(verbInk(kind))
+                if let place {
+                    Circle().fill(Color.secondary.opacity(0.6)).frame(width: 3, height: 3)
+                    LogoBadge(step: step, size: compact ? 16 : 18)
+                    Text(place).font(.ui(compact ? 11 : 11.5, .semibold)).foregroundStyle(.primary)
+                }
+            }
+            .lineLimit(1)
+            StepTitle(step: step, ink: .primary, size: compact ? 17 : 19)
+            if !money.isEmpty || !rows.isEmpty || !said.isEmpty {
+                // As many of its numbers as fit; the rest open with a click.
+                ViewThatFits(in: .vertical) {
+                    ForEach(Array(stride(from: compact ? 3 : 4, through: 1, by: -1)), id: \.self) { n in
+                        box(money: money, rows: rows, said: said, upTo: n, paper: paper)
+                    }
+                }
+            }
+            Spacer(minLength: 0)
+            footer(foot)
+        }
+        .padding(.horizontal, compact ? 12 : 14).padding(.top, compact ? 9 : 11).padding(.bottom, compact ? 8 : 10)
+    }
+
+    private func box(money: [MoneyMove], rows: [String], said: [String], upTo n: Int, paper: CardLook) -> some View {
+        let shown = Array(money.prefix(n)), left = max(0, n - shown.count)
+        return VStack(alignment: .leading, spacing: 4) {
+            if !shown.isEmpty {
+                Text(state == .done ? "MONEY · WAS → NOW" : "MONEY · NOW → AFTER").font(.ui(9, .bold)).tracking(0.6).foregroundStyle(.secondary)
+                ForEach(shown) { MoneyLine(move: $0, size: compact ? 11 : 11.5) }
+            }
+            ForEach(Array((rows + said).prefix(left).enumerated()), id: \.offset) { i, line in
+                // What stops the step comes first, in red.
+                StepLine(line: line, look: paper, size: compact ? 10.5 : 11, alert: state == .blocked && i == 0 && shown.isEmpty)
             }
         }
+        .padding(.horizontal, 10).padding(.vertical, 7)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Color.primary.opacity(0.045)))
+    }
+
+    private func footer(_ note: String?) -> some View {
+        VStack(spacing: 0) {
+            Rectangle().fill(Color.primary.opacity(0.08)).frame(height: 1)
+            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                if let note {
+                    Text(note).font(.ui(compact ? 10 : 10.5)).foregroundStyle(state == .blocked ? Brand.loss : .secondary).lineLimit(compact ? 1 : 2)
+                }
+                Spacer(minLength: 4)
+                if opens {
+                    HStack(spacing: 3) {
+                        Text(isOpen ? "Close" : "Details").font(.ui(10.5, .semibold))
+                        Image(systemName: isOpen ? "xmark" : "chevron.right").font(.system(size: 8, weight: .bold))
+                    }
+                    .foregroundStyle(isOpen ? Brand.accentInk : .secondary)
+                    .fixedSize()
+                }
+            }
+            .padding(.top, 6)
+        }
+    }
+
+    /// The action's word: a long green and a short red at a glance; a step still to come faint.
+    private func verbInk(_ kind: StepKind) -> Color {
+        if state == .next { return .secondary }
+        if kind == .long { return Color(light: 0x1F9D6A, dark: 0x7EEBC0) }
+        if kind == .short { return Color(light: 0xD9443A, dark: 0xFF8A7A) }
+        return .primary
+    }
+
+    /// «KAMINO LEND» → «Kamino Lend», «MERKL ON BASE» → «Merkl on Base», «TOUCH ID» → «Touch ID»: short words and
+    /// tickers keep their capitals.
+    static func pretty(_ place: String) -> String {
+        let small: Set = ["ON", "OF", "TO", "OR", "AND", "IN", "AT", "FOR", "WITH", "FROM"]
+        let kept = ["USDC": "USDC", "USDG": "USDG", "USDT": "USDT", "NEAR": "NEAR", "JITOSOL": "JitoSOL", "1CLICK": "1Click", "HYPEREVM": "HyperEVM"]
+        return place.split(separator: " ").enumerated().map { i, w in
+            let word = String(w)
+            if let k = kept[word] { return k }
+            if small.contains(word) { return i > 0 ? word.lowercased() : word.prefix(1) + word.dropFirst().lowercased() }
+            if word.count <= 3 || word.contains(where: \.isNumber) || !word.contains(where: \.isLetter) { return word }
+            return word.prefix(1) + word.dropFirst().lowercased()
+        }
+        .joined(separator: " ")
     }
 
     /// The step's name on its price tag, and what its title's first token is.
@@ -510,18 +584,36 @@ private struct RingPulse: View {
     }
 }
 
-/// The place's logo at the card's corner, bare on the card; a second, smaller one beside it for a way that also goes
-/// through Uniswap.
+/// The step's logo — its network, token or protocol — with the other protocol the step goes through as a small badge
+/// on its bottom right (Base with Uniswap's, a token with Jupiter's), the way an app icon wears a badge.
 struct LogoBadge: View {
     @Environment(Workspace.self) private var ws
     let step: ActivityBubble
     var size: CGFloat = 36
 
     var body: some View {
-        HStack(alignment: .bottom, spacing: 2) {
-            logo.frame(width: size, height: size)
-            if step.label.uppercased().contains("UNISWAP") { TokenLogo(name: "uni", size: size * 0.7) }
-        }
+        let second = Self.second(step)
+        logo.frame(width: size, height: size)
+            .overlay(alignment: .bottomTrailing) {
+                if let second {
+                    TokenLogo(name: second, size: max(10, size * 0.62), round: true)
+                        .padding(max(1, size * 0.06))
+                        .background(Circle().fill(Brand.card))
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+                        .offset(x: size * 0.38, y: size * 0.28)
+                }
+            }
+            // Room for the badge, so the word after it doesn't run under it.
+            .padding(.trailing, second == nil ? 0 : size * 0.38)
+    }
+
+    /// The other protocol the label names («BUY · UNISWAP ON BASE», «RELAY + UNISWAP», «SELL · JUPITER»), when it isn't
+    /// the step's own logo.
+    static func second(_ step: ActivityBubble) -> String? {
+        let label = step.label.uppercased()
+        let protocols = [("UNISWAP", "uni"), ("RELAY", "relay"), ("JUPITER", "jup"), ("NEAR INTENTS", "near"), ("1CLICK", "near"),
+                         ("KAMINO", "kamino"), ("AAVE", "aave"), ("MORPHO", "morpho"), ("JITO", "jitosol")]
+        return protocols.first { label.contains($0.0) && $0.1 != step.logo }?.1
     }
 
     @ViewBuilder private var logo: some View {
@@ -563,6 +655,35 @@ struct StepLine: View {
         if label.contains("stop") || value.hasPrefix("−") { return look.loss }
         if label.contains("take") || value.hasPrefix("+") { return look.profit }
         return nil
+    }
+}
+
+/// A balance a step changes: where, what it is now, an arrow, what it comes to (bold), the ticker.
+struct MoneyLine: View {
+    let move: MoneyMove
+    var size: CGFloat = 11.5
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 5) {
+            Text(move.place).foregroundStyle(.secondary).layoutPriority(-1)
+            Spacer(minLength: 4)
+            Text(Self.amount(move.was, move.symbol)).foregroundStyle(.secondary)
+            Text("→").foregroundStyle(.tertiary)
+            Text((move.approx ? "≈ " : "") + Self.amount(move.after, move.symbol)).fontWeight(.bold)
+            Text(move.symbol).font(.ui(size - 1.5)).foregroundStyle(.secondary)
+        }
+        .font(.ui(size)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.75)
+    }
+
+    /// Dollars to the cent; another coin to 4 places from 1 up (2.4722 AERO), 6 under it (0.074852 SOL).
+    static func amount(_ d: Decimal, _ symbol: String) -> String {
+        let size = abs(d)
+        return Fmt.num(d, maxFraction: ["USDC", "USDG", "USDT", "USDC.e", "pathUSD"].contains(symbol) || size >= 100 ? 2 : size >= 1 ? 4 : 6)
+    }
+
+    /// «Solana 29.39 → 27.39 USDC», for Copy details and Why this way.
+    static func text(_ m: MoneyMove) -> String {
+        "\(m.place) \(amount(m.was, m.symbol)) → \(m.approx ? "≈ " : "")\(amount(m.after, m.symbol)) \(m.symbol)"
     }
 }
 
@@ -706,7 +827,7 @@ private struct RowTurns: View {
 
 // MARK: The drawing
 
-/// The bottom of a card: what the step does, drawn in the card's ink on a 340 × 120 grid (the brand board's), with the
+/// The top of a card: what the step does, drawn in the card's ink on a 340 × 120 grid (the brand board's), with the
 /// coin in it wearing the step's face.
 struct StepScene: View {
     let kind: StepKind
@@ -729,13 +850,14 @@ struct StepScene: View {
         .accessibilityHidden(true)
     }
 
-    /// Where the coin sits in the drawing, and how big (its radius over 17).
+    /// Where the coin sits in the drawing, and how big (its radius over 17). Clear of the state on the picture's top
+    /// left: none starts above y 60 left of x 150.
     private var coin: (CGFloat, CGFloat, CGFloat) {
         switch kind {
         case .wallet: (236, 50, 1.5)
-        case .bridge: (state == .done ? 292 : state == .ready || state == .next ? 72 : 170, 35, 1.4)
+        case .bridge: (state == .done ? 292 : state == .ready || state == .next ? 150 : 200, 35, 1.4)
         case .buy: (150, 62, 1.4)
-        case .swap: (96, 60, 1.4)
+        case .swap: (96, 68, 1.4)
         case .deposit: (170, 52, 1.4)
         case .stake: (170, 44, 1.4)
         case .send: (80, 72, 1.4)
@@ -744,10 +866,10 @@ struct StepScene: View {
         case .long: (250, 35, 1.4)
         case .short: (250, 57, 1.4)
         case .protect: (150, 64, 1.4)
-        case .result: (90, 60, 1.4)
+        case .result: (90, 68, 1.4)
         case .alert(let up): (236, up ? 58 : 74, 1.4)
         case .schedule: (130, 66, 1.4)
-        case .split: (84, 36, 1.4)
+        case .split: (160, 36, 1.4)
         case .recurring: (170, 62, 1.2)
         case .approve: (140, 60, 1.4)
         case .simulate, .predict: (118, 66, 1.4)
@@ -792,7 +914,7 @@ struct StepScene: View {
             for i in 0..<10 { let x = 70 + CGFloat(i) * 20; water.addQuadCurve(to: p(x + 20, 114), control: p(x + 10, i % 2 == 0 ? 109 : 119)) }
             stroke(water, thin, opacity: 0.45)
             if state == .now || state == .touch {
-                var moving = Path(); moving.move(to: p(118, 28)); moving.addLine(to: p(134, 28)); moving.move(to: p(110, 40)); moving.addLine(to: p(130, 40))
+                var moving = Path(); moving.move(to: p(148, 28)); moving.addLine(to: p(164, 28)); moving.move(to: p(140, 40)); moving.addLine(to: p(160, 40))
                 stroke(moving, StrokeStyle(lineWidth: 2.5 * k, lineCap: .round), opacity: 0.55)
             }
         case (.buy, false):
@@ -1068,6 +1190,14 @@ struct StepDetails: View {
             if let pending, pending.editableAmount != nil { amountField(pending) }
             if pending != nil, wayKey != nil { ways }
             if let pending, pending.isStockTrade { stockWays }
+            if let money = step.money, !money.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(state == .done ? "MONEY · WAS → NOW" : "MONEY · NOW → AFTER").font(.ui(10, .heavy)).tracking(0.8).foregroundStyle(.secondary)
+                    ForEach(money) { MoneyLine(move: $0, size: 13) }
+                }
+                .padding(.horizontal, 12).padding(.vertical, 10)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Color.primary.opacity(0.045)))
+            }
             if pending == nil {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(step.lines.filter { !$0.isEmpty }, id: \.self) { Text($0.rowText).font(.ui(12)) }
@@ -1119,6 +1249,9 @@ struct StepDetails: View {
                     .buttonStyle(.hoverIcon).help("Step \((index + 1) % count + 1)")
                     .keyboardShortcut(keys ? KeyboardShortcut(.rightArrow, modifiers: []) : nil)
             }
+            // Closes as the card's own «Close ×», Close below and Esc do.
+            Button(action: close) { Image(systemName: "xmark").font(.system(size: 12, weight: .bold)).frame(width: 30, height: 30) }
+                .buttonStyle(.hoverIcon).help("Close · Esc")
         }
     }
 

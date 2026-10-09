@@ -148,7 +148,7 @@ struct WelcomeView: View {
                 }
             }
             .offset(x: 479, y: 370)
-            confirmFace(s).opacity(play.confirm == .none ? 0 : 1).offset(x: 683, y: 581)
+            confirmFace(s).opacity(play.confirm == .none ? 0 : 1).offset(x: 683, y: Spot.cardBottom + 22)
         }
         .frame(width: Self.size.width, height: Self.size.height, alignment: .topLeading)
     }
@@ -194,8 +194,10 @@ struct WelcomeView: View {
     /// (bottom right, as on the canvas) and Confirm.
     private enum Spot {
         static let input = CGPoint(x: 390, y: 244), send = CGPoint(x: 932, y: 240), info = CGPoint(x: 404, y: 533)
-        static let confirm = CGPoint(x: 794, y: 606)
-        static func card(_ i: Int) -> CGPoint { CGPoint(x: 638 + 221 * CGFloat(i), y: 533) }
+        /// Where the route's cards end: they stand at 370, 189 wide, as tall as the canvas's are for that width.
+        static let cardBottom = 370 + RouteCards.cardHeight * 189 / RouteCards.cardWidth
+        static let confirm = CGPoint(x: 794, y: cardBottom + 47)
+        static func card(_ i: Int) -> CGPoint { CGPoint(x: 638 + 221 * CGFloat(i), y: cardBottom - 26) }
     }
 
     private struct Playback {

@@ -225,10 +225,9 @@ final class Workspace {
     var approvalsChanged = 0
     /// «receive 50 USDC from Sui»: 1Click's deposit address there, on the canvas (ReceiveAcrossBoard).
     var acrossDeposit: AcrossDeposit?
-    /// A market's price chart on the canvas (Modules.swift).
-    var chart: ChartState?
-    /// The network whose coin row opened the chart: its Buy and Sell trade the coin there (Workspace.coinTrades).
-    var chartNetwork: String?
+    /// A market's price chart on the canvas (Modules.swift). Opened from a coin's row it takes the place of the
+    /// token cards (`detail` «chart»), so closing it frees that place too.
+    var chart: ChartState? { didSet { if chart == nil, detail == "chart" { detail = nil } } }
     /// The day's biggest movers on the canvas.
     var showMovers = false
     /// The price alerts as a board on the canvas, opened when one is set.
@@ -260,8 +259,9 @@ final class Workspace {
         didSet { if assembling != (assembly != nil) { assembling = assembly != nil } }
     }
     private(set) var assembling = false
-    /// A place opened from the rail or the portfolio: «solana», «hyperliquid», «jupiter», «aave».
-    var detail: String?
+    /// A place opened from the rail or the portfolio: «solana», «hyperliquid», «jupiter», «aave»; «chart» the chart of a
+    /// network's coin, opened from its row where a token's card opens. Another place opened there replaces that chart.
+    var detail: String? { didSet { if oldValue == "chart", detail != "chart" { chart = nil } } }
     /// What the token card in `detail` shows, written by the card as its numbers load: the chat's model reads it.
     @ObservationIgnored var tokenCard: (place: String, text: String)?
     /// When ihatecrypto last finished moving money itself; incoming money right after it is its own, not a top-up.

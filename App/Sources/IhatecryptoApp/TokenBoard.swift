@@ -12,12 +12,20 @@ extension Workspace {
     }
 
     /// What a click on a held token opens: the board of a token with a contract; the market's chart for a network's own
-    /// coin (SOL, ETH, NEAR) or a Hyperliquid spot token that trades as a perp; nil when there's nothing to open.
+    /// coin (SOL, ETH, NEAR) or a Hyperliquid spot token that trades as a perp; nil when there's nothing to open. Both
+    /// open in the same place on the canvas, each replacing the last.
     func opener(chain: String, contract: String, symbol: String) -> (() -> Void)? {
         if contract != "native", chain != "hyperliquid" { return { self.openToken(contract, chain: chain) } }
         let coin = symbol.uppercased()
         guard markets[coin] != nil else { return nil }
-        return { self.chartNetwork = chain; Task { await self.chartCommand(.chart(coin: coin, range: .day)) } }
+        return {
+            withAnimation(StudioView.spring) {
+                if self.chart?.coin != coin || self.chart?.range != .day { self.chart = ChartState(coin: coin, range: .day) }
+                self.chart?.network = chain
+                self.detail = "chart"
+            }
+            Task { await self.chartCommand(.chart(coin: coin, range: .day)) }
+        }
     }
 
     /// The Buy and Sell of a network's coin, as the chat takes them — on every coin, never hidden (the user: «газ токен
@@ -39,6 +47,18 @@ extension Workspace {
             return pair("swap 2 \(dollar) for \(c) on \(net.key)", "swap \(some) \(c) for \(dollar) on \(net.key)")
         }
         return pair("buy \(c) for 2 USDC", "sell all \(c)")
+    }
+
+    /// How much of a coin the wallet holds on a network, as its portfolio line counts it: SOL, ETH on Base and Robinhood
+    /// Chain and NEAR from the network's balance, the other networks' coins and Hyperliquid's spot tokens from Holdings.
+    func coinHeld(_ coin: String, chain: String) -> Decimal? {
+        switch (chain, coin.uppercased()) {
+        case ("solana", "SOL"): solana?.sol
+        case ("base", "ETH"): base?.eth
+        case ("robinhood", "ETH"): robinhood?.eth
+        case ("near", "NEAR"): near
+        default: holdings.first { $0.chain == chain && $0.symbol.uppercased() == coin.uppercased() && ($0.contract == "native" || chain == "hyperliquid") }?.amount
+        }
     }
 
     /// The buy and the sale of a token as the chat takes them, by its network: Robinhood's stock tokens by ticker, a
@@ -153,27 +173,24 @@ struct TokenBoard: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 14) {
             header
-            price
-            chart
+            AssetPrice(pointer: pointer, now: market?.priceUSD ?? points.last?.close ?? holding?.price, change: rangeChange, range: $range)
+            AssetChart(points: points, range: range, pointer: pointer, error: error)
             if let m = market { stats(m) }
             if let h = holding {
-                held(h.amount, h.usd, isStock ? "valued at Robinhood’s bid \(h.price.map(tokenPrice) ?? "—")" : "valued at the pool price",
-                     pnl: h.price.flatMap { ws.costBasis["robinhood:\(h.address.lowercased())"]?.pnl(held: h.amount, price: $0) },
-                     cost: ws.costBasis["robinhood:\(h.address.lowercased())"])
+                HeldRow(symbol: symbol, amount: h.amount, usd: h.usd,
+                        how: isStock ? "valued at Robinhood’s bid \(h.price.map(tokenPrice) ?? "—")" : "valued at the pool price",
+                        pnl: h.price.flatMap { ws.costBasis["robinhood:\(h.address.lowercased())"]?.pnl(held: h.amount, price: $0) },
+                        cost: ws.costBasis["robinhood:\(h.address.lowercased())"])
             } else if let t = heldToken {
-                held(t.amount, t.usd, t.price == nil ? "no price yet" : "valued at the pool price",
-                     pnl: ws.purchasePnL(t), cost: ws.costBasis[t.id] ?? ws.costBasis[t.contract], today: Self.today(t))
+                HeldRow(symbol: symbol, amount: t.amount, usd: t.usd, how: t.price == nil ? "no price yet" : "valued at the pool price",
+                        pnl: ws.purchasePnL(t), cost: ws.costBasis[t.id] ?? ws.costBasis[t.contract], today: Self.today(t))
             } else if Self.walletDollar(chain: chain, address: address), let usdc = ws.usdc(on: chain), usdc > 0 {
-                held(usdc, usdc, "not earning")
+                HeldRow(symbol: symbol, amount: usdc, usd: usdc, how: "not earning")
             }
             links
             actions
         }
-        .padding(16)
-        .frame(width: 470, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.06), radius: 14, y: 8))
-        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.accent.opacity(0.4), lineWidth: 1.5))
-        .transition(.opacity)
+        .assetCard()
         .task(id: address) {
             market = try? await TokenMarket.info(address, chain: chain)
             if market == nil { error = "No pool trades this token on \(chainTitle)." }
@@ -185,8 +202,6 @@ struct TokenBoard: View {
             guard let pool = market?.pool else { return }
             do {
                 points = try await TokenMarket.history(chain: chain, pool: pool, range: range)
-                // A point from the previous range isn't on this chart: the price line goes back to the price now.
-                pointer.point = nil
                 error = points.count > 1 ? nil : "No trades in this period."
             } catch {
                 self.error = error.localizedDescription
@@ -213,39 +228,21 @@ struct TokenBoard: View {
                 Button { withAnimation(StudioView.spring) { ws.detail = "robinhood" } } label: { Image(systemName: "chevron.left") }
                     .buttonStyle(.hoverIcon).help("Back to Robinhood Chain")
             }
-            if let h = holding {
-                StockLogo(symbol: h.symbol, url: market?.imageURL ?? h.logo, size: 38)
-            } else if let f = favorite {
-                TokenIcon(token: f, size: 38)
-            } else {
-                StockLogo(symbol: symbol, url: market?.imageURL, size: 38)
-            }
-            VStack(alignment: .leading, spacing: 1) {
-                HStack(spacing: 5) {
-                    Text(name).font(.ui(16, .bold)).lineLimit(1).help(fullName)
-                    if let v = verified {
-                        if v.ok { VerifiedBadge(size: 15, source: v.by) }
-                        else { Text("not verified").font(.ui(10, .semibold)).foregroundStyle(Brand.jevInk).help("\(v.by) hasn't verified it: it may be a copy under a famous name") }
-                    }
+            AssetHeader(name: name, help: fullName, subtitle: [symbol, chainTitle, market.map { "\($0.dex) · \($0.quote) pool" }].compactMap { $0 }.joined(separator: " · "),
+                        close: { withAnimation(StudioView.spring) { ws.detail = nil } }) {
+                if let h = holding {
+                    StockLogo(symbol: h.symbol, url: market?.imageURL ?? h.logo, size: 38)
+                } else if let f = favorite {
+                    TokenIcon(token: f, size: 38)
+                } else {
+                    StockLogo(symbol: symbol, url: market?.imageURL, size: 38)
                 }
-                Text([symbol, chainTitle, market.map { "\($0.dex) · \($0.quote) pool" }].compactMap { $0 }.joined(separator: " · "))
-                    .font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer()
-            Button { withAnimation(StudioView.spring) { ws.detail = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
-        }
-    }
-
-    /// The price now, or at the pointer on the chart, and the move over the range.
-    private var price: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            PointerPrice(pointer: pointer, now: market?.priceUSD ?? points.last?.close ?? holding?.price, change: rangeChange, rangeTitle: range.title)
-                .layoutPriority(1)
-            Spacer()
-            Picker("", selection: $range) {
-                ForEach(ChartCommand.Range.allCases, id: \.self) { r in Text(["24h", "7d", "30d"][ChartCommand.Range.allCases.firstIndex(of: r) ?? 0]).tag(r) }
-            }
-            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            } badge: {
+                if let v = verified {
+                    if v.ok { VerifiedBadge(size: 15, source: v.by) }
+                    else { Text("not verified").font(.ui(10, .semibold)).foregroundStyle(Brand.jevInk).help("\(v.by) hasn't verified it: it may be a copy under a famous name") }
+                }
+            } tools: {}
         }
     }
 
@@ -254,24 +251,159 @@ struct TokenBoard: View {
         return (last - first) / first * 100
     }
 
-    @ViewBuilder private var chart: some View {
+    private func stats(_ m: TokenMarket.Info) -> some View {
+        let compact = AssetStats.compact
+        return AssetStats(changes: [("m5", "5m"), ("h1", "1h"), ("h6", "6h"), ("h24", "24h")].compactMap { key, title in m.changes[key].map { (title, $0) } },
+                          tiles: [(isStock ? "Tokenized value" : "Market cap", (m.marketCap ?? m.fdv).map(compact)),
+                                  ("Liquidity", m.liquidityUSD.map(compact)),
+                                  ("Volume 24h", m.volume24h.map(compact)),
+                                  ("Buys 24h", m.buys24h.map { Fmt.num(Decimal($0), maxFraction: 0) }),
+                                  ("Sells 24h", m.sells24h.map { Fmt.num(Decimal($0), maxFraction: 0) }),
+                                  ("Pool since", m.created.map { $0.formatted(Date.FormatStyle(locale: Locale(identifier: "en_US")).day().month(.abbreviated)) })])
+    }
+
+    /// Today's move of what's held, in dollars, from its 24-hour change.
+    static func today(_ t: Holding) -> Decimal? {
+        guard let usd = t.usd, let change = t.change24h, change > -100 else { return nil }
+        return usd - usd / (1 + change / 100)
+    }
+
+    /// Wraps: a token with many socials must not spill past the card.
+    private var links: some View {
+        Flow(spacing: 14) {
+            CopyButton(title: "\(address.prefix(6))…\(address.suffix(4))", text: address, help: "Copy \(address)")
+            ForEach(market?.links ?? [], id: \.url) { Link($0.label, destination: $0.url).pointerStyle(.link) }
+            if let pair = market?.pairURL { Link("DexScreener", destination: pair).pointerStyle(.link) }
+            if chain == "robinhood", let url = URL(string: "https://robinhoodchain.blockscout.com/token/\(address)") { Link("Explorer", destination: url).pointerStyle(.link) }
+        }
+        .buttonStyle(.borderless).font(.ui(10)).tint(Brand.accent).foregroundStyle(Brand.accentInk)
+    }
+
+    /// Ask in the chat with the token attached, then its buy and sale (or watching it) put into the chat's field.
+    private var actions: some View {
+        let trades = ws.tokenPhrases(chain: chain, address: address, symbol: symbol, stock: isStock,
+                                     verified: verified?.ok == true || heldToken?.verified == true)
+        let watch = trades.isEmpty && favorite == nil && !Self.walletDollar(chain: chain, address: address) ? [(title: "Watch \(symbol)", icon: "star", phrase: "watch token \(address) on \(chain)")] : []
+        return AssetActions(symbol: symbol, ask: { ws.askAbout(symbol: symbol, chain: chain, address: address) }, trades: trades + watch,
+                            source: "DexScreener · GeckoTerminal")
+    }
+}
+
+// MARK: The asset card
+
+// One look for every asset on the canvas, a token with a contract (TokenBoard, DexScreener + GeckoTerminal) and a
+// network's coin or a Hyperliquid market (ChartBoard, Hyperliquid candles): only where the numbers come from differs.
+
+extension View {
+    /// The asset card's frame. Always its full height: squeezed, the price (the one text allowed to shrink) went half size.
+    func assetCard() -> some View {
+        fixedSize(horizontal: false, vertical: true)
+            .padding(16)
+            .frame(width: 470, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.06), radius: 14, y: 8))
+            .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.accent.opacity(0.4), lineWidth: 1.5))
+            .transition(.opacity)
+    }
+}
+
+extension ChartCommand.Range {
+    /// The range picker's word.
+    var short: String { switch self { case .day: "24h"; case .week: "7d"; case .month: "30d" } }
+}
+
+/// The logo, the name with its badge and a line about the asset; the card's own buttons, then the close.
+struct AssetHeader<Logo: View, Badge: View, Tools: View>: View {
+    let name: String
+    var help: String?
+    let subtitle: String
+    let close: () -> Void
+    @ViewBuilder let logo: Logo
+    @ViewBuilder let badge: Badge
+    @ViewBuilder let tools: Tools
+
+    var body: some View {
+        HStack(spacing: 10) {
+            logo
+            VStack(alignment: .leading, spacing: 1) {
+                HStack(spacing: 5) {
+                    Text(name).font(.ui(16, .bold)).lineLimit(1).help(help ?? name)
+                    badge
+                }
+                Text(subtitle).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            tools
+            Button(action: close) { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
+        }
+    }
+}
+
+/// The price now, or at the pointer on the chart, and the move over the range; the range picker.
+struct AssetPrice: View {
+    let pointer: ChartPointer
+    let now: Decimal?
+    let change: Decimal?
+    @Binding var range: ChartCommand.Range
+
+    var body: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            PointerPrice(pointer: pointer, now: now, change: change, rangeTitle: range.title).layoutPriority(1)
+            Spacer()
+            Picker("", selection: $range) {
+                ForEach(ChartCommand.Range.allCases, id: \.self) { Text($0.short).tag($0) }
+            }
+            .pickerStyle(.segmented).labelsHidden().fixedSize().pointerStyle(.link)
+        }
+    }
+}
+
+/// A line across the chart at a price: a position's entry, its stop and take, an alert.
+struct ChartLevel: Identifiable {
+    let id: String
+    let price: Double
+    let label: String
+    let color: Color
+    let dashed: Bool
+}
+
+/// The price over the range, green up and red down, with its levels; the point under the pointer shows in the price above.
+struct AssetChart: View {
+    let points: [TokenMarket.Point]
+    let range: ChartCommand.Range
+    let pointer: ChartPointer
+    var levels: [ChartLevel] = []
+    var error: String?
+
+    var body: some View {
         let closes = points.map { NSDecimalNumber(decimal: $0.close).doubleValue }
-        if closes.count > 1, let lo = closes.min(), let hi = closes.max() {
-            let pad = max((hi - lo) * 0.1, hi * 0.002)
-            let tint = (rangeChange ?? 0) < 0 ? Brand.loss : Brand.profit
+        if closes.count > 1, let lo = closes.min(), let hi = closes.max(), let first = closes.first, let last = closes.last {
+            let levels = levels.filter { $0.price > lo * 0.85 && $0.price < hi * 1.15 }
+            let bottom = min(lo, levels.map(\.price).min() ?? lo), top = max(hi, levels.map(\.price).max() ?? hi)
+            let pad = max((top - bottom) * 0.1, top * 0.002)
+            let tint = last < first ? Brand.loss : Brand.profit
             Chart {
                 ForEach(points, id: \.time) { p in
-                    AreaMark(x: .value("Time", p.time), yStart: .value("Base", lo - pad), yEnd: .value("Price", NSDecimalNumber(decimal: p.close).doubleValue))
+                    AreaMark(x: .value("Time", p.time), yStart: .value("Base", bottom - pad), yEnd: .value("Price", NSDecimalNumber(decimal: p.close).doubleValue))
                         .foregroundStyle(LinearGradient(colors: [tint.opacity(0.22), .clear], startPoint: .top, endPoint: .bottom))
                     LineMark(x: .value("Time", p.time), y: .value("Price", NSDecimalNumber(decimal: p.close).doubleValue))
                         .foregroundStyle(tint)
                         .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
                 }
+                ForEach(levels) { l in
+                    RuleMark(y: .value(l.label, l.price))
+                        .foregroundStyle(l.color)
+                        .lineStyle(StrokeStyle(lineWidth: 1.2, dash: l.dashed ? [4, 3] : []))
+                        .annotation(position: .top, alignment: .leading) {
+                            Text("\(l.label) \(Fmt.price(Decimal(l.price)))").font(.ui(9.5, .bold)).foregroundStyle(l.color)
+                        }
+                }
             }
-            .chartYScale(domain: (lo - pad)...(hi + pad))
+            .chartYScale(domain: (bottom - pad)...(top + pad))
             .priceAxes(range)
             .chartOverlay { proxy in TokenChartHover(proxy: proxy, points: points, pointer: pointer, tint: tint) }
             .frame(height: 190)
+            // A point from the previous range or load isn't on this chart: the price above goes back to the price now.
+            .onChange(of: points) { pointer.point = nil }
         } else if let error {
             Label(error, systemImage: "chart.xyaxis.line").font(.ui(10)).foregroundStyle(.secondary)
                 .frame(maxWidth: .infinity, minHeight: 120)
@@ -279,38 +411,37 @@ struct TokenBoard: View {
             ProgressView().frame(maxWidth: .infinity, minHeight: 190)
         }
     }
+}
 
-    private func stats(_ m: TokenMarket.Info) -> some View {
+/// The moves as chips («24h +1.2%»), then the market's numbers in tiles, three a row.
+struct AssetStats: View {
+    let changes: [(String, Decimal)]
+    let tiles: [(String, String?)]
+
+    var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Flow(spacing: 6) {
-                ForEach([("m5", "5m"), ("h1", "1h"), ("h6", "6h"), ("h24", "24h")], id: \.0) { key, title in
-                    if let c = m.changes[key] {
-                        HStack(spacing: 4) {
-                            Text(title).foregroundStyle(.secondary)
-                            Text(signedPct(c)).foregroundStyle(c < 0 ? Brand.loss : Brand.profit)
-                        }
-                        .font(.ui(11, .semibold)).monospacedDigit()
-                        .padding(.horizontal, 8).padding(.vertical, 4)
-                        .background(Capsule().fill(Color.primary.opacity(0.05)))
+                ForEach(changes, id: \.0) { title, c in
+                    HStack(spacing: 4) {
+                        Text(title).foregroundStyle(.secondary)
+                        Text(signedPct(c)).foregroundStyle(c < 0 ? Brand.loss : Brand.profit)
                     }
+                    .font(.ui(11, .semibold)).monospacedDigit()
+                    .padding(.horizontal, 8).padding(.vertical, 4)
+                    .background(Capsule().fill(Color.primary.opacity(0.05)))
                 }
             }
             Grid(horizontalSpacing: 8, verticalSpacing: 8) {
-                GridRow {
-                    stat(isStock ? "Tokenized value" : "Market cap", (m.marketCap ?? m.fdv).map(compact))
-                    stat("Liquidity", m.liquidityUSD.map(compact))
-                    stat("Volume 24h", m.volume24h.map(compact))
-                }
-                GridRow {
-                    stat("Buys 24h", m.buys24h.map { Fmt.num(Decimal($0), maxFraction: 0) })
-                    stat("Sells 24h", m.sells24h.map { Fmt.num(Decimal($0), maxFraction: 0) })
-                    stat("Pool since", m.created.map { $0.formatted(Date.FormatStyle(locale: Locale(identifier: "en_US")).day().month(.abbreviated)) })
+                ForEach(Array(stride(from: 0, to: tiles.count, by: 3)), id: \.self) { row in
+                    GridRow {
+                        ForEach(tiles[row..<min(row + 3, tiles.count)], id: \.0) { title, value in tile(title, value) }
+                    }
                 }
             }
         }
     }
 
-    private func stat(_ title: String, _ value: String?) -> some View {
+    private func tile(_ title: String, _ value: String?) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title.uppercased()).font(.ui(9.5, .semibold)).tracking(0.5).foregroundStyle(.secondary)
             Text(value ?? "—").font(.ui(14, .bold)).monospacedDigit()
@@ -320,16 +451,24 @@ struct TokenBoard: View {
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
     }
 
-    /// Today's move of what's held, in dollars, from its 24-hour change.
-    static func today(_ t: Holding) -> Decimal? {
-        guard let usd = t.usd, let change = t.change24h, change > -100 else { return nil }
-        return usd - usd / (1 + change / 100)
+    /// $218.7M, $1.3M, $12K.
+    static func compact(_ d: Decimal) -> String {
+        d.formatted(.currency(code: "USD").notation(.compactName).precision(.significantDigits(3)).locale(Locale(identifier: "en_US")))
     }
+}
 
-    /// What's held, and how it went: the P/L since it was bought here (what it cost), or for one that came from
-    /// elsewhere — no cost to compare — at least today's move in dollars.
-    private func held(_ amount: Decimal, _ usd: Decimal?, _ how: String, pnl: (usd: Decimal, pct: Decimal)? = nil, cost: CostBasis? = nil,
-                      today: Decimal? = nil) -> some View {
+/// What's held, and how it went: the P/L since it was bought here (what it cost), or for one that came from
+/// elsewhere — no cost to compare — at least today's move in dollars.
+struct HeldRow: View {
+    let symbol: String
+    let amount: Decimal
+    let usd: Decimal?
+    let how: String
+    var pnl: (usd: Decimal, pct: Decimal)?
+    var cost: CostBasis?
+    var today: Decimal?
+
+    var body: some View {
         HStack(spacing: 10) {
             Image(systemName: "wallet.pass.fill").foregroundStyle(Brand.accentInk)
             VStack(alignment: .leading, spacing: 1) {
@@ -351,48 +490,37 @@ struct TokenBoard: View {
         .padding(10)
         .background(RoundedRectangle(cornerRadius: 12).fill(Brand.accent.opacity(0.08)))
     }
+}
 
-    /// Wraps: a token with many socials must not spill past the card.
-    private var links: some View {
-        Flow(spacing: 14) {
-            CopyButton(title: "\(address.prefix(6))…\(address.suffix(4))", text: address, help: "Copy \(address)")
-            ForEach(market?.links ?? [], id: \.url) { Link($0.label, destination: $0.url) }
-            if let pair = market?.pairURL { Link("DexScreener", destination: pair) }
-            if chain == "robinhood", let url = URL(string: "https://robinhoodchain.blockscout.com/token/\(address)") { Link("Explorer", destination: url) }
-        }
-        .buttonStyle(.borderless).font(.ui(10)).tint(Brand.accent).foregroundStyle(Brand.accentInk)
-    }
+/// Ask in the chat with the asset attached, then its buy and sale (or watching it) put into the chat's field; where the
+/// card's numbers come from under them.
+struct AssetActions: View {
+    @Environment(Workspace.self) private var ws
+    let symbol: String
+    let ask: () -> Void
+    let trades: [(title: String, icon: String, phrase: String)]
+    let source: String
 
-    /// Ask in the chat with the token attached, then its buy and sale (or watching it) put into the chat's field.
-    private var actions: some View {
-        let trades = ws.tokenPhrases(chain: chain, address: address, symbol: symbol, stock: isStock,
-                                     verified: verified?.ok == true || heldToken?.verified == true)
-        let watch = trades.isEmpty && favorite == nil && !Self.walletDollar(chain: chain, address: address) ? [(title: "Watch \(symbol)", icon: "star", phrase: "watch token \(address) on \(chain)")] : []
-        return VStack(alignment: .leading, spacing: 8) {
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
             Flow(spacing: 6) {
-                Button { ws.askAbout(symbol: symbol, chain: chain, address: address) } label: {
-                    Label("Ask in chat", systemImage: "bubble.left").font(.ui(12, .semibold)).foregroundStyle(Brand.accentInk)
-                        .padding(.horizontal, 12).padding(.vertical, 6)
-                        .background(Capsule().fill(Brand.accent.opacity(0.1)))
-                }
-                .buttonStyle(.plain).pointerStyle(.link).help("Your next message in the chat is about \(symbol): its network, contract and what you hold go along")
-                ForEach(trades + watch, id: \.phrase) { p in
-                    let sell = p.title == "Sell"
-                    Button { ws.suggest(p.phrase) } label: {
-                        Label(p.title, systemImage: p.icon).font(.ui(12, .semibold)).foregroundStyle(sell ? Brand.loss : Brand.accentInk)
-                            .padding(.horizontal, 12).padding(.vertical, 6)
-                            .background(Capsule().fill((sell ? Brand.loss : Brand.accent).opacity(0.1)))
-                    }
-                    .buttonStyle(.plain).pointerStyle(.link).help("Puts “\(p.phrase)” into the chat")
+                pill("Ask in chat", "bubble.left", sell: false,
+                     help: "Your next message in the chat is about \(symbol): its network, price and what you hold go along", action: ask)
+                ForEach(trades, id: \.phrase) { p in
+                    pill(p.title, p.icon, sell: p.title == "Sell", help: "Puts “\(p.phrase)” into the chat") { ws.suggest(p.phrase) }
                 }
             }
-            Text("DexScreener · GeckoTerminal").font(.ui(10)).foregroundStyle(.tertiary).lineLimit(1)
+            Text(source).font(.ui(10)).foregroundStyle(.tertiary).lineLimit(1)
         }
     }
 
-    /// $218.7M, $1.3M, $12K.
-    private func compact(_ d: Decimal) -> String {
-        d.formatted(.currency(code: "USD").notation(.compactName).precision(.significantDigits(3)).locale(Locale(identifier: "en_US")))
+    private func pill(_ title: String, _ icon: String, sell: Bool, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: icon).font(.ui(12, .semibold)).foregroundStyle(sell ? Brand.loss : Brand.accentInk)
+                .padding(.horizontal, 12).padding(.vertical, 6)
+                .background(Capsule().fill((sell ? Brand.loss : Brand.accent).opacity(0.1)))
+        }
+        .buttonStyle(.plain).pointerStyle(.link).help(help)
     }
 }
 
@@ -447,7 +575,7 @@ private struct PointerPrice: View {
     }
 }
 
-/// A dashed line and a dot at the pointer. Its own view (like ChartHover), so moving the pointer redraws the marker,
+/// A dashed line and a dot at the pointer. Its own view, so moving the pointer redraws the marker,
 /// not the chart's hundreds of marks.
 private struct TokenChartHover: View {
     let proxy: ChartProxy
@@ -474,7 +602,9 @@ private struct TokenChartHover: View {
                             .stroke(.secondary.opacity(0.5), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
                         Circle().fill(tint).frame(width: 7, height: 7).position(x: plot.minX + x, y: plot.minY + y)
                     }
-                    .allowsHitTesting(false)  // Like ChartHover's marker: under the pointer it would end the hover.
+                    // The marker must not take the pointer: under it the hover area below ends, the marker goes, the hover
+                    // starts again — it blinked once per candle.
+                    .allowsHitTesting(false)
                 }
             }
         }

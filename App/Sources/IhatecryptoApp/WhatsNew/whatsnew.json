@@ -1,5 +1,47 @@
 [
   {
+    "version": "0.6.0",
+    "date": "2026-10-09",
+    "stories": [
+      {
+        "title": "Every step says what it does",
+        "text": "Each card of a move shows its state in words on its picture — Ready, Now, Done, Touch ID — then what it does and with which protocol, with that protocol's logo. Click a card for the rest; ✕, Close or Esc closes it.",
+        "symbol": "rectangle.stack",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Your money now → after",
+        "text": "Every step that moves money shows the balances it changes: «Solana 26.65 → 24.65 USDC», «Kamino Lend 0 → 2 USDC». Once it's done, it reads was → now.",
+        "symbol": "arrow.left.arrow.right",
+        "color": "26A17B"
+      },
+      {
+        "title": "Coins open like tokens",
+        "text": "SOL, ETH and NEAR open where your tokens do, on the same card: price with 24h, 7d and 30d, the chart, the day's numbers, what you hold, Ask in chat, Buy and Sell.",
+        "symbol": "chart.xyaxis.line",
+        "color": "9945FF"
+      },
+      {
+        "title": "The chat calls any contract",
+        "text": "Ask for anything a contract does on nine networks: the chat writes the call, checks the contract and simulates it before a card with Confirm. It says its next step out loud, remembers what you tell it to, and can watch things in the background.",
+        "symbol": "curlybraces",
+        "color": "5856D6"
+      },
+      {
+        "title": "Calls that can't trick you",
+        "text": "A call that would hand over rights to your coins is refused. A protocol ihatecrypto doesn't know has to pass its checks, and at most $50 rides on it. Deposits into any vault show in your portfolio.",
+        "symbol": "checkmark.shield",
+        "color": "2775CA"
+      },
+      {
+        "title": "Stop",
+        "text": "While the chat is answering, the send button turns into Stop (Esc does it too): nothing it was about to do runs.",
+        "symbol": "stop.circle",
+        "color": "8E8E93"
+      }
+    ]
+  },
+  {
     "version": "0.5.8",
     "date": "2026-10-08",
     "stories": [

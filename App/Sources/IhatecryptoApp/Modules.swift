@@ -16,12 +16,17 @@ nonisolated struct ChartState: Equatable, Codable {
     var error: String?
     /// When the candles were loaded.
     var at: Date?
+    /// The network whose coin row opened the chart: its Buy and Sell trade the coin there (Workspace.coinTrades), what
+    /// the wallet holds there shows on it.
+    var network: String?
 }
 
 extension Workspace {
     /// Opens a chart, or refreshes the one on the canvas: its old candles stay on screen until the new ones land.
     func openChart(_ coin: String, range: ChartCommand.Range = .day) async {
-        if chart?.coin != coin || chart?.range != range { withAnimation(StudioView.spring) { chart = ChartState(coin: coin, range: range) } }
+        if chart?.coin != coin || chart?.range != range {
+            withAnimation(StudioView.spring) { chart = ChartState(coin: coin, range: range, network: chart?.coin == coin ? chart?.network : nil) }
+        }
         chart?.error = nil
         UserDefaults.standard.set("plan", forKey: "canvasMode")
         do {
@@ -80,153 +85,70 @@ struct ChartBoard: View {
     @Environment(Workspace.self) private var ws
     let state: ChartState
     @State private var refreshing = false
-
-    private struct Level: Identifiable {
-        let id: String
-        let price: Double
-        let label: String
-        let color: Color
-        let dashed: Bool
-    }
+    @State private var pointer = ChartPointer()
 
     var body: some View {
-        let closes = state.candles.map { NSDecimalNumber(decimal: $0.close).doubleValue }
-        let lo = closes.min() ?? 0, hi = closes.max() ?? 1
-        let levels = self.levels.filter { $0.price > lo * 0.85 && $0.price < hi * 1.15 }
-        let bottom = min(lo, levels.map(\.price).min() ?? lo), top = max(hi, levels.map(\.price).max() ?? hi)
-        let pad = max((top - bottom) * 0.08, top * 0.001)
-        let up = (closes.last ?? 0) >= (closes.first ?? 0)
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                AssetBadge(coin: state.coin, size: 32, dark: true)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(IntentParser.pretty(state.coin)).font(.ui(15, .bold))
-                    HStack(spacing: 6) {
-                        Text(state.candles.last.map { Fmt.price($0.close) } ?? "—").font(.ui(13, .semibold)).monospacedDigit()
-                        if let first = closes.first, let last = closes.last, first > 0 {
-                            Text(signedPct(Decimal((last - first) / first * 100))).font(.ui(10, .bold))
-                                .foregroundStyle(up ? Brand.profit : Brand.loss)
-                        }
-                    }
-                }
-                Spacer()
-                Picker("", selection: Binding(get: { state.range }, set: { r in Task { await ws.openChart(state.coin, range: r) } })) {
-                    ForEach(ChartCommand.Range.allCases, id: \.self) { Text($0.title).tag($0) }
-                }
-                .pickerStyle(.segmented).labelsHidden().fixedSize()
-                Button { withAnimation(StudioView.spring) { ws.chart = nil } } label: { Image(systemName: "xmark") }.buttonStyle(.hoverIcon)
-            }
-            HStack(spacing: 8) {
-                if let at = state.at {
-                    Label("As of \(Fmt.date(at))", systemImage: "clock").font(.ui(10)).foregroundStyle(.secondary)
-                }
-                Spacer()
-                // A network's coin trades like any token: its Buy and Sell into the chat.
-                ForEach(ws.coinTrades(state.coin, chain: ws.chartNetwork), id: \.phrase) { p in
-                    let sell = p.title == "Sell"
-                    Button { ws.suggest(p.phrase) } label: {
-                        Label(p.title, systemImage: p.icon).font(.ui(11, .semibold)).foregroundStyle(sell ? Brand.loss : Brand.accentInk)
-                            .padding(.horizontal, 10).padding(.vertical, 4)
-                            .background(Capsule().fill((sell ? Brand.loss : Brand.accent).opacity(0.1)))
-                    }
-                    .buttonStyle(.plain).pointerStyle(.link).help("Puts “\(p.phrase)” into the chat")
-                }
+        let points = state.candles.map { TokenMarket.Point(time: $0.time, close: $0.close) }
+        let name = IntentParser.pretty(state.coin), network = state.network
+        let market = ws.markets[state.coin]
+        let held = network.flatMap { ws.coinHeld(state.coin, chain: $0) }.flatMap { $0 > 0 ? $0 : nil }
+        let price = market?.markPx ?? points.last?.close
+        let levels = self.levels
+        VStack(alignment: .leading, spacing: 14) {
+            AssetHeader(name: name, subtitle: [network.flatMap { ModuleNetwork(rawValue: $0)?.name }, "Hyperliquid chart",
+                                               state.at.map { "as of \(Fmt.date($0))" }].compactMap { $0 }.joined(separator: " · "),
+                        close: { withAnimation(StudioView.spring) { ws.chart = nil } }) {
+                AssetBadge(coin: state.coin, size: 38, dark: true)
+            } badge: {} tools: {
                 Button {
                     refreshing = true
                     Task { await ws.openChart(state.coin, range: state.range); refreshing = false }
                 } label: {
-                    Label(refreshing ? "Updating…" : "Refresh", systemImage: "arrow.clockwise").font(.ui(10, .semibold))
+                    if refreshing { ProgressView().controlSize(.small) } else { Image(systemName: "arrow.clockwise") }
                 }
-                .buttonStyle(.borderless).disabled(refreshing).help("Load fresh candles from Hyperliquid")
+                .buttonStyle(.hoverIcon).disabled(refreshing).help("Load fresh candles from Hyperliquid")
             }
-            if closes.count > 1 {
-                Chart {
-                    ForEach(Array(state.candles.enumerated()), id: \.offset) { _, c in
-                        AreaMark(x: .value("Time", c.time), yStart: .value("Base", bottom - pad), yEnd: .value("Price", NSDecimalNumber(decimal: c.close).doubleValue))
-                            .foregroundStyle(LinearGradient(colors: [(up ? Brand.profit : Brand.loss).opacity(0.25), .clear], startPoint: .top, endPoint: .bottom))
-                        LineMark(x: .value("Time", c.time), y: .value("Price", NSDecimalNumber(decimal: c.close).doubleValue))
-                            .foregroundStyle(up ? Brand.profit : Brand.loss)
-                            .lineStyle(StrokeStyle(lineWidth: 1.8, lineCap: .round, lineJoin: .round))
-                    }
-                    ForEach(levels) { l in
-                        RuleMark(y: .value(l.label, l.price))
-                            .foregroundStyle(l.color)
-                            .lineStyle(StrokeStyle(lineWidth: 1.2, dash: l.dashed ? [4, 3] : []))
-                            .annotation(position: .top, alignment: .leading) {
-                                Text("\(l.label) \(Fmt.price(Decimal(l.price)))").font(.ui(9.5, .bold)).foregroundStyle(l.color)
-                            }
-                    }
-                }
-                .chartYScale(domain: (bottom - pad)...(top + pad))
-                .priceAxes(state.range)
-                .chartOverlay { proxy in ChartHover(proxy: proxy, points: state.candles.map { ($0.time, NSDecimalNumber(decimal: $0.close).doubleValue) }) }
-                .frame(height: 210)
-            } else if let error = state.error {
-                Text("The chart didn’t load: \(error)").font(.ui(10)).foregroundStyle(Brand.loss)
-            } else {
-                ProgressView().frame(maxWidth: .infinity, minHeight: 120)
+            AssetPrice(pointer: pointer, now: points.last?.close ?? market?.markPx, change: change(points),
+                       range: Binding(get: { state.range }, set: { r in Task { await ws.openChart(state.coin, range: r) } }))
+            AssetChart(points: points, range: state.range, pointer: pointer, levels: levels, error: state.error.map { "The chart didn’t load: \($0)" })
+            if let m = market {
+                AssetStats(changes: m.change24h.map { [("24h", $0)] } ?? [],
+                           tiles: [("Volume 24h", m.volume24h > 0 ? AssetStats.compact(m.volume24h) : nil),
+                                   ("Funding 1h", m.funding.map { "\(Fmt.num($0 * 100, maxFraction: 4))%" }),
+                                   ("Max leverage", "\(m.maxLeverage)×")])
             }
-            Text("Hyperliquid candles · \(state.range.interval)\(levels.isEmpty ? "" : " · lines: your position, its orders and alerts")")
-                .font(.ui(10)).foregroundStyle(.tertiary)
+            if let held {
+                let usd = price.map { held * $0 }
+                HeldRow(symbol: name, amount: held, usd: usd, how: price == nil ? "no price yet" : "valued at Hyperliquid’s price",
+                        today: usd.flatMap { usd in market?.change24h.flatMap { $0 > -100 ? usd - usd / (1 + $0 / 100) : nil } })
+            }
+            AssetActions(symbol: name, ask: { ws.askAbout(symbol: name, chain: network ?? "hyperliquid", address: nil) },
+                         trades: ws.coinTrades(state.coin, chain: network),
+                         source: "Hyperliquid candles · \(state.range.interval)\(levels.isEmpty ? "" : " · lines: your position, its orders and alerts")")
         }
-        .padding(16)
-        .frame(width: 470, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card).shadow(color: .black.opacity(0.06), radius: 14, y: 8))
-        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.cardBorder))
-        .transition(.opacity)
+        .assetCard()
     }
 
-    private var levels: [Level] {
+    private func change(_ points: [TokenMarket.Point]) -> Decimal? {
+        guard let first = points.first?.close, let last = points.last?.close, first > 0 else { return nil }
+        return (last - first) / first * 100
+    }
+
+    private var levels: [ChartLevel] {
         func d(_ x: Decimal) -> Double { NSDecimalNumber(decimal: x).doubleValue }
-        var out: [Level] = []
+        var out: [ChartLevel] = []
         if let p = ws.positions.first(where: { $0.coin == state.coin }) {
-            out.append(Level(id: "entry", price: d(p.entry), label: p.size > 0 ? "Long entry" : "Short entry", color: Brand.accent, dashed: false))
+            out.append(ChartLevel(id: "entry", price: d(p.entry), label: p.size > 0 ? "Long entry" : "Short entry", color: Brand.accent, dashed: false))
         }
         for (i, o) in ws.orders.filter({ $0.coin == state.coin && $0.isTrigger }).enumerated() {
             guard let px = o.triggerPx else { continue }
             let stop = (o.orderType ?? "").contains("Stop")
-            out.append(Level(id: "o\(i)", price: d(px), label: stop ? "Stop" : "Take", color: stop ? Brand.loss : Brand.profit, dashed: false))
+            out.append(ChartLevel(id: "o\(i)", price: d(px), label: stop ? "Stop" : "Take", color: stop ? Brand.loss : Brand.profit, dashed: false))
         }
         for a in ws.alerts where a.coin == state.coin {
-            out.append(Level(id: a.id.uuidString, price: d(a.price), label: "Alert", color: .orange, dashed: true))
+            out.append(ChartLevel(id: a.id.uuidString, price: d(a.price), label: "Alert", color: .orange, dashed: true))
         }
         return out
-    }
-}
-
-/// The price under the pointer: a line down the chart, a dot on the price and its value and time. Its own view, so
-/// moving the pointer redraws the marker, not the chart.
-struct ChartHover: View {
-    let proxy: ChartProxy
-    let points: [(time: Date, price: Double)]
-    @State private var index: Int?
-
-    var body: some View {
-        GeometryReader { geo in
-            let plot = proxy.plotFrame.map { geo[$0] } ?? .zero
-            ZStack(alignment: .topLeading) {
-                Color.clear.contentShape(Rectangle())
-                    .onContinuousHover { phase in
-                        guard case .active(let p) = phase, let at: Date = proxy.value(atX: p.x - plot.minX) else { index = nil; return }
-                        index = points.indices.min { abs(points[$0].time.timeIntervalSince(at)) < abs(points[$1].time.timeIntervalSince(at)) }
-                    }
-                // A refresh can bring fewer candles while the pointer stays put, so the index may be past the end.
-                if let i = index, points.indices.contains(i), let x = proxy.position(forX: points[i].time), let y = proxy.position(forY: points[i].price) {
-                    Group {
-                        Rectangle().fill(Color.secondary.opacity(0.6)).frame(width: 1, height: plot.height).position(x: plot.minX + x, y: plot.midY)
-                        Circle().fill(Color.primary).frame(width: 7, height: 7).position(x: plot.minX + x, y: plot.minY + y)
-                        Text("\(Fmt.price(Decimal(points[i].price))) · \(Fmt.date(points[i].time))")
-                            .font(.ui(11, .semibold)).monospacedDigit().fixedSize()
-                            .padding(.horizontal, 7).padding(.vertical, 3)
-                            .background(Capsule().fill(Brand.card).shadow(color: .black.opacity(0.15), radius: 3, y: 1))
-                            .position(x: min(max(plot.minX + x, plot.minX + 80), plot.maxX - 80), y: max(plot.minY + 10, plot.minY + y - 18))
-                    }
-                    // The marker must not take the pointer: under it the hover area below ends, the marker goes, the hover
-                    // starts again — it blinked once per candle.
-                    .allowsHitTesting(false)
-                }
-            }
-        }
     }
 }
 
@@ -295,6 +217,7 @@ struct PlaceDetailBoard: View {
     var body: some View {
         // A board per token: another token opened here starts clean, without the last one's badge, market or chart.
         if let token = TokenBoard.parse(place) { TokenBoard(chain: token.chain, address: token.address).id(place) }
+        else if place == "chart" { if let chart = ws.chart { ChartBoard(state: chart) } }
         else if place == "approvals" { ApprovalsBoard() } else if place == "receive-across" { ReceiveAcrossBoard() } else { board }
     }
 

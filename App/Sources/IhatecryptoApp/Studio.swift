@@ -1278,7 +1278,7 @@ struct StudioCanvas: View {
             // its board with the controls first, the chart under it.
             let positions = nodes.isEmpty ? ws.positions.filter { $0.coin == ws.chart?.coin || (ws.managesPosition && $0.coin == ws.intent.asset) } : []
             ForEach(positions, id: \.coin) { PositionBoard(position: $0) }
-            if let chart = ws.chart { ChartBoard(state: chart) }
+            if let chart = ws.chart, ws.detail != "chart" { ChartBoard(state: chart) }
             PnLBoard()
             if ws.showMovers { MoversBoard() }
             if ws.showAlerts, !ws.alerts.isEmpty { AlertsBoard() }
@@ -1961,8 +1961,9 @@ extension Workspace {
             case .noData: "info"
             }
         }
-        func card(_ label: String, _ title: String, _ lines: [String], _ status: String, logo: String? = nil, _ fill: RouteFill) -> ActivityBubble {
-            ActivityBubble(kind: "step", label: label, title: title, lines: lines, status: status, asset: intent.asset, logo: logo, fill: fill)
+        func card(_ label: String, _ title: String, _ lines: [String], _ status: String, logo: String? = nil, _ fill: RouteFill, money: [MoneyMove] = []) -> ActivityBubble {
+            ActivityBubble(kind: "step", label: label, title: title, lines: lines, status: status, asset: intent.asset, logo: logo, fill: fill,
+                           money: money.isEmpty ? nil : money)
         }
         // A price alert tied to the plan comes first: the plan waits for that price.
         var steps: [ActivityBubble] = planAlertStep.map { [$0] } ?? []
@@ -1983,11 +1984,14 @@ extension Workspace {
                 let approx = quote == nil && asked == nil ? "≈ " : ""
                 // Solana short: the USDC leaves straight from the EVM network that has it (fundingNet).
                 let from = fundingNet, have = from.map { usdc(on: $0.key) ?? 0 } ?? solana?.usdc
-                var lines = have.map { h in [row("wallet", send.map { "\(Fmt.num(h)) → \(Fmt.num(max(0, h - $0)))" } ?? Fmt.num(h))] } ?? []
+                // The wallet's USDC now and after: the card's money box.
+                let wallet = have.map { h in [MoneyMove(place: from?.name ?? "Solana", symbol: "USDC", was: h, after: max(0, h - (send ?? 0)), approx: !approx.isEmpty)] } ?? []
+                var lines: [String] = wallet.isEmpty || send == nil ? have.map { [row("wallet", Fmt.num($0))] } ?? [] : []
                 if source.status == .blocked, let short = source.lines.last { lines.insert(short, at: 0) }
                 steps.append(card("FROM · \((from?.name ?? "Solana").uppercased())", send.map { "\(approx)\(Fmt.num($0)) USDC" } ?? "USDC",
-                                  lines.isEmpty ? source.lines : lines, state(source.status),
-                                  logo: from.flatMap { ModuleNetwork(place: $0.key)?.logo } ?? "sol", from.flatMap { RouteFill(rawValue: $0.key) } ?? .solana))
+                                  lines.isEmpty && wallet.isEmpty ? source.lines : lines, state(source.status),
+                                  logo: from.flatMap { ModuleNetwork(place: $0.key)?.logo } ?? "sol", from.flatMap { RouteFill(rawValue: $0.key) } ?? .solana,
+                                  money: send == nil ? [] : wallet))
                 // Its amount waits for the position's checks: nothing for the user to do here.
                 let oneClick = bridge.label.contains("1Click") && !bridge.label.contains("Relay")
                 var lines2: [String]
@@ -1998,8 +2002,11 @@ extension Workspace {
                 } else {
                     lines2 = (send.map { [row("sends", "≈ \(Fmt.num($0)) USDC")] } ?? []) + ["quoted once the position passes the checks"]
                 }
+                // What lands on Hyperliquid: the quote's, else about what goes over.
+                let lands = quote?.amountOut ?? send
                 steps.append(card(oneClick ? "BRIDGE · 1CLICK" : "BRIDGE · RELAY", "→ Hyperliquid", lines2,
-                                  bridge.status == .needsInput ? "info" : state(bridge.status), logo: oneClick ? "usdc" : "relay", .relay))
+                                  bridge.status == .needsInput ? "info" : state(bridge.status), logo: oneClick ? "usdc" : "relay", .relay,
+                                  money: lands.map { [MoneyMove(place: "Hyperliquid", symbol: "USDC", was: free, after: free + $0, approx: quote == nil)] } ?? []))
             } else {
                 steps.append(card("FROM · HYPERLIQUID", hl.map { "\(Fmt.num($0.withdrawable)) USDC" } ?? "USDC",
                                   ["the margin is on Hyperliquid already"], "info", logo: "hype", .hyperliquid))

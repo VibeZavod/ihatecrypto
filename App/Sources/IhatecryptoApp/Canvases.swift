@@ -365,6 +365,8 @@ extension Workspace {
             ChartState(coin: b.asset, range: ChartCommand.Range.allCases.first { b.label.hasSuffix($0.title) } ?? .day)
         }
         savedBoard = c.bubbles.isEmpty || chart != nil ? nil : c
+        // A coin's chart opened from its row comes back where it opened, in the token cards' place.
+        if chart?.network != nil { detail = "chart" }
         if let ch = chart, ch.candles.isEmpty { Task { await openChart(ch.coin, range: ch.range) } }
         // Back on a canvas whose move was waiting for Confirm: it waits again (its numbers are live on the card).
         if let parked = parkedPending.removeValue(forKey: c.id), Date().timeIntervalSince(parked.at) < 15 * 60 {
@@ -1235,13 +1237,63 @@ extension Workspace {
         }
     }
 
-    private func step(_ logo: String, _ label: String, _ title: String, _ line: String, _ fill: RouteFill) -> ActivityBubble {
+    private func step(_ logo: String, _ label: String, _ title: String, _ line: String, _ fill: RouteFill, money: [MoneyMove] = []) -> ActivityBubble {
+        let money = money.isEmpty ? nil : money
         // «all USDT» reads as the amount itself, «all available» small under it: the user wants the number, not «all».
         if title.hasPrefix("all "), let (x, symbol) = heldForAll(String(title.dropFirst(4)), fill: fill, label: label) {
             let all = label.hasPrefix("APPROVE") || line.hasPrefix("all available") ? line : line.isEmpty ? "all available" : "all available · \(line)"
-            return ActivityBubble(kind: "step", label: label, title: "\(Fmt.num(x, maxFraction: 8)) \(symbol)", lines: [all], logo: logo, fill: fill)
+            return ActivityBubble(kind: "step", label: label, title: "\(Fmt.num(x, maxFraction: 8)) \(symbol)", lines: [all], logo: logo, fill: fill, money: money)
         }
-        return ActivityBubble(kind: "step", label: label, title: title, lines: [line], logo: logo, fill: fill)
+        return ActivityBubble(kind: "step", label: label, title: title, lines: [line], logo: logo, fill: fill, money: money)
+    }
+
+    /// A balance a step changes, read now: `symbol` on `place` and what `delta` makes of it (nil delta: all of it
+    /// leaves). Empty when the balance can't be read: a card shows no number rather than a guess.
+    func moneyMove(_ symbol: String, on place: String, by delta: Decimal?, approx: Bool = false) -> [MoneyMove] {
+        if place == "robinhood", ["USDC", "USDG"].contains(symbol.uppercased()), let usdg = robinhood?.usdg {
+            return [MoneyMove(place: "Robinhood", symbol: "USDG", was: usdg, after: max(0, usdg + (delta ?? -usdg)), approx: approx)]
+        }
+        guard let (was, held) = heldForAll(symbol, fill: RouteFill(rawValue: place) ?? .check, label: "· " + WalletCommand.placeName(place).uppercased())
+                ?? nativeHeld(symbol, on: place) else { return [] }
+        return [MoneyMove(place: WalletCommand.placeName(place), symbol: held, was: was, after: max(0, was + (delta ?? -was)), approx: approx)]
+    }
+
+    /// A network's own coin as its balance holds it (ETH on Base and Robinhood Chain, the others' native token).
+    private func nativeHeld(_ symbol: String, on place: String) -> (Decimal, String)? {
+        let coin = symbol.uppercased()
+        guard coin == (EVMNetwork.named(place)?.gasCoin ?? "ETH") else { return nil }
+        if place == "base", let eth = base?.eth { return (eth, coin) }
+        if place == "robinhood", let eth = robinhood?.eth { return (eth, coin) }
+        return (holdings + otherTokens).first { $0.chain == place && $0.native }.map { ($0.amount, coin) }
+    }
+
+    /// Aave's or Morpho's deposit on a network other than Base, as the portfolio last read it.
+    func lentElsewhere(_ protocolName: String, on network: String) -> Decimal {
+        lendingElsewhere.first { $0.place.hasPrefix(protocolName) && $0.network == WalletCommand.placeName(network) }?.usdc ?? 0
+    }
+
+    /// The NEAR account's own NEAR and what `delta` makes of it.
+    func nearMove(by delta: Decimal, approx: Bool = false) -> [MoneyMove] {
+        [MoneyMove(place: "NEAR", symbol: "NEAR", was: near, after: max(0, near + delta), approx: approx)]
+    }
+
+    /// What's in a place the rates name («Kamino Lend», «Aave on Base», «Morpho · Arbitrum», «HLP») now; nil when it
+    /// isn't read.
+    func deposited(in place: String) -> Decimal? {
+        let n = place.lowercased()
+        if n.contains("kamino") { return kamino }
+        if n.contains("jupiter") { return lendTotal }
+        if n.contains("hlp") { return hlp.equity }
+        for name in ["Aave", "Morpho"] where n.contains(name.lowercased()) {
+            if n.contains("base") || !n.contains("·") && !n.contains(" on ") { return name == "Aave" ? base?.aave : base?.morpho }
+            return lendingElsewhere.first { $0.place.lowercased() == n }?.usdc ?? 0
+        }
+        return nil
+    }
+
+    /// A vault's own balance and what `delta` makes of it.
+    func vaultMove(_ name: String, _ symbol: String, was: Decimal, by delta: Decimal?) -> [MoneyMove] {
+        delta.map { [MoneyMove(place: name, symbol: symbol, was: was, after: max(0, was + $0))] } ?? []
     }
 
     /// What «all» of a token is on a card's step, and its ticker as held: the place from the step's color, else from its
@@ -1312,9 +1364,11 @@ extension Workspace {
                          footer: "One transfer on \(from): exactly this USDC to the 1Click deposit address the quote names, checked before signing\(src == nil ? "" : "; a refund comes back to your own address there"). Native NEAR arrives on your NEAR account in ≈ 30–50 s. Press Confirm.",
                          steps: [
             step(src?.key ?? "sol", "FROM · \(from.uppercased())", "\(Fmt.num(usdc)) USDC",
-                 src == nil ? "" : "Solana has only \(Fmt.num(onSolana)) · straight from \(from), no bridge", src == nil ? .solana : .relay),
+                 src == nil ? "" : "Solana has only \(Fmt.num(onSolana)) · straight from \(from), no bridge", src == nil ? .solana : .relay,
+                 money: moneyMove("USDC", on: src?.key ?? "solana", by: -usdc)),
             step("near", "SWAP · NEAR INTENTS", "1Click", "the quote is checked before signing", .relay),
-            step("near", "TO · NEAR", near.map { "≈ \(Fmt.num($0, maxFraction: 4)) NEAR" } ?? "NEAR", "your own NEAR account ✓", .near),
+            step("near", "TO · NEAR", near.map { "≈ \(Fmt.num($0, maxFraction: 4)) NEAR" } ?? "NEAR", "your own NEAR account ✓", .near,
+                 money: near.map { nearMove(by: $0, approx: true) } ?? []),
         ])
     }
 
@@ -1329,11 +1383,12 @@ extension Workspace {
         return MoveRoute(title: "Sell \(Fmt.num(amount, maxFraction: 4)) NEAR for USDC on \(name)",
                          footer: "One NEAR transaction: exactly this NEAR, wrapped and sent to the 1Click deposit address the quote names, checked before signing. USDC arrives at your own address on \(name) in ≈ 30–40 s; the card says each step of 1Click's as it goes. Press Confirm.",
                          steps: [
-            step("near", "FROM · NEAR", "\(Fmt.num(amount, maxFraction: 4)) NEAR", usd.map { "≈ \(Fmt.usd($0)) · ≈ 0.09 NEAR stays for storage and gas, most of it back after" } ?? "", .near),
+            step("near", "FROM · NEAR", "\(Fmt.num(amount, maxFraction: 4)) NEAR", usd.map { "≈ \(Fmt.usd($0)) · ≈ 0.09 NEAR stays for storage and gas, most of it back after" } ?? "", .near,
+                 money: nearMove(by: -amount)),
             step("near", "SWAP · NEAR INTENTS", "1Click", "the quote is checked before signing", .relay),
             step(logo, "ARRIVES · ≈ 30–40 S", "→ \(name)", "1Click sends the USDC over", .near),
             step(logo, "TO · \(name.uppercased())", usd.map { "≈ \(Fmt.num($0.rounded(2, .plain))) USDC" } ?? "USDC",
-                 "your own address ✓", fill),
+                 "your own address ✓", fill, money: usd.map { moneyMove("USDC", on: to ?? "solana", by: $0, approx: true) } ?? []),
         ])
     }
 
@@ -1350,7 +1405,8 @@ extension Workspace {
                             + "Press Confirm.",
                          steps: [
             step("near", "FROM · NEAR", "\(Fmt.num(amount, maxFraction: 4)) NEAR",
-                 usd.map { "≈ \(Fmt.usd($0))" + (close ? " · everything" : asked == nil ? " · ≈ 0.012 NEAR stays" : "") } ?? "", .near),
+                 usd.map { "≈ \(Fmt.usd($0))" + (close ? " · everything" : asked == nil ? " · ≈ 0.012 NEAR stays" : "") } ?? "", .near,
+                 money: nearMove(by: -amount)),
             step(entry.network.logo, "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", .near),
         ], warning: entry.lastSent == nil ? "First transfer to this address. Sending a small test amount first is the safe habit." : nil)
     }
@@ -1362,7 +1418,8 @@ extension Workspace {
         return MoveRoute(title: "Send \(Fmt.num(amount, maxFraction: 9)) SOL to \(entry.name)",
                          footer: "One Solana transfer: only this saved address may receive it, and the simulation must show exactly this SOL leaving plus the fee. Press Confirm.",
                          steps: [
-            step("sol", "FROM · SOLANA", "\(Fmt.num(amount, maxFraction: 9)) SOL", solana.map { "free: \(Fmt.num($0.sol, maxFraction: 6)) SOL" } ?? "", .solana),
+            step("sol", "FROM · SOLANA", "\(Fmt.num(amount, maxFraction: 9)) SOL", solana.map { "free: \(Fmt.num($0.sol, maxFraction: 6)) SOL" } ?? "", .solana,
+                 money: moneyMove("SOL", on: "solana", by: -amount)),
             step("sol", "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", .solana),
         ], warning: entry.lastSent == nil ? "First transfer to this address. Sending a small test amount first is the safe habit." : nil)
     }
@@ -1378,7 +1435,9 @@ extension Workspace {
         return MoveRoute(title: "Send \(what) to \(entry.name)",
                          footer: "One transfer on \(place?.title ?? net), the token as it is: only this saved address may receive it. Press Confirm.",
                          steps: [
-            step(logo, "FROM · \((place?.title ?? net).uppercased())", what, amount == nil ? (held == nil ? "" : "all available") : held.map { "held: \(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol)" } ?? "", fill),
+            step(logo, "FROM · \((place?.title ?? net).uppercased())", what, amount == nil ? (held == nil ? "" : "all available") : held.map { "held: \(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol)" } ?? "", fill,
+                 money: held.map { h in [MoneyMove(place: WalletCommand.placeName(net), symbol: h.symbol, was: h.amount, after: max(0, h.amount - (amount ?? h.amount)))] }
+                    ?? moneyMove(token, on: net, by: amount.map { -$0 })),
             step(logo, "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", fill),
         ], warning: entry.lastSent == nil ? "First transfer to this address. Sending a small test amount first is the safe habit." : nil)
     }
@@ -1388,11 +1447,11 @@ extension Workspace {
         let amount = asked ?? free
         return MoveRoute(title: "Withdraw · \(amount.map { Fmt.num($0) } ?? "all") USDC to Solana",
                          footer: "Signed with the main key — the trading key can’t withdraw. Press Confirm; Cancel or “cancel” drops it.", steps: [
-            step("hype", "FROM · HYPERLIQUID", free.map { f in amount.map { "\(Fmt.usd(f)) → \(Fmt.usd(max(0, f - $0)))" } ?? Fmt.usd(f) } ?? "—",
-                 "position margin isn’t touched", .hyperliquid),
+            step("hype", "FROM · HYPERLIQUID", amount.map { "\(Fmt.num($0)) USDC" } ?? "—",
+                 "position margin isn’t touched", .hyperliquid, money: amount.map { moneyMove("USDC", on: "hyperliquid", by: -$0) } ?? []),
             step("relay", "BRIDGE · RELAY", amount.map { "\(Fmt.num($0)) USDC" } ?? "—", "≈ 4 s · small Relay fee", .relay),
-            step("sol", "TO · SOLANA", solana.map { s in amount.map { "\(Fmt.num(s.usdc)) → \(Fmt.num(s.usdc + $0))" } ?? Fmt.num(s.usdc) } ?? "—",
-                 "your own address ✓", .solana),
+            step("sol", "TO · SOLANA", amount.map { "≈ \(Fmt.num($0)) USDC" } ?? "—",
+                 "your own address ✓", .solana, money: amount.map { moneyMove("USDC", on: "solana", by: $0, approx: true) } ?? []),
         ])
     }
 
@@ -1406,17 +1465,19 @@ extension Workspace {
         let apy = (morpho ? morphoAPY : aaveAPY).map { "≈ \(Fmt.num($0.rounded(2, .plain)))% a year" } ?? "rate from the pool"
         var steps: [ActivityBubble] = []
         if bridging {
+            let over = max(short, needGas ? Decimal(string: "0.5")! : 0), sends = over + (needGas ? Decimal(string: "0.14")! : Decimal(string: "0.03")!)
             steps.append(step("sol", "FROM · SOLANA", solana.map { "\(Fmt.num($0.usdc)) USDC" } ?? "—",
-                              "sends ≈ \(Fmt.num(max(short, needGas ? Decimal(string: "0.5")! : 0) + (needGas ? Decimal(string: "0.14")! : Decimal(string: "0.03")!))) USDC", .solana))
-            steps.append(step("relay", "BRIDGE · RELAY", "\(Fmt.num(max(short, needGas ? Decimal(string: "0.5")! : 0))) USDC → Base",
-                              needGas ? "+ $0.03 of ETH for gas · ≈ 2 s" : "≈ 2 s", .relay))
+                              "sends ≈ \(Fmt.num(sends)) USDC", .solana, money: moneyMove("USDC", on: "solana", by: -sends, approx: true)))
+            steps.append(step("relay", "BRIDGE · RELAY", "\(Fmt.num(over)) USDC → Base",
+                              needGas ? "+ $0.03 of ETH for gas · ≈ 2 s" : "≈ 2 s", .relay, money: moneyMove("USDC", on: "base", by: over, approx: true)))
             if needGas { steps.append(step("base", "GAS · COMES ALONG", "≈ $0.03 of ETH", "there’s no ETH on Base yet · it comes with the bridge", .base)) }
         } else {
-            steps.append(step("base", "ON BASE", "\(Fmt.num(onBase)) USDC", "already there, gas too", .base))
+            steps.append(step("base", "ON BASE", "\(Fmt.num(onBase)) USDC", "already there, gas too", .base, money: moneyMove("USDC", on: "base", by: -amount)))
         }
         steps.append(approve("\(Fmt.num(amount)) USDC", for: morpho ? "Morpho" : "Aave", logo: morpho ? "morpho" : "aave", morpho ? .morpho : .aave))
-        steps.append(morpho ? step("morpho", "MORPHO · \(MorphoVault.name.uppercased())", "\(Fmt.num(amount)) USDC", apy, .morpho)
-                            : step("aave", "AAVE V3 · BASE", "\(Fmt.num(amount)) USDC", apy, .aave))
+        steps.append(morpho ? step("morpho", "MORPHO · \(MorphoVault.name.uppercased())", "\(Fmt.num(amount)) USDC", apy, .morpho,
+                                   money: vaultMove("Morpho", "USDC", was: base?.morpho ?? 0, by: amount))
+                            : step("aave", "AAVE V3 · BASE", "\(Fmt.num(amount)) USDC", apy, .aave, money: vaultMove("Aave", "USDC", was: base?.aave ?? 0, by: amount)))
         return MoveRoute(title: morpho ? "Morpho · deposit \(Fmt.num(amount)) USDC on Base" : "Aave · lend \(Fmt.num(amount)) USDC on Base",
                          footer: (bridging ? "One Solana signature for the bridge, then " : "")
                             + "two on Base: approve exactly \(Fmt.num(amount)) USDC, then \(morpho ? "deposit; the shares come to this wallet only" : "supply"). "
@@ -1431,37 +1492,49 @@ extension Workspace {
         let solSOL = solana.map { "free: \(Fmt.num($0.sol, maxFraction: 4)) SOL" } ?? ""
         switch c {
         case .lendDeposit(let s, let x):
-            return (step(s == "SOL" ? "sol" : "usdc", "FROM · SOLANA", "\(n(x)) \(s)", s == "SOL" ? solSOL : solUSDC, .solana),
-                    step("jup", "INTO · JUPITER LEND", "\(n(x)) \(s)", "earns the vault rate · withdraw any time", .jupiter))
+            let a = x ?? heldForAll(s, fill: .solana)?.0
+            return (step(s == "SOL" ? "sol" : "usdc", "FROM · SOLANA", "\(n(x)) \(s)", s == "SOL" ? solSOL : solUSDC, .solana, money: moneyMove(s, on: "solana", by: a.map { -$0 })),
+                    step("jup", "INTO · JUPITER LEND", "\(n(x)) \(s)", "earns the vault rate · withdraw any time", .jupiter,
+                         money: s == "USDC" ? vaultMove("Jupiter Lend", s, was: lendTotal, by: a) : []))
         case .lendWithdraw(let s, let x):
             let x = x ?? (s == "USDC" && lendTotal > 0 ? lendTotal : nil)
-            return (step("jup", "FROM · JUPITER LEND", "\(n(x)) \(s)", lendTotal > 0 ? "in the vault: \(Fmt.num(lendTotal)) USDC" : "", .jupiter),
-                    step(s == "SOL" ? "sol" : "usdc", "TO · SOLANA", "\(n(x)) \(s)", "your wallet", .solana))
+            return (step("jup", "FROM · JUPITER LEND", "\(n(x)) \(s)", lendTotal > 0 ? "in the vault: \(Fmt.num(lendTotal)) USDC" : "", .jupiter,
+                         money: s == "USDC" ? vaultMove("Jupiter Lend", s, was: lendTotal, by: x.map { -$0 }) : []),
+                    step(s == "SOL" ? "sol" : "usdc", "TO · SOLANA", "\(n(x)) \(s)", "your wallet", .solana, money: x.map { moneyMove(s, on: "solana", by: $0) } ?? []))
         case .kamino(true, let s, let x):
-            return (step(s == "SOL" ? "sol" : "usdc", "FROM · SOLANA", "\(n(x)) \(s)", s == "SOL" ? solSOL : solUSDC, .solana),
-                    step("kamino", "INTO · KAMINO LEND", "\(n(x)) \(s)", "first deposit pays ≈ 0.03 SOL rent", .kamino))
+            let a = x ?? heldForAll(s, fill: .solana)?.0
+            return (step(s == "SOL" ? "sol" : "usdc", "FROM · SOLANA", "\(n(x)) \(s)", s == "SOL" ? solSOL : solUSDC, .solana, money: moneyMove(s, on: "solana", by: a.map { -$0 })),
+                    step("kamino", "INTO · KAMINO LEND", "\(n(x)) \(s)", "first deposit pays ≈ 0.03 SOL rent", .kamino,
+                         money: s == "USDC" ? vaultMove("Kamino Lend", s, was: kamino, by: a) : []))
         case .kamino(false, let s, let x):
             let vault = kaminoVault(s)
             let x = x ?? vault?.tokens ?? (s == "USDC" && kamino > 0 ? kamino : nil)
-            return (step("kamino", vault == nil ? "FROM · KAMINO LEND" : "FROM · KAMINO EARN", "\(n(x)) \(s)", vault.map { "\($0.name): \($0.amount ?? "")" } ?? "", .kamino),
-                    step(s == "SOL" ? "sol" : "usdc", "TO · SOLANA", "\(n(x)) \(s)", "your wallet", .solana))
+            return (step("kamino", vault == nil ? "FROM · KAMINO LEND" : "FROM · KAMINO EARN", "\(n(x)) \(s)", vault.map { "\($0.name): \($0.amount ?? "")" } ?? "", .kamino,
+                         money: vault == nil && s == "USDC" ? vaultMove("Kamino Lend", s, was: kamino, by: x.map { -$0 }) : []),
+                    step(s == "SOL" ? "sol" : "usdc", "TO · SOLANA", "\(n(x)) \(s)", "your wallet", .solana, money: x.map { moneyMove(s, on: "solana", by: $0) } ?? []))
         case .stake(let x):
-            return (step("sol", "FROM · SOLANA", "\(n(x)) SOL", solSOL, .solana),
+            return (step("sol", "FROM · SOLANA", "\(n(x)) SOL", solSOL, .solana, money: moneyMove("SOL", on: "solana", by: x.map { -$0 })),
                     step("jitosol", "INTO · JITOSOL", "liquid staking", "earns the staking yield · swap back any time", .jito))
         case .unstake(let x):
-            return (step("jitosol", "FROM · JITOSOL", "\(n(x)) JitoSOL", "", .jito), step("sol", "TO · SOLANA", "SOL", "your wallet", .solana))
+            return (step("jitosol", "FROM · JITOSOL", "\(n(x)) JitoSOL", "", .jito, money: moneyMove("JitoSOL", on: "solana", by: x.map { -$0 })),
+                    step("sol", "TO · SOLANA", "SOL", "your wallet", .solana))
         case .hlp(true, let x):
-            return (step("hype", "FROM · HYPERLIQUID", "\(n(x)) USDC", hl.map { "free: \(Fmt.usd($0.withdrawable))" } ?? "", .hyperliquid),
-                    step("hype", "INTO · HLP VAULT", "\(n(x)) USDC", "min $5 · 4-day lockup", .hlp))
+            let a = x ?? hl?.withdrawable
+            return (step("hype", "FROM · HYPERLIQUID", "\(n(x)) USDC", hl.map { "free: \(Fmt.usd($0.withdrawable))" } ?? "", .hyperliquid,
+                         money: moneyMove("USDC", on: "hyperliquid", by: a.map { -$0 })),
+                    step("hype", "INTO · HLP VAULT", "\(n(x)) USDC", "min $5 · 4-day lockup", .hlp, money: vaultMove("HLP vault", "USDC", was: hlp.equity, by: a)))
         case .hlp(false, let x):
-            return (step("hype", "FROM · HLP VAULT", "\(n(x)) USDC", "", .hlp), step("hype", "TO · HYPERLIQUID", "USDC", "trading balance", .hyperliquid))
+            let a = x ?? (hlp.equity > 0 ? hlp.equity : nil)
+            return (step("hype", "FROM · HLP VAULT", "\(n(x)) USDC", "", .hlp, money: vaultMove("HLP vault", "USDC", was: hlp.equity, by: a.map { -$0 })),
+                    step("hype", "TO · HYPERLIQUID", "USDC", "trading balance", .hyperliquid, money: a.map { moneyMove("USDC", on: "hyperliquid", by: $0) } ?? []))
         case .buy(let a, let u):
-            return (step("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC, .solana),
+            return (step("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC, .solana, money: moneyMove("USDC", on: "solana", by: u.map { -$0 })),
                     step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "BUY · JUPITER", a.symbol,
                          quotedGets(c).map { "≈ \($0) · simulated first" } ?? "best route, simulated first", .jupiter))
         case .jupiterDCA(let a, let u, let o, let e):
             let orders = o ?? u.map(WalletCommand.jupiterDCAOrders) ?? 2
-            return (step("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC + (solUSDC.isEmpty ? "" : " · ") + "all goes in now", .solana),
+            return (step("usdc", "FROM · SOLANA", "\(n(u)) USDC", solUSDC + (solUSDC.isEmpty ? "" : " · ") + "all goes in now", .solana,
+                         money: moneyMove("USDC", on: "solana", by: u.map { -$0 })),
                     step(TokenLogo.name(forAsset: a.symbol) ?? "jup", "EVERY \(WalletCommand.everyText(e).uppercased()) · JUPITER DCA",
                          "\(orders) × \(u.map { Fmt.num($0 / Decimal(orders)) } ?? "?") USDC → \(a.symbol)",
                          "Jupiter's keepers buy on-chain, the first now · 0.1% fee · cancel any time", .jupiter))
@@ -1487,7 +1560,8 @@ extension Workspace {
             let held = a.symbol == "SOL" ? solana?.sol
                 : solana?.tokens.first { $0.contract == a.mint || (a.mint.isEmpty && $0.symbol.uppercased() == a.symbol.uppercased()) }?.amount
             return (step(TokenLogo.name(forAsset: a.symbol) ?? "usdc", "SELL · JUPITER", "\(n(x)) \(a.symbol)",
-                         x == nil && held != nil ? "" : held.map { "held: \(Fmt.num($0, maxFraction: 6)) \(a.symbol)" } ?? "best route, simulated first", .jupiter),
+                         x == nil && held != nil ? "" : held.map { "held: \(Fmt.num($0, maxFraction: 6)) \(a.symbol)" } ?? "best route, simulated first", .jupiter,
+                         money: held.map { h in [MoneyMove(place: "Solana", symbol: a.symbol, was: h, after: max(0, h - (x ?? h)))] } ?? []),
                     step("usdc", "TO · SOLANA", "USDC", quotedGets(c).map { "≈ \($0) · your wallet" } ?? "your wallet", .solana))
         default:
             return nil
@@ -1645,14 +1719,21 @@ extension Workspace {
         let usdc = fits ? usdg : asked, bring = max(0, usdc - usdg)
         // Solana short: the USDC comes straight from the EVM network holding it, as Executor.ensureEVM does.
         let elsewhere = bring > 0 ? solana.flatMap { s in EVMNetwork.source(arrive: bring, onSolana: s.usdc, target: "robinhood", held: { self.usdc(on: $0) }) } : nil
+        let robinhoodUSDG = { (delta: Decimal, approx: Bool) in [MoneyMove(place: "Robinhood", symbol: "USDG", was: usdg, after: max(0, usdg + delta), approx: approx)] }
         let from = bring == 0
-            ? step("robinhood", "FROM · ROBINHOOD CHAIN", "\(Fmt.num(usdg)) → \(Fmt.num(usdg - usdc)) USDG", fits ? "what's there · the cents short aren't worth a bridge" : "already there · no bridge", .robinhood)
+            ? step("robinhood", "FROM · ROBINHOOD CHAIN", "\(Fmt.num(usdc)) USDG", fits ? "what's there · the cents short aren't worth a bridge" : "already there · no bridge", .robinhood,
+                   money: robinhoodUSDG(-usdc, false))
             : elsewhere.map { e in
                 step(ModuleNetwork(place: e.net.key)?.logo ?? e.net.key, "FROM · \(e.net.name.uppercased())", "≈ \(Fmt.num(e.send)) USDC",
-                     "Solana has only \(Fmt.num(solana?.usdc ?? 0)) · free there: \(Fmt.num(self.usdc(on: e.net.key) ?? 0)) USDC", RouteFill(rawValue: e.net.key) ?? .relay)
+                     "Solana has only \(Fmt.num(solana?.usdc ?? 0)) · free there: \(Fmt.num(self.usdc(on: e.net.key) ?? 0)) USDC", RouteFill(rawValue: e.net.key) ?? .relay,
+                     money: moneyMove("USDC", on: e.net.key, by: -e.send, approx: true))
             }
             ?? step("sol", "FROM · SOLANA", "\(Fmt.num(bring)) USDC", (usdg > 0 ? "the rest of \(Fmt.num(usdc)) is on Robinhood · " : "")
-                   + (solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? ""), .solana)
+                   + (solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? ""), .solana, money: moneyMove("USDC", on: "solana", by: -bring))
+        // What the stock comes to: what's held of it now, and about as much more as the dollars buy at its price.
+        let heldStock = robinhood?.stocks.first { $0.symbol.uppercased() == symbol.uppercased() || $0.address.lowercased() == symbolOrContract.lowercased() }?.amount ?? 0
+        var buy = stockBuyStep(symbol, ways, fallback: price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 2)) \(symbol) worth ≈ \(Fmt.usd(usdc)) · 1 \(symbol) = \(tokenPrice($0))" } ?? "at the pool price")
+        if let price, price > 0 { buy.money = [MoneyMove(place: "Robinhood", symbol: symbol, was: heldStock, after: heldStock + usdc / price, approx: true)] }
         return MoveRoute(title: "Buy \(symbol) · \(Fmt.num(usdc)) USDC on Robinhood Chain",
                          footer: (bring == 0 ? "Two signatures on Robinhood Chain with the USDG already there: "
                                   : elsewhere.map { "An exact approve and Relay's deposit on \($0.net.name), then two on Robinhood Chain: " } ?? "One Solana signature for the bridge, then two on Robinhood Chain: ")
@@ -1662,10 +1743,11 @@ extension Workspace {
                             + " Press Confirm.", steps: [
             from,
         ] + (bring == 0 ? [] : [step("relay", "BRIDGE · RELAY", elsewhere.map { "\($0.net.name) → Robinhood" } ?? "USDG → Robinhood",
-                                     (elsewhere == nil ? "" : "straight, no stop on Solana · ") + "+ ETH for gas when there's none", .relay)]) + [
+                                     (elsewhere == nil ? "" : "straight, no stop on Solana · ") + "+ ETH for gas when there's none", .relay,
+                                     money: robinhoodUSDG(bring, true))]) + [
             approve("≈ \(Fmt.num(usdc)) USDG", for: ways?.first?.way == "relay" ? "Relay" : ways?.first?.way == "v4" ? "Permit2, then Uniswap v4" : "Uniswap", logo: ways?.first?.way == "relay" ? "relay" : "uni",
                     .robinhood, line: ways?.first?.way == "v4" ? "exactly this · Permit2 lets Uniswap v4 take it for 30 min" : nil),
-            stockBuyStep(symbol, ways, fallback: price.map { "≈ \(Fmt.num(usdc / $0, maxFraction: 2)) \(symbol) worth ≈ \(Fmt.usd(usdc)) · 1 \(symbol) = \(tokenPrice($0))" } ?? "at the pool price"),
+            buy,
         ], warning: contract ? "A token by its contract is anyone's coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose."
                              : "Robinhood Stock Tokens give economic exposure, not the shares, and aren’t offered to US persons or in Canada, the UK and Switzerland.")
     }
@@ -1696,12 +1778,15 @@ extension Workspace {
             let moving = usdc.map { "\(Fmt.num($0)) USDC" } ?? "\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label)"
             let start: [ActivityBubble] = if let src {
                 [step(ModuleNetwork(place: src)?.logo ?? src, "FROM · \(WalletCommand.placeName(src).uppercased())", moving,
-                      self.usdc(on: src).map { "free there: \(Fmt.num($0)) USDC" } ?? "USDC there", RouteFill(rawValue: src) ?? .relay),
-                 step("relay", "BRIDGE · RELAY", "USDC → \(name)", "a few seconds · no stop on Solana", .relay)]
-            } else if let u = usdc, let have = self.usdc(on: place) {
-                [step(logo, "FROM · \(name.uppercased())", "\(Fmt.num(have)) → \(Fmt.num(max(0, have - u))) USDC", "already there · no bridge", fill)]
+                      self.usdc(on: src).map { "free there: \(Fmt.num($0)) USDC" } ?? "USDC there", RouteFill(rawValue: src) ?? .relay,
+                      money: usdc.map { moneyMove("USDC", on: src, by: -$0) } ?? []),
+                 step("relay", "BRIDGE · RELAY", "USDC → \(name)", "a few seconds · no stop on Solana", .relay,
+                      money: usdc.map { moneyMove("USDC", on: place, by: $0, approx: true) } ?? [])]
+            } else if let u = usdc {
+                [step(logo, "FROM · \(name.uppercased())", "\(Fmt.num(u)) USDC", "already there · no bridge", fill, money: moneyMove("USDC", on: place, by: -u))]
             } else {
-                [step(logo, "FROM · \(name.uppercased())", moving, usdc == nil ? "on \(name)" : "already there · no bridge", fill)]
+                [step(logo, "FROM · \(name.uppercased())", moving, usdc == nil ? "on \(name)" : "already there · no bridge", fill,
+                      money: moneyMove(label, on: place, by: sell.map { -$0 }))]
             }
             let footer = (src.map { "First Relay moves the USDC from \(WalletCommand.placeName($0)) to \(name): an exact approve and its deposit. Then two" } ?? "Two")
                 + " \(name) transactions: an exact approve and the Uniswap swap, which may only pay this wallet"
@@ -1709,12 +1794,14 @@ extension Workspace {
             if let usdc {
                 return MoveRoute(title: "Buy \(label) · \(Fmt.num(usdc)) USDC on \(name)", footer: footer, steps: start + [
                     approve("\(Fmt.num(usdc)) USDC", for: "Uniswap", logo: "uni", fill, line: src == nil ? nil : "what arrives · only Uniswap may take it"),
-                    step(logo, "BUY · UNISWAP ON \(name.uppercased())", label, gets.map { "≈ \($0)" } ?? "at the pool price", fill),
+                    step(logo, "BUY · UNISWAP ON \(name.uppercased())", label, gets.map { "≈ \($0)" } ?? "at the pool price", fill,
+                         money: Self.quotedAmount(gets).map { tokenMove(label, on: place, by: $0) } ?? []),
                 ], warning: token.hasPrefix("0x") ? "A token by its contract is anyone’s coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose." : nil)
             }
             return MoveRoute(title: "Sell \(amountOrAll(sell, label, on: place)) on \(name) → USDC on \(name)", footer: footer, steps: start + [
                 approve(moving, for: "Uniswap", logo: "uni", fill),
-                step("usdc", "TO · USDC ON \(name.uppercased())", gets.map { "≈ \($0)" } ?? "USDC", "stays on \(name) · your own address ✓", fill),
+                step("usdc", "TO · USDC ON \(name.uppercased())", gets.map { "≈ \($0)" } ?? "USDC", "stays on \(name) · your own address ✓", fill,
+                     money: Self.quotedAmount(gets).map { moneyMove("USDC", on: place, by: $0, approx: true) } ?? []),
             ])
         }
         // The way picked in the step's details, else the one that leaves more now (quoted while the card waits).
@@ -1732,18 +1819,35 @@ extension Workspace {
             + "Press Confirm."
         if let usdc {
             return MoveRoute(title: "Buy \(label) · \(Fmt.num(usdc)) USDC on \(name)", footer: footer, steps: [
-                step("sol", "FROM · SOLANA", "\(Fmt.num(usdc)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana),
+                step("sol", "FROM · SOLANA", "\(Fmt.num(usdc)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana,
+                     money: moneyMove("USDC", on: "solana", by: -usdc)),
                 way,
             ] + (viaUniswap ? [approve("≈ \(Fmt.num(usdc)) USDC", for: "Uniswap", logo: "uni", fill, line: "exactly what arrives · only Uniswap may take it")] : []) + [
-                step(logo, "BUY · ON \(name.uppercased())", label, quotedGets(command).map { "≈ \($0) arrives" } ?? "at the best price found", fill),
+                step(logo, "BUY · ON \(name.uppercased())", label, quotedGets(command).map { "≈ \($0) arrives" } ?? "at the best price found", fill,
+                     money: Self.quotedAmount(quotedGets(command)).map { tokenMove(label, on: place, by: $0) } ?? []),
             ], warning: token.hasPrefix("0x") ? "A token by its contract is anyone’s coin: its price can halve in a day and nobody vouches for it. Put in only what you can lose." : nil)
         }
         return MoveRoute(title: "Sell \(amountOrAll(sell, label, on: place)) on \(name) → Solana", footer: footer, steps: [
-            step(logo, "FROM · \(name.uppercased())", "\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label)", "\(EVMNetwork.named(place)?.gasCoin ?? "ETH") for gas comes along when there’s none", fill),
+            step(logo, "FROM · \(name.uppercased())", "\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label)", "\(EVMNetwork.named(place)?.gasCoin ?? "ETH") for gas comes along when there’s none", fill,
+                 money: moneyMove(label, on: place, by: sell.map { -$0 })),
         ] + (viaUniswap ? [approve("\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label)", for: "Uniswap", logo: "uni", fill)] : []) + [
             way,
-            step("sol", "TO · SOLANA", "USDC", quotedGets(command).map { "≈ \($0) · your wallet" } ?? "your wallet", .solana),
+            step("sol", "TO · SOLANA", "USDC", quotedGets(command).map { "≈ \($0) · your wallet" } ?? "your wallet", .solana,
+                 money: Self.quotedAmount(quotedGets(command)).map { moneyMove("USDC", on: "solana", by: $0, approx: true) } ?? []),
         ])
+    }
+
+    /// The amount a quote says arrives: «2.41 AERO», «1,234.5 USDC · 0.3% impact» → 2.41, 1234.5. Our own quotes'
+    /// wording (Executor.swapQuotes), never the user's.
+    static func quotedAmount(_ gets: String?) -> Decimal? {
+        guard let m = gets?.firstMatch(of: /\d[\d,]*(?:\.\d+)?/) else { return nil }
+        return Decimal(string: String(m.0).replacingOccurrences(of: ",", with: ""), locale: Locale(identifier: "en_US_POSIX"))
+    }
+
+    /// A token bought on `place`: what's held of it now (0 when none) and that plus what arrives, «≈».
+    func tokenMove(_ symbol: String, on place: String, by delta: Decimal) -> [MoneyMove] {
+        let was = heldForAll(symbol, fill: RouteFill(rawValue: place) ?? .check, label: "· " + WalletCommand.placeName(place).uppercased())?.0 ?? 0
+        return [MoneyMove(place: WalletCommand.placeName(place), symbol: symbol, was: was, after: was + delta, approx: true)]
     }
 
     /// A spot order on Hyperliquid: the spot USDC (topped up from perp when short), the IOC order within 1% of the mid, what lands.
@@ -1755,11 +1859,13 @@ extension Workspace {
                              steps: [step("hyperliquid", "FROM · HYPERLIQUID", "\(Fmt.num(usdc)) USDC", "spot balance · perp tops it up when short", .hyperliquid),
                                      step(logo, "BUY · SPOT ORDER", symbol,
                                           quotedGets(.hlSpotBuy(symbol: symbol, usdc: usdc)).map { "≈ \($0) · at most 1% over the mid" } ?? "IOC · at most 1% over the mid", .hyperliquid),
-                                     step(logo, "TO · SPOT BALANCE", symbol, "on Hyperliquid, yours ✓", .hyperliquid)])
+                                     step(logo, "TO · SPOT BALANCE", symbol, "on Hyperliquid, yours ✓", .hyperliquid,
+                                          money: Self.quotedAmount(quotedGets(.hlSpotBuy(symbol: symbol, usdc: usdc))).map { tokenMove(symbol, on: "hyperliquid", by: $0) } ?? [])])
         }
         return MoveRoute(title: "Sell \(amountOrAll(sell, symbol, on: "hyperliquid")) on Hyperliquid spot",
                          footer: "One spot order on Hyperliquid's book, IOC within 1% of the mid; the USDC lands on your spot balance. The exchange takes orders from 10 USDC. Press Confirm.",
-                         steps: [step(logo, "FROM · SPOT BALANCE", "\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(symbol)", "on Hyperliquid", .hyperliquid),
+                         steps: [step(logo, "FROM · SPOT BALANCE", "\(sell.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(symbol)", "on Hyperliquid", .hyperliquid,
+                                      money: moneyMove(symbol, on: "hyperliquid", by: sell.map { -$0 })),
                                  step(logo, "SELL · SPOT ORDER", "→ USDC",
                                       quotedGets(.hlSpotSell(symbol: symbol, amount: sell)).map { "≈ \($0) · at most 1% under the mid" } ?? "IOC · at most 1% under the mid", .hyperliquid),
                                  step("usdc", "TO · SPOT USDC", "USDC", "on Hyperliquid, yours ✓", .hyperliquid)])
@@ -1782,7 +1888,8 @@ extension Workspace {
         let total = dust.reduce(Decimal(0)) { $0 + $1.usd }
         var steps = dust.prefix(8).map { d in
             step(ModuleNetwork(place: d.chain)?.logo ?? d.chain, "SELL · \(WalletCommand.placeName(d.chain).uppercased())", d.symbol,
-                 "≈ \(Fmt.usd(d.usd)) → USDC there", RouteFill(rawValue: d.chain) ?? .check)
+                 "≈ \(Fmt.usd(d.usd)) → USDC there", RouteFill(rawValue: d.chain) ?? .check,
+                 money: moneyMove("USDC", on: d.chain, by: d.usd, approx: true))
         }
         if dust.count > 8 { steps.append(step("usdc", "AND \(dust.count - 8) MORE", "\(dust.count - 8) tokens", "the same way", .check)) }
         return MoveRoute(title: "Sweep \(dust.count) token\(dust.count == 1 ? "" : "s") ≈ \(Fmt.usd(total)) into USDC",
@@ -1803,27 +1910,33 @@ extension Workspace {
             let moving = amountOrAll(amount, short(from), on: "solana")
             return MoveRoute(title: "Swap \(moving) → \(short(to)) on Solana",
                              footer: "One swap on Solana through Jupiter's best route, no USDC in the middle: simulated before signing, and at least Jupiter's minimum must arrive in this wallet. SOL keeps 0.01 for fees. Press Confirm.",
-                             steps: [step("sol", "FROM · SOLANA", moving, amount == nil ? "all available · your wallet" : "your wallet", .solana),
+                             steps: [step("sol", "FROM · SOLANA", moving, amount == nil ? "all available · your wallet" : "your wallet", .solana,
+                                          money: moneyMove(short(from), on: "solana", by: amount.map { -$0 })),
                                      step("jup", "SWAP · JUPITER", short(to), gets ?? "Jupiter's best route", .jupiter),
-                                     step("sol", "TO · SOLANA", short(to), "your wallet ✓", .solana)])
+                                     step("sol", "TO · SOLANA", short(to), "your wallet ✓", .solana,
+                                          money: Self.quotedAmount(gets).map { tokenMove(short(to), on: "solana", by: $0) } ?? [])])
         }
         if place == "near" {
             // NEAR Intents on NEAR itself: NEAR (as wNEAR) to 1Click's deposit account, the other token back to this one.
             let moving = "\(amount.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(from.uppercased())"
             return MoveRoute(title: "Swap \(moving) → \(to.uppercased()) on NEAR",
                              footer: "One deposit to the 1Click address NEAR Intents binds to this quote — checked with 1Click before signing — and \(to.uppercased()) comes back to your own NEAR account; a refund goes there too. Press Confirm.",
-                             steps: [step("near", "FROM · NEAR", moving, "your NEAR account", .near),
+                             steps: [step("near", "FROM · NEAR", moving, "your NEAR account", .near,
+                                          money: from.uppercased() == "NEAR" ? nearMove(by: -(amount ?? near)) : []),
                                      step("near", "SWAP · NEAR INTENTS", to.uppercased(), gets ?? "quoting…", .near),
-                                     step("near", "TO · NEAR", to.uppercased(), "your NEAR account ✓", .near)])
+                                     step("near", "TO · NEAR", to.uppercased(), "your NEAR account ✓", .near,
+                                          money: to.uppercased() == "NEAR" ? Self.quotedAmount(gets).map { nearMove(by: $0, approx: true) } ?? [] : [])])
         }
         if place == "hyperliquid" {
             // Its book trades against USDC: a sale, then a buy with what it fetched.
             let moving = amountOrAll(amount, from.uppercased(), on: "hyperliquid")
             return MoveRoute(title: "Swap \(moving) → \(to.uppercased()) on Hyperliquid spot",
                              footer: "Two spot orders on Hyperliquid's book, each IOC within 1% of the mid: \(from.uppercased()) sold for USDC, that USDC buys \(to.uppercased()). The book takes orders from 10 USDC. Press Confirm.",
-                             steps: [step("hyperliquid", "FROM · SPOT BALANCE", moving, amount == nil ? "all available · on Hyperliquid" : "on Hyperliquid", .hyperliquid),
+                             steps: [step("hyperliquid", "FROM · SPOT BALANCE", moving, amount == nil ? "all available · on Hyperliquid" : "on Hyperliquid", .hyperliquid,
+                                          money: moneyMove(from.uppercased(), on: "hyperliquid", by: amount.map { -$0 })),
                                      step("hyperliquid", "SELL · SPOT ORDER", "→ USDC", "IOC · at most 1% under the mid", .hyperliquid),
-                                     step("hyperliquid", "BUY · SPOT ORDER", to.uppercased(), gets.map { "\($0) · at the mids" } ?? "IOC · at most 1% over the mid", .hyperliquid)])
+                                     step("hyperliquid", "BUY · SPOT ORDER", to.uppercased(), gets.map { "\($0) · at the mids" } ?? "IOC · at most 1% over the mid", .hyperliquid,
+                                          money: Self.quotedAmount(gets).map { tokenMove(to.uppercased(), on: "hyperliquid", by: $0) } ?? [])])
         }
         if place == "tempo" {
             // Dollars for dollars on Tempo's own exchange: an exact approve, the swap, fees out of the USDC.
@@ -1834,10 +1947,12 @@ extension Workspace {
             return MoveRoute(title: "Swap \(moving) → \(to.uppercased() == "PATHUSD" ? "pathUSD" : to.uppercased()) on Tempo",
                              footer: "An exact approve to \(relay ? "Relay's swap on Tempo" : "Tempo's own exchange"), then the swap at no less than \(relay ? "Relay's checked quote" : "0.1% under its quote"), paying only this wallet; "
                                 + "Tempo's fees come out of the USDC, a tenth of a cent each. Press Confirm.",
-                             steps: [step(logo, "FROM · TEMPO", moving, amount == nil ? "all available · on Tempo" : "on Tempo", fill),
+                             steps: [step(logo, "FROM · TEMPO", moving, amount == nil ? "all available · on Tempo" : "on Tempo", fill,
+                                          money: moneyMove(from.uppercased() == "PATHUSD" ? "pathUSD" : Stablecoins.find(from, on: place)?.symbol ?? from.uppercased(), on: place, by: amount.map { -$0 })),
                                      approve(moving, for: via, logo: relay ? "relay" : logo, fill),
                                      step(relay ? "relay" : logo, relay ? "SWAP · RELAY ON TEMPO" : "SWAP · TEMPO'S EXCHANGE", to.uppercased() == "PATHUSD" ? "pathUSD" : to.uppercased(),
-                                          quoted.map { $0.first.map { "≈ \($0.gets)" } ?? "no liquidity now · asked again every 30 s" } ?? "quoting…", fill)])
+                                          quoted.map { $0.first.map { "≈ \($0.gets)" } ?? "no liquidity now · asked again every 30 s" } ?? "quoting…", fill,
+                                          money: Self.quotedAmount(quoted?.first?.gets).map { tokenMove(to.uppercased() == "PATHUSD" ? "pathUSD" : to.uppercased(), on: place, by: $0) } ?? [])])
         }
         func label(_ t: String) -> String { t.hasPrefix("0x") ? tokenSymbol(t) ?? "\(t.prefix(6))…\(t.suffix(4))" : t.uppercased() }
         let coin = EVMNetwork.named(place)?.gasCoin ?? "ETH"
@@ -1845,10 +1960,13 @@ extension Workspace {
         let quoted = swapQuote.flatMap { q in q.command == .swapOn(place, from: from, to: to, amount: amount) ? q.ways.first : nil }
         // A token amount as written: 0.0001 ETH read «0 ETH» at two places.
         let moving = "\(amount.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label(from))"
-        var steps = [step(logo, "FROM · \(name.uppercased())", moving, coinIn ? "your \(coin) · its fees stay" : "on \(name)", fill)]
+        var steps = [step(logo, "FROM · \(name.uppercased())", moving, coinIn ? "your \(coin) · its fees stay" : "on \(name)", fill,
+                          money: moneyMove(label(from), on: place, by: amount.map { -$0 }))]
         if !coinIn { steps.append(approve(moving, for: "Uniswap", logo: "uni", fill)) }
-        steps.append(step("uni", "SWAP · \((quoted?.way ?? "Uniswap").uppercased()) ON \(name.uppercased())", label(to),
-                          quoted.map { "≈ \($0.gets)" } ?? "the best of v2, v3 and v4", fill))
+        // The network's logo with Uniswap's badge, as a buy on Uniswap there.
+        steps.append(step(logo, "SWAP · \((quoted?.way ?? "Uniswap").uppercased()) ON \(name.uppercased())", label(to),
+                          quoted.map { "≈ \($0.gets)" } ?? "the best of v2, v3 and v4", fill,
+                          money: Self.quotedAmount(quoted?.gets).map { tokenMove(label(to), on: place, by: $0) } ?? []))
         let footer = "One swap on \(name), no USDC in the middle: the best of Uniswap v2, v3 and v4, at most 0.5–3% under its quote by the price impact, paying only this wallet."
             + (coinIn ? " \(coin) goes in as itself into a v4 pool of it, else wrapped into W\(coin) first (one more transaction)." : " An exact approve first.")
             + (coinOut ? " \(coin) comes out as itself, or is unwrapped after." : "") + " Press Confirm."
@@ -1867,20 +1985,24 @@ extension Workspace {
         let coinIn = a.uppercased() == (from == "solana" ? "SOL" : EVMNetwork.named(from)?.gasCoin ?? "ETH")
         let quote = swapQuote.flatMap { $0.command == .crossSwap(from: a, on: from, to: b, at: to, amount: amount) ? $0.ways : nil }
         let moving = "\(amount.map { Fmt.num($0, maxFraction: 8) } ?? "all") \(label(a))"
+        // What leaves the one side and lands on the other, once quoted.
+        let crossOut = from == "near" && a.uppercased() == "NEAR" ? nearMove(by: -(amount ?? near)) : moneyMove(label(a), on: from, by: amount.map { -$0 })
+        let lands = Self.quotedAmount(quote?.first?.gets)
+        let crossIn = lands.map { x in to == "near" && b.uppercased() == "NEAR" ? nearMove(by: x, approx: true) : tokenMove(label(b), on: to, by: x) } ?? []
         // NEAR on a side, or a pair only 1Click quotes: one deposit to the address NEAR Intents binds to the quote.
         if from == "near" || to == "near" || quote?.first?.way.hasPrefix("NEAR Intents") == true {
             return MoveRoute(title: "Swap \(moving) on \(fromName) → \(label(b)) on \(toName)",
                              footer: "One deposit on \(fromName) to the 1Click address NEAR Intents binds to this quote — checked with 1Click before signing; Touch ID allows that address the first time — and \(label(b)) comes to your own address on \(toName); a refund comes back to \(fromName). Press Confirm.",
-                             steps: [step(logo(from), "FROM · \(fromName.uppercased())", moving, "your own address there", fill(from)),
+                             steps: [step(logo(from), "FROM · \(fromName.uppercased())", moving, "your own address there", fill(from), money: crossOut),
                                      step("near", "SWAP ACROSS · NEAR INTENTS", label(b),
                                           quote.map { $0.first.map { "≈ \($0.gets) · \($0.way)" } ?? "no quote now · asked again every 30 s" } ?? "quoting…", .near),
-                                     step(logo(to), "TO · \(toName.uppercased())", label(b), "your own address there", fill(to))])
+                                     step(logo(to), "TO · \(toName.uppercased())", label(b), "your own address there", fill(to), money: crossIn)])
         }
-        var steps = [step(logo(from), "FROM · \(fromName.uppercased())", moving, coinIn ? "your \(label(a)) · its fees stay" : "on \(fromName)", fill(from))]
+        var steps = [step(logo(from), "FROM · \(fromName.uppercased())", moving, coinIn ? "your \(label(a)) · its fees stay" : "on \(fromName)", fill(from), money: crossOut)]
         if from != "solana", !coinIn { steps.append(approve(moving, for: "Relay", logo: "relay", fill(from))) }
         steps.append(step("relay", "SWAP ACROSS · RELAY", label(b),
                           quote.map { $0.first.map { "≈ \($0.gets) · \($0.way)" } ?? "no quote now · asked again every 30 s" } ?? "quoting…", .relay))
-        steps.append(step(logo(to), "TO · \(toName.uppercased())", label(b), "your own address there", fill(to)))
+        steps.append(step(logo(to), "TO · \(toName.uppercased())", label(b), "your own address there", fill(to), money: crossIn))
         let footer = "One signature on \(fromName): Relay's solver swaps on the way and pays \(label(b)) to your own address on \(toName), usually within seconds. "
             + "If more than 3% (or 15 cents) of the value would be lost, nothing is signed."
             + (from != "solana" && coinIn ? " The \(label(a)) goes to Relay's depository: Touch ID allows that address the first time." : "")
@@ -1898,7 +2020,8 @@ extension Workspace {
         let from = quote?.first?.way ?? "Solana"
         let steps = [
             step(from == "Solana" ? "sol" : ModuleNetwork(place: from.lowercased())?.logo ?? "usdc", "FROM · \(from.uppercased())", "USDC",
-                 quote.map { $0.first.map { "\($0.gets) · the rest comes back" } ?? "no quote now · asked again every 30 s" } ?? "quoting…", RouteFill(rawValue: from.lowercased()) ?? .solana),
+                 quote.map { $0.first.map { "\($0.gets) · the rest comes back" } ?? "no quote now · asked again every 30 s" } ?? "quoting…", RouteFill(rawValue: from.lowercased()) ?? .solana,
+                 money: Self.quotedAmount(quote?.first?.gets).map { moneyMove("USDC", on: from.lowercased(), by: -$0, approx: true) } ?? []),
             step("near", "SWAP · NEAR INTENTS", what, "exactly this much arrives", .check),
             step(r.entry.network.logo, "TO · \(r.entry.label?.uppercased() ?? "SAVED ADDRESS")", r.entry.name, "\(ends.start) … \(ends.end) · \(title)", .check),
         ]
@@ -1923,13 +2046,13 @@ extension Workspace {
         case .aaveRepay:
             return MoveRoute(title: "Repay \(what) USDC on Aave · \(name)",
                              footer: "An approve of what's owed (a tenth of a percent over, for the interest of the next blocks), then the repay — of this wallet's own debt only. Press Confirm.",
-                             steps: [step(logo, "FROM · \(name.uppercased())", "\(what) USDC", "USDC on \(name)", fill),
+                             steps: [step(logo, "FROM · \(name.uppercased())", "\(what) USDC", "USDC on \(name)", fill, money: moneyMove("USDC", on: net, by: amount.map { -$0 })),
                                      approve("\(what) USDC", for: "Aave", logo: "aave", .aave),
                                      step("aave", "REPAY · AAVE", "\(what) USDC", "the debt goes down, the collateral stays", .aave)])
         case .aaveCollateral:
             return MoveRoute(title: "\(what) ETH as collateral on Aave · \(name)",
                              footer: "ETH wrapped into WETH, an exact approve, the supply to this wallet: it earns a little and can be borrowed against. Press Confirm.",
-                             steps: [step(logo, "FROM · \(name.uppercased())", "\(what) ETH", "its fees stay", fill),
+                             steps: [step(logo, "FROM · \(name.uppercased())", "\(what) ETH", "its fees stay", fill, money: moneyMove("ETH", on: net, by: amount.map { -$0 })),
                                      step("eth", "WRAP · WETH", "\(what) WETH", "the coin as a token, one to one", fill),
                                      step("aave", "COLLATERAL · AAVE", "\(what) ETH", "borrowable against, ≈ 80% of its value", .aave)])
         default:
@@ -1938,7 +2061,7 @@ extension Workspace {
                                 + "the collateral at a penalty; ihatecrypto won't borrow below 1.5. Pay it back with “repay all USDC on Aave”. Press Confirm.",
                              steps: [step("aave", "COLLATERAL · AAVE", line("collateral") ?? "reading…", "what you supplied on Aave on \(name)", .aave),
                                      step("aave", "BORROW · AAVE", "\(what) USDC", line("health").map { "health factor \($0)" } ?? "health factor: reading…", .aave),
-                                     step(logo, "TO · \(name.uppercased())", "\(what) USDC", "your own address", fill)],
+                                     step(logo, "TO · \(name.uppercased())", "\(what) USDC", "your own address", fill, money: amount.map { moneyMove("USDC", on: net, by: $0) } ?? [])],
                              warning: line("liquidation").flatMap { $0.isEmpty ? nil : "Liquidation if \($0): Aave sells your collateral at a penalty. Keep an eye on it, or borrow less." })
         }
     }
@@ -2321,9 +2444,11 @@ extension Workspace {
                          footer: "One Solana signature for the Relay bridge: \(Fmt.usd(usd)) of \(coin) and half a dollar of USDC arrive at your own address on \(name). "
                             + "When Solana is short, Relay swaps \(name)'s own USDC for it there. Press Confirm.",
                          steps: [
-            step("sol", "FROM · SOLANA", "\(Fmt.num(usd + Decimal(string: "0.58")!)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana),
+            step("sol", "FROM · SOLANA", "\(Fmt.num(usd + Decimal(string: "0.58")!)) USDC", solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? "", .solana,
+                 money: moneyMove("USDC", on: "solana", by: -(usd + Decimal(string: "0.58")!))),
             step("relay", "BRIDGE · RELAY", "\(Fmt.usd(usd)) of \(coin)", "+ 0.5 USDC along · a few seconds", .relay),
-            step(ModuleNetwork(place: place)?.logo ?? "eth", "GAS · \(name.uppercased())", "≈ \(Fmt.usd(usd)) of \(coin)", "for the fees of the next moves there", fill),
+            step(ModuleNetwork(place: place)?.logo ?? "eth", "GAS · \(name.uppercased())", "≈ \(Fmt.usd(usd)) of \(coin)", "for the fees of the next moves there", fill,
+                 money: markets[coin].flatMap { $0.markPx > 0 ? moneyMove(coin, on: place, by: usd / $0.markPx, approx: true) : nil } ?? []),
         ])
     }
 
@@ -2341,12 +2466,12 @@ extension Workspace {
                                        + "or Circle's CCTP lands more right then. ")
                             + "It pays only your own address on \(b). Press Confirm.",
                          steps: [
-            step(ModuleNetwork(place: from)?.logo ?? "eth", "FROM · \(a.uppercased())",
-                 have.map { h in "\(Fmt.num(h)) → \(Fmt.num(max(0, h - (moving ?? h))))" } ?? "\(shown) USDC", "USDC on \(a)", fill(from)),
+            step(ModuleNetwork(place: from)?.logo ?? "eth", "FROM · \(a.uppercased())", "\(shown) USDC", "USDC on \(a)", fill(from),
+                 money: moneyMove("USDC", on: from, by: moving.map { -$0 })),
             cctp ? step("usdc", "BURN & MINT · CIRCLE'S CCTP", "\(shown) USDC", "≈ 1.3 bp + ≈ $0.08 of gas · Circle mints there", .relay)
                  : step("relay", "BRIDGE · RELAY", "\(shown) USDC", "≈ $0.03 · a few seconds · no stop on Solana", .relay),
-            step(ModuleNetwork(place: to)?.logo ?? "eth", "TO · \(b.uppercased())",
-                 usdc(on: to).map { "\(Fmt.num($0)) → \(Fmt.num($0 + (moving ?? 0))) \(stable)" } ?? "\(shown) \(stable)", "your own address ✓", fill(to)),
+            step(ModuleNetwork(place: to)?.logo ?? "eth", "TO · \(b.uppercased())", "≈ \(shown) \(stable)", "your own address ✓", fill(to),
+                 money: moving.map { moneyMove(stable, on: to, by: $0, approx: true) } ?? []),
         ])
     }
 
@@ -2359,10 +2484,10 @@ extension Workspace {
         return MoveRoute(title: "Move \(Fmt.num(amount)) USDC · Solana → \(name)",
                          footer: "One Solana signature for the Relay bridge, checked and simulated before it’s signed; it pays only your own address on \(name). Press Confirm.",
                          steps: [
-            step("sol", "FROM · SOLANA", solana.map { "\(Fmt.num($0.usdc)) → \(Fmt.num(max(0, $0.usdc - amount)))" } ?? "\(Fmt.num(amount)) USDC", "USDC on Solana", .solana),
+            step("sol", "FROM · SOLANA", "\(Fmt.num(amount)) USDC", "USDC on Solana", .solana, money: moneyMove("USDC", on: "solana", by: -amount)),
             step("relay", "BRIDGE · RELAY", "\(Fmt.num(amount)) USDC", place == "tempo" ? "a few seconds · fees there come out of the USDC" : "a few seconds · + \(EVMNetwork.named(place)?.gasCoin ?? "ETH") for gas when there's none", .relay),
-            step(ModuleNetwork(place: place)?.logo ?? place, "TO · \(name.uppercased())", there.map { "\(Fmt.num($0)) → \(Fmt.num($0 + amount)) \(stable)" } ?? "\(Fmt.num(amount)) \(stable)",
-                 "your own address ✓", fill),
+            step(ModuleNetwork(place: place)?.logo ?? place, "TO · \(name.uppercased())", "≈ \(Fmt.num(amount)) \(stable)",
+                 "your own address ✓", fill, money: there == nil ? [] : moneyMove(stable, on: place, by: amount, approx: true)),
         ])
     }
 
@@ -2376,9 +2501,12 @@ extension Workspace {
         let needGas = gas < EVMNetwork.named(network).map { Decimal($0.gasFloor) / 1_000_000_000_000_000_000 } ?? 0
         let from = short > 0 || needGas
             ? [step("sol", "FROM · SOLANA", "\(Fmt.num(max(short, Decimal(string: "0.5")!))) USDC",
-                    (have > 0 ? "\(Fmt.num(have)) already on \(name) · " : "") + (solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? ""), .solana),
-               step("relay", "BRIDGE · RELAY", "USDC → \(name)", needGas ? "+ \(coin) for gas · ≈ 2 s" : "≈ 2 s", .relay)]
-            : [step(ModuleNetwork(place: network)?.logo ?? "eth", "ON \(name.uppercased())", "\(Fmt.num(have)) USDC", "already there, gas too", RouteFill(rawValue: network) ?? .relay)]
+                    (have > 0 ? "\(Fmt.num(have)) already on \(name) · " : "") + (solana.map { "free: \(Fmt.num($0.usdc)) USDC" } ?? ""), .solana,
+                    money: moneyMove("USDC", on: "solana", by: -max(short, Decimal(string: "0.5")!))),
+               step("relay", "BRIDGE · RELAY", "USDC → \(name)", needGas ? "+ \(coin) for gas · ≈ 2 s" : "≈ 2 s", .relay,
+                    money: moneyMove("USDC", on: network, by: max(short, Decimal(string: "0.5")!), approx: true))]
+            : [step(ModuleNetwork(place: network)?.logo ?? "eth", "ON \(name.uppercased())", "\(Fmt.num(have)) USDC", "already there, gas too", RouteFill(rawValue: network) ?? .relay,
+                    money: moneyMove("USDC", on: network, by: -amount))]
         return MoveRoute(title: "\(protocolName) · \(morpho ? "deposit" : "lend") \(Fmt.num(amount)) USDC on \(name)",
                          footer: (from.count > 1 ? "What's missing on \(name) comes from Solana over Relay, with \(coin) for gas when there's none; then two" : "Two")
                             + " \(name) transactions: approve exactly \(Fmt.num(amount)) USDC, then \(morpho ? "deposit; the shares come to this wallet only" : "supply"). "
@@ -2386,8 +2514,10 @@ extension Workspace {
                             + (network == "ethereum" ? "; Ethereum's gas changes by the hour (cents to dollars): ask the chat «сколько газа?» for today's" : "") + ". Press Confirm.",
                          steps: from + [
             approve("\(Fmt.num(amount)) USDC", for: protocolName, logo: morpho ? "morpho" : "aave", morpho ? .morpho : .aave),
-            morpho ? step("morpho", "MORPHO · \(name.uppercased())", "\(Fmt.num(amount)) USDC", "rate from the vault", .morpho)
-                   : step("aave", "AAVE V3 · \(name.uppercased())", "\(Fmt.num(amount)) USDC", "rate from the pool", .aave),
+            morpho ? step("morpho", "MORPHO · \(name.uppercased())", "\(Fmt.num(amount)) USDC", "rate from the vault", .morpho,
+                          money: vaultMove("Morpho", "USDC", was: lentElsewhere("Morpho", on: network), by: amount))
+                   : step("aave", "AAVE V3 · \(name.uppercased())", "\(Fmt.num(amount)) USDC", "rate from the pool", .aave,
+                          money: vaultMove("Aave", "USDC", was: lentElsewhere("Aave", on: network), by: amount)),
         ])
     }
 
@@ -2395,11 +2525,15 @@ extension Workspace {
         if network != "base" {
             let name = WalletCommand.placeName(network), lending = place == "aave" || place == "morpho"
             let what = place == "aave" ? "Aave" : "Morpho", held = lending ? nil : usdc(on: network)
-            let moving = (amount.map { min($0, held ?? $0) } ?? held).map { Fmt.num($0) } ?? "all"
+            let lent = lending ? lentElsewhere(what, on: network) : 0
+            let x = lending ? amount ?? (lent > 0 ? lent : nil) : amount.map { min($0, held ?? $0) } ?? held
+            let moving = x.map { Fmt.num($0) } ?? "all"
             let from = lending
-                ? step(place, "FROM · \(what.uppercased()) ON \(name.uppercased())", "\(moving) USDC", "with the interest", place == "aave" ? .aave : .morpho)
+                ? step(place, "FROM · \(what.uppercased()) ON \(name.uppercased())", "\(moving) USDC", "with the interest", place == "aave" ? .aave : .morpho,
+                       money: vaultMove(what, "USDC", was: lent, by: x.map { -$0 }))
                 : step(ModuleNetwork(place: network)?.logo ?? "eth", "FROM · \(name.uppercased())", "\(moving) USDC",
-                       held.map { "free there: \(Fmt.num($0)) USDC" } ?? "free USDC", RouteFill(rawValue: network) ?? .relay)
+                       held.map { "free there: \(Fmt.num($0)) USDC" } ?? "free USDC", RouteFill(rawValue: network) ?? .relay,
+                       money: moneyMove("USDC", on: network, by: x.map { -$0 }))
             return MoveRoute(title: lending ? "\(what) · withdraw \(moving) USDC on \(name) to Solana" : "\(name) · \(moving) USDC to Solana",
                              footer: (lending ? "Three \(name) transactions: withdraw from \(what), an exact approve and Relay’s deposit"
                                               : "Two \(name) transactions: an exact approve and Relay’s deposit")
@@ -2407,29 +2541,32 @@ extension Workspace {
                 from,
                 approve("\(moving) USDC", for: "Relay", logo: "relay", .relay),
                 step("relay", "BRIDGE · RELAY", "\(moving) USDC", "a few seconds", .relay),
-                step("sol", "TO · SOLANA", solana.map { Fmt.num($0.usdc) } ?? "—", "your own address ✓", .solana),
+                step("sol", "TO · SOLANA", "≈ \(moving) USDC", "your own address ✓", .solana, money: x.map { moneyMove("USDC", on: "solana", by: $0, approx: true) } ?? []),
             ])
         }
         let available = place == "aave" ? base?.aave : place == "morpho" ? base?.morpho : place == "arbitrum" ? arbitrumUSDC : place == "robinhood" ? robinhood?.usdg : base?.usdc
         let moving = amount.map { min($0, available ?? $0) } ?? available
         let chainName = place == "arbitrum" ? "Arbitrum" : place == "robinhood" ? "Robinhood Chain" : "Base"
+        // What leaves: the amount moved, the place's balance now → after in the money box.
+        let stable = place == "robinhood" ? "USDG" : "USDC"
+        let leaves = available.flatMap { a in moving.map { [MoneyMove(place: place == "aave" ? "Aave" : place == "morpho" ? "Morpho" : chainName, symbol: stable, was: a, after: max(0, a - $0))] } } ?? []
         let from = place == "morpho"
-            ? step("morpho", "FROM · MORPHO ON BASE", available.map { "\(Fmt.num($0)) USDC" } ?? "—",
-                   morphoAPY.map { "earning ≈ \(Fmt.num($0))% until now" } ?? "with the interest", .morpho)
+            ? step("morpho", "FROM · MORPHO ON BASE", moving.map { "\(Fmt.num($0)) USDC" } ?? "—",
+                   morphoAPY.map { "earning ≈ \(Fmt.num($0))% until now" } ?? "with the interest", .morpho, money: leaves)
             : place == "aave"
-            ? step("aave", "FROM · AAVE ON BASE", available.map { "\(Fmt.num($0)) USDC" } ?? "—",
-                   aaveAPY.map { "earning ≈ \(Fmt.num($0.rounded(2, .plain)))% until now" } ?? "with the interest", .aave)
+            ? step("aave", "FROM · AAVE ON BASE", moving.map { "\(Fmt.num($0)) USDC" } ?? "—",
+                   aaveAPY.map { "earning ≈ \(Fmt.num($0.rounded(2, .plain)))% until now" } ?? "with the interest", .aave, money: leaves)
             : step(place == "arbitrum" ? "arb" : place == "robinhood" ? "robinhood" : "base", "FROM · \(chainName.uppercased())",
-                   available.map { "\(Fmt.num($0)) \(place == "robinhood" ? "USDG" : "USDC")" } ?? "—",
-                   "idle \(place == "robinhood" ? "USDG" : "USDC")", place == "arbitrum" ? .arbitrum : place == "robinhood" ? .robinhood : .base)
+                   moving.map { "\(Fmt.num($0)) \(stable)" } ?? "—",
+                   "idle \(stable)", place == "arbitrum" ? .arbitrum : place == "robinhood" ? .robinhood : .base, money: leaves)
         return MoveRoute(title: place == "aave" || place == "morpho" ? "\(place == "aave" ? "Aave" : "Morpho") · withdraw \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana" : "\(chainName) · \(moving.map { Fmt.num($0) } ?? "all") USDC to Solana",
                          footer: (place == "aave" || place == "morpho" ? "Three Base transactions: withdraw from \(place == "aave" ? "Aave" : "Morpho"), an exact approve and Relay’s deposit" : "Two \(chainName) transactions: an exact approve and Relay’s deposit")
                             + " — checked field by field before signing. Press Confirm.", steps: [
             from,
             approve(moving.map { "\(Fmt.num($0)) \(place == "robinhood" ? "USDG" : "USDC")" } ?? "all of it", for: "Relay", logo: "relay", .relay),
             step("relay", "BRIDGE · RELAY", moving.map { "\(Fmt.num($0)) \(place == "robinhood" ? "USDG" : "USDC")" } ?? "—", "≈ $0.02 · a few seconds", .relay),
-            step("sol", "TO · SOLANA", solana.map { s in moving.map { "\(Fmt.num(s.usdc)) → \(Fmt.num(s.usdc + $0))" } ?? Fmt.num(s.usdc) } ?? "—",
-                 "your own address ✓", .solana),
+            step("sol", "TO · SOLANA", moving.map { "≈ \(Fmt.num($0)) USDC" } ?? "—",
+                 "your own address ✓", .solana, money: moving.map { moneyMove("USDC", on: "solana", by: $0, approx: true) } ?? []),
         ])
     }
 }

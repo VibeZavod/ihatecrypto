@@ -258,7 +258,7 @@ extension Workspace {
         var out: [String] = []
         if let place = detail {
             if let card = tokenCard, card.place == place { out.append("token card: " + card.text) }
-            else if TokenBoard.parse(place) == nil { out.append("details of \(WalletCommand.placeName(place)) (its balances are below)") }
+            else if TokenBoard.parse(place) == nil, place != "chart" { out.append("details of \(WalletCommand.placeName(place)) (its balances are below)") }
         }
         func entry(_ e: ScheduleEntry) -> String { "\(e.title), \(e.when)" + (e.paused ? ", paused" : "") }
         if let key = currentScheduleKey {
