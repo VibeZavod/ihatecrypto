@@ -97,19 +97,34 @@
   .final .sh:hover { box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px var(--accent); }
   .final .sendbox { margin-top: 28px; } .final .sendbox .btn { margin-top: 0; }
   .b0 .sendbox { margin-top: 30px; } .b0 .sendbox .btn { margin-top: 0; }
-  .btn:focus-visible, .sh:focus-visible, .chip:focus-visible, .nav a:focus-visible, .lang button:focus-visible, .logo:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .btn:focus-visible, .sh:focus-visible, .menu-btn:focus-visible, .menu a:focus-visible, .mlangs button:focus-visible, .faq summary:focus-visible, .chip:focus-visible, .nav a:focus-visible, .lang button:focus-visible, .logo:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .meta { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; text-wrap: balance; }
 
   /* The header: always there, always with the download. */
   .top { position: fixed; top: 0; left: 0; right: 0; z-index: 50; padding: 10px 16px 0; pointer-events: none; }
-  .bar { pointer-events: auto; max-width: 1120px; height: 58px; margin: 0 auto; padding: 0 9px 0 12px; border-radius: 17px; display: flex; align-items: center; gap: 8px; }
+  .bar { position: relative; pointer-events: auto; max-width: 1120px; height: 58px; margin: 0 auto; padding: 0 9px 0 12px; border-radius: 17px; display: flex; align-items: center; gap: 8px; }
   .logo { display: flex; align-items: center; gap: 9px; margin-right: auto; color: var(--ink); text-decoration: none; border-radius: 10px; min-width: 0; }
   .logo svg { width: 36px; height: 36px; flex: none; }
   .logo span { font: 600 23px/1 DynaPuff, Onest, sans-serif; letter-spacing: -.2px; white-space: nowrap; }
   .nav { display: flex; gap: 2px; }
   .nav a { color: #3A3D44; text-decoration: none; font: 500 14px Onest, sans-serif; padding: 8px 12px; border-radius: 10px; border: 1.5px solid transparent; }
   .nav a:hover { border-color: rgba(255,122,47,.6); color: var(--ink); }
+  /* The menu (a phone, a narrow window): the sections, back to the top, the language. */
+  .menu-btn { display: none; width: 40px; height: 40px; flex: none; align-items: center; justify-content: center; border-radius: 11px; border: 1.5px solid var(--line);
+              background: #FFFFFF; color: var(--ink); cursor: pointer; }
+  .menu-btn:hover, .menu-btn[aria-expanded=true] { border-color: rgba(255,122,47,.6); }
+  .menu { position: absolute; left: 0; right: 0; top: calc(100% + 8px); z-index: 60; display: flex; flex-direction: column; padding: 8px; border-radius: 16px;
+          background: #FFFFFF; border: 1px solid rgba(17,17,17,.08); box-shadow: 0 18px 48px rgba(17,17,17,.16); }
+  .menu[hidden] { display: none; }
+  .menu a { display: flex; align-items: center; justify-content: space-between; height: 48px; padding: 0 14px; border-radius: 11px; border: 1.5px solid transparent;
+            font: 600 16px Onest, sans-serif; color: var(--ink); text-decoration: none; }
+  .menu a::after { content: '›'; font-size: 22px; font-weight: 500; color: var(--muted); }
+  .menu a:hover { border-color: rgba(255,122,47,.6); }
+  .mlangs { display: flex; gap: 8px; margin-top: 6px; padding: 10px 4px 2px; border-top: 1px solid #F0F1F4; }
+  .mlangs button { flex: 1; height: 44px; display: flex; align-items: center; justify-content: center; gap: 8px; border-radius: 11px; border: 1.5px solid var(--line);
+                   background: #FFFFFF; font: 600 14px Onest, sans-serif; color: var(--ink); cursor: pointer; }
+  .mlangs button[aria-pressed=true] { border-color: var(--accent); background: rgba(255,122,47,.10); }
   /* The language: a flag and its code; a small menu of the three. */
   .lang { position: relative; flex: none; }
   .lang-btn { height: 40px; display: flex; align-items: center; gap: 7px; padding: 0 10px 0 8px; border-radius: 11px; border: 1.5px solid var(--line);
@@ -145,11 +160,19 @@
   /* Every language wraps evenly (ru runs longest): headings, pills and labels balance their lines; paragraphs never
      end on a lonely word; a wrapped pill hugs its text (hug() below). */
   p, dd, li { text-wrap: pretty; }
-  h2, h3, dt, .kicker, .eyebrow span, .askb, .rbub, .also, .fine span, .btn span, .chip .l { text-wrap: balance; }
+  h2, h3, .faq summary span, .kicker, .eyebrow span, .askb, .rbub, .also, .fine span, .btn span, .chip .l { text-wrap: balance; }
   h1 { font: 800 clamp(44px, 7.6vw, 96px)/1 Onest, sans-serif; letter-spacing: -.035em; margin-top: 22px; max-width: 11ch; text-wrap: balance; }
   .lead { font-size: clamp(17px, 1.5vw, 20px); color: #3A3D44; max-width: 640px; margin-top: 20px; text-wrap: balance; }
   .b0 .btn { margin-top: 30px; }
-  .hint { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; font: 500 12px Onest, sans-serif; color: var(--muted); }
+  .cue { position: absolute; z-index: 3; left: 0; right: 0; bottom: 18px; display: flex; flex-direction: column; align-items: center; gap: 5px; pointer-events: none;
+         font: 600 12px Onest, sans-serif; color: var(--muted); transition: opacity .3s; }
+  .cue.gone { opacity: 0; }
+  .dots { display: flex; gap: 6px; }
+  .dots i { width: 6px; height: 6px; border-radius: 3px; background: #CDD0D6; transition: width .3s, background-color .3s; }
+  .dots i.on { width: 18px; background: var(--accent); }
+  .cue svg { animation: nudge 1.6s ease-in-out infinite; }
+  @keyframes nudge { 50% { transform: translateY(4px); } }
+  @media (prefers-reduced-motion: reduce) { .cue svg { animation: none; } }
   .kicker { font: 800 12px Onest, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--accent-ink); }
   .beat h2 { font: 800 clamp(32px, 4.4vw, 56px)/1.04 Onest, sans-serif; letter-spacing: -.03em; margin-top: 10px; max-width: 17ch; text-wrap: balance; }
   .beat h2 + p { color: #3A3D44; font-size: clamp(16px, 1.35vw, 18px); max-width: 620px; margin-top: 14px; text-wrap: balance; }
@@ -275,6 +298,7 @@
 
   /* The canvas: the app's window, drawn at 1088 × 600 and scaled to the page; tilted with its blocks lifted while --t is 1. */
   .appwrap { margin-top: 40px; height: calc(600px * var(--ak, 1)); }
+  .swipe { display: none; text-align: center; color: var(--muted); font: 600 13px Onest, sans-serif; margin-top: 10px; }
   .appscale { width: 1088px; height: 600px; transform: scale(var(--ak, 1)); transform-origin: 0 0; perspective: 1900px; }
   .app { position: relative; width: 1088px; height: 600px; border-radius: 22px; border: 1px solid var(--line); transform-style: preserve-3d; transform-origin: 50% 45%;
          background: #F4F5F7 radial-gradient(#D5D8DE 1.2px, transparent 1.5px) 0 0 / 20px 20px; box-shadow: 0 30px 80px rgba(17,17,17,.12);
@@ -349,9 +373,14 @@
   .more { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; padding: 0; list-style: none; }
   .more li { background: #FFFFFF; border: 1.5px solid var(--line); border-radius: 9px; padding: 5px 12px; font: 500 14px Onest, sans-serif; }
   .faq { display: grid; gap: 10px; max-width: 820px; margin: 40px auto 0; }
-  .faq div { background: #FFFFFF; border: 1px solid var(--line); border-radius: 14px; padding: 16px 20px; }
-  .faq dt { display: block; font-weight: 700; }
-  .faq dd { color: var(--muted); font-size: 14.5px; margin-top: 2px; }
+  .faq details { background: #FFFFFF; border: 1.5px solid var(--line); border-radius: 14px; }
+  .faq details[open] { border-color: rgba(255,122,47,.5); }
+  .faq summary { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 56px; padding: 14px 18px; cursor: pointer;
+                 list-style: none; font-weight: 700; border-radius: 14px; }
+  .faq summary::-webkit-details-marker { display: none; }
+  .faq summary svg { flex: none; color: var(--muted); transition: transform .2s; }
+  .faq details[open] summary svg { transform: rotate(180deg); }
+  .faq details p { color: var(--muted); font-size: 15px; padding: 0 18px 16px; margin-top: -4px; }
   .final { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 60px 24px 56px; background: var(--ink); color: #FFFFFF; border: 0; }
   .final > svg { width: 92px; height: 92px; }
   .final h2 { font: 800 clamp(30px, 4vw, 48px)/1.06 Onest, sans-serif; letter-spacing: -.03em; margin-top: 18px; text-wrap: balance; }
@@ -364,7 +393,8 @@
   @media (max-width: 960px) {
     .steps { grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .tiles, .asks { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-    .nav { display: none; }
+    .nav, .lang { display: none; }
+    .menu-btn { display: flex; }
   }
   /* A phone gets the same story stacked. */
   @media (max-width: 760px) {
@@ -373,10 +403,14 @@
     .bar { gap: 6px; padding: 0 7px 0 10px; }
     .lang-btn { padding: 0 8px 0 7px; gap: 6px; }
     .bar .btn { padding: 0 12px; }
-    .story { height: 400vh; }
+    .story { height: 300vh; }
     .beat { padding-top: 92px; }
     .sec { padding-top: 80px; }
     .steps, .tiles, .asks { grid-template-columns: minmax(0, 1fr); }
+    .appwrap { margin: 32px -16px 0; padding: 0 16px; overflow-x: auto; overflow-y: hidden; scrollbar-width: none; height: calc(600px * var(--ak) + 4px); }
+    .appwrap::-webkit-scrollbar { display: none; }
+    .appscale { transform: none; zoom: var(--ak); }
+    .swipe { display: block; }
     .demo { padding: 20px 16px 24px; }
     .inp { min-height: 52px; padding: 6px 6px 6px 16px; }
     .typed { white-space: normal; font-size: 16px; display: block; }
@@ -440,6 +474,11 @@
       <button type="button" class="lang-btn" aria-haspopup="menu" aria-expanded="false"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg><span class="sr">Language: </span><b>EN</b><svg class="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <div class="lang-menu" role="menu" hidden><button type="button" role="menuitemradio" aria-checked="true" data-l="en"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg><span>English</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button><button type="button" role="menuitemradio" aria-checked="false" data-l="es"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-es"/></svg><span>Español</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button><button type="button" role="menuitemradio" aria-checked="false" data-l="ru"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-ru"/></svg><span>Русский</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button></div>
     </div>
+    <button type="button" class="menu-btn" aria-haspopup="menu" aria-expanded="false" data-ta="menu" aria-label="Menu"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg></button>
+    <div class="menu" hidden>
+      <a href="#top" data-t="n_top">To the top</a><a href="#canvas" data-t="n_cv">Canvas</a><a href="#how" data-t="n_how">How it works</a><a href="#safe" data-t="n_safe">Security</a><a href="#ask" data-t="n_ask">Examples</a><a href="#faq" data-t="n_faq">Questions</a>
+      <div class="mlangs"><button type="button" data-l="en" aria-pressed="true"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg>EN</button><button type="button" data-l="es" aria-pressed="false"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-es"/></svg>ES</button><button type="button" data-l="ru" aria-pressed="false"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-ru"/></svg>RU</button></div>
+    </div>
     <button type="button" class="btn sendto away-only"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span data-t="send_s">Send to Mac</span></button>
     <a class="btn mac-only" href="ihatecrypto.dmg" download><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl_s">Download</span></a>
   </div>
@@ -456,13 +495,13 @@
       <a class="btn mac-only" href="ihatecrypto.dmg" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl">Download for Mac</span></a>
       <p class="meta mac-only"><span data-t="req">Free · macOS 26 or later</span> · v{{version}}</p>
       <div class="sendbox away-only"><button type="button" class="btn sendto"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span data-t="send">Send the link to my Mac</span></button><div class="shares"><a class="sh tg" target="_blank" rel="noopener" aria-label="Telegram"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.7 4.1 2.9 11c-1 .4-1 1.4 0 1.7l4.5 1.4 1.7 5.3c.2.6.9.8 1.4.4l2.5-2.3 4.7 3.5c.6.4 1.4.1 1.6-.6l3-13.9c.2-1-.7-1.8-1.6-1.4zM8.5 13.7l9.4-6-7.6 7.3-.3 3.2z" fill="#FFFFFF"/></svg></a><a class="sh wa" target="_blank" rel="noopener" aria-label="WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a8.5 8.5 0 0 0-7.3 12.9l-1.2 4.1 4.2-1.1A8.5 8.5 0 1 0 12 3.5z" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.3 8.3c.3-.5.8-.5 1 0l.7 1.5c.1.3 0 .5-.2.7l-.5.5c.5 1.1 1.4 2 2.5 2.5l.5-.5c.2-.2.5-.3.7-.2l1.5.7c.5.2.5.7 0 1-1 .7-2.1.7-3.3 0a8.6 8.6 0 0 1-3.2-3.2c-.7-1.2-.7-2.3.3-3z" fill="#FFFFFF"/></svg></a><a class="sh em" data-ta="mail" aria-label="Email"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="m4 7 8 6 8-6"/></svg></a><a class="sh x" target="_blank" rel="noopener" aria-label="X"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.6 3.5h3l-6.6 7.5 7.7 9.5h-6l-4.7-5.8-5.4 5.8h-3l7-7.9L2.3 3.5h6.2l4.3 5.4zm-1 15.3h1.7L7.5 5.1H5.7z" fill="#FFFFFF"/></svg></a><button class="sh cp" type="button" data-ta="copy" aria-label="Copy link"><svg class="i1" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></svg><svg class="i2" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button></div><p class="meta" data-t="away">ihatecrypto is a Mac app: send yourself the link and open it on your Mac.</p></div>
-      <p class="hint" aria-hidden="true"><span data-t="hint">Scroll</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></p>
     </div>
     <div class="beat b1">
       <p class="kicker" data-t="k1">Instead</p>
       <h2 data-t="s1h">Just say what you want.</h2>
       <p data-t="s1p">In plain words, typed or spoken: English, Spanish or Russian. No addresses to paste, no networks to pick, no tokens to bridge by hand.</p>
     </div>
+    <div class="cue" aria-hidden="true"><span class="dots"><i class="on"></i><i></i><i></i></span><span data-t="hint">Scroll</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></div>
     <div class="beat b2">
       <p class="kicker" data-t="k2">Then</p>
       <h2 data-t="s2h">It finds the route. You confirm.</h2>
@@ -516,6 +555,7 @@
       <div class="cin"><span>Say what you want</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="2.5" width="6" height="12" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3.5"/></svg><b><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19V5M6 11l6-6 6 6"/></svg></b></div>
     </div>
   </div></div></div>
+  <p class="swipe" data-t="swipe">← Swipe the canvas →</p>
   <div class="tiles">
     <article class="tile"><span class="ic"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg></span>
       <h3 data-t="cf0t">Every move is a block</h3><p data-t="cf0p">Routes, charts, plans, alerts and schedules stay on the canvas as blocks; nothing disappears. Zoom out to see it all, open a block for its details.</p></article>
@@ -615,14 +655,14 @@
 
 <section class="sec" id="faq">
   <h2 class="h" data-t="q_h">Questions</h2>
-  <dl class="faq">
-    <div><dt data-t="f0q">Who holds the keys?</dt><dd data-t="f0a">You do. The wallet is made on your Mac and sealed in its Secure Enclave; you confirm moves with Touch ID, or with a Ledger. Nothing is kept on a server.</dd></div>
-    <div><dt data-t="f5q">Can the AI move my money by itself?</dt><dd data-t="f5a">No. It can look things up and lay out a move; only your Confirm, with Touch ID, carries one out.</dd></div>
-    <div><dt data-t="f1q">Which networks does it work with?</dt><dd data-t="f1a">Solana, Hyperliquid, Base, Arbitrum, Ethereum, Polygon, Robinhood Chain, NEAR and Tempo, through Jupiter, Kamino, Aave, Morpho, Relay, Uniswap and NEAR Intents.</dd></div>
-    <div><dt data-t="f2q">Which AI does it use?</dt><dd data-t="f2a">Yours: a ChatGPT Plus or Pro subscription, a Claude subscription through Claude Code, OpenRouter, an API key, or a model running on your Mac.</dd></div>
-    <div><dt data-t="f3q">What does it cost?</dt><dd data-t="f3a">The app is a free download. You pay the networks' fees and your own AI plan.</dd></div>
-    <div><dt data-t="f4q">What do I need?</dt><dd data-t="f4a">A Mac with macOS 26 or later, Apple silicon or Intel. Updates install themselves.</dd></div>
-  </dl>
+  <div class="faq">
+    <details><summary><span data-t="f0q">Who holds the keys?</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary><p data-t="f0a">You do. The wallet is made on your Mac and sealed in its Secure Enclave; you confirm moves with Touch ID, or with a Ledger. Nothing is kept on a server.</p></details>
+    <details><summary><span data-t="f5q">Can the AI move my money by itself?</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary><p data-t="f5a">No. It can look things up and lay out a move; only your Confirm, with Touch ID, carries one out.</p></details>
+    <details><summary><span data-t="f1q">Which networks does it work with?</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary><p data-t="f1a">Solana, Hyperliquid, Base, Arbitrum, Ethereum, Polygon, Robinhood Chain, NEAR and Tempo, through Jupiter, Kamino, Aave, Morpho, Relay, Uniswap and NEAR Intents.</p></details>
+    <details><summary><span data-t="f2q">Which AI does it use?</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary><p data-t="f2a">Yours: a ChatGPT Plus or Pro subscription, a Claude subscription through Claude Code, OpenRouter, an API key, or a model running on your Mac.</p></details>
+    <details><summary><span data-t="f3q">What does it cost?</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary><p data-t="f3a">The app is a free download. You pay the networks' fees and your own AI plan.</p></details>
+    <details><summary><span data-t="f4q">What do I need?</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 9l6 6 6-6"/></svg></summary><p data-t="f4a">A Mac with macOS 26 or later, Apple silicon or Intel. Updates install themselves.</p></details>
+  </div>
 </section>
 
 <section class="sec">
@@ -641,7 +681,8 @@
 <script>
 const T = {
   en: {},
-  es: { send_s: 'A mi Mac', send: 'Enviar el enlace a mi Mac', away: 'ihatecrypto es una app para Mac: envíate el enlace y ábrelo en tu Mac.',
+  es: { menu: 'Menú', n_top: 'Arriba', n_ask: 'Ejemplos', swipe: '← Desliza el lienzo →',
+        send_s: 'A mi Mac', send: 'Enviar el enlace a mi Mac', away: 'ihatecrypto es una app para Mac: envíate el enlace y ábrelo en tu Mac.',
         share: 'ihatecrypto: una app para Mac que hace la cripto con una frase', copied: 'Copiado', copy: 'Copiar enlace', mail: 'Correo',
         n_how: 'Cómo funciona', n_safe: 'Seguridad', n_faq: 'Preguntas', dl_s: 'Descargar', dl: 'Descargar para Mac', req: 'Gratis · macOS 26 o posterior',
         eyebrow: 'Una app para Mac que hace la cripto por ti', h1: 'Cierra las diez pestañas.',
@@ -698,7 +739,8 @@ const T = {
         f3q: '¿Cuánto cuesta?', f3a: 'La app se descarga gratis. Pagas las comisiones de las redes y tu propio plan de IA.',
         f4q: '¿Qué necesito?', f4a: 'Un Mac con macOS 26 o posterior, Apple silicon o Intel. Las actualizaciones se instalan solas.',
         slogan: 'Hasta la cripto odia la cripto.', end_p: 'Así que cierra las pestañas y deja que haga la cripto. Tú solo di lo que quieres.' },
-  ru: { send_s: 'На Mac', send: 'Отправить ссылку на Mac', away: 'ihatecrypto — приложение для Mac: отправьте себе ссылку и откройте её на Mac.',
+  ru: { menu: 'Меню', n_top: 'Наверх', n_ask: 'Примеры', swipe: '← Листайте холст вбок →',
+        send_s: 'На Mac', send: 'Отправить ссылку на Mac', away: 'ihatecrypto — приложение для Mac: отправьте себе ссылку и откройте её на Mac.',
         share: 'ihatecrypto — приложение для Mac, которое делает крипту по одной фразе', copied: 'Скопировано', copy: 'Скопировать ссылку', mail: 'Почта',
         n_how: 'Как это работает', n_safe: 'Безопасность', n_faq: 'Вопросы', dl_s: 'Скачать', dl: 'Скачать для Mac', req: 'Бесплатно · macOS 26 и новее',
         eyebrow: 'Приложение для Mac, которое делает крипту за вас', h1: 'Закройте десять вкладок.',
@@ -825,7 +867,7 @@ const ASK = [
 
 const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const demo = $('.demo'), stage = $('.stage'), inp = $('.inp'), typed = $('.typed'), cur = $('.cur'), conf = $('.conf'), chart = $('.chart');
-const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches, small = matchMedia('(max-width: 760px)');
 let lang = 'en', sc = 0, timers = [], seen = false;
 
 const ARROW = '<svg class="arw fx" width="40" height="18" viewBox="0 0 40 18"><path class="sh" d="M7 9 L32 9" fill="none" stroke-width="2.2" stroke-linecap="round"/><path d="M26 3 L32 9 L26 15" fill="none" stroke="#111111" stroke-opacity=".85" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -895,7 +937,7 @@ const stop = () => { timers.forEach(clearTimeout); timers = []; };
 function play() {
   stop();
   reset();
-  if (still) {   // without motion: the end of a run, all at once
+  if (still || small.matches) {   // without motion, or on a phone: the end of a run, all at once
     [$('.b1', stage), $('.b2', stage), chart].forEach((el) => on(el, true));
     chart.classList.add('drawn'); place(3); states(['done', 'done', 'done']); press(3); stage.classList.remove('gone');
     return;
@@ -915,7 +957,7 @@ function play() {
   at(100, () => move(chart, .7, .73));
   at(750, () => on(chart, true));
   at(150, () => chart.classList.add('drawn'));
-  at(1700, () => { move(inp, .11, .5); step(0); });
+  at(1100, () => { move(inp, .11, .5); step(0); });
   at(800, () => {}); type(cmds[1]);
   at(250, () => move(send, .5, .5, .45));
   at(500, () => { text(''); on($('.b2', stage), true); step(1); });
@@ -931,10 +973,10 @@ function play() {
   at(500, () => on(cur, true));
   at(50, () => move(conf, .55, .6));
   at(850, () => { press(2); cur.dataset.m = 'touch'; states(['touch', 'next', 'next']); });
-  at(1000, () => { states(['done', 'now', 'next']); cur.dataset.m = 'think'; });
-  at(1100, () => states(['done', 'done', 'now']));
-  at(1000, () => { states(['done', 'done', 'done']); press(3); cur.dataset.m = 'done'; });
-  at(2600, () => on(cur, false));
+  at(800, () => { states(['done', 'now', 'next']); cur.dataset.m = 'think'; });
+  at(800, () => states(['done', 'done', 'now']));
+  at(800, () => { states(['done', 'done', 'done']); press(3); cur.dataset.m = 'done'; });
+  at(2000, () => on(cur, false));
   at(300, () => { stage.classList.add('gone'); step(-1); });
   at(600, () => { sc = (sc + 1) % SC.length; play(); });
 }
@@ -978,6 +1020,7 @@ function setLang(l) {
   $$('.askb').forEach((el, k) => { el.textContent = ASK[k].cmds[l]; });
   $('.lang-btn b').textContent = l.toUpperCase(); $('.lang-btn use').setAttribute('href', '#fl-' + l);
   $$('.lang-menu button').forEach((b) => b.setAttribute('aria-checked', b.dataset.l === l));
+  $$('.mlangs button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.l === l));
   seen ? play() : reset();
   relayout3d();
 }
@@ -986,6 +1029,13 @@ $$('.one').forEach((el, k) => { el.innerHTML = SLOT; const s = $('.slot', el); f
 const rtb = $('.rtb .mini'); route(rtb);
 $$('.slot', rtb).forEach((s, i) => { fill(s, SC[0].cards[i]); paintSlot(s, SC[0].cards[i], 'done'); on(s, true); });
 $$('.arw', rtb).forEach((a) => on(a, true));
+const menuBtn = $('.menu-btn'), menu = $('.menu');
+const menuOpen = (b) => { menu.hidden = !b; menuBtn.setAttribute('aria-expanded', b); };
+menuBtn.addEventListener('click', () => menuOpen(menu.hidden));
+$$('.menu a').forEach((a) => a.addEventListener('click', () => menuOpen(false)));
+$$('.mlangs button').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.l)));
+addEventListener('click', (e) => { if (!e.target.closest('.menu, .menu-btn')) menuOpen(false); });
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { menuOpen(false); menuBtn.focus(); } });
 const langBtn = $('.lang-btn'), langMenu = $('.lang-menu');
 const langOpen = (b) => { langMenu.hidden = !b; langBtn.setAttribute('aria-expanded', b); };
 langBtn.addEventListener('click', () => langOpen(langMenu.hidden));
@@ -1008,8 +1058,9 @@ document.fonts.ready.then(() => $$('.eyebrow span, .askb').forEach(hug));
 
 // The canvas's window is drawn at 1088 wide and scaled to the page.
 const appwrap = $('.appwrap'), app = $('.app');
-const fit = () => { document.documentElement.style.setProperty('--k', Math.min(.8, (demo.clientWidth - 48) / 1174)); appwrap.style.setProperty('--ak', Math.min(1, appwrap.clientWidth / 1088)); };
+const fit = () => { document.documentElement.style.setProperty('--k', Math.min(.8, (demo.clientWidth - 48) / 1174)); appwrap.style.setProperty('--ak', small.matches ? .6 : Math.min(1, appwrap.clientWidth / 1088)); };
 addEventListener('resize', fit); fit();
+small.addEventListener('change', () => { fit(); scrolled(); if (seen) play(); });
 
 // ---- The story: ten tabs fold into one sentence, the sentence into its route. Scroll drives it; three.js draws it. ----
 const story = $('.story'), pin = $('.pin'), gl = $('.gl'), beats = $$('.beat');
@@ -1021,9 +1072,10 @@ function scrolled() {
   P = Math.min(1, Math.max(0, -r.top / Math.max(1, r.height - innerHeight)));
   const b = P < .16 ? 0 : P < .56 ? 1 : 2;
   beats.forEach((el, i) => on(el, i === b));
+  $$('.dots i').forEach((d, i) => on(d, i === b)); $('.cue').classList.toggle('gone', P > .97);
   // The canvas lies tilted, its blocks lifted, until its window is well on screen.
   const a = appwrap.getBoundingClientRect();
-  app.style.setProperty('--t', still ? 0 : Math.min(1, Math.max(0, (a.top - innerHeight * .12) / (innerHeight * .6))).toFixed(3));
+  app.style.setProperty('--t', still || small.matches ? 0 : Math.min(1, Math.max(0, (a.top - innerHeight * .12) / (innerHeight * .6))).toFixed(3));
   redraw3d();
 }
 addEventListener('scroll', scrolled, { passive: true });
@@ -1267,7 +1319,8 @@ async function start3d() {
     const H = Math.max(boxH / avail, boxW / (a * .9), tall ? 0 : ch * h / 330), Z = H / 2 / tanH, cy = H * (.5 - top - avail / 2);
     const yTop = cy + boxH / 2, yCards = yTop - .48;
     cam.aspect = a; cam.updateProjectionMatrix();
-    L = { tall, Z, cy, tabA: w < 480 ? .8 : 1, bw: Math.round(Math.min(640, H * a * 100 * .9)), tabK: Math.min(.85, Math.max(.62, a * .7)),
+    const barK = tall ? 1.25 : 1;
+    L = { tall, Z, cy, barK, tabA: w < 480 ? .8 : 1, bw: Math.round(Math.min(640, H * a * 100 * .9 / barK)), tabK: Math.min(.85, Math.max(.62, a * .7)),
       bubble: [-boxW / 2, yTop - .17], conf: [0, cy - boxH / 2 + .24],
       cards: [0, 1, 2].map((i) => tall ? [0, yCards - ch / 2 - i * (ch + gap)] : [-boxW / 2 + cw / 2 + i * (cw + gap), yCards - ch / 2]),
       arrows: [0, 1].map((i) => tall ? [0, yCards - ch - gap / 2 - i * (ch + gap)] : [-boxW / 2 + cw + gap / 2 + i * (cw + gap), yCards - ch / 2]),
@@ -1314,6 +1367,7 @@ async function start3d() {
     // One input instead, the request typed into it.
     const n = Math.round(seg(p, .38, .52) * cmd.length);
     once('bar', `${L.bw}${lang}${n}`, () => bar.paint(L.bw, 56, (g) => drawBar(g, L.bw, cmd.slice(0, n), T[lang].ph ?? T.en.ph)), p > .14 && p < .6);
+    if (bar.sx) bar.scale.set(bar.sx * L.barK, bar.sy * L.barK, 1);
     bar.position.set(0, L.cy + .35, 0); fade(bar, seg(p, .26, .36) * (1 - seg(p, .55, .58)));
     // Sent: the message, its route a card at a time, Confirm, Touch ID, the steps landing.
     const near = p > .45;
