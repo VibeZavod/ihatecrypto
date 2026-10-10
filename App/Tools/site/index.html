@@ -151,7 +151,7 @@
   .beat { position: absolute; left: 0; right: 0; top: 0; z-index: 2; display: flex; flex-direction: column; align-items: center; text-align: center;
           padding: 104px 16px 0; opacity: 0; visibility: hidden; transition: opacity .35s ease-out, visibility 0s linear .35s; }
   .beat.on { opacity: 1; visibility: visible; transition: opacity .35s ease-out; }
-  .b0 { bottom: 0; justify-content: center; padding: 80px 16px 56px; }
+  .b0 { bottom: 0; justify-content: center; padding: 80px 16px 88px; }
   .b0::before { content: ''; position: absolute; z-index: -1; left: 50%; top: 50%; width: min(980px, 130vw); height: min(620px, 92%); transform: translate(-50%, -50%);
                 background: radial-gradient(closest-side, rgba(250,250,251,.95) 58%, rgba(250,250,251,0)); pointer-events: none; }
   .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 13px 6px 7px; border-radius: 18px; text-align: left; background: #FFFFFF; border: 1px solid var(--line);
@@ -446,6 +446,7 @@
      words get a wider, firmer backdrop with the tabs fainter behind them. */
   @media (max-width: 480px) {
     .lang-btn { padding: 0 9px; } .lang-btn b, .lang-btn .chev { display: none; }
+    .beat h2 { font-size: 28px; } .beat h2 + p { font-size: 15px; line-height: 1.45; margin-top: 10px; }   /* more of the screen for the route */
     .bar .btn svg { display: none; }
     .b0::before { width: 170vw; height: 86%; top: 55%; background: radial-gradient(closest-side, rgba(250,250,251,.97) 66%, rgba(250,250,251,0)); }
   }
@@ -1312,9 +1313,10 @@ async function start3d() {
   // Fit the route below the beat's words: a row of cards on a wide screen, a column of rows on a tall one.
   function layout() {
     const w = pin.clientWidth, h = pin.clientHeight, a = w / h, tall = a < .9;
-    R.setPixelRatio(Math.min(devicePixelRatio, 2)); R.setSize(w, h, false);
-    const top = Math.max(beats[1].offsetHeight, beats[2].offsetHeight) / h + .03, avail = Math.max(.3, 1 - top - .05);
-    const cw = tall ? 3.43 : 2.36, ch = tall ? 1.12 : 2.92, gap = tall ? .44 : .64;
+    R.setPixelRatio(Math.min(devicePixelRatio, 3)); R.setSize(w, h, false);   // an iPhone is 3×: a 2× canvas stretched to it looks soft
+    // The route sits between the beat's words and the «Scroll» cue at the bottom.
+    const top = Math.max(beats[1].offsetHeight, beats[2].offsetHeight) / h + .03, avail = Math.max(.3, 1 - top - ($('.cue').offsetHeight + 30) / h);
+    const cw = tall ? 3.43 : 2.36, ch = tall ? 1.12 : 2.92, gap = tall ? .32 : .64;
     const boxW = tall ? cw : 3 * cw + 2 * gap, boxH = .34 + .14 + (tall ? 3 * ch + 2 * gap : ch) + .28 + .48;
     const H = Math.max(boxH / avail, boxW / (a * .9), tall ? 0 : ch * h / 330), Z = H / 2 / tanH, cy = H * (.5 - top - avail / 2);
     const yTop = cy + boxH / 2, yCards = yTop - .48;
@@ -1326,7 +1328,7 @@ async function start3d() {
       arrows: [0, 1].map((i) => tall ? [0, yCards - ch - gap / 2 - i * (ch + gap)] : [-boxW / 2 + cw + gap / 2 + i * (cw + gap), yCards - ch / 2]),
       spots: SPOTS.map(([nx, ny, z, rx, ry, rz]) => { const hh = (Z - z) * tanH; return [nx * hh * a * .86, ny * hh * .84, z, rx, ry, rz]; }) };
     // Texture pixels per page pixel: the screen's for the route, a bit less for the tabs (they're scaled by tabK, mostly further back).
-    const dots = h / H / 100 * Math.min(devicePixelRatio, 2);
+    const dots = h / H / 100 * Math.min(devicePixelRatio, 3);
     L.S = Math.min(4, Math.max(1.25, dots * 1.05)); L.tabS = Math.min(3, Math.max(1.25, dots * L.tabK * 1.15));
     if (Math.abs(L.tabS - (tabs.S || 0)) > .2) { tabs.S = L.tabS; paintTabs(); }
     arws.forEach((m) => { m.rotation.z = tall ? -Math.PI / 2 : 0; });
