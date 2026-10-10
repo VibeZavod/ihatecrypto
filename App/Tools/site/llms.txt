@@ -1,0 +1,33 @@
+# ihatecrypto
+
+> A Mac app that does crypto for you. Say what you want in plain words (English, Spanish or Russian); it looks up what it needs, lays out the move as cards: where the money comes from, how it gets there, what you end up with - and nothing moves until you confirm with Touch ID. Self-custody: the wallet is made on the Mac and sealed in its Secure Enclave.
+
+- Download: https://ihatecrypto.ai/ihatecrypto.dmg (the latest version, free, macOS 26 or later, Apple silicon and Intel; it updates itself).
+- Site: https://ihatecrypto.ai/
+
+## What you can ask
+
+- "buy $10 of Tesla on Robinhood": USDC from the wallet on Base, bridged with Relay, bought on Robinhood Chain as a stock token.
+- "send 20 USDC from Solana to Bybit": checked against an address book the user approves with Touch ID, then sent to the exchange account.
+- "short oil on a 2% pullback by the book": a perp on Hyperliquid sized by the user's risk rules, with the stop and the take placed together with the order.
+- Also: swaps, bridges between networks, deposits to earn (Kamino, Jupiter Lend, JitoSOL, Aave, Morpho, Hyperliquid's HLP vault), price alerts and scheduled tasks, claiming rewards.
+
+## Networks and protocols
+
+- Networks: Solana, Hyperliquid, Base, Arbitrum, Ethereum, Polygon, Robinhood Chain, NEAR, Tempo.
+- Protocols: Jupiter, Kamino, Aave, Morpho, Relay, Uniswap, NEAR Intents (1Click), Hyperliquid (crypto, oil and stock perps).
+
+## Keys and safety
+
+- Keys stay on the Mac, sealed in the Secure Enclave; nothing is kept on a server.
+- Moves are confirmed with Touch ID, or on a Ledger.
+- The AI never holds a key: it looks things up and lays out a move; only the Confirm button on the card signs. Every command is read twice, and nothing runs when the two readings disagree.
+- Signing happens in a separate process with no network access; it refuses unlimited approvals, permits and blind signatures.
+
+## AI
+
+- Bring your own model: a ChatGPT Plus or Pro subscription, a Claude subscription through Claude Code, OpenRouter, an API key, or a model running on the Mac.
+
+## Cost
+
+- The app is a free download. The user pays network fees and their own AI plan.

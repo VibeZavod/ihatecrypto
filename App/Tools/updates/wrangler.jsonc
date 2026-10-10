@@ -1,5 +1,6 @@
-// The update feed at updates.ihatecrypto.ai: dist/site (appcast.xml, the zips, their notes) as a Worker's static
-// files on Cloudflare. After ./release.sh <ver> https://updates.ihatecrypto.ai, publish with
+// The update feed at updates.ihatecrypto.ai and the landing at ihatecrypto.ai: dist/site (appcast.xml, the zips, their
+// notes, the landing from Tools/site and the latest disk image) as a Worker's static files on Cloudflare.
+// After ./release.sh <ver> https://updates.ihatecrypto.ai, publish with
 //   npx wrangler deploy -c Tools/updates/wrangler.jsonc
 // Static files are served free and without a request limit; one file may be at most 25 MiB (a zip is ~19 MB).
 {
@@ -7,5 +8,11 @@
   "compatibility_date": "2026-10-01",
   "assets": { "directory": "../../dist/site" },
   "workers_dev": false,
-  "routes": [{ "pattern": "updates.ihatecrypto.ai", "custom_domain": true }]
+  "routes": [
+    { "pattern": "updates.ihatecrypto.ai", "custom_domain": true },
+    // The landing takes routes, not a custom domain: the apex and www keep the proxied records Namecheap left, and a
+    // custom domain can't be put over them without a DNS edit. A route answers before those records' origin is asked.
+    { "pattern": "ihatecrypto.ai/*", "zone_name": "ihatecrypto.ai" },
+    { "pattern": "www.ihatecrypto.ai/*", "zone_name": "ihatecrypto.ai" }
+  ]
 }

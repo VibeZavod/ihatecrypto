@@ -1,0 +1,51 @@
+<!doctype html>
+<!-- The picture links show (og.png, 1200x630): the promise in one frame, big enough to read in a chat's preview.
+     Render from App/Tools/site: "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --headless=new
+       --hide-scrollbars --virtual-time-budget=5000 --window-size=1200,630 --screenshot=og.png og.html -->
+<html><head><meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=DynaPuff:wght@600&family=Onest:wght@500;600;700;800&display=swap" rel="stylesheet">
+<style>
+* { box-sizing: border-box; margin: 0; }
+body { width: 1200px; height: 630px; overflow: hidden; position: relative; background: #FAFAFB radial-gradient(#D9DCE2 1.4px, transparent 1.8px) 0 0 / 26px 26px;
+       font-family: Onest, sans-serif; color: #111111; -webkit-font-smoothing: antialiased; }
+.left { position: absolute; left: 64px; top: 60px; width: 560px; }
+.lockup { display: flex; align-items: center; gap: 16px; }
+.lockup svg { width: 92px; height: 92px; }
+.logo { font: 600 58px/1 DynaPuff, Onest, sans-serif; letter-spacing: -.4px; }
+h1 { margin-top: 54px; font: 800 82px/0.98 Onest, sans-serif; letter-spacing: -2.5px; }
+.sub { margin-top: 30px; font: 600 30px/1.25 Onest, sans-serif; color: #5F636B; }
+.sub b { color: #111111; }
+.right { position: absolute; left: 676px; top: 52px; width: 460px; display: flex; flex-direction: column; align-items: stretch; }
+.ask { align-self: flex-start; background: #111111; color: #FFFFFF; font: 600 27px Onest, sans-serif; padding: 12px 20px; border-radius: 16px; margin-bottom: 16px; }
+.rc { position: relative; height: 104px; border-radius: 20px; overflow: hidden; background: var(--bg); color: #FFFFFF; }
+.sc { position: absolute; right: 0; bottom: 0; width: 150px; height: 53px; color: #FFFFFF; }
+.sc .f { display: none; } .sc .f.on { display: inline; }
+.tx { position: absolute; left: 22px; top: 20px; }
+.lb { font: 800 14px Onest, sans-serif; letter-spacing: .8px; color: rgba(255,255,255,.75); }
+.tt { font: 800 32px Onest, sans-serif; margin-top: 8px; white-space: nowrap; letter-spacing: -.5px; }
+.sch { position: absolute; right: 14px; top: 14px; display: flex; align-items: center; gap: 6px; height: 32px; padding: 0 12px 0 5px; border-radius: 99px;
+        font: 800 15px Onest, sans-serif; background: #FFFFFF; color: #177A52; }
+.halo { width: 24px; height: 24px; border-radius: 50%; display: flex; align-items: center; justify-content: center; background: #7EEBC0; }
+.arw { display: block; margin: 3px auto; }
+.done { margin-top: 16px; height: 60px; border-radius: 14px; display: flex; align-items: center; justify-content: center; gap: 10px;
+         font: 800 25px Onest, sans-serif; background: #E9F6F0; color: #0B5A40; border: 2px solid #BFE6D3; }
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs><symbol id="f-wait" viewBox="0 0 140 140"><circle cx="70" cy="70" r="64" fill="#FF7A2F"/><circle cx="70" cy="70" r="62" fill="none" stroke="#111111" stroke-width="9" stroke-dasharray="7 7"/><circle cx="70" cy="70" r="52" fill="none" stroke="#111111" stroke-width="3.5"/><circle cx="50" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="90" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="54.08" cy="53.98" r="8" fill="#111111"/><circle cx="94.08" cy="53.98" r="8" fill="#111111"/><path d="M54 98 Q70 92 86 96" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="f-done" viewBox="0 0 140 140"><circle cx="70" cy="70" r="64" fill="#FF7A2F"/><circle cx="70" cy="70" r="62" fill="none" stroke="#111111" stroke-width="9" stroke-dasharray="7 7"/><circle cx="70" cy="70" r="52" fill="none" stroke="#111111" stroke-width="3.5"/><path d="M36 64 Q50 48 64 64 M76 64 Q90 48 104 64 M50 86 Q70 106 90 86" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></symbol></defs></svg>
+<div class="left">
+  <div class="lockup"><svg viewBox="0 0 140 140"><use href="#f-wait"/></svg><span class="logo">ihatecrypto</span></div>
+  <h1>Even crypto<br>hates crypto.</h1>
+  <p class="sub">A Mac app: <b>say it</b>, it builds the route,<br><b>Touch ID</b>, done.</p>
+</div>
+<div class="right">
+  <div class="ask">buy $10 of Tesla</div>
+  <div class="rc" style="--bg:#0052FF;--body:#0052FF;--good:#7EEBC0;--bad:#FF8A7A"><svg class="sc" viewBox="0 0 340 121"><use class="f wait" href="#f-wait" width="140" height="140" transform="translate(207.9 21.9) scale(0.4007)"/><use class="f think" href="#f-think" width="140" height="140" transform="translate(207.9 21.9) scale(0.4007)"/><use class="f touch" href="#f-touch" width="140" height="140" transform="translate(207.9 21.9) scale(0.4007)"/><use class="f on" href="#f-done" width="140" height="140" transform="translate(207.9 21.9) scale(0.4007)"/><path d="M150 140 L150 76 Q150 62 164 62 L360 62 L360 140 Z" style="fill: var(--body)" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><path d="M360 82 L300 82 C278.7 82 278.7 114 300 114 L360 114" fill="#FFFFFF" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><circle cx="302" cy="98" r="5" fill="#5F636B"/></svg>
+<div class="tx"><div class="lb">FROM · BASE</div><div class="tt">10 USDC</div></div>
+<div class="sch"><span class="halo"><svg width="20" height="20" viewBox="0 0 140 140"><use href="#f-done"/></svg></span>Done</div></div><svg class="arw" width="22" height="22" viewBox="0 0 24 24"><path d="M12 4v15M6 13l6 6 6-6" fill="none" stroke="#111" stroke-opacity=".75" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="rc" style="--bg:#4615C8;--body:#4615C8;--good:#7EEBC0;--bad:#FF8A7A"><svg class="sc" viewBox="0 0 340 121"><path d="M-4 60 L344 60 M50 60 L50 124 M290 60 L290 124 M50 124 C50 80 290 80 290 124" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="3"/><path d="M88 60 L88 99 M126 60 L126 93 M170 60 L170 91 M214 60 L214 93 M252 60 L252 99 " fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/><path d="M70 114 Q80 109 90 114 Q100 119 110 114 Q120 109 130 114 Q140 119 150 114 Q160 109 170 114 Q180 119 190 114 Q200 109 210 114 Q220 119 230 114 Q240 109 250 114 Q260 119 270 114" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6" opacity=".45"/><g class="bcoin" ><use class="f wait" href="#f-wait" width="140" height="140" transform="translate(45.8 8.8) scale(0.3743)"/><use class="f think" href="#f-think" width="140" height="140" transform="translate(45.8 8.8) scale(0.3743)"/><use class="f touch" href="#f-touch" width="140" height="140" transform="translate(45.8 8.8) scale(0.3743)"/><use class="f on" href="#f-done" width="140" height="140" transform="translate(45.8 8.8) scale(0.3743)"/></g></svg>
+<div class="tx"><div class="lb">BRIDGE · RELAY</div><div class="tt">Base → Robinhood</div></div>
+<div class="sch"><span class="halo"><svg width="20" height="20" viewBox="0 0 140 140"><use href="#f-done"/></svg></span>Done</div></div><svg class="arw" width="22" height="22" viewBox="0 0 24 24"><path d="M12 4v15M6 13l6 6 6-6" fill="none" stroke="#111" stroke-opacity=".75" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg><div class="rc" style="--bg:#3A4A00;--body:#3A4A00;--good:#7EEBC0;--bad:#FF8A7A"><svg class="sc" viewBox="0 0 340 121"><path d="M172 58 Q206 40 231 78" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round" stroke-width="1.6"/><path d="M240 30 L340 30 Q350 30 350 40 L350 130 L240 130 L214 80 Z" style="fill: var(--body)" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/><circle cx="236" cy="80" r="5" fill="none" stroke="currentColor" stroke-width="2.5"/><text x="254" y="89" fill="currentColor" style="font:800 24px Onest,sans-serif">TSLA</text><use class="f wait" href="#f-wait" width="140" height="140" transform="translate(123.8 35.8) scale(0.3743)"/><use class="f think" href="#f-think" width="140" height="140" transform="translate(123.8 35.8) scale(0.3743)"/><use class="f touch" href="#f-touch" width="140" height="140" transform="translate(123.8 35.8) scale(0.3743)"/><use class="f on" href="#f-done" width="140" height="140" transform="translate(123.8 35.8) scale(0.3743)"/></svg>
+<div class="tx"><div class="lb">BUY · ROBINHOOD</div><div class="tt">$10 → TSLA</div></div>
+<div class="sch"><span class="halo"><svg width="20" height="20" viewBox="0 0 140 140"><use href="#f-done"/></svg></span>Done</div></div>
+  <div class="done"><svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg>TSLA in your wallet</div>
+</div>
+</body></html>

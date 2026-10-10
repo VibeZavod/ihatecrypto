@@ -101,6 +101,12 @@ ditto -c -k --sequesterRsrc --keepParent "$app" $out/site/ihatecrypto-$version.z
 python3 Tools/release-notes.py "$version" > $out/site/ihatecrypto-$version.html
 rm -rf $out/export $out/ihatecrypto.xcarchive $out/export.plist
 # Signs the new zip (and the feed: the app requires a signed one) with the key in the Keychain; the notes go inside.
+# The landing's disk image would read as one more archive of the same version, so it steps out while the feed is made.
+rm -f $out/site/ihatecrypto.dmg
 $sparkle/generate_appcast --download-url-prefix "$site/" $out/site
+# The landing (Tools/site) shares the folder: ihatecrypto.ai downloads this release's disk image.
+sed "s/{{version}}/$version/g" Tools/site/index.html > $out/site/index.html
+cp Tools/site/{_headers,icon.png,og.png,llms.txt,robots.txt,sitemap.xml,three.min.js} $out/site/
+cp $dmg $out/site/ihatecrypto.dmg
 rm -f "$log"
-echo "done: publish $out/site/ to $site/ (updates.ihatecrypto.ai: npx wrangler deploy -c Tools/updates/wrangler.jsonc); $out/ihatecrypto-$version.dmg is the first install (the site's download, or a friend)"
+echo "done: publish $out/site/ to $site/ (updates.ihatecrypto.ai and the landing ihatecrypto.ai: npx wrangler deploy -c Tools/updates/wrangler.jsonc); $out/ihatecrypto-$version.dmg is the first install (the landing's download, or a friend)"
