@@ -431,6 +431,11 @@ struct TrafficLights: NSViewRepresentable {
         var middle: CGFloat?
         var center = TrafficLights.center
         private var observers: [NSObjectProtocol] = []
+        /// The lights are sliding with the rail, or being put in place right now: their frame changes then are ours.
+        /// (Without `placing` the close button's own change re-entered place() before the other two had moved, with a
+        /// step read from half-moved buttons, until the stack ran out — a crash at launch, 2026-10-11.)
+        private var sliding = false
+        private var placing = false
 
         override func viewDidMoveToWindow() {
             observers.forEach(NotificationCenter.default.removeObserver)
@@ -450,10 +455,22 @@ struct TrafficLights: NSViewRepresentable {
                     MainActor.assumeIsolated { self?.place() }
                 })
             }
+            // AppKit also lays the buttons out again without touching the container (the window coming back on screen
+            // after a relaunch put them at their default x of 8, 31, 54, beside the rail's edge, 2026-10-11): whatever moves
+            // the close button, they go back.
+            if let close = window.standardWindowButton(.closeButton) {
+                close.postsFrameChangedNotifications = true
+                observers.append(NotificationCenter.default.addObserver(forName: NSView.frameDidChangeNotification, object: close, queue: .main) { [weak self] _ in
+                    MainActor.assumeIsolated { if self?.sliding == false { self?.place() } }
+                })
+            }
             DispatchQueue.main.async { self.place() }
         }
 
         func place(animated: Bool = false) {
+            guard !placing else { return }
+            placing = true
+            defer { placing = false }
             guard let window, !window.styleMask.contains(.fullScreen),
                   let close = window.standardWindowButton(.closeButton),
                   let mini = window.standardWindowButton(.miniaturizeButton),
@@ -465,12 +482,21 @@ struct TrafficLights: NSViewRepresentable {
             if container.frame != frame { container.frame = frame }
             let step = mini.frame.minX - close.frame.minX
             let first = middle.map { $0 - (2 * step + close.frame.width) / 2 } ?? center.x - close.frame.width / 2
+            let buttons = [close, mini, zoom]
+            let origins = buttons.enumerated().map { i, b in CGPoint(x: first + CGFloat(i) * step, y: (height - b.frame.height) / 2) }
+            // Already there: moving them again would only post the frame change place() listens to.
+            guard zip(buttons, origins).contains(where: { $0.frame.origin != $1 }) else { return }
             // Folding the rail slides them along with it.
+            sliding = animated
             NSAnimationContext.runAnimationGroup { context in
                 context.duration = animated ? 0.35 : 0
-                for (i, button) in [close, mini, zoom].enumerated() {
-                    let origin = CGPoint(x: first + CGFloat(i) * step, y: (height - button.frame.height) / 2)
+                for (button, origin) in zip(buttons, origins) {
                     if animated { button.animator().setFrameOrigin(origin) } else { button.setFrameOrigin(origin) }
+                }
+            } completionHandler: { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.sliding = false
+                    if animated { self?.place() }
                 }
             }
         }
