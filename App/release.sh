@@ -106,7 +106,8 @@ rm -f $out/site/ihatecrypto.dmg
 $sparkle/generate_appcast --download-url-prefix "$site/" $out/site
 # The landing (Tools/site) shares the folder: ihatecrypto.ai downloads this release's disk image.
 sed "s/{{version}}/$version/g" Tools/site/index.html > $out/site/index.html
-cp Tools/site/{_headers,icon.png,og.png,llms.txt,robots.txt,sitemap.xml,three.min.js} $out/site/
+cp Tools/site/{_headers,icon.png,favicon.png,og.png,llms.txt,robots.txt,sitemap.xml,three.min.js} $out/site/
+cp -R Tools/site/fonts $out/site/
 cp $dmg $out/site/ihatecrypto.dmg
 rm -f "$log"
 echo "done: publish $out/site/ to $site/ (updates.ihatecrypto.ai and the landing ihatecrypto.ai: npx wrangler deploy -c Tools/updates/wrangler.jsonc); $out/ihatecrypto-$version.dmg is the first install (the landing's download, or a friend)"

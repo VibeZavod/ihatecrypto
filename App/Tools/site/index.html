@@ -23,12 +23,10 @@
 <meta name="twitter:title" content="ihatecrypto — Even crypto hates crypto.">
 <meta name="twitter:description" content="Close the ten tabs: say what you want, it lays out the route, you confirm with Touch ID.">
 <meta name="twitter:image" content="https://ihatecrypto.ai/og.png?v=2">
-<link rel="icon" href="icon.png">
+<link rel="icon" href="favicon.png" sizes="64x64">
 <link rel="apple-touch-icon" href="icon.png">
-<link rel="modulepreload" href="three.min.js">
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=DynaPuff:wght@600&family=Onest:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<link rel="preload" href="fonts/onest-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/dynapuff-latin.woff2" as="font" type="font/woff2" crossorigin>
 <script type="application/ld+json">
 {"@context": "https://schema.org", "@graph": [
   {"@type": "SoftwareApplication", "name": "ihatecrypto", "url": "https://ihatecrypto.ai/",
@@ -50,10 +48,19 @@
      then how it works (the app's own demo, synced with four steps), why it's safe, what to ask, questions. The header
      always offers the download. release.sh copies it beside the appcast in dist/site and fills in {{version}};
      ihatecrypto.dmg is that release's disk image. The route cards follow the app's V1 cards (RouteCards.swift).
+     The fonts are served from here (fonts/, Google Fonts' own files for Onest and DynaPuff, OFL): a third-party stylesheet
+     held up the first paint by ~2 s on a phone. The 3D starts once the page has loaded, so it never delays the words.
      three.min.js is three@0.186.1 cut down to what this page imports:
        export { WebGLRenderer, Scene, PerspectiveCamera, Group, Mesh, PlaneGeometry, MeshBasicMaterial, CanvasTexture,
                 SRGBColorSpace, LinearFilter } from 'three'   →   npx esbuild@0.25.10 entry.js --bundle --format=esm --minify -->
 <style>
+  @font-face { font-family: 'DynaPuff'; font-style: normal; font-weight: 600; font-display: swap; src: url(fonts/dynapuff-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(fonts/onest-cyrillic-ext.woff2) format('woff2'); unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(fonts/onest-cyrillic.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(fonts/onest-math.woff2) format('woff2'); unicode-range: U+0302-0303, U+0305, U+0307-0308, U+0310, U+0312, U+0315, U+031A, U+0326-0327, U+032C, U+032F-0330, U+0332-0333, U+0338, U+033A, U+0346, U+034D, U+0391-03A1, U+03A3-03A9, U+03B1-03C9, U+03D1, U+03D5-03D6, U+03F0-03F1, U+03F4-03F5, U+2016-2017, U+2034-2038, U+203C, U+2040, U+2043, U+2047, U+2050, U+2057, U+205F, U+2070-2071, U+2074-209F, U+20D0-20DC, U+20E1, U+20E5-20EF, U+2100-2112, U+2114-2115, U+2117-2121, U+2123-214F, U+2190, U+2192, U+2194-21AE, U+21B0-21E5, U+21F1-21F2, U+21F4-2211, U+2213-2214, U+2216-22FF, U+2308-230B, U+2310, U+2319, U+231C-2321, U+2336-237A, U+237C, U+2395, U+239B-23B7, U+23D0, U+23DC-23E1, U+2474-2475, U+25AF, U+25B3, U+25B7, U+25BD, U+25C1, U+25CA, U+25CC, U+25FB, U+266D-266F, U+27C0-27FF, U+2900-2AFF, U+2B0E-2B11, U+2B30-2B4C, U+2BFE, U+3030, U+FF5B, U+FF5D, U+1D400-1D7FF, U+1EE00-1EEFF; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(fonts/onest-symbols.woff2) format('woff2'); unicode-range: U+0001-000C, U+000E-001F, U+007F-009F, U+20DD-20E0, U+20E2-20E4, U+2150-218F, U+2190, U+2192, U+2194-2199, U+21AF, U+21E6-21F0, U+21F3, U+2218-2219, U+2299, U+22C4-22C6, U+2300-243F, U+2440-244A, U+2460-24FF, U+25A0-27BF, U+2800-28FF, U+2921-2922, U+2981, U+29BF, U+29EB, U+2B00-2BFF, U+4DC0-4DFF, U+FFF9-FFFB, U+10140-1018E, U+10190-1019C, U+101A0, U+101D0-101FD, U+102E0-102FB, U+10E60-10E7E, U+1D2C0-1D2D3, U+1D2E0-1D37F, U+1F000-1F0FF, U+1F100-1F1AE, U+1F1E6-1F1FF, U+1F30D-1F30F, U+1F315, U+1F31C, U+1F31E, U+1F320-1F32C, U+1F336, U+1F378, U+1F37D, U+1F382, U+1F393-1F39F, U+1F3A7-1F3A8, U+1F3AC-1F3AF, U+1F3C2, U+1F3C4-1F3C6, U+1F3CA-1F3CE, U+1F3D4-1F3E0, U+1F3ED, U+1F3F1-1F3F3, U+1F3F5-1F3F7, U+1F408, U+1F415, U+1F41F, U+1F426, U+1F43F, U+1F441-1F442, U+1F444, U+1F446-1F449, U+1F44C-1F44E, U+1F453, U+1F46A, U+1F47D, U+1F4A3, U+1F4B0, U+1F4B3, U+1F4B9, U+1F4BB, U+1F4BF, U+1F4C8-1F4CB, U+1F4D6, U+1F4DA, U+1F4DF, U+1F4E3-1F4E6, U+1F4EA-1F4ED, U+1F4F7, U+1F4F9-1F4FB, U+1F4FD-1F4FE, U+1F503, U+1F507-1F50B, U+1F50D, U+1F512-1F513, U+1F53E-1F54A, U+1F54F-1F5FA, U+1F610, U+1F650-1F67F, U+1F687, U+1F68D, U+1F691, U+1F694, U+1F698, U+1F6AD, U+1F6B2, U+1F6B9-1F6BA, U+1F6BC, U+1F6C6-1F6CF, U+1F6D3-1F6D7, U+1F6E0-1F6EA, U+1F6F0-1F6F3, U+1F6F7-1F6FC, U+1F700-1F80B, U+1F810-1F847, U+1F850-1F859, U+1F860-1F887, U+1F890-1F8AD, U+1F8B0-1F8BB, U+1F8C0-1F8C1, U+1F8D0-1F8D8, U+1F900-1F90B, U+1F93B, U+1F946, U+1F984, U+1F996, U+1F9E9, U+1FA00-1FA6F, U+1FA70-1FA7C, U+1FA80-1FAC6, U+1FAC8, U+1FACC-1FADD, U+1FADF-1FAEB, U+1FAEF-1FAFA, U+1FB00-1FBFF; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(fonts/onest-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(fonts/onest-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
   :root { color-scheme: light; --ink: #111111; --muted: #5F636B; --line: #E1E4EC; --accent: #FF7A2F; --accent-ink: #B8480C; --k: .8; }
   * { box-sizing: border-box; margin: 0; }
   html { -webkit-text-size-adjust: 100%; scroll-padding-top: 84px; }
@@ -70,6 +77,7 @@
          background: var(--accent); color: var(--ink); font: 600 15px Onest, sans-serif; text-decoration: none; white-space: nowrap; transition: box-shadow .25s; }
   .btn:hover { box-shadow: 0 0 0 3px #FFFFFF, 0 0 0 5.5px var(--accent); }
   .btn:focus-visible, .chip:focus-visible, .nav a:focus-visible, .lang button:focus-visible, .logo:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .meta { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; text-wrap: balance; }
 
   /* The header: always there, always with the download. */
@@ -397,7 +405,7 @@
     <a class="logo" href="#top" aria-label="ihatecrypto"><svg viewBox="0 0 140 140" aria-hidden="true"><use href="#f-wait"/></svg><span>ihatecrypto</span></a>
     <nav class="nav" aria-label="Sections"><a href="#canvas" data-t="n_cv">Canvas</a><a href="#how" data-t="n_how">How it works</a><a href="#safe" data-t="n_safe">Security</a><a href="#faq" data-t="n_faq">Questions</a></nav>
     <div class="lang">
-      <button type="button" class="lang-btn" aria-haspopup="menu" aria-expanded="false" aria-label="Language"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg><b>EN</b><svg class="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <button type="button" class="lang-btn" aria-haspopup="menu" aria-expanded="false"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg><span class="sr">Language: </span><b>EN</b><svg class="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <div class="lang-menu" role="menu" hidden><button type="button" role="menuitemradio" aria-checked="true" data-l="en"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg><span>English</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button><button type="button" role="menuitemradio" aria-checked="false" data-l="es"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-es"/></svg><span>Español</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button><button type="button" role="menuitemradio" aria-checked="false" data-l="ru"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-ru"/></svg><span>Русский</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button></div>
     </div>
     <a class="btn" href="ihatecrypto.dmg" download><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl_s">Download</span></a>
@@ -1169,7 +1177,8 @@ async function start3d() {
   const coins = ROUTE.map(() => { const c = new THREE.Mesh(plane, new THREE.MeshBasicMaterial({ transparent: true, depthWrite: false, map: FACE.wait })); scene.add(c); return c; });
   coins.forEach((c) => { c.renderOrder = 1; }); fronts.forEach((f) => f && (f.renderOrder = 2));
   let L, drawn = {};
-  const once = (key, val, f) => { if (drawn[key] !== val) { drawn[key] = val; f(); } };
+  // A texture is drawn when what it shows changes, and only once it's near the screen: nothing up front but the tabs.
+  const once = (key, val, f, near = true) => { if (near && drawn[key] !== val) { drawn[key] = val; f(); } };
   const fade = (m, o) => { m.material.opacity = o; m.visible = o > .002; };
 
   // Fit the route below the beat's words: a row of cards on a wide screen, a column of rows on a tall one.
@@ -1190,12 +1199,23 @@ async function start3d() {
     // Texture pixels per page pixel: the screen's for the route, a bit less for the tabs (they're scaled by tabK, mostly further back).
     const dots = h / H / 100 * Math.min(devicePixelRatio, 2);
     L.S = Math.min(4, Math.max(1.25, dots * 1.05)); L.tabS = Math.min(3, Math.max(1.25, dots * L.tabK * 1.15));
-    if (Math.abs(L.tabS - (tabs.S || 0)) > .2) {
-      tabs.S = L.tabS;
-      tabs.forEach((m, i) => { const [title, c, body, popup] = TABS[i]; m.paint(popup ? 190 : 300, popup ? 236 : 214, (g) => (popup ? drawPopup : drawWindow)(g, title, c, body)); });
-    }
+    if (Math.abs(L.tabS - (tabs.S || 0)) > .2) { tabs.S = L.tabS; paintTabs(); }
     arws.forEach((m) => { m.rotation.z = tall ? -Math.PI / 2 : 0; });
     drawn = {};
+  }
+
+  // The tabs are drawn one per task, so the page answers while they come; each fades in once it's drawn.
+  let tabRun = 0;
+  function paintTabs() {
+    const run = ++tabRun;
+    const one = (i) => {
+      if (run !== tabRun || i >= tabs.length) return;
+      const [title, c, body, popup] = TABS[i];
+      tabs[i].paint(popup ? 190 : 300, popup ? 236 : 214, (g) => (popup ? drawPopup : drawWindow)(g, title, c, body));
+      tabs[i].ready = true; redraw3d();
+      setTimeout(() => one(i + 1));
+    };
+    setTimeout(() => one(0));
   }
 
   let mx = 0, my = 0, px = 0, py = 0;
@@ -1206,8 +1226,10 @@ async function start3d() {
     last = t;
     // The tabs drift, then fly into the input one after another and are gone.
     tabs.forEach((m, i) => {
+      if (!m.ready) { m.visible = false; return; }
+      m.at ??= t;
       const [x, y, z, rx, ry, rz] = L.spots[i], k = ease(seg(p, .1 + i * .012, .3 + i * .012)), d = still ? 0 : 1 - k;
-      const intro = still ? 1 : ease(seg(t, .1 + i * .06, .9 + i * .06)), s = mix(L.tabK, .12, k);
+      const intro = still ? 1 : ease(seg(t - m.at, 0, .8)), s = mix(L.tabK, .12, k);
       m.position.set(mix(x + Math.sin(t * .5 + i * 1.7) * .1 * d, 0, k), mix(y + Math.cos(t * .42 + i * 1.3) * .12 * d, L.cy + .35, k), mix(z, 0, k));
       m.rotation.set(mix(rx, 0, k), mix(ry + Math.sin(t * .3 + i) * .05 * d, 0, k), mix(rz, 0, k));
       m.scale.set(m.sx * s, m.sy * s, 1);
@@ -1215,24 +1237,26 @@ async function start3d() {
     });
     // One input instead, the request typed into it.
     const n = Math.round(seg(p, .38, .52) * cmd.length);
-    once('bar', `${L.bw}${lang}${n}`, () => bar.paint(L.bw, 56, (g) => drawBar(g, L.bw, cmd.slice(0, n), T[lang].ph ?? T.en.ph)));
+    once('bar', `${L.bw}${lang}${n}`, () => bar.paint(L.bw, 56, (g) => drawBar(g, L.bw, cmd.slice(0, n), T[lang].ph ?? T.en.ph)), p > .14 && p < .6);
     bar.position.set(0, L.cy + .35, 0); fade(bar, seg(p, .26, .36) * (1 - seg(p, .55, .58)));
     // Sent: the message, its route a card at a time, Confirm, Touch ID, the steps landing.
-    once('bubble', cmd, () => { bubble.w = textW(cmd, '500 15px') + 26; bubble.paint(bubble.w, 34, (g) => drawBubble(g, bubble.w, cmd)); });
-    bubble.position.set(L.bubble[0] + bubble.w / 200, L.bubble[1], 0); fade(bubble, seg(p, .57, .61));
+    const near = p > .45;
+    once('bubble', cmd, () => { bubble.w = textW(cmd, '500 15px') + 26; bubble.paint(bubble.w, 34, (g) => drawBubble(g, bubble.w, cmd)); }, near);
+    bubble.position.set(L.bubble[0] + (bubble.w || 0) / 200, L.bubble[1], 0); fade(bubble, seg(p, .57, .61));
     const st = p < .76 ? ['ready', 'ready', 'ready'] : p < .81 ? ['touch', 'next', 'next'] : p < .85 ? ['done', 'now', 'next'] : p < .89 ? ['done', 'done', 'now'] : ['done', 'done', 'done'];
     cards.forEach((m, i) => {
-      once('card' + i, st[i], () => m.paint(L.tall ? 343 : 236, L.tall ? 112 : 292, (g) => drawCard(g, ROUTE[i], st[i], L.tall, IMG[i + st[i]], IMG[FACE_OF[st[i]]])));
+      once('card' + i, st[i], () => m.paint(L.tall ? 343 : 236, L.tall ? 112 : 292, (g) => drawCard(g, ROUTE[i], st[i], L.tall, IMG[i + st[i]], IMG[FACE_OF[st[i]]])), near);
       const k = ease(seg(p, .59 + i * .03, .63 + i * .03)), z = mix(-.6, 0, k);
       m.position.set(L.cards[i][0], L.cards[i][1], z); fade(m, k);
-      creature(i, st[i], k, z, t, dt);
+      if (near) creature(i, st[i], k, z, t, dt);
+      else [coins[i], rings[i], fronts[i]].forEach((x) => x && (x.visible = false));
     });
     arws.forEach((m, i) => {
-      once('arw' + i, st[i + 1] === 'next', () => m.paint(40, 18, (g) => drawArrow(g, st[i + 1] === 'next')));
+      once('arw' + i, st[i + 1] === 'next', () => m.paint(40, 18, (g) => drawArrow(g, st[i + 1] === 'next')), near);
       m.position.set(L.arrows[i][0], L.arrows[i][1], 0); fade(m, seg(p, .62 + i * .03, .65 + i * .03));
     });
     const c = p < .76 ? 1 : p < .89 ? 2 : 3;
-    once('conf', c, () => confirm.paint(280, 48, (g) => drawConf(g, c)));
+    once('conf', c, () => confirm.paint(280, 48, (g) => drawConf(g, c)), p > .55);
     confirm.position.set(L.conf[0], L.conf[1], 0); fade(confirm, seg(p, .69, .72));
     // The pointer tilts the view a little.
     px = still ? 0 : mix(px, mx, .05); py = still ? 0 : mix(py, my, .05);
@@ -1283,7 +1307,9 @@ try { saved = localStorage.getItem('lang'); } catch (e) {}
 const sys = (navigator.languages || [navigator.language || 'en']).map((c) => c.slice(0, 2)).find((c) => T[c]);
 setLang(T[saved] ? saved : sys || 'en');
 scrolled();
-start3d();
+// The 3D waits for the page to load and the main thread to be free: the words come first.
+const later = (f) => (window.requestIdleCallback ? requestIdleCallback(f, { timeout: 1500 }) : setTimeout(f, 200));
+document.readyState === 'complete' ? later(start3d) : addEventListener('load', () => later(start3d), { once: true });
 </script>
 </body>
 </html>
