@@ -25,10 +25,10 @@
 <meta name="twitter:title" content="ihatecrypto — Even crypto hates crypto.">
 <meta name="twitter:description" content="Close the ten tabs: say what you want, it lays out the route, you confirm with Touch ID.">
 <meta name="twitter:image" content="https://ihatecrypto.ai/og.png?v=2">
-<link rel="icon" href="favicon.png" sizes="64x64">
-<link rel="apple-touch-icon" href="icon.png">
-<link rel="preload" href="fonts/onest-latin.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="preload" href="fonts/dynapuff-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="icon" href="/favicon.png" sizes="64x64">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="preload" href="/fonts/onest-latin.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="/fonts/dynapuff-latin.woff2" as="font" type="font/woff2" crossorigin>
 <script type="application/ld+json">
 {"@context": "https://schema.org", "@graph": [
   {"@type": "SoftwareApplication", "name": "ihatecrypto", "url": "https://ihatecrypto.ai/",
@@ -56,13 +56,13 @@
        export { WebGLRenderer, Scene, PerspectiveCamera, Group, Mesh, PlaneGeometry, MeshBasicMaterial, CanvasTexture,
                 SRGBColorSpace, LinearFilter } from 'three'   →   npx esbuild@0.25.10 entry.js --bundle --format=esm --minify -->
 <style>
-  @font-face { font-family: 'DynaPuff'; font-style: normal; font-weight: 600; font-display: swap; src: url(fonts/dynapuff-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
-  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(fonts/onest-cyrillic-ext.woff2) format('woff2'); unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F; }
-  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(fonts/onest-cyrillic.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
-  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(fonts/onest-math.woff2) format('woff2'); unicode-range: U+0302-0303, U+0305, U+0307-0308, U+0310, U+0312, U+0315, U+031A, U+0326-0327, U+032C, U+032F-0330, U+0332-0333, U+0338, U+033A, U+0346, U+034D, U+0391-03A1, U+03A3-03A9, U+03B1-03C9, U+03D1, U+03D5-03D6, U+03F0-03F1, U+03F4-03F5, U+2016-2017, U+2034-2038, U+203C, U+2040, U+2043, U+2047, U+2050, U+2057, U+205F, U+2070-2071, U+2074-209F, U+20D0-20DC, U+20E1, U+20E5-20EF, U+2100-2112, U+2114-2115, U+2117-2121, U+2123-214F, U+2190, U+2192, U+2194-21AE, U+21B0-21E5, U+21F1-21F2, U+21F4-2211, U+2213-2214, U+2216-22FF, U+2308-230B, U+2310, U+2319, U+231C-2321, U+2336-237A, U+237C, U+2395, U+239B-23B7, U+23D0, U+23DC-23E1, U+2474-2475, U+25AF, U+25B3, U+25B7, U+25BD, U+25C1, U+25CA, U+25CC, U+25FB, U+266D-266F, U+27C0-27FF, U+2900-2AFF, U+2B0E-2B11, U+2B30-2B4C, U+2BFE, U+3030, U+FF5B, U+FF5D, U+1D400-1D7FF, U+1EE00-1EEFF; }
-  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(fonts/onest-symbols.woff2) format('woff2'); unicode-range: U+0001-000C, U+000E-001F, U+007F-009F, U+20DD-20E0, U+20E2-20E4, U+2150-218F, U+2190, U+2192, U+2194-2199, U+21AF, U+21E6-21F0, U+21F3, U+2218-2219, U+2299, U+22C4-22C6, U+2300-243F, U+2440-244A, U+2460-24FF, U+25A0-27BF, U+2800-28FF, U+2921-2922, U+2981, U+29BF, U+29EB, U+2B00-2BFF, U+4DC0-4DFF, U+FFF9-FFFB, U+10140-1018E, U+10190-1019C, U+101A0, U+101D0-101FD, U+102E0-102FB, U+10E60-10E7E, U+1D2C0-1D2D3, U+1D2E0-1D37F, U+1F000-1F0FF, U+1F100-1F1AE, U+1F1E6-1F1FF, U+1F30D-1F30F, U+1F315, U+1F31C, U+1F31E, U+1F320-1F32C, U+1F336, U+1F378, U+1F37D, U+1F382, U+1F393-1F39F, U+1F3A7-1F3A8, U+1F3AC-1F3AF, U+1F3C2, U+1F3C4-1F3C6, U+1F3CA-1F3CE, U+1F3D4-1F3E0, U+1F3ED, U+1F3F1-1F3F3, U+1F3F5-1F3F7, U+1F408, U+1F415, U+1F41F, U+1F426, U+1F43F, U+1F441-1F442, U+1F444, U+1F446-1F449, U+1F44C-1F44E, U+1F453, U+1F46A, U+1F47D, U+1F4A3, U+1F4B0, U+1F4B3, U+1F4B9, U+1F4BB, U+1F4BF, U+1F4C8-1F4CB, U+1F4D6, U+1F4DA, U+1F4DF, U+1F4E3-1F4E6, U+1F4EA-1F4ED, U+1F4F7, U+1F4F9-1F4FB, U+1F4FD-1F4FE, U+1F503, U+1F507-1F50B, U+1F50D, U+1F512-1F513, U+1F53E-1F54A, U+1F54F-1F5FA, U+1F610, U+1F650-1F67F, U+1F687, U+1F68D, U+1F691, U+1F694, U+1F698, U+1F6AD, U+1F6B2, U+1F6B9-1F6BA, U+1F6BC, U+1F6C6-1F6CF, U+1F6D3-1F6D7, U+1F6E0-1F6EA, U+1F6F0-1F6F3, U+1F6F7-1F6FC, U+1F700-1F80B, U+1F810-1F847, U+1F850-1F859, U+1F860-1F887, U+1F890-1F8AD, U+1F8B0-1F8BB, U+1F8C0-1F8C1, U+1F8D0-1F8D8, U+1F900-1F90B, U+1F93B, U+1F946, U+1F984, U+1F996, U+1F9E9, U+1FA00-1FA6F, U+1FA70-1FA7C, U+1FA80-1FAC6, U+1FAC8, U+1FACC-1FADD, U+1FADF-1FAEB, U+1FAEF-1FAFA, U+1FB00-1FBFF; }
-  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(fonts/onest-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
-  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(fonts/onest-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  @font-face { font-family: 'DynaPuff'; font-style: normal; font-weight: 600; font-display: swap; src: url(/fonts/dynapuff-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/fonts/onest-cyrillic-ext.woff2) format('woff2'); unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/fonts/onest-cyrillic.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/fonts/onest-math.woff2) format('woff2'); unicode-range: U+0302-0303, U+0305, U+0307-0308, U+0310, U+0312, U+0315, U+031A, U+0326-0327, U+032C, U+032F-0330, U+0332-0333, U+0338, U+033A, U+0346, U+034D, U+0391-03A1, U+03A3-03A9, U+03B1-03C9, U+03D1, U+03D5-03D6, U+03F0-03F1, U+03F4-03F5, U+2016-2017, U+2034-2038, U+203C, U+2040, U+2043, U+2047, U+2050, U+2057, U+205F, U+2070-2071, U+2074-209F, U+20D0-20DC, U+20E1, U+20E5-20EF, U+2100-2112, U+2114-2115, U+2117-2121, U+2123-214F, U+2190, U+2192, U+2194-21AE, U+21B0-21E5, U+21F1-21F2, U+21F4-2211, U+2213-2214, U+2216-22FF, U+2308-230B, U+2310, U+2319, U+231C-2321, U+2336-237A, U+237C, U+2395, U+239B-23B7, U+23D0, U+23DC-23E1, U+2474-2475, U+25AF, U+25B3, U+25B7, U+25BD, U+25C1, U+25CA, U+25CC, U+25FB, U+266D-266F, U+27C0-27FF, U+2900-2AFF, U+2B0E-2B11, U+2B30-2B4C, U+2BFE, U+3030, U+FF5B, U+FF5D, U+1D400-1D7FF, U+1EE00-1EEFF; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/fonts/onest-symbols.woff2) format('woff2'); unicode-range: U+0001-000C, U+000E-001F, U+007F-009F, U+20DD-20E0, U+20E2-20E4, U+2150-218F, U+2190, U+2192, U+2194-2199, U+21AF, U+21E6-21F0, U+21F3, U+2218-2219, U+2299, U+22C4-22C6, U+2300-243F, U+2440-244A, U+2460-24FF, U+25A0-27BF, U+2800-28FF, U+2921-2922, U+2981, U+29BF, U+29EB, U+2B00-2BFF, U+4DC0-4DFF, U+FFF9-FFFB, U+10140-1018E, U+10190-1019C, U+101A0, U+101D0-101FD, U+102E0-102FB, U+10E60-10E7E, U+1D2C0-1D2D3, U+1D2E0-1D37F, U+1F000-1F0FF, U+1F100-1F1AE, U+1F1E6-1F1FF, U+1F30D-1F30F, U+1F315, U+1F31C, U+1F31E, U+1F320-1F32C, U+1F336, U+1F378, U+1F37D, U+1F382, U+1F393-1F39F, U+1F3A7-1F3A8, U+1F3AC-1F3AF, U+1F3C2, U+1F3C4-1F3C6, U+1F3CA-1F3CE, U+1F3D4-1F3E0, U+1F3ED, U+1F3F1-1F3F3, U+1F3F5-1F3F7, U+1F408, U+1F415, U+1F41F, U+1F426, U+1F43F, U+1F441-1F442, U+1F444, U+1F446-1F449, U+1F44C-1F44E, U+1F453, U+1F46A, U+1F47D, U+1F4A3, U+1F4B0, U+1F4B3, U+1F4B9, U+1F4BB, U+1F4BF, U+1F4C8-1F4CB, U+1F4D6, U+1F4DA, U+1F4DF, U+1F4E3-1F4E6, U+1F4EA-1F4ED, U+1F4F7, U+1F4F9-1F4FB, U+1F4FD-1F4FE, U+1F503, U+1F507-1F50B, U+1F50D, U+1F512-1F513, U+1F53E-1F54A, U+1F54F-1F5FA, U+1F610, U+1F650-1F67F, U+1F687, U+1F68D, U+1F691, U+1F694, U+1F698, U+1F6AD, U+1F6B2, U+1F6B9-1F6BA, U+1F6BC, U+1F6C6-1F6CF, U+1F6D3-1F6D7, U+1F6E0-1F6EA, U+1F6F0-1F6F3, U+1F6F7-1F6FC, U+1F700-1F80B, U+1F810-1F847, U+1F850-1F859, U+1F860-1F887, U+1F890-1F8AD, U+1F8B0-1F8BB, U+1F8C0-1F8C1, U+1F8D0-1F8D8, U+1F900-1F90B, U+1F93B, U+1F946, U+1F984, U+1F996, U+1F9E9, U+1FA00-1FA6F, U+1FA70-1FA7C, U+1FA80-1FAC6, U+1FAC8, U+1FACC-1FADD, U+1FADF-1FAEB, U+1FAEF-1FAFA, U+1FB00-1FBFF; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/fonts/onest-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/fonts/onest-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
   :root { color-scheme: light; --ink: #111111; --muted: #5F636B; --line: #E1E4EC; --accent: #FF7A2F; --accent-ink: #B8480C; --k: .8; }
   * { box-sizing: border-box; margin: 0; }
   html { -webkit-text-size-adjust: 100%; scroll-padding-top: 84px; }
@@ -483,7 +483,7 @@
       <div class="mlangs"><button type="button" data-l="en" aria-pressed="true"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg>EN</button><button type="button" data-l="es" aria-pressed="false"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-es"/></svg>ES</button><button type="button" data-l="ru" aria-pressed="false"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-ru"/></svg>RU</button></div>
     </div>
     <button type="button" class="btn sendto away-only"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span data-t="send_s">Send to Mac</span></button>
-    <a class="btn mac-only" href="ihatecrypto.dmg" download><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl_s">Download</span></a>
+    <a class="btn mac-only" href="/ihatecrypto.dmg" download><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl_s">Download</span></a>
   </div>
 </header>
 
@@ -495,7 +495,7 @@
       <p class="eyebrow"><svg viewBox="0 0 140 140" aria-hidden="true"><use href="#f-wait"/></svg><span data-t="eyebrow">A Mac app that does crypto for you</span></p>
       <h1 data-t="h1">Close the ten tabs.</h1>
       <p class="lead" data-t="lead">A wallet, a swap, a bridge, an explorer, a perps exchange, a gas tracker… Moving ten dollars shouldn't take ten sites. With ihatecrypto it takes one sentence.</p>
-      <a class="btn mac-only" href="ihatecrypto.dmg" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl">Download for Mac</span></a>
+      <a class="btn mac-only" href="/ihatecrypto.dmg" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl">Download for Mac</span></a>
       <p class="meta mac-only"><span data-t="req">Free · macOS 26 or later</span> · v{{version}}</p>
       <div class="sendbox away-only"><button type="button" class="btn sendto"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span data-t="send">Send the link to my Mac</span></button><div class="shares"><a class="sh tg" target="_blank" rel="noopener" aria-label="Telegram"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.7 4.1 2.9 11c-1 .4-1 1.4 0 1.7l4.5 1.4 1.7 5.3c.2.6.9.8 1.4.4l2.5-2.3 4.7 3.5c.6.4 1.4.1 1.6-.6l3-13.9c.2-1-.7-1.8-1.6-1.4zM8.5 13.7l9.4-6-7.6 7.3-.3 3.2z" fill="#FFFFFF"/></svg></a><a class="sh wa" target="_blank" rel="noopener" aria-label="WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a8.5 8.5 0 0 0-7.3 12.9l-1.2 4.1 4.2-1.1A8.5 8.5 0 1 0 12 3.5z" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.3 8.3c.3-.5.8-.5 1 0l.7 1.5c.1.3 0 .5-.2.7l-.5.5c.5 1.1 1.4 2 2.5 2.5l.5-.5c.2-.2.5-.3.7-.2l1.5.7c.5.2.5.7 0 1-1 .7-2.1.7-3.3 0a8.6 8.6 0 0 1-3.2-3.2c-.7-1.2-.7-2.3.3-3z" fill="#FFFFFF"/></svg></a><a class="sh em" data-ta="mail" aria-label="Email"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="m4 7 8 6 8-6"/></svg></a><a class="sh x" target="_blank" rel="noopener" aria-label="X"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.6 3.5h3l-6.6 7.5 7.7 9.5h-6l-4.7-5.8-5.4 5.8h-3l7-7.9L2.3 3.5h6.2l4.3 5.4zm-1 15.3h1.7L7.5 5.1H5.7z" fill="#FFFFFF"/></svg></a><button class="sh cp" type="button" data-ta="copy" aria-label="Copy link"><svg class="i1" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></svg><svg class="i2" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button></div><p class="meta" data-t="away">ihatecrypto is a Mac app: send yourself the link and open it on your Mac.</p></div>
     </div>
@@ -673,134 +673,238 @@
     <svg viewBox="0 0 140 140" aria-hidden="true"><use href="#f-done"/></svg>
     <h2 data-t="slogan">Even crypto hates crypto.</h2>
     <p data-t="end_p">So close the tabs and let it do the crypto. All you do is say what you want.</p>
-    <a class="btn mac-only" href="ihatecrypto.dmg" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl">Download for Mac</span></a>
+    <a class="btn mac-only" href="/ihatecrypto.dmg" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl">Download for Mac</span></a>
     <p class="meta mac-only"><span data-t="req">Free · macOS 26 or later</span> · v{{version}}</p>
     <div class="sendbox away-only"><button type="button" class="btn sendto"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span data-t="send">Send the link to my Mac</span></button><div class="shares"><a class="sh tg" target="_blank" rel="noopener" aria-label="Telegram"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.7 4.1 2.9 11c-1 .4-1 1.4 0 1.7l4.5 1.4 1.7 5.3c.2.6.9.8 1.4.4l2.5-2.3 4.7 3.5c.6.4 1.4.1 1.6-.6l3-13.9c.2-1-.7-1.8-1.6-1.4zM8.5 13.7l9.4-6-7.6 7.3-.3 3.2z" fill="#FFFFFF"/></svg></a><a class="sh wa" target="_blank" rel="noopener" aria-label="WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a8.5 8.5 0 0 0-7.3 12.9l-1.2 4.1 4.2-1.1A8.5 8.5 0 1 0 12 3.5z" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.3 8.3c.3-.5.8-.5 1 0l.7 1.5c.1.3 0 .5-.2.7l-.5.5c.5 1.1 1.4 2 2.5 2.5l.5-.5c.2-.2.5-.3.7-.2l1.5.7c.5.2.5.7 0 1-1 .7-2.1.7-3.3 0a8.6 8.6 0 0 1-3.2-3.2c-.7-1.2-.7-2.3.3-3z" fill="#FFFFFF"/></svg></a><a class="sh em" data-ta="mail" aria-label="Email"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="m4 7 8 6 8-6"/></svg></a><a class="sh x" target="_blank" rel="noopener" aria-label="X"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.6 3.5h3l-6.6 7.5 7.7 9.5h-6l-4.7-5.8-5.4 5.8h-3l7-7.9L2.3 3.5h6.2l4.3 5.4zm-1 15.3h1.7L7.5 5.1H5.7z" fill="#FFFFFF"/></svg></a><button class="sh cp" type="button" data-ta="copy" aria-label="Copy link"><svg class="i1" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></svg><svg class="i2" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button></div><p class="meta" data-t="away">ihatecrypto is a Mac app: send yourself the link and open it on your Mac.</p></div>
   </div>
 </section>
 </main>
-<footer>ihatecrypto · <span class="mac-only"><a href="ihatecrypto.dmg" download data-t="dl">Download for Mac</a> · </span><a href="llms.txt">llms.txt</a></footer>
+<footer>ihatecrypto · <span class="mac-only"><a href="/ihatecrypto.dmg" download data-t="dl">Download for Mac</a> · </span><a href="/llms.txt">llms.txt</a></footer>
 
+<!-- The words in Spanish and Russian (English is the page itself); build.py renders /es/ and /ru/ from them. -->
+<script type="application/json" id="i18n">
+{
+"en": {
+"meta_title": "ihatecrypto — a Mac app that does crypto for you"
+},
+"es": {
+"menu": "Menú",
+"n_top": "Arriba",
+"n_ask": "Ejemplos",
+"swipe": "← Desliza el lienzo →",
+"send_s": "A mi Mac",
+"send": "Enviar el enlace a mi Mac",
+"away": "ihatecrypto es una app para Mac: envíate el enlace y ábrelo en tu Mac.",
+"share": "ihatecrypto: una app para Mac que hace la cripto con una frase",
+"copied": "Copiado",
+"copy": "Copiar enlace",
+"mail": "Correo",
+"n_how": "Cómo funciona",
+"n_safe": "Seguridad",
+"n_faq": "Preguntas",
+"dl_s": "Descargar",
+"dl": "Descargar para Mac",
+"req": "Gratis · macOS 26 o posterior",
+"eyebrow": "Una app para Mac que hace la cripto por ti",
+"h1": "Cierra las diez pestañas.",
+"lead": "Una billetera, un swap, un puente, un explorador de bloques, un exchange de perpetuos, un medidor de gas… Mover diez dólares no debería requerir diez sitios. Con ihatecrypto basta una frase.",
+"hint": "Desliza",
+"k1": "En cambio",
+"s1h": "Solo di lo que quieres.",
+"s1p": "Con palabras normales, escritas o habladas: en español, inglés o ruso. Sin pegar direcciones, sin elegir redes, sin cruzar tokens a mano.",
+"k2": "Después",
+"s2h": "Encuentra la ruta. Tú confirmas.",
+"s2p": "Revisa tus saldos en todas las redes, elige el camino que te deja más y lo presenta en tarjetas: de dónde sale el dinero, cómo llega y con qué terminas. Nada se mueve hasta que confirmas con Touch ID.",
+"how_h": "Cómo funciona",
+"how_p": "Una petición, cuatro pasos. Así se ve una:",
+"st0t": "Lo dices",
+"st0p": "Escribe o di lo que quieres, con tus palabras. Lo lee tu propia IA: ChatGPT, Claude o un modelo en tu Mac.",
+"st1t": "Busca lo que necesita",
+"st1p": "Saldos en todas las redes, precios y gráficos, rutas por Jupiter, Relay y Uniswap. Una segunda lectura comprueba que te entendió.",
+"st2t": "Presenta la ruta",
+"st2p": "Cada paso es una tarjeta: qué hace, con qué protocolo y tu dinero ahora → después.",
+"st3t": "Confirmas y se ejecuta",
+"st3p": "Pulsa Confirm y toca Touch ID. Cada paso se ilumina al completarse y la última tarjeta muestra lo que tienes.",
+"ph": "Di lo que quieres",
+"chip0": "Comprar Tesla en Robinhood",
+"chip1": "Enviar desde Solana",
+"chip2": "Corto en petróleo con reglas",
+"chip0s": "Comprar Tesla",
+"chip1s": "Enviar USDC",
+"chip2s": "Corto petróleo",
+"safe_h": "Por qué es seguro",
+"safe_p": "Tus claves nunca salen de tu Mac, la IA nunca firma y nada se mueve sin tu dedo.",
+"sf0t": "Claves selladas en tu Mac",
+"sf0p": "La billetera se crea en tu Mac y queda sellada por su Secure Enclave. Nunca sale del dispositivo: sin copia en iCloud, nada guardado en un servidor.",
+"sf1t": "Touch ID en cada movimiento",
+"sf1p": "Cada movimiento pide tu huella, y un toque cubre un movimiento. O confirma en un Ledger y guarda ahí lo principal.",
+"sf2t": "La IA no puede pulsar Confirm",
+"sf2p": "El modelo lee, busca y propone; nunca tiene una clave. Solo firma el botón Confirm de una tarjeta. Un «sí» escrito, o una página que intente sacárselo, no mueve nada.",
+"sf3t": "Cada petición se lee dos veces",
+"sf3p": "Cada orden y cada plan reciben una segunda lectura. Si no coinciden, no se ejecuta nada: el movimiento espera como tarjeta para que lo revises.",
+"sf4t": "Un firmante que sabe decir no",
+"sf4p": "La firma ocurre en un proceso aparte sin acceso a la red. Rechaza aprobaciones ilimitadas, permits y firmas a ciegas, y limita lo que puede arriesgar una llamada a un contrato desconocido.",
+"sf5t": "Revisado antes de enviar",
+"sf5p": "Una dirección nueva pide Touch ID con la dirección completa en pantalla. Los contratos se revisan por antigüedad, código verificado y reportes de estafa; los sitios imitadores se bloquean.",
+"safe_fine": "Firmada y notarizada por Apple. Las actualizaciones también van firmadas y se instalan solas.",
+"u_h": "Qué puedes pedir",
+"also": "Y más, por ejemplo:",
+"n_cv": "Lienzo",
+"cv_h": "Un lienzo como Figma. Un chat como ChatGPT.",
+"cv_p": "Cada movimiento, gráfico, plan y alerta es un bloque en un lienzo infinito, así lo ves todo a la vez. El chat de al lado crea y cambia los bloques, y cada idea tiene su propio lienzo.",
+"cf0t": "Cada movimiento es un bloque",
+"cf0p": "Rutas, gráficos, planes, alertas y programaciones quedan en el lienzo como bloques; nada desaparece. Aleja para verlo todo, abre un bloque para ver sus detalles.",
+"cf1t": "Un chat que construye el lienzo",
+"cf1p": "Háblale como a ChatGPT: añade bloques, los cambia y responde sobre cualquiera de ellos. O elige un bloque de la biblioteca.",
+"cf2t": "Un lienzo para cada idea",
+"cf2p": "Abre un lienzo nuevo para una operación, una compra semanal o una investigación. Cada uno guarda su chat y su modelo, va en tus carpetas y se queda en tu Mac.",
+"ex0t": "Pon tu dinero a trabajar",
+"ex0d": "Kamino, Jupiter Lend, Aave, Morpho o el vault de Hyperliquid: muestra lo que tendrás y deposita.",
+"ex1t": "Compra con calendario",
+"ex1d": "Compras semanales, un DCA de Jupiter o una tarea para después. Se ejecuta a tiempo y te cuenta cómo fue.",
+"ex2t": "Vigila el mercado",
+"ex2d": "Alertas de precio y revisiones programadas; una alerta puede llevar una operación o un movimiento.",
+"ex3t": "Cambia lo que sea",
+"ex3d": "Jupiter en Solana, Uniswap o Relay en Base y Arbitrum: lo que te deje más.",
+"ex4t": "Mueve entre redes",
+"ex4d": "Entre dos redes cualesquiera en segundos, con el gas del otro lado ya resuelto.",
+"ex5t": "Cobra recompensas",
+"ex5d": "Las recompensas de Merkl, reclamadas de una vez y vendidas por USDC si quieres.",
+"m0": "presta 2 USDC en Aave",
+"m1": "compra NEAR por 2 USDC",
+"m2": "añade gas en Robinhood por 1 USDC",
+"m3": "barre el polvo de menos de $5",
+"m4": "largo en SOL con reglas",
+"m5": "en 1 semana: reequilibra USDC",
+"q_h": "Preguntas",
+"f0q": "¿Quién guarda las claves?",
+"f0a": "Tú. La billetera se crea en tu Mac y queda sellada en su Secure Enclave; confirmas los movimientos con Touch ID o con un Ledger. Nada se guarda en un servidor.",
+"f5q": "¿Puede la IA mover mi dinero por su cuenta?",
+"f5a": "No. Puede buscar cosas y preparar un movimiento; solo tu Confirm, con Touch ID, lo ejecuta.",
+"f1q": "¿Con qué redes funciona?",
+"f1a": "Solana, Hyperliquid, Base, Arbitrum, Ethereum, Polygon, Robinhood Chain, NEAR y Tempo, a través de Jupiter, Kamino, Aave, Morpho, Relay, Uniswap y NEAR Intents.",
+"f2q": "¿Qué IA usa?",
+"f2a": "La tuya: una suscripción a ChatGPT Plus o Pro, una suscripción a Claude a través de Claude Code, OpenRouter, una clave de API o un modelo que corre en tu Mac.",
+"f3q": "¿Cuánto cuesta?",
+"f3a": "La app se descarga gratis. Pagas las comisiones de las redes y tu propio plan de IA.",
+"f4q": "¿Qué necesito?",
+"f4a": "Un Mac con macOS 26 o posterior, Apple silicon o Intel. Las actualizaciones se instalan solas.",
+"slogan": "Hasta la cripto odia la cripto.",
+"end_p": "Así que cierra las pestañas y deja que haga la cripto. Tú solo di lo que quieres.",
+"meta_title": "ihatecrypto — una app para Mac que hace la cripto por ti",
+"meta_desc": "Cierra las diez pestañas. Di lo que quieres con palabras normales: ihatecrypto presenta la ruta en tarjetas y espera tu Touch ID. Acciones en Robinhood Chain, Solana, perpetuos en Hyperliquid. Las claves quedan selladas en tu Mac."
+},
+"ru": {
+"menu": "Меню",
+"n_top": "Наверх",
+"n_ask": "Примеры",
+"swipe": "← Листайте холст вбок →",
+"send_s": "На Mac",
+"send": "Отправить ссылку на Mac",
+"away": "ihatecrypto — приложение для Mac: отправьте себе ссылку и откройте её на Mac.",
+"share": "ihatecrypto — приложение для Mac, которое делает крипту по одной фразе",
+"copied": "Скопировано",
+"copy": "Скопировать ссылку",
+"mail": "Почта",
+"n_how": "Как это работает",
+"n_safe": "Безопасность",
+"n_faq": "Вопросы",
+"dl_s": "Скачать",
+"dl": "Скачать для Mac",
+"req": "Бесплатно · macOS 26 и новее",
+"eyebrow": "Приложение для Mac, которое делает крипту за вас",
+"h1": "Закройте десять вкладок.",
+"lead": "Кошелёк, обменник, мост, обозреватель блоков, биржа фьючерсов, трекер газа… Чтобы перевести десять долларов, не нужно десять сайтов. В ihatecrypto хватит одной фразы.",
+"hint": "Листайте",
+"k1": "Вместо этого",
+"s1h": "Просто напишите, что хотите.",
+"s1p": "Обычными словами, текстом или голосом: по-русски, по-английски или по-испански. Не нужно вставлять адреса, выбирать сети и вручную гонять токены через мосты.",
+"k2": "Дальше",
+"s2h": "Оно находит маршрут. Вы подтверждаете.",
+"s2p": "Смотрит балансы во всех сетях, выбирает путь, после которого у вас останется больше, и раскладывает его по карточкам: откуда деньги, как они идут и что вы получите. Ничего не сдвинется, пока вы не подтвердите Touch ID.",
+"how_h": "Как это работает",
+"how_p": "Одна просьба — четыре шага. Вот как это выглядит:",
+"st0t": "Вы говорите",
+"st0p": "Пишете или говорите, что нужно, своими словами. Читает ваш собственный ИИ: ChatGPT, Claude или модель на вашем Mac.",
+"st1t": "Оно выясняет",
+"st1p": "Балансы во всех сетях, цены и графики, маршруты через Jupiter, Relay и Uniswap. Второе прочтение проверяет, что вас поняли верно.",
+"st2t": "Раскладывает маршрут",
+"st2p": "Каждый шаг — карточка: что делает, через какой протокол и сколько денег сейчас → после.",
+"st3t": "Вы подтверждаете, оно делает",
+"st3p": "Нажмите Confirm и приложите палец к Touch ID. Шаги загораются по мере выполнения, а последняя карточка показывает, что у вас теперь есть.",
+"ph": "Скажи, что нужно",
+"chip0": "Купить Tesla на Robinhood",
+"chip1": "Отправить с Solana",
+"chip2": "Шорт нефти по правилам",
+"chip0s": "Купить Tesla",
+"chip1s": "Перевести",
+"chip2s": "Шорт нефти",
+"safe_h": "Почему это безопасно",
+"safe_p": "Ключи не покидают ваш Mac, ИИ ничего не подписывает, и ничего не сдвинется без вашего пальца.",
+"sf0t": "Ключи запечатаны в вашем Mac",
+"sf0p": "Кошелёк создаётся на вашем Mac и запечатан его Secure Enclave. Он никогда не покидает устройство: ни копии в iCloud, ни хранения на сервере.",
+"sf1t": "Touch ID на каждую операцию",
+"sf1p": "Каждая операция просит отпечаток, и одно касание — это одна операция. Или подтверждайте на Ledger и держите основное там.",
+"sf2t": "ИИ не может нажать Confirm",
+"sf2p": "Модель читает, ищет и предлагает, но ключа у неё нет. Подписывает только кнопка Confirm на карточке. Напечатанное «да» или страница, которая пытается его выманить, ничего не сдвинут.",
+"sf3t": "Каждая просьба читается дважды",
+"sf3p": "Каждая команда и план проходят второе прочтение. Если прочтения расходятся, ничего не запускается: операция ждёт карточкой, чтобы вы её проверили.",
+"sf4t": "Подписант, который умеет отказать",
+"sf4p": "Подпись происходит в отдельном процессе без доступа к сети. Он отказывается от безлимитных разрешений, permit и слепых подписей и ограничивает, чем может рискнуть вызов незнакомого контракта.",
+"sf5t": "Проверено до отправки",
+"sf5p": "Новый адрес требует Touch ID и показывается целиком. Контракты проверяются на возраст, проверенный код и жалобы на мошенничество; сайты-двойники блокируются.",
+"safe_fine": "Подписано и нотаризовано Apple. Обновления тоже подписаны и ставятся сами.",
+"u_h": "Что можно попросить",
+"also": "И многое другое, например:",
+"n_cv": "Холст",
+"cv_h": "Холст как в Figma. Чат как в ChatGPT.",
+"cv_p": "Каждая операция, график, план и алерт — блок на бесконечном холсте, и всё видно разом. Чат рядом создаёт и меняет блоки, а у каждой идеи свой холст.",
+"cf0t": "Каждая операция — блок",
+"cf0p": "Маршруты, графики, планы, алерты и расписания остаются на холсте блоками, ничего не пропадает. Отдалите — увидите всё, откройте блок — увидите детали.",
+"cf1t": "Чат, который строит холст",
+"cf1p": "Говорите с ним как с ChatGPT: он добавляет блоки, меняет их и отвечает про любой из них. Или возьмите блок из библиотеки.",
+"cf2t": "Свой холст для каждой идеи",
+"cf2p": "Новый холст — для сделки, покупки раз в неделю или исследования. У каждого свой чат и своя модель, они лежат в ваших папках и хранятся на вашем Mac.",
+"ex0t": "Заставить деньги работать",
+"ex0d": "Kamino, Jupiter Lend, Aave, Morpho или хранилище Hyperliquid: покажет, что у вас будет, и положит.",
+"ex1t": "Покупать по расписанию",
+"ex1d": "Покупки каждую неделю, Jupiter DCA или задача на потом. Сработает вовремя и расскажет, как прошло.",
+"ex2t": "Следить за рынком",
+"ex2d": "Алерты по цене и проверки по расписанию; к алерту можно привязать сделку или перевод.",
+"ex3t": "Обменять что угодно",
+"ex3d": "Jupiter на Solana, Uniswap или Relay на Base и Arbitrum — где в итоге останется больше.",
+"ex4t": "Перевести между сетями",
+"ex4d": "Между любыми двумя сетями за секунды; газ на той стороне приложение докупит само.",
+"ex5t": "Забрать награды",
+"ex5d": "Награды из Merkl собираются разом и, если хотите, продаются за USDC.",
+"m0": "дай в долг 2 USDC на Aave",
+"m1": "купи NEAR на 2 USDC",
+"m2": "докинь газа на Robinhood на 1 USDC",
+"m3": "смети пыль дешевле $5",
+"m4": "лонг SOL по правилам",
+"m5": "через неделю: перебалансируй USDC",
+"q_h": "Вопросы",
+"f0q": "Кто хранит ключи?",
+"f0a": "Вы. Кошелёк создаётся на вашем Mac и запечатан в его Secure Enclave; операции вы подтверждаете Touch ID или на Ledger. На сервере ничего не хранится.",
+"f5q": "Может ли ИИ сам распорядиться деньгами?",
+"f5a": "Нет. Он может что-то выяснить и разложить операцию; выполняет её только ваше нажатие Confirm с Touch ID.",
+"f1q": "С какими сетями работает?",
+"f1a": "Solana, Hyperliquid, Base, Arbitrum, Ethereum, Polygon, Robinhood Chain, NEAR и Tempo — через Jupiter, Kamino, Aave, Morpho, Relay, Uniswap и NEAR Intents.",
+"f2q": "Какой ИИ используется?",
+"f2a": "Ваш: подписка ChatGPT Plus или Pro, подписка Claude через Claude Code, OpenRouter, API-ключ или модель на вашем Mac.",
+"f3q": "Сколько стоит?",
+"f3a": "Приложение скачивается бесплатно. Вы платите только комиссии сетей и за свой тариф ИИ.",
+"f4q": "Что нужно?",
+"f4a": "Mac с macOS 26 или новее, Apple silicon или Intel. Обновления ставятся сами.",
+"slogan": "Даже крипта ненавидит крипту.",
+"end_p": "Так что закройте вкладки и дайте ему сделать крипту. От вас — только сказать, что нужно.",
+"meta_title": "ihatecrypto — приложение для Mac, которое делает крипту за вас",
+"meta_desc": "Закройте десять вкладок. Скажите, что хотите, обычными словами: ihatecrypto разложит маршрут по карточкам и дождётся вашего Touch ID. Акции на Robinhood Chain, Solana, фьючерсы Hyperliquid. Ключи запечатаны в вашем Mac."
+}
+}
+</script>
 <script>
-const T = {
-  en: {},
-  es: { menu: 'Menú', n_top: 'Arriba', n_ask: 'Ejemplos', swipe: '← Desliza el lienzo →',
-        send_s: 'A mi Mac', send: 'Enviar el enlace a mi Mac', away: 'ihatecrypto es una app para Mac: envíate el enlace y ábrelo en tu Mac.',
-        share: 'ihatecrypto: una app para Mac que hace la cripto con una frase', copied: 'Copiado', copy: 'Copiar enlace', mail: 'Correo',
-        n_how: 'Cómo funciona', n_safe: 'Seguridad', n_faq: 'Preguntas', dl_s: 'Descargar', dl: 'Descargar para Mac', req: 'Gratis · macOS 26 o posterior',
-        eyebrow: 'Una app para Mac que hace la cripto por ti', h1: 'Cierra las diez pestañas.',
-        lead: 'Una billetera, un swap, un puente, un explorador de bloques, un exchange de perpetuos, un medidor de gas… Mover diez dólares no debería requerir diez sitios. Con ihatecrypto basta una frase.',
-        hint: 'Desliza', k1: 'En cambio', s1h: 'Solo di lo que quieres.', s1p: 'Con palabras normales, escritas o habladas: en español, inglés o ruso. Sin pegar direcciones, sin elegir redes, sin cruzar tokens a mano.',
-        k2: 'Después', s2h: 'Encuentra la ruta. Tú confirmas.', s2p: 'Revisa tus saldos en todas las redes, elige el camino que te deja más y lo presenta en tarjetas: de dónde sale el dinero, cómo llega y con qué terminas. Nada se mueve hasta que confirmas con Touch ID.',
-        how_h: 'Cómo funciona', how_p: 'Una petición, cuatro pasos. Así se ve una:',
-        st0t: 'Lo dices', st0p: 'Escribe o di lo que quieres, con tus palabras. Lo lee tu propia IA: ChatGPT, Claude o un modelo en tu Mac.',
-        st1t: 'Busca lo que necesita', st1p: 'Saldos en todas las redes, precios y gráficos, rutas por Jupiter, Relay y Uniswap. Una segunda lectura comprueba que te entendió.',
-        st2t: 'Presenta la ruta', st2p: 'Cada paso es una tarjeta: qué hace, con qué protocolo y tu dinero ahora → después.',
-        st3t: 'Confirmas y se ejecuta', st3p: 'Pulsa Confirm y toca Touch ID. Cada paso se ilumina al completarse y la última tarjeta muestra lo que tienes.',
-        ph: 'Di lo que quieres', chip0: 'Comprar Tesla en Robinhood', chip1: 'Enviar desde Solana', chip2: 'Corto en petróleo con reglas', chip0s: 'Comprar Tesla', chip1s: 'Enviar USDC', chip2s: 'Corto petróleo',
-        safe_h: 'Por qué es seguro', safe_p: 'Tus claves nunca salen de tu Mac, la IA nunca firma y nada se mueve sin tu dedo.',
-        sf0t: 'Claves selladas en tu Mac', sf0p: 'La billetera se crea en tu Mac y queda sellada por su Secure Enclave. Nunca sale del dispositivo: sin copia en iCloud, nada guardado en un servidor.',
-        sf1t: 'Touch ID en cada movimiento', sf1p: 'Cada movimiento pide tu huella, y un toque cubre un movimiento. O confirma en un Ledger y guarda ahí lo principal.',
-        sf2t: 'La IA no puede pulsar Confirm', sf2p: 'El modelo lee, busca y propone; nunca tiene una clave. Solo firma el botón Confirm de una tarjeta. Un «sí» escrito, o una página que intente sacárselo, no mueve nada.',
-        sf3t: 'Cada petición se lee dos veces', sf3p: 'Cada orden y cada plan reciben una segunda lectura. Si no coinciden, no se ejecuta nada: el movimiento espera como tarjeta para que lo revises.',
-        sf4t: 'Un firmante que sabe decir no', sf4p: 'La firma ocurre en un proceso aparte sin acceso a la red. Rechaza aprobaciones ilimitadas, permits y firmas a ciegas, y limita lo que puede arriesgar una llamada a un contrato desconocido.',
-        sf5t: 'Revisado antes de enviar', sf5p: 'Una dirección nueva pide Touch ID con la dirección completa en pantalla. Los contratos se revisan por antigüedad, código verificado y reportes de estafa; los sitios imitadores se bloquean.',
-        safe_fine: 'Firmada y notarizada por Apple. Las actualizaciones también van firmadas y se instalan solas.',
-        u_h: 'Qué puedes pedir', also: 'Y más, por ejemplo:',
-        n_cv: 'Lienzo',
-        cv_h: 'Un lienzo como Figma. Un chat como ChatGPT.',
-        cv_p: 'Cada movimiento, gráfico, plan y alerta es un bloque en un lienzo infinito, así lo ves todo a la vez. El chat de al lado crea y cambia los bloques, y cada idea tiene su propio lienzo.',
-        cf0t: 'Cada movimiento es un bloque',
-        cf0p: 'Rutas, gráficos, planes, alertas y programaciones quedan en el lienzo como bloques; nada desaparece. Aleja para verlo todo, abre un bloque para ver sus detalles.',
-        cf1t: 'Un chat que construye el lienzo',
-        cf1p: 'Háblale como a ChatGPT: añade bloques, los cambia y responde sobre cualquiera de ellos. O elige un bloque de la biblioteca.',
-        cf2t: 'Un lienzo para cada idea',
-        cf2p: 'Abre un lienzo nuevo para una operación, una compra semanal o una investigación. Cada uno guarda su chat y su modelo, va en tus carpetas y se queda en tu Mac.',
-        ex0t: 'Pon tu dinero a trabajar',
-        ex0d: 'Kamino, Jupiter Lend, Aave, Morpho o el vault de Hyperliquid: muestra lo que tendrás y deposita.',
-        ex1t: 'Compra con calendario',
-        ex1d: 'Compras semanales, un DCA de Jupiter o una tarea para después. Se ejecuta a tiempo y te cuenta cómo fue.',
-        ex2t: 'Vigila el mercado',
-        ex2d: 'Alertas de precio y revisiones programadas; una alerta puede llevar una operación o un movimiento.',
-        ex3t: 'Cambia lo que sea',
-        ex3d: 'Jupiter en Solana, Uniswap o Relay en Base y Arbitrum: lo que te deje más.',
-        ex4t: 'Mueve entre redes',
-        ex4d: 'Entre dos redes cualesquiera en segundos, con el gas del otro lado ya resuelto.',
-        ex5t: 'Cobra recompensas',
-        ex5d: 'Las recompensas de Merkl, reclamadas de una vez y vendidas por USDC si quieres.',
-        m0: 'presta 2 USDC en Aave',
-        m1: 'compra NEAR por 2 USDC',
-        m2: 'añade gas en Robinhood por 1 USDC',
-        m3: 'barre el polvo de menos de $5',
-        m4: 'largo en SOL con reglas',
-        m5: 'en 1 semana: reequilibra USDC',
-        q_h: 'Preguntas',
-        f0q: '¿Quién guarda las claves?', f0a: 'Tú. La billetera se crea en tu Mac y queda sellada en su Secure Enclave; confirmas los movimientos con Touch ID o con un Ledger. Nada se guarda en un servidor.',
-        f5q: '¿Puede la IA mover mi dinero por su cuenta?', f5a: 'No. Puede buscar cosas y preparar un movimiento; solo tu Confirm, con Touch ID, lo ejecuta.',
-        f1q: '¿Con qué redes funciona?', f1a: 'Solana, Hyperliquid, Base, Arbitrum, Ethereum, Polygon, Robinhood Chain, NEAR y Tempo, a través de Jupiter, Kamino, Aave, Morpho, Relay, Uniswap y NEAR Intents.',
-        f2q: '¿Qué IA usa?', f2a: 'La tuya: una suscripción a ChatGPT Plus o Pro, una suscripción a Claude a través de Claude Code, OpenRouter, una clave de API o un modelo que corre en tu Mac.',
-        f3q: '¿Cuánto cuesta?', f3a: 'La app se descarga gratis. Pagas las comisiones de las redes y tu propio plan de IA.',
-        f4q: '¿Qué necesito?', f4a: 'Un Mac con macOS 26 o posterior, Apple silicon o Intel. Las actualizaciones se instalan solas.',
-        slogan: 'Hasta la cripto odia la cripto.', end_p: 'Así que cierra las pestañas y deja que haga la cripto. Tú solo di lo que quieres.' },
-  ru: { menu: 'Меню', n_top: 'Наверх', n_ask: 'Примеры', swipe: '← Листайте холст вбок →',
-        send_s: 'На Mac', send: 'Отправить ссылку на Mac', away: 'ihatecrypto — приложение для Mac: отправьте себе ссылку и откройте её на Mac.',
-        share: 'ihatecrypto — приложение для Mac, которое делает крипту по одной фразе', copied: 'Скопировано', copy: 'Скопировать ссылку', mail: 'Почта',
-        n_how: 'Как это работает', n_safe: 'Безопасность', n_faq: 'Вопросы', dl_s: 'Скачать', dl: 'Скачать для Mac', req: 'Бесплатно · macOS 26 и новее',
-        eyebrow: 'Приложение для Mac, которое делает крипту за вас', h1: 'Закройте десять вкладок.',
-        lead: 'Кошелёк, обменник, мост, обозреватель блоков, биржа фьючерсов, трекер газа… Чтобы перевести десять долларов, не нужно десять сайтов. В ihatecrypto хватит одной фразы.',
-        hint: 'Листайте', k1: 'Вместо этого', s1h: 'Просто напишите, что хотите.', s1p: 'Обычными словами, текстом или голосом: по-русски, по-английски или по-испански. Не нужно вставлять адреса, выбирать сети и вручную гонять токены через мосты.',
-        k2: 'Дальше', s2h: 'Оно находит маршрут. Вы подтверждаете.', s2p: 'Смотрит балансы во всех сетях, выбирает путь, после которого у вас останется больше, и раскладывает его по карточкам: откуда деньги, как они идут и что вы получите. Ничего не сдвинется, пока вы не подтвердите Touch ID.',
-        how_h: 'Как это работает', how_p: 'Одна просьба — четыре шага. Вот как это выглядит:',
-        st0t: 'Вы говорите', st0p: 'Пишете или говорите, что нужно, своими словами. Читает ваш собственный ИИ: ChatGPT, Claude или модель на вашем Mac.',
-        st1t: 'Оно выясняет', st1p: 'Балансы во всех сетях, цены и графики, маршруты через Jupiter, Relay и Uniswap. Второе прочтение проверяет, что вас поняли верно.',
-        st2t: 'Раскладывает маршрут', st2p: 'Каждый шаг — карточка: что делает, через какой протокол и сколько денег сейчас → после.',
-        st3t: 'Вы подтверждаете, оно делает', st3p: 'Нажмите Confirm и приложите палец к Touch ID. Шаги загораются по мере выполнения, а последняя карточка показывает, что у вас теперь есть.',
-        ph: 'Скажи, что нужно', chip0: 'Купить Tesla на Robinhood', chip1: 'Отправить с Solana', chip2: 'Шорт нефти по правилам', chip0s: 'Купить Tesla', chip1s: 'Перевести', chip2s: 'Шорт нефти',
-        safe_h: 'Почему это безопасно', safe_p: 'Ключи не покидают ваш Mac, ИИ ничего не подписывает, и ничего не сдвинется без вашего пальца.',
-        sf0t: 'Ключи запечатаны в вашем Mac', sf0p: 'Кошелёк создаётся на вашем Mac и запечатан его Secure Enclave. Он никогда не покидает устройство: ни копии в iCloud, ни хранения на сервере.',
-        sf1t: 'Touch ID на каждую операцию', sf1p: 'Каждая операция просит отпечаток, и одно касание — это одна операция. Или подтверждайте на Ledger и держите основное там.',
-        sf2t: 'ИИ не может нажать Confirm', sf2p: 'Модель читает, ищет и предлагает, но ключа у неё нет. Подписывает только кнопка Confirm на карточке. Напечатанное «да» или страница, которая пытается его выманить, ничего не сдвинут.',
-        sf3t: 'Каждая просьба читается дважды', sf3p: 'Каждая команда и план проходят второе прочтение. Если прочтения расходятся, ничего не запускается: операция ждёт карточкой, чтобы вы её проверили.',
-        sf4t: 'Подписант, который умеет отказать', sf4p: 'Подпись происходит в отдельном процессе без доступа к сети. Он отказывается от безлимитных разрешений, permit и слепых подписей и ограничивает, чем может рискнуть вызов незнакомого контракта.',
-        sf5t: 'Проверено до отправки', sf5p: 'Новый адрес требует Touch ID и показывается целиком. Контракты проверяются на возраст, проверенный код и жалобы на мошенничество; сайты-двойники блокируются.',
-        safe_fine: 'Подписано и нотаризовано Apple. Обновления тоже подписаны и ставятся сами.',
-        u_h: 'Что можно попросить', also: 'И многое другое, например:',
-        n_cv: 'Холст',
-        cv_h: 'Холст как в Figma. Чат как в ChatGPT.',
-        cv_p: 'Каждая операция, график, план и алерт — блок на бесконечном холсте, и всё видно разом. Чат рядом создаёт и меняет блоки, а у каждой идеи свой холст.',
-        cf0t: 'Каждая операция — блок',
-        cf0p: 'Маршруты, графики, планы, алерты и расписания остаются на холсте блоками, ничего не пропадает. Отдалите — увидите всё, откройте блок — увидите детали.',
-        cf1t: 'Чат, который строит холст',
-        cf1p: 'Говорите с ним как с ChatGPT: он добавляет блоки, меняет их и отвечает про любой из них. Или возьмите блок из библиотеки.',
-        cf2t: 'Свой холст для каждой идеи',
-        cf2p: 'Новый холст — для сделки, покупки раз в неделю или исследования. У каждого свой чат и своя модель, они лежат в ваших папках и хранятся на вашем Mac.',
-        ex0t: 'Заставить деньги работать',
-        ex0d: 'Kamino, Jupiter Lend, Aave, Morpho или хранилище Hyperliquid: покажет, что у вас будет, и положит.',
-        ex1t: 'Покупать по расписанию',
-        ex1d: 'Покупки каждую неделю, Jupiter DCA или задача на потом. Сработает вовремя и расскажет, как прошло.',
-        ex2t: 'Следить за рынком',
-        ex2d: 'Алерты по цене и проверки по расписанию; к алерту можно привязать сделку или перевод.',
-        ex3t: 'Обменять что угодно',
-        ex3d: 'Jupiter на Solana, Uniswap или Relay на Base и Arbitrum — где в итоге останется больше.',
-        ex4t: 'Перевести между сетями',
-        ex4d: 'Между любыми двумя сетями за секунды; газ на той стороне приложение докупит само.',
-        ex5t: 'Забрать награды',
-        ex5d: 'Награды из Merkl собираются разом и, если хотите, продаются за USDC.',
-        m0: 'дай в долг 2 USDC на Aave',
-        m1: 'купи NEAR на 2 USDC',
-        m2: 'докинь газа на Robinhood на 1 USDC',
-        m3: 'смети пыль дешевле $5',
-        m4: 'лонг SOL по правилам',
-        m5: 'через неделю: перебалансируй USDC',
-        q_h: 'Вопросы',
-        f0q: 'Кто хранит ключи?', f0a: 'Вы. Кошелёк создаётся на вашем Mac и запечатан в его Secure Enclave; операции вы подтверждаете Touch ID или на Ledger. На сервере ничего не хранится.',
-        f5q: 'Может ли ИИ сам распорядиться деньгами?', f5a: 'Нет. Он может что-то выяснить и разложить операцию; выполняет её только ваше нажатие Confirm с Touch ID.',
-        f1q: 'С какими сетями работает?', f1a: 'Solana, Hyperliquid, Base, Arbitrum, Ethereum, Polygon, Robinhood Chain, NEAR и Tempo — через Jupiter, Kamino, Aave, Morpho, Relay, Uniswap и NEAR Intents.',
-        f2q: 'Какой ИИ используется?', f2a: 'Ваш: подписка ChatGPT Plus или Pro, подписка Claude через Claude Code, OpenRouter, API-ключ или модель на вашем Mac.',
-        f3q: 'Сколько стоит?', f3a: 'Приложение скачивается бесплатно. Вы платите только комиссии сетей и за свой тариф ИИ.',
-        f4q: 'Что нужно?', f4a: 'Mac с macOS 26 или новее, Apple silicon или Intel. Обновления ставятся сами.',
-        slogan: 'Даже крипта ненавидит крипту.', end_p: 'Так что закройте вкладки и дайте ему сделать крипту. От вас — только сказать, что нужно.' }
-};
+const T = JSON.parse(document.getElementById('i18n').textContent);
 // A network's colors: its picture, the pale «next» look, its accent; dark pictures get light checks and losses.
 const FILLS = {
   base: { bg: '#0052FF', pale: '#D6E3FF', acc: '#0052FF', dark: true, draw: '#FFFFFF', body: '#0052FF' },
@@ -989,6 +1093,15 @@ new IntersectionObserver(([e]) => { seen = e.isIntersecting; seen ? play() : sto
 // English is what the page says (and what crawlers read); a key without a translation takes it from there.
 $$('[data-t]').forEach((el) => { T.en[el.dataset.t] ??= el.textContent; });
 $$('[data-ta]').forEach((el) => { T.en[el.dataset.ta] ??= el.getAttribute('aria-label'); });
+
+// Counts, not people: the page tells the site what was pressed or reached, with the language and nothing else (no cookie,
+// no id); the site adds them up by day (Tools/updates/worker.js). Downloads it counts itself.
+const told = new Set();
+function track(n, once = true) {
+  if (once && told.has(n)) return;
+  told.add(n);
+  try { navigator.sendBeacon('/e', JSON.stringify({ n, l: lang })); } catch (e) {}
+}
 T.en.share = 'ihatecrypto: a Mac app that does crypto from one sentence'; T.en.copied = 'Copied';
 
 // Off a Mac the link travels: the share sheet (AirDrop, Messages, Notes, any messenger), or these, or the clipboard.
@@ -1007,15 +1120,23 @@ async function copyLink(el, word) {
   setTimeout(() => { el.classList.remove('ok'); if (word) word.textContent = T[lang][word.dataset.t] ?? T.en[word.dataset.t]; }, 1500);
 }
 $$('.sh.cp').forEach((b) => b.addEventListener('click', () => copyLink(b)));
+[['tg', 'share_tg'], ['wa', 'share_wa'], ['em', 'share_mail'], ['x', 'share_x'], ['cp', 'share_copy']].forEach(([c, n]) => $$('.sh.' + c).forEach((el) => el.addEventListener('click', () => track(n, false))));
 $$('.sendto').forEach((b) => b.addEventListener('click', async () => {
+  track('send', false);
   if (navigator.share) { try { await navigator.share({ title: 'ihatecrypto', text: T[lang].share ?? T.en.share, url: SHARE }); } catch (e) {} }   // a cancel is fine
   else copyLink(b, $('span', b));
 }));
 
+// A language picked by hand: the page and its address (/, /ru/, /es/), so a reload or a shared link keeps it.
+function pick(l) {
+  setLang(l); track('lang', false);
+  if (/^\/(ru\/|es\/)?$/.test(location.pathname)) history.replaceState(null, '', (l === 'en' ? '/' : `/${l}/`) + location.search + location.hash);
+}
 function setLang(l) {
   lang = l;
   try { localStorage.setItem('lang', l); } catch (e) {}
   document.documentElement.lang = l;
+  document.title = T[l].meta_title ?? T.en.meta_title;
   $$('[data-t]').forEach((el) => { el.textContent = T[l][el.dataset.t] ?? T.en[el.dataset.t]; });
   $$('[data-ta]').forEach((el) => { el.setAttribute('aria-label', T[l][el.dataset.ta] ?? T.en[el.dataset.ta]); });
   shares();
@@ -1034,15 +1155,15 @@ $$('.slot', rtb).forEach((s, i) => { fill(s, SC[0].cards[i]); paintSlot(s, SC[0]
 $$('.arw', rtb).forEach((a) => on(a, true));
 const menuBtn = $('.menu-btn'), menu = $('.menu');
 const menuOpen = (b) => { menu.hidden = !b; menuBtn.setAttribute('aria-expanded', b); };
-menuBtn.addEventListener('click', () => menuOpen(menu.hidden));
+menuBtn.addEventListener('click', () => { if (menu.hidden) track('menu', false); menuOpen(menu.hidden); });
 $$('.menu a').forEach((a) => a.addEventListener('click', () => menuOpen(false)));
-$$('.mlangs button').forEach((b) => b.addEventListener('click', () => setLang(b.dataset.l)));
+$$('.mlangs button').forEach((b) => b.addEventListener('click', () => pick(b.dataset.l)));
 addEventListener('click', (e) => { if (!e.target.closest('.menu, .menu-btn')) menuOpen(false); });
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) { menuOpen(false); menuBtn.focus(); } });
 const langBtn = $('.lang-btn'), langMenu = $('.lang-menu');
 const langOpen = (b) => { langMenu.hidden = !b; langBtn.setAttribute('aria-expanded', b); };
 langBtn.addEventListener('click', () => langOpen(langMenu.hidden));
-$$('.lang-menu button').forEach((b) => b.addEventListener('click', () => { setLang(b.dataset.l); langOpen(false); langBtn.focus(); }));
+$$('.lang-menu button').forEach((b) => b.addEventListener('click', () => { pick(b.dataset.l); langOpen(false); langBtn.focus(); }));
 addEventListener('click', (e) => { if (!e.target.closest('.lang')) langOpen(false); });
 addEventListener('keydown', (e) => { if (e.key === 'Escape' && !langMenu.hidden) { langOpen(false); langBtn.focus(); } });
 $$('.chip').forEach((b, i) => b.addEventListener('click', () => { sc = i; play(); }));
@@ -1058,6 +1179,12 @@ function hug(el) {
 }
 addEventListener('resize', () => $$('.eyebrow span, .askb').forEach(hug));
 document.fonts.ready.then(() => $$('.eyebrow span, .askb').forEach(hug));
+
+// How far people get: each section once.
+// (a section counts once its top passes 60% of the screen: some are taller than four screens on a phone)
+const seenObs = new IntersectionObserver((es) => es.forEach((e) => e.isIntersecting && track('seen_' + e.target.id)), { rootMargin: '0px 0px -40% 0px' });
+['canvas', 'how', 'safe', 'ask', 'faq'].forEach((id) => seenObs.observe(document.getElementById(id)));
+$$('.faq details').forEach((d) => d.addEventListener('toggle', () => d.open && track('faq_open', false)));
 
 // The canvas's window is drawn at 1088 wide and scaled to the page.
 const appwrap = $('.appwrap'), app = $('.app');
@@ -1076,6 +1203,7 @@ function scrolled() {
   const b = P < .16 ? 0 : P < .56 ? 1 : 2;
   beats.forEach((el, i) => on(el, i === b));
   $$('.dots i').forEach((d, i) => on(d, i === b)); $('.cue').classList.toggle('gone', P > .97);
+  if (b) track('story_' + b); if (P > .97) track('story_end');
   // The canvas lies tilted, its blocks lifted, until its window is well on screen.
   const a = appwrap.getBoundingClientRect();
   app.style.setProperty('--t', still || small.matches ? 0 : Math.min(1, Math.max(0, (a.top - innerHeight * .12) / (innerHeight * .6))).toFixed(3));
@@ -1259,7 +1387,7 @@ const SPOTS = [[-.80, .60, -1, .10, .36, .05], [-.32, .80, -3, .24, .10, -.04], 
 async function start3d() {
   let THREE, R;
   try { await Promise.all(['400', '500', '600', '700', '800'].map((w) => document.fonts.load(`${w} 16px Onest`))); } catch (e) {}
-  try { THREE = await import('./three.min.js'); R = new THREE.WebGLRenderer({ canvas: gl, antialias: true, alpha: true }); } catch (e) { return; }   // no WebGL: the words tell it
+  try { THREE = await import('/three.min.js'); R = new THREE.WebGLRenderer({ canvas: gl, antialias: true, alpha: true }); } catch (e) { return; }   // no WebGL: the words tell it
   const scene = new THREE.Scene(), cam = new THREE.PerspectiveCamera(30, 1, .1, 200), tanH = Math.tan(Math.PI / 12);
   const plane = new THREE.PlaneGeometry(1, 1), aniso = Math.min(8, R.capabilities.getMaxAnisotropy());
   // A plane showing a 2D canvas; 100 px are one unit, PAD of it a shadow. It's drawn at the screen's own pixels (L.S, from
@@ -1439,7 +1567,7 @@ async function start3d() {
 let saved = null;
 try { saved = localStorage.getItem('lang'); } catch (e) {}
 const sys = (navigator.languages || [navigator.language || 'en']).map((c) => c.slice(0, 2)).find((c) => T[c]);
-setLang(T[saved] ? saved : sys || 'en');
+setLang(document.documentElement.dataset.lang || (T[saved] ? saved : sys) || 'en');
 scrolled();
 // The 3D waits for the page to load and the main thread to be free: the words come first.
 const later = (f) => (window.requestIdleCallback ? requestIdleCallback(f, { timeout: 1500 }) : setTimeout(f, 200));

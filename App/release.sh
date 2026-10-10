@@ -105,7 +105,8 @@ rm -rf $out/export $out/ihatecrypto.xcarchive $out/export.plist
 rm -f $out/site/ihatecrypto.dmg
 $sparkle/generate_appcast --download-url-prefix "$site/" $out/site
 # The landing (Tools/site) shares the folder: ihatecrypto.ai downloads this release's disk image.
-sed "s/{{version}}/$version/g" Tools/site/index.html > $out/site/index.html
+# The page in English, Spanish and Russian (/, /es/, /ru/), each in its own words for search engines.
+python3 Tools/site/build.py "$version" $out/site >/dev/null
 cp Tools/site/{_headers,icon.png,favicon.png,og.png,llms.txt,robots.txt,sitemap.xml,three.min.js} $out/site/
 cp -R Tools/site/fonts $out/site/
 cp $dmg $out/site/ihatecrypto.dmg

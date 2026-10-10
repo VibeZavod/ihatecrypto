@@ -1,0 +1,80 @@
+#!/usr/bin/env python3
+"""The landing in three languages, as search engines read it: index.html (English, the page as written) and /es/, /ru/
+rendered from the same page with its own words (the i18n block): the text, the title and description, the previews,
+the FAQ for search results, and hreflang links tying the three together.
+
+    python3 Tools/site/build.py <version> <out dir>      (release.sh runs it; out is dist/site)
+"""
+import html
+import json
+import re
+import sys
+from pathlib import Path
+
+SITE = 'https://ihatecrypto.ai/'
+LANGS = {'en': ('', 'en_US'), 'es': ('es/', 'es_ES'), 'ru': ('ru/', 'ru_RU')}
+
+
+def render(page: str, lang: str, T: dict) -> str:
+    path, locale = LANGS[lang]
+    words = T.get(lang, {})
+    # English is what the page says; a key without a translation keeps it.
+    en = {k: html.unescape(v) for k, v in re.findall(r'data-t="(\w+)"[^>]*>([^<]*)<', page)}
+
+    def say(key):
+        return words.get(key, en.get(key, ''))
+
+    # hreflang: every page names all three and the default
+    links = ''.join(f'<link rel="alternate" hreflang="{l}" href="{SITE}{p}">\n' for l, (p, _) in LANGS.items())
+    page = page.replace('<link rel="canonical" href="https://ihatecrypto.ai/">',
+                        f'<link rel="canonical" href="{SITE}{path}">\n{links}<link rel="alternate" hreflang="x-default" href="{SITE}">', 1)
+    if lang == 'en':
+        return page
+
+    # the text: every data-t element holds plain words, so its words are swapped whole
+    page = re.sub(r'(<(\w+)\b[^>]*?\bdata-t="(\w+)"[^>]*>)[^<]*(</\2>)',
+                  lambda m: m.group(1) + html.escape(say(m.group(3)), quote=False) + m.group(4) if m.group(3) in words else m.group(0), page)
+    page = re.sub(r'(\bdata-ta="(\w+)"[^>]*?aria-label=")[^"]*(")',
+                  lambda m: m.group(1) + html.escape(say(m.group(2))) + m.group(3) if m.group(2) in words else m.group(0), page)
+
+    # the head: language, title, description, previews
+    title, desc, og = say('meta_title'), say('meta_desc'), f"ihatecrypto — {say('slogan')}"
+    page = page.replace('<html lang="en">', f'<html lang="{lang}" data-lang="{lang}">', 1)
+    page = re.sub(r'<title>[^<]*</title>', f'<title>{html.escape(title)}</title>', page, 1)
+    for attr, value in [('name="description"', desc), ('property="og:title"', og), ('name="twitter:title"', og),
+                        ('property="og:description"', desc), ('name="twitter:description"', desc)]:
+        page = re.sub(rf'(<meta {attr} content=")[^"]*(")', lambda m: m.group(1) + html.escape(value) + m.group(2), page, 1)
+    page = page.replace(f'<meta property="og:url" content="{SITE}">', f'<meta property="og:url" content="{SITE}{path}">', 1)
+    others = [loc for l, (_, loc) in LANGS.items() if l != lang]
+    page = re.sub(r'<meta property="og:locale" content="[^"]*">\n<meta property="og:locale:alternate" content="[^"]*">\n<meta property="og:locale:alternate" content="[^"]*">',
+                  f'<meta property="og:locale" content="{locale}">\n' + '\n'.join(f'<meta property="og:locale:alternate" content="{o}">' for o in others), page, 1)
+
+    # the FAQ search results show: the same questions, in this language
+    m = re.search(r'(<script type="application/ld\+json">\n)(.*?)(\n</script>)', page, re.S)
+    data = json.loads(m.group(2))
+    by_en = {v: k for k, v in en.items()}
+    for node in data['@graph']:
+        if node['@type'] == 'SoftwareApplication':
+            node['description'] = desc
+            node['url'] = SITE + path
+        if node['@type'] == 'FAQPage':
+            for q in node['mainEntity']:
+                q['name'] = say(by_en.get(q['name'], '')) or q['name']
+                q['acceptedAnswer']['text'] = say(by_en.get(q['acceptedAnswer']['text'], '')) or q['acceptedAnswer']['text']
+    page = page[:m.start(2)] + json.dumps(data, ensure_ascii=False, indent=1) + page[m.end(2):]
+    return page
+
+
+def main():
+    version, out = sys.argv[1], Path(sys.argv[2])
+    page = (Path(__file__).parent / 'index.html').read_text(encoding='utf-8').replace('{{version}}', version)
+    T = json.loads(re.search(r'<script type="application/json" id="i18n">\n(.*?)\n</script>', page, re.S).group(1))
+    for lang, (path, _) in LANGS.items():
+        target = out / path / 'index.html'
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_text(render(page, lang, T), encoding='utf-8')
+        print(target)
+
+
+if __name__ == '__main__':
+    main()

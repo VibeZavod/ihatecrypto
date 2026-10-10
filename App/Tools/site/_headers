@@ -3,6 +3,10 @@
   Content-Type: text/html; charset=utf-8
 /index.html
   Content-Type: text/html; charset=utf-8
+/es/
+  Content-Type: text/html; charset=utf-8
+/ru/
+  Content-Type: text/html; charset=utf-8
 /llms.txt
   Content-Type: text/plain; charset=utf-8
 /robots.txt
