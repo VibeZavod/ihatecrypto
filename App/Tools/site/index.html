@@ -7,6 +7,8 @@
 <meta name="description" content="Close the ten tabs. Say what you want in plain words; ihatecrypto lays out the route as cards and waits for your Touch ID. Stocks on Robinhood Chain, Solana, Hyperliquid perps. Keys stay sealed in your Mac.">
 <link rel="canonical" href="https://ihatecrypto.ai/">
 <meta name="theme-color" content="#FAFAFB">
+<!-- Not on a Mac (a phone, an iPad, another computer): the page offers to send its link to a Mac instead of a download. -->
+<script>if (!/Macintosh/.test(navigator.userAgent) || navigator.maxTouchPoints > 1) document.documentElement.classList.add('away');</script>
 <meta property="og:type" content="website">
 <meta property="og:site_name" content="ihatecrypto">
 <meta property="og:url" content="https://ihatecrypto.ai/">
@@ -76,7 +78,26 @@
   .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 48px; padding: 0 30px; border-radius: 12px; flex: none;
          background: var(--accent); color: var(--ink); font: 600 15px Onest, sans-serif; text-decoration: none; white-space: nowrap; transition: box-shadow .25s; }
   .btn:hover { box-shadow: 0 0 0 3px #FFFFFF, 0 0 0 5.5px var(--accent); }
-  .btn:focus-visible, .chip:focus-visible, .nav a:focus-visible, .lang button:focus-visible, .logo:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  button.btn { border: 0; cursor: pointer; }
+  .away .mac-only, html:not(.away) .away-only { display: none !important; }
+  /* Send it to a Mac: the share sheet, or a messenger, mail, X or the link copied. */
+  .sendbox { display: flex; flex-direction: column; align-items: center; }
+  .shares { display: flex; gap: 10px; margin-top: 14px; }
+  .sh { width: 44px; height: 44px; border-radius: 50%; border: 0; padding: 0; display: flex; align-items: center; justify-content: center; cursor: pointer; transition: box-shadow .2s; }
+  .sh:hover { box-shadow: 0 0 0 3px #FFFFFF, 0 0 0 5px var(--accent); }
+  .sh svg { width: 22px; height: 22px; }
+  .sh.tg { background: #2AABEE; } .sh.wa { background: #25D366; } .sh.em { background: #5F636B; } .sh.x { background: #111111; }
+  .sh.cp { background: #FFFFFF; color: var(--ink); box-shadow: inset 0 0 0 1.5px var(--line); }
+  .sh.cp .i2, .sh.cp.ok .i1 { display: none; }
+  .sh.cp.ok .i2 { display: block; }
+  .sh.cp.ok { color: #0B7A55; box-shadow: inset 0 0 0 1.5px #1F9D6A; }
+  .sendbox .meta { max-width: 340px; }
+  .final .sh.cp { box-shadow: none; }
+  .final .sh.x { box-shadow: inset 0 0 0 1.5px rgba(255,255,255,.4); }
+  .final .sh:hover { box-shadow: 0 0 0 3px var(--ink), 0 0 0 5px var(--accent); }
+  .final .sendbox { margin-top: 28px; } .final .sendbox .btn { margin-top: 0; }
+  .b0 .sendbox { margin-top: 30px; } .b0 .sendbox .btn { margin-top: 0; }
+  .btn:focus-visible, .sh:focus-visible, .chip:focus-visible, .nav a:focus-visible, .lang button:focus-visible, .logo:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
   .meta { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; text-wrap: balance; }
 
@@ -408,7 +429,8 @@
       <button type="button" class="lang-btn" aria-haspopup="menu" aria-expanded="false"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg><span class="sr">Language: </span><b>EN</b><svg class="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <div class="lang-menu" role="menu" hidden><button type="button" role="menuitemradio" aria-checked="true" data-l="en"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg><span>English</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button><button type="button" role="menuitemradio" aria-checked="false" data-l="es"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-es"/></svg><span>Español</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button><button type="button" role="menuitemradio" aria-checked="false" data-l="ru"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-ru"/></svg><span>Русский</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button></div>
     </div>
-    <a class="btn" href="ihatecrypto.dmg" download><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl_s">Download</span></a>
+    <button type="button" class="btn sendto away-only"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span data-t="send_s">Send to Mac</span></button>
+    <a class="btn mac-only" href="ihatecrypto.dmg" download><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl_s">Download</span></a>
   </div>
 </header>
 
@@ -420,8 +442,9 @@
       <p class="eyebrow"><svg viewBox="0 0 140 140" aria-hidden="true"><use href="#f-wait"/></svg><span data-t="eyebrow">A Mac app that does crypto for you</span></p>
       <h1 data-t="h1">Close the ten tabs.</h1>
       <p class="lead" data-t="lead">A wallet, a swap, a bridge, an explorer, a perps exchange, a gas tracker… Moving ten dollars shouldn't take ten sites. With ihatecrypto it takes one sentence.</p>
-      <a class="btn" href="ihatecrypto.dmg" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl">Download for Mac</span></a>
-      <p class="meta"><span data-t="req">Free · macOS 26 or later</span> · v{{version}}</p>
+      <a class="btn mac-only" href="ihatecrypto.dmg" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl">Download for Mac</span></a>
+      <p class="meta mac-only"><span data-t="req">Free · macOS 26 or later</span> · v{{version}}</p>
+      <div class="sendbox away-only"><button type="button" class="btn sendto"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span data-t="send">Send the link to my Mac</span></button><div class="shares"><a class="sh tg" target="_blank" rel="noopener" aria-label="Telegram"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.7 4.1 2.9 11c-1 .4-1 1.4 0 1.7l4.5 1.4 1.7 5.3c.2.6.9.8 1.4.4l2.5-2.3 4.7 3.5c.6.4 1.4.1 1.6-.6l3-13.9c.2-1-.7-1.8-1.6-1.4zM8.5 13.7l9.4-6-7.6 7.3-.3 3.2z" fill="#FFFFFF"/></svg></a><a class="sh wa" target="_blank" rel="noopener" aria-label="WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a8.5 8.5 0 0 0-7.3 12.9l-1.2 4.1 4.2-1.1A8.5 8.5 0 1 0 12 3.5z" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.3 8.3c.3-.5.8-.5 1 0l.7 1.5c.1.3 0 .5-.2.7l-.5.5c.5 1.1 1.4 2 2.5 2.5l.5-.5c.2-.2.5-.3.7-.2l1.5.7c.5.2.5.7 0 1-1 .7-2.1.7-3.3 0a8.6 8.6 0 0 1-3.2-3.2c-.7-1.2-.7-2.3.3-3z" fill="#FFFFFF"/></svg></a><a class="sh em" data-ta="mail" aria-label="Email"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="m4 7 8 6 8-6"/></svg></a><a class="sh x" target="_blank" rel="noopener" aria-label="X"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.6 3.5h3l-6.6 7.5 7.7 9.5h-6l-4.7-5.8-5.4 5.8h-3l7-7.9L2.3 3.5h6.2l4.3 5.4zm-1 15.3h1.7L7.5 5.1H5.7z" fill="#FFFFFF"/></svg></a><button class="sh cp" type="button" data-ta="copy" aria-label="Copy link"><svg class="i1" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></svg><svg class="i2" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button></div><p class="meta" data-t="away">ihatecrypto is a Mac app: send yourself the link and open it on your Mac.</p></div>
       <p class="hint" aria-hidden="true"><span data-t="hint">Scroll</span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9l6 6 6-6"/></svg></p>
     </div>
     <div class="beat b1">
@@ -596,17 +619,20 @@
     <svg viewBox="0 0 140 140" aria-hidden="true"><use href="#f-done"/></svg>
     <h2 data-t="slogan">Even crypto hates crypto.</h2>
     <p data-t="end_p">So close the tabs and let it do the crypto. All you do is say what you want.</p>
-    <a class="btn" href="ihatecrypto.dmg" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl">Download for Mac</span></a>
-    <p class="meta"><span data-t="req">Free · macOS 26 or later</span> · v{{version}}</p>
+    <a class="btn mac-only" href="ihatecrypto.dmg" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span data-t="dl">Download for Mac</span></a>
+    <p class="meta mac-only"><span data-t="req">Free · macOS 26 or later</span> · v{{version}}</p>
+    <div class="sendbox away-only"><button type="button" class="btn sendto"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span data-t="send">Send the link to my Mac</span></button><div class="shares"><a class="sh tg" target="_blank" rel="noopener" aria-label="Telegram"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.7 4.1 2.9 11c-1 .4-1 1.4 0 1.7l4.5 1.4 1.7 5.3c.2.6.9.8 1.4.4l2.5-2.3 4.7 3.5c.6.4 1.4.1 1.6-.6l3-13.9c.2-1-.7-1.8-1.6-1.4zM8.5 13.7l9.4-6-7.6 7.3-.3 3.2z" fill="#FFFFFF"/></svg></a><a class="sh wa" target="_blank" rel="noopener" aria-label="WhatsApp"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3.5a8.5 8.5 0 0 0-7.3 12.9l-1.2 4.1 4.2-1.1A8.5 8.5 0 1 0 12 3.5z" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linejoin="round"/><path d="M9.3 8.3c.3-.5.8-.5 1 0l.7 1.5c.1.3 0 .5-.2.7l-.5.5c.5 1.1 1.4 2 2.5 2.5l.5-.5c.2-.2.5-.3.7-.2l1.5.7c.5.2.5.7 0 1-1 .7-2.1.7-3.3 0a8.6 8.6 0 0 1-3.2-3.2c-.7-1.2-.7-2.3.3-3z" fill="#FFFFFF"/></svg></a><a class="sh em" data-ta="mail" aria-label="Email"><svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="#FFFFFF" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5.5" width="18" height="13" rx="2.5"/><path d="m4 7 8 6 8-6"/></svg></a><a class="sh x" target="_blank" rel="noopener" aria-label="X"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M17.6 3.5h3l-6.6 7.5 7.7 9.5h-6l-4.7-5.8-5.4 5.8h-3l7-7.9L2.3 3.5h6.2l4.3 5.4zm-1 15.3h1.7L7.5 5.1H5.7z" fill="#FFFFFF"/></svg></a><button class="sh cp" type="button" data-ta="copy" aria-label="Copy link"><svg class="i1" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><rect x="8.5" y="8.5" width="12" height="12" rx="2.5"/><path d="M15.5 8.5V6a2.5 2.5 0 0 0-2.5-2.5H6A2.5 2.5 0 0 0 3.5 6v7A2.5 2.5 0 0 0 6 15.5h2.5"/></svg><svg class="i2" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button></div><p class="meta" data-t="away">ihatecrypto is a Mac app: send yourself the link and open it on your Mac.</p></div>
   </div>
 </section>
 </main>
-<footer>ihatecrypto · <a href="ihatecrypto.dmg" download data-t="dl">Download for Mac</a> · <a href="llms.txt">llms.txt</a></footer>
+<footer>ihatecrypto · <span class="mac-only"><a href="ihatecrypto.dmg" download data-t="dl">Download for Mac</a> · </span><a href="llms.txt">llms.txt</a></footer>
 
 <script>
 const T = {
   en: {},
-  es: { n_how: 'Cómo funciona', n_safe: 'Seguridad', n_faq: 'Preguntas', dl_s: 'Descargar', dl: 'Descargar para Mac', req: 'Gratis · macOS 26 o posterior',
+  es: { send_s: 'A mi Mac', send: 'Enviar el enlace a mi Mac', away: 'ihatecrypto es una app para Mac: envíate el enlace y ábrelo en tu Mac.',
+        share: 'ihatecrypto: una app para Mac que hace la cripto con una frase', copied: 'Copiado', copy: 'Copiar enlace', mail: 'Correo',
+        n_how: 'Cómo funciona', n_safe: 'Seguridad', n_faq: 'Preguntas', dl_s: 'Descargar', dl: 'Descargar para Mac', req: 'Gratis · macOS 26 o posterior',
         eyebrow: 'Una app para Mac que hace la cripto por ti', h1: 'Cierra las diez pestañas.',
         lead: 'Una billetera, un swap, un puente, un explorador de bloques, un exchange de perpetuos, un medidor de gas… Mover diez dólares no debería requerir diez sitios. Con ihatecrypto basta una frase.',
         hint: 'Desliza', k1: 'En cambio', s1h: 'Solo di lo que quieres.', s1p: 'Con palabras normales, escritas o habladas: en español, inglés o ruso. Sin pegar direcciones, sin elegir redes, sin cruzar tokens a mano.',
@@ -661,7 +687,9 @@ const T = {
         f3q: '¿Cuánto cuesta?', f3a: 'La app se descarga gratis. Pagas las comisiones de las redes y tu propio plan de IA.',
         f4q: '¿Qué necesito?', f4a: 'Un Mac con macOS 26 o posterior, Apple silicon o Intel. Las actualizaciones se instalan solas.',
         slogan: 'Hasta la cripto odia la cripto.', end_p: 'Así que cierra las pestañas y deja que haga la cripto. Tú solo di lo que quieres.' },
-  ru: { n_how: 'Как это работает', n_safe: 'Безопасность', n_faq: 'Вопросы', dl_s: 'Скачать', dl: 'Скачать для Mac', req: 'Бесплатно · macOS 26 и новее',
+  ru: { send_s: 'На Mac', send: 'Отправить ссылку на Mac', away: 'ihatecrypto — приложение для Mac: отправьте себе ссылку и откройте её на Mac.',
+        share: 'ihatecrypto — приложение для Mac, которое делает крипту по одной фразе', copied: 'Скопировано', copy: 'Скопировать ссылку', mail: 'Почта',
+        n_how: 'Как это работает', n_safe: 'Безопасность', n_faq: 'Вопросы', dl_s: 'Скачать', dl: 'Скачать для Mac', req: 'Бесплатно · macOS 26 и новее',
         eyebrow: 'Приложение для Mac, которое делает крипту за вас', h1: 'Закройте десять вкладок.',
         lead: 'Кошелёк, обменник, мост, обозреватель блоков, биржа фьючерсов, трекер газа… Чтобы перевести десять долларов, не нужно десять сайтов. В ihatecrypto хватит одной фразы.',
         hint: 'Листайте', k1: 'Вместо этого', s1h: 'Просто напишите, что хотите.', s1p: 'Обычными словами, текстом или голосом: по-русски, по-английски или по-испански. Не нужно вставлять адреса, выбирать сети и вручную гонять токены через мосты.',
@@ -904,12 +932,37 @@ new IntersectionObserver(([e]) => { seen = e.isIntersecting; seen ? play() : sto
 
 // English is what the page says (and what crawlers read); a key without a translation takes it from there.
 $$('[data-t]').forEach((el) => { T.en[el.dataset.t] ??= el.textContent; });
+$$('[data-ta]').forEach((el) => { T.en[el.dataset.ta] ??= el.getAttribute('aria-label'); });
+T.en.share = 'ihatecrypto: a Mac app that does crypto from one sentence'; T.en.copied = 'Copied';
+
+// Off a Mac the link travels: the share sheet (AirDrop, Messages, Notes, any messenger), or these, or the clipboard.
+const SHARE = 'https://ihatecrypto.ai/?send';
+function shares() {
+  const u = encodeURIComponent(SHARE), t = encodeURIComponent(T[lang].share ?? T.en.share);
+  $$('.sh.tg').forEach((a) => { a.href = `https://t.me/share/url?url=${u}&text=${t}`; });
+  $$('.sh.wa').forEach((a) => { a.href = `https://wa.me/?text=${t}%20${u}`; });
+  $$('.sh.em').forEach((a) => { a.href = `mailto:?subject=ihatecrypto&body=${t}%0A%0A${u}`; });
+  $$('.sh.x').forEach((a) => { a.href = `https://x.com/intent/post?text=${t}&url=${u}`; });
+}
+async function copyLink(el, word) {
+  try { await navigator.clipboard.writeText(SHARE); } catch (e) { return; }
+  if (word) { el.style.minWidth = el.offsetWidth + 'px'; word.textContent = '✓ ' + (T[lang].copied ?? T.en.copied); }
+  el.classList.add('ok');
+  setTimeout(() => { el.classList.remove('ok'); if (word) word.textContent = T[lang][word.dataset.t] ?? T.en[word.dataset.t]; }, 1500);
+}
+$$('.sh.cp').forEach((b) => b.addEventListener('click', () => copyLink(b)));
+$$('.sendto').forEach((b) => b.addEventListener('click', async () => {
+  if (navigator.share) { try { await navigator.share({ title: 'ihatecrypto', text: T[lang].share ?? T.en.share, url: SHARE }); } catch (e) {} }   // a cancel is fine
+  else copyLink(b, $('span', b));
+}));
 
 function setLang(l) {
   lang = l;
   try { localStorage.setItem('lang', l); } catch (e) {}
   document.documentElement.lang = l;
   $$('[data-t]').forEach((el) => { el.textContent = T[l][el.dataset.t] ?? T.en[el.dataset.t]; });
+  $$('[data-ta]').forEach((el) => { el.setAttribute('aria-label', T[l][el.dataset.ta] ?? T.en[el.dataset.ta]); });
+  shares();
   $$('.askb').forEach((el, k) => { el.textContent = ASK[k].cmds[l]; });
   $('.lang-btn b').textContent = l.toUpperCase(); $('.lang-btn use').setAttribute('href', '#fl-' + l);
   $$('.lang-menu button').forEach((b) => b.setAttribute('aria-checked', b.dataset.l === l));
