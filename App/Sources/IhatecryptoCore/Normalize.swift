@@ -201,6 +201,13 @@ public enum ChatRouter {
       0xF… deposit(uint256,address) 10e6 me approving 10 USDC; its withdrawal = call arbitrum 0xF… redeem(uint256,address,address)
       <SHARES> me me; «застейкай 0.01 ETH в Lido» with stETH found at 0xS… = call ethereum 0xS… submit(address)
       0x0000000000000000000000000000000000000000 with 0.01 ETH. Say «ihatecrypto can't» only after this form can't do it either)
+    MULTISIG (a Safe vault: its money moves only when M of its N keys sign — this Mac's key is always one, the connected Ledger's another, and any saved address can be one: a phone wallet, a partner):
+      make a multisig [M of N] [with <NAME>[, <NAME>…]] [on <base|arbitrum|optimism|polygon|ethereum|bnb|hyperevm|robinhood|tempo>[, <network>…]]
+      (NAME is an address-book entry; no M = a majority; no network = Base — write networks only when they name them; the same address on every
+      network it's made on; its card lets them add keys, change M and pick networks before Confirm. «сделай мультисиг 2 из 3 с телефоном на арбитруме
+      и бейсе» = make a multisig 2 of 3 with Phone on arbitrum, base; «хочу мультисиг» = make a multisig)
+      send <N|all> <USDC|ETH|TICKER|0xCONTRACT> from the multisig to <NAME> [on <network>]   (a payment out of it, signed here by its keys:
+      Touch ID, the Ledger's buttons; money INTO it is a plain «send N USDC on base to Multisig») | show the multisig
     PAYING FOR A SERVICE (MPP on Tempo, the x402 way: an API that charges per request — search, data, email, phone calls, mailed letters,
       flights, token research…): pay <GET|POST> <URL> [<JSON body>]   (the URL and body exactly as the services lookup and the service's docs give them;
       the price comes from the service and shows on a card; paid in USDC on Tempo, bridged from Solana when short, only after Confirm)

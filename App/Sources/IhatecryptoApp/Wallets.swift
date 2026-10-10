@@ -125,7 +125,8 @@ extension Workspace {
         case .swapOn("solana", _, _, _): ["solana"]
         case .swapOn("near", _, _, _): ["near"]
         case .bridge, .cctp, .aaveBorrow, .aaveRepay, .aaveCollateral, .swapOn, .sweepDust, .revokeApproval, .hlSpotBuy, .hlSpotSell: ["evm"]
-        case .showApprovals: []
+        case .showApprovals, .multisigShow: []
+        case .multisigCreate, .multisigSend: ["evm"]
         case .crossSwap(_, let from, _, let to, _): Array(Set([from, to].map { $0 == "solana" || $0 == "near" ? $0 : "evm" })).sorted()
         case .gas: ["evm", "solana"]
         case .sendNear, .closeNear: ["near"]
@@ -193,6 +194,14 @@ private struct WalletMenu: View {
                     UserDefaults.standard.set(true, forKey: "newWalletTest")
                     close(); ws.openSettings(.wallet)
                 }
+            }
+            ForEach(ws.multisigs) { m in
+                MenuRow(title: "Multisig", detail: "Safe · any \(m.threshold) of \(m.keys.count) keys · \(m.address.prefix(6))…\(m.address.suffix(4))", icon: "lock.square.stack") {
+                    close(); withAnimation(StudioView.spring) { ws.detail = "multisig" }
+                }
+            }
+            MenuRow(title: "New multisig…", detail: "Safe · as many keys as you want, on your devices", icon: "lock.shield") {
+                close(); ws.suggest("make a multisig")
             }
             MenuRow(title: "Manage wallets…", detail: "create, import, remove", icon: "key") { close(); ws.openSettings(.wallet) }
             Text("Switching asks for Touch ID. A test wallet signs its moves without it — Claude can test with it; keep only a few dollars there.")

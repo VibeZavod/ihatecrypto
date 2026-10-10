@@ -211,6 +211,12 @@ final class Workspace {
     var payment: PaymentQuote?
     /// A contract call the chat wrote, checked and simulated, for its card (ContractCalls.swift).
     var callReview: CallReview?
+    /// The multisigs made here (Multisig.swift), the one being set up on its card, and a payment out of one, read for its card.
+    var multisigs: [Multisig] = Workspace.loadMultisigs()
+    var multisigDraft: MultisigDraft?
+    var multisigPayment: MultisigPayment?
+    /// What each multisig holds in dollars, as last read (its board and its portfolio card read it).
+    var multisigUSD: [String: Decimal] = [:]
     /// What the paid (or free) service sent back, on the canvas.
     var serviceAnswer: ServiceAnswer?
     /// What Merkl owes the wallet, asked for before a «claim rewards» card (Rewards.swift).

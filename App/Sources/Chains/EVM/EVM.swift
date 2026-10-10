@@ -630,10 +630,13 @@ public enum EVMCall: Equatable, Sendable {
     /// Aave's borrow: `amount` of `asset` sent to the caller, the debt on `onBehalfOf`; its repay pays down that debt.
     case borrow(asset: String, amount: Data, onBehalfOf: String)
     case repay(asset: String, amount: Data, onBehalfOf: String)
+    /// Safe's execTransaction: the multisig at the call's `to` makes this move (to, value wei as a word, data), signed by its owners.
+    case multisigExec(to: String, value: Data, data: Data, operation: UInt8)
     case contract(selector: String)
 
     public static func decode(_ data: Data) -> EVMCall {
         guard data.count >= 4 else { return .plain }
+        if let e = Safe.readExec(data) { return .multisigExec(to: e.to, value: e.value, data: e.data, operation: e.operation) }
         let selector = data.prefix(4).hex
         let args = data.dropFirst(4)
         func word(_ i: Int) -> Data? { args.count >= (i + 1) * 32 ? Data(args.dropFirst(i * 32).prefix(32)) : nil }
@@ -710,6 +713,8 @@ public enum EVMCall: Equatable, Sendable {
         case .borrow(let asset, let a, _): "borrow \(amount(a, of: asset)) from the lending pool \(short(to)) \(net), a debt of this wallet's"
         case .repay(let asset, let a, _): a.allSatisfy({ $0 == 0xff }) ? "repay all of this wallet's \(EVMRPC.dollars[asset.lowercased()] ?? short(asset)) debt to \(short(to)) \(net)"
             : "repay \(amount(a, of: asset)) of this wallet's debt to \(short(to)) \(net)"
+        case .multisigExec(let target, let v, let d, _):
+            "carry out the multisig \(short(to))'s signed move: " + EVMCall.decode(d).summary(chainId: chainId, to: target, value: ABI.uint(in: v, word: 0) ?? .max)
         case .contract where to.lowercased() == Tempo.feeManager: "pay Tempo's fees in USDC from now on"
         case .contract where to.lowercased() == Tempo.exchange: "swap dollars on Tempo's exchange, paying this wallet"
         default: "call the contract \(short(to)) \(net)"
@@ -746,6 +751,11 @@ public enum EVMCall: Equatable, Sendable {
         case .transfer(let r, _), .nftTransfer(_, let r): out.append(r)
         // What CCTP mints goes to its recipient: this wallet, or an address allowed in person.
         case .cctpBurn(let r?, _, _): out.append(r)
+        // What the multisig pays out: the coins it sends (a word past 64 bits pays `target` too) and its call's own payees.
+        case .multisigExec(let target, let v, let d, _):
+            let coins = ABI.uint(in: v, word: 0)
+            if coins != 0 { out.append(target) }
+            out += EVMCall.decode(d).payees(to: target, value: 0, chainId: chainId)
         // An approve of zero — a revoke — gives nobody anything: no one to allow for it.
         case .approve(let s, let a), .increaseAllowance(let s, let a), .permit2Approve(_, let s, let a, _):
             if a.contains(where: { $0 != 0 }), !Self.knownSpenders(chainId: chainId).contains(s.lowercased()) { out.append(s) }
@@ -776,6 +786,9 @@ public enum EVMCall: Equatable, Sendable {
             return "The lending pool would credit \(beneficiary), not this wallet."
         }
         if case .v4Swap(let swap) = self, let why = UniswapV4.refusal(swap, chainId: chainId) { return why }
+        if case .multisigExec(_, _, _, let operation) = self, operation != 0 {
+            return "A multisig move by DELEGATECALL runs another contract's code as the multisig. Refused."
+        }
         if case .cctpBurn(nil, _, _) = self { return "The CCTP burn mints to an account that isn't an EVM address. ihatecrypto mints only to EVM addresses." }
         if case .borrow(_, _, let owner) = self, owner.lowercased() != sender.lowercased() { return "The borrow would put the debt on \(owner), not this wallet." }
         if case .repay(_, _, let owner) = self, owner.lowercased() != sender.lowercased() { return "The repay would pay \(owner)'s debt, not this wallet's." }

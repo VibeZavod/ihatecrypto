@@ -374,6 +374,20 @@ enum Signer {
             r.checks = ["Calldata parsed by the signer: no unlimited approvals, no spending by others, money only to approved addresses."]
             return r
 
+        case .signSafeMove(let chainId, let safe, let to, let value, let data, let nonce, let recipients):
+            let owner = try address("evm")
+            let move = Safe.Move(chainId: chainId, safe: safe, to: to, value: value, data: data, nonce: nonce)
+            var v = Verdict()
+            if let why = Safe.refusal(move, approved: Set((recipients + [owner, safe]).map { $0.lowercased() })) { v.problems.append(why) }
+            guard v.ok else { return refused(v) }
+            try approve(recipients)
+            var r = SignerReply(ok: true)
+            r.signature = try withKey("evm", reason: "approve the multisig's move: " + move.summary) {
+                try EVMSigner.sign(digest: try move.hash(), privateKey: $0)
+            }
+            r.checks = ["Multisig move hashed by the signer: a plain payment, money only to approved addresses."]
+            return r
+
         case .signEVMBatch(let chainId, let nonce, let maxPriorityFee, let maxFee, let gasLimit, let signerCalls, let recipients):
             let owner = try address("evm")
             let calls = signerCalls.map { Batch7702.Call(to: $0.to, data: $0.data) }

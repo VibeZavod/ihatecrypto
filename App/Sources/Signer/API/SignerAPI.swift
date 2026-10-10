@@ -54,6 +54,11 @@ public enum SignerRequest: Codable, Sendable {
     /// signEVMTransaction's rules, none may call the wallet itself, and the wallet runs only Batch7702.delegate's code.
     case signEVMBatch(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                       calls: [SignerCall], recipients: [String])
+    /// One owner's signature on a move out of a Safe multisig (EVMChain's Safe.Move: always a plain CALL, no gas refund).
+    /// The signer hashes it itself and signs only a payment of a coin or a token to an address approved in person — never a
+    /// call into the multisig (its keys, modules) or another contract (Safe.refusal); the prompt says what the multisig pays,
+    /// to whom. Reply: signature.
+    case signSafeMove(chainId: UInt64, safe: String, to: String, value: UInt64, data: Data, nonce: UInt64, recipients: [String])
     /// Hyperliquid order/cancel (L1). The signer hashes the action itself.
     case signHyperliquidL1(action: MsgPack, nonce: UInt64, mainnet: Bool)
     /// Hyperliquid transfer-type action signed by the main key. The signer picks the EIP-712 schema from the

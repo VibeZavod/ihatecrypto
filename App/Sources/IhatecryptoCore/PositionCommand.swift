@@ -227,9 +227,18 @@ public enum WalletCommand: Equatable, Sendable {
     case revokeApproval(String, token: String, spender: String, permit2: Bool)
     /// Any contract's function the chat wrote out (ContractCall): checked on the explorer, simulated, then a card.
     case contractCall(ContractCall)
+    /// «make a multisig 2 of 3 with Phone on base and arbitrum»: a Safe multisig whose keys are this Mac's (and the connected
+    /// Ledger's) plus the saved addresses named, `threshold` of them to move money (nil: a majority); nil `of` when not said,
+    /// no network = Base. Its card adjusts all of it; Confirm makes it.
+    case multisigCreate(threshold: Int?, of: Int?, keys: [String], networks: [String])
+    /// «send 200 USDC from the multisig to Alex on base»: a payment out of it, signed by its keys here; nil = all of it.
+    case multisigSend(token: String, amount: Decimal?, to: String, network: String?)
+    /// «show the multisig»: its card on the canvas.
+    case multisigShow
 
     public static func parse(_ text: String) -> WalletCommand? {
         if let call = ContractCall.parse(text) { return .contractCall(call) }
+        if let multisig = multisig(text) { return multisig }
         // «pay POST https://… {"q": 1}»: the URL and the body kept as written.
         if let m = text.firstMatch(of: /(?is)^\s*pay\s+(?:(get|post|put|patch|delete)\s+)?(https:\/\/[^\s{}\[\]]+)(?:\s+(?:with\s+)?([\{\[].*[\}\]]))?\s*$/) {
             let body = m.3.map(String.init)
@@ -771,6 +780,27 @@ extension WalletCommand {
         }
     }
 
+    /// The multisig's three forms, as the chat writes them in English.
+    static func multisig(_ text: String) -> WalletCommand? {
+        let t = text.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: ".!"))
+        guard t.range(of: "multisig", options: .caseInsensitive) != nil else { return nil }
+        if t.wholeMatch(of: /(?i)(?:show|open)\s+(?:the\s+|my\s+)?multisig/) != nil { return .multisigShow }
+        func nets(_ s: Substring) -> [String]? {
+            let list = s.split(separator: /\s*,\s*|\s+and\s+/).map { network(String($0)) }
+            return list.allSatisfy { $0.map(ContractCall.networks.contains) == true } ? list.compactMap { $0 } : nil
+        }
+        if let m = t.wholeMatch(of: /(?i)send\s+(all|\d+(?:\.\d+)?)\s+(\S+)\s+from\s+(?:the\s+|my\s+)?multisig\s+to\s+(.+?)(?:\s+on\s+(\S+(?:\s+chain)?))?/) {
+            guard let net = m.4.map({ nets($0)?.first }) ?? .some(nil) else { return nil }
+            return .multisigSend(token: String(m.2), amount: m.1.lowercased() == "all" ? nil : Decimal(string: String(m.1)), to: String(m.3), network: net)
+        }
+        if let m = t.wholeMatch(of: /(?i)(?:make|create|set\s+up)\s+(?:a\s+|my\s+)?multisig(?:\s+vault)?(?:\s+(\d+)\s+of\s+(\d+))?(?:\s+with\s+(.+?))?(?:\s+on\s+(.+))?/) {
+            guard let networks = m.4.map({ nets($0) }) ?? .some([]) else { return nil }
+            let keys = m.3.map { $0.split(separator: /\s*,\s*|\s+and\s+/).map(String.init) } ?? []
+            return .multisigCreate(threshold: m.1.flatMap { Int($0) }, of: m.2.flatMap { Int($0) }, keys: keys, networks: networks)
+        }
+        return nil
+    }
+
     public static func placeName(_ place: String) -> String {
         ["base": "Base", "arbitrum": "Arbitrum", "robinhood": "Robinhood", "polygon": "Polygon", "ethereum": "Ethereum", "tempo": "Tempo", "hyperevm": "HyperEVM", "optimism": "Optimism", "bnb": "BNB Chain", "near": "NEAR"][place] ?? place.capitalized
     }
@@ -912,6 +942,12 @@ extension WalletCommand {
             return "revoke the approval of \(token) to \(spender) on \(Self.placeName(place))" + (permit2 ? " through Permit2" : "")
         case .sweepDust(let under): return "sweep dust\(under.map { " under $\(Fmt.num($0))" } ?? "") into USDC on Base, Arbitrum and Polygon"
         case .sweepRewards(let min, let into): return "sweep Merkl rewards once worth \(Fmt.usd(max(min ?? 5, 5))) or more into \(into ?? "USDC")"
+        case .multisigCreate(let t, let of, let keys, let nets):
+            return "make a multisig" + (t.map { m in " \(m) of \(of ?? m)" } ?? "") + (keys.isEmpty ? "" : " with " + keys.joined(separator: ", "))
+                + (nets.isEmpty ? "" : " on " + nets.joined(separator: ", "))
+        case .multisigSend(let token, let x, let to, let net):
+            return "send \(x.map { NSDecimalNumber(decimal: $0).stringValue } ?? "all") \(token) from the multisig to \(to)" + (net.map { " on \($0)" } ?? "")
+        case .multisigShow: return "show the multisig"
         }
     }
 }

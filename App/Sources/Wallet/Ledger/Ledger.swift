@@ -241,7 +241,7 @@ public struct LedgerDevice: Sendable {
             let be = withUnsafeBytes(of: n.bigEndian) { Data($0) }
             return Data(be.drop { $0 == 0 }).isEmpty ? Data([0]) : Data(be.drop { $0 == 0 })
         case .bool(let b): return Data([b ? 1 : 0])
-        case .bytes32(let d): return d
+        case .bytes32(let d), .bytes(let d): return d
         }
     }
 

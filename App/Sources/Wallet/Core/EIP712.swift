@@ -10,6 +10,8 @@ public enum EIP712 {
         case uint(UInt64)
         case bool(Bool)
         case bytes32(Data)
+        /// Dynamic `bytes`: hashed into its word (keccak256).
+        case bytes(Data)
     }
 
     public struct Field: Sendable {
@@ -67,6 +69,7 @@ public enum EIP712 {
         case .bytes32(let d):
             guard d.count == 32 else { throw WalletError("bytes32 must be 32 bytes.") }
             return d
+        case .bytes(let d): return Keccak.hash256(d)
         }
     }
 }

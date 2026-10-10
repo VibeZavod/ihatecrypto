@@ -272,6 +272,14 @@ extension Workspace {
             out.append("P/L board (\(r.period.title)): " + (PnL.facts(r, pretty: IntentParser.pretty) + pnl.held.map(\.english)).joined(separator: " "))
         }
         if showMovers { out.append("movers board: " + moversFacts()) }
+        if detail == "multisig", let m = multisigs.last {
+            out.append("multisig card: \(m.address), any \(m.threshold) of its \(m.keys.count) keys (" + m.keys.map { "\($0.name) \($0.kind == "address" ? "signs elsewhere" : "signs here")" }.joined(separator: ", ")
+                       + "), on " + m.networks.map(WalletCommand.placeName).joined(separator: ", "))
+        }
+        if let d = multisigDraft, case .wallet(.multisigCreate)? = pendingAction {
+            out.append("multisig set-up card waiting for Confirm: keys " + d.keys.map(\.name).joined(separator: ", ") + ", any \(d.threshold) of \(d.keys.count) move money, on "
+                       + d.networks.map(WalletCommand.placeName).joined(separator: ", ") + "; they can add keys from the address book, change how many sign and pick networks on it")
+        }
         if let dca = jupiterDCAs, !dca.isEmpty {
             out.append("Jupiter DCA board, running: " + dca.map { o in
                 "\(Fmt.num(o.used))/\(Fmt.num(o.deposited)) USDC spent into \(SpotAsset.all.first { $0.mint == o.outputMint }?.symbol ?? o.outputMint), \(Fmt.num(o.perCycle)) every \(WalletCommand.everyText(o.every)), \(o.fills) fills"

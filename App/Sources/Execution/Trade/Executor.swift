@@ -42,10 +42,16 @@ public protocol TradeSigner: Sendable {
     func signNearTransfer(amount: UInt128, receiver: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data
     /// Deletes the wallet's NEAR account; NEAR sends all that is on it to `beneficiary` (one of `recipients`).
     func signNearDeleteAccount(beneficiary: String, recipients: [String], nonce: UInt64, blockHash: Data) async throws -> Data
+    /// This key's owner signature on a move out of a Safe multisig (Safe.refusal holds: a plain payment, money only to
+    /// `recipients`, the signer's own address or the multisig).
+    func signSafeMove(_ move: Safe.Move, recipients: [String]) async throws -> EVMSignature
 }
 
 extension TradeSigner {
     public var signsBatches: Bool { false }
+    public func signSafeMove(_ move: Safe.Move, recipients: [String]) async throws -> EVMSignature {
+        throw ExecutionError("This signer doesn't sign multisig moves.")
+    }
     public func signEVMBatch(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                              calls: [Batch7702.Call], recipients: [String]) async throws -> Data {
         throw ExecutionError("This signer doesn't sign batched calls.")

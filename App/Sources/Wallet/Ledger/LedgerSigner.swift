@@ -140,6 +140,12 @@ public struct LedgerSigner: TradeSigner {
         return signature
     }
 
+    /// A move out of a Safe multisig, shown field by field (SafeTx); the same rules as the signing process's (Safe.refusal).
+    public func signSafeMove(_ move: Safe.Move, recipients: [String]) async throws -> EVMSignature {
+        if let why = Safe.refusal(move, approved: Set((recipients + [wallet.evm, move.safe]).map { $0.lowercased() })) { throw ExecutionError(why) }
+        return try await typed(move.typed, move.summary)
+    }
+
     public func signHyperliquid(_ action: MsgPack, nonce: UInt64) async throws -> EVMSignature {
         let verdict = HLGuard.check(action, owner: wallet.evm, recipients: [])
         guard verdict.ok else { throw Self.refuse(verdict) }

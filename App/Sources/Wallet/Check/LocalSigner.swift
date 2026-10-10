@@ -182,6 +182,7 @@ func moveMoney(_ text: String) async throws {
     case .hlSpotBuy(let symbol, let usdc): print(try await executor.hlSpot(buy: true, symbol: symbol, usdc: usdc ?? 10, amount: nil))
     case .hlSpotSell(let symbol, let amount): print(try await executor.hlSpot(buy: false, symbol: symbol, usdc: nil, amount: amount))
     case .contractCall: print("A contract call is checked, simulated and confirmed in the app.")
+    case .multisigCreate, .multisigSend, .multisigShow: print("A multisig is set up, signed and sent in the app.")
     case .showApprovals: for a in await executor.approvals().list { print(a.chain, a.symbol, a.spenderName ?? a.spender, a.unlimited ? "unlimited" : "\(a.amount)", a.permit2 ? "Permit2" : "") }
     case .revokeApproval(let place, let token, let spender, let permit2):
         print(try await executor.revokeApproval(EVMNetwork.named(place) ?? .base, token: token, spender: spender, permit2: permit2))

@@ -346,6 +346,8 @@ final class Browser {
         case .repay(let asset, let a, let owner):
             let t = await token(asset)
             lines.append("Repay \(a.allSatisfy { $0 == 0xff } ? "all the" : amount(a, t.decimals)) \(t.symbol) debt of \(owner.lowercased() == from.lowercased() ? "this wallet" : owner) to \(to).")
+        case .multisigExec:
+            lines.append("Carry out a signed move of the multisig \(to): " + call.summary(chainId: rpc.chainId, to: to, value: value) + ".")
         case .cctpBurn(let r, let domain, let a):
             lines.append("Circle's CCTP: burn \(amount(a, 6)) USDC here to mint on \(CCTP.chainName(domain)) to \(r.map { $0.lowercased() == from.lowercased() ? "this wallet" : $0 } ?? "a non-EVM account").")
         case .v4Swap(let s):

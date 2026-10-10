@@ -147,6 +147,7 @@ struct NetworkCards: View {
         VStack(spacing: 10) {
             if !ws.inTransit.isEmpty { InTransit(entries: ws.inTransit) }
             ForEach(order.cards, id: \.self) { NetworkCard(network: $0, usd: held[$0] ?? 0) }
+            ForEach(ws.multisigs) { MultisigPortfolioCard(multisig: $0) }
             if !order.folded.isEmpty {
                 Button { withAnimation(.snappy) { unfolded.toggle() } } label: {
                     HStack(spacing: 10) {

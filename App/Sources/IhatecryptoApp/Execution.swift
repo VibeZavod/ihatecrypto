@@ -116,6 +116,13 @@ nonisolated struct XPCTradeSigner: TradeSigner {
         return raw
     }
 
+    func signSafeMove(_ move: Safe.Move, recipients: [String]) async throws -> EVMSignature {
+        let reply = try await Self.signing { try await send(.signSafeMove(chainId: move.chainId, safe: move.safe, to: move.to, value: move.value,
+                                                                         data: move.data, nonce: move.nonce, recipients: recipients)) }
+        guard reply.ok, let signature = reply.signature else { throw ExecutionError(Self.reason(reply)) }
+        return signature
+    }
+
     static func reason(_ reply: SignerReply) -> String {
         ([reply.error ?? "The signer refused."] + reply.problems).joined(separator: " ")
     }
@@ -540,6 +547,9 @@ extension Workspace {
             case .sendTo(let name, let amount, let net): prepareTransfer(amount, to: name, network: net)
             case .pay: reply(try await pay(command, e), note: "MPP · Tempo")
             case .contractCall(let c): reply(try await runContractCall(command, e), note: "\(WalletCommand.placeName(c.network)) · contract call")
+            case .multisigCreate: reply(try await runMultisigCreate(e), note: "Safe · multisig")
+            case .multisigSend: reply(try await runMultisigSend(command, e), note: "Safe · multisig")
+            case .multisigShow: showMultisig(note: nil)
             case .gas(let place, let usd):
                 guard let net = EVMNetwork.named(place) else { throw ExecutionError("ihatecrypto doesn't top up gas on \(place).") }
                 reply(try await e.topUpGas(net, usd: usd ?? 1), note: "Gas · \(net.name)")

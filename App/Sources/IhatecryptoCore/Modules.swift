@@ -319,7 +319,9 @@ public struct Modules: Equatable, Sendable {
         case .cctp(let from, let to, _):
             if let off = [from, to].compactMap(ModuleNetwork.init(place:)).lazy.compactMap({ self.refusal(network: $0, ru: ru) }).first { return off }
             return isOn(.bridges) ? nil : ru ? "\(ModuleKind.bridges.name) выключены в Settings › Modules." : "\(ModuleKind.bridges.name) is off in Settings › Modules."
-        case .sendTo, .yields, .receive, .stopSchedules: return nil
+        case .multisigCreate(_, _, _, let nets): return nets.compactMap(ModuleNetwork.init(place:)).lazy.compactMap { self.refusal(network: $0, ru: ru) }.first
+        case .multisigSend(_, _, _, let net): return net.flatMap(ModuleNetwork.init(place:)).flatMap { refusal(network: $0, ru: ru) }
+        case .sendTo, .yields, .receive, .stopSchedules, .multisigShow: return nil
         }
     }
 

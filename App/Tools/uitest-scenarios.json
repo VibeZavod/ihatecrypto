@@ -615,5 +615,36 @@
       ],
       "title_contains": "AERO"
     }
+  },
+  {
+    "name": "a multisig in Russian → its set-up card with the keys and Base, waiting for Confirm",
+    "send": [
+      "сделай мультисиг 2 из 3"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "drawn_route": true,
+      "steps": [
+        "CHECK · KEYS",
+        "MULTISIG · BASE"
+      ],
+      "command_contains": "multisigCreate",
+      "title_contains": "Multisig"
+    }
+  },
+  {
+    "name": "a multisig on two networks → one create step per network",
+    "send": [
+      "make a multisig on arbitrum and optimism"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "steps": [
+        "MULTISIG · ARBITRUM",
+        "MULTISIG · OPTIMISM"
+      ],
+      "command_contains": "arbitrum",
+      "command_contains_2": "optimism"
+    }
   }
 ]

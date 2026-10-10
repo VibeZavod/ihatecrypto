@@ -23,6 +23,7 @@ enum StepKind: Equatable {
         let place = label.components(separatedBy: "·").last?.trimmingCharacters(in: .whitespaces) ?? ""
         if label.hasPrefix("WHEN") { self = .alert(up: label.contains("RISES")) }
         else if label.hasPrefix("CHECK") { self = .check }
+        else if label.hasPrefix("MULTISIG") { self = .lock }
         else if label.hasPrefix("JEV") || label.hasPrefix("SECOND") { self = .jev }
         else if label.hasPrefix("OPEN LONG") { self = .long }
         else if label.hasPrefix("OPEN SHORT") { self = .short }

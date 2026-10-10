@@ -218,6 +218,7 @@ struct PlaceDetailBoard: View {
         // A board per token: another token opened here starts clean, without the last one's badge, market or chart.
         if let token = TokenBoard.parse(place) { TokenBoard(chain: token.chain, address: token.address).id(place) }
         else if place == "chart" { if let chart = ws.chart { ChartBoard(state: chart) } }
+        else if place == "multisig" { MultisigBoard() }
         else if place == "approvals" { ApprovalsBoard() } else if place == "receive-across" { ReceiveAcrossBoard() } else { board }
     }
 

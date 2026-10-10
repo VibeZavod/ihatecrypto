@@ -41,6 +41,12 @@ public struct TypedData: Sendable {
         if entryPoints.contains(verifyingContract) || domainName == "ERC4337" || primaryType.contains("UserOperation") {
             return "\(primaryType): an ERC-4337 user operation — it would run any calls from this wallet. ihatecrypto doesn't sign these."
         }
+        // A Safe multisig's own types: a move, or a message the multisig then vouches for (EIP-1271) — a permit's hash
+        // wrapped in one lets a site spend the multisig's tokens. Moves out of a multisig are signed only in ihatecrypto's own
+        // steps (signSafeMove), never for a site.
+        if primaryType == "SafeTx" || primaryType == "SafeMessage" {
+            return "\(primaryType): a signature for a Safe multisig. ihatecrypto signs a multisig's moves only in its own steps, never for a site."
+        }
         if isTokenPermission {
             return "\(primaryType): this is permission to spend your tokens (Permit) — the drainers' main trick. ihatecrypto doesn't sign these."
         }

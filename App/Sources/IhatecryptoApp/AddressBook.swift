@@ -809,6 +809,7 @@ extension Workspace {
     /// changed in the file outside ihatecrypto doesn't pass.
     func isConfirmed(_ e: SavedAddress) -> Bool {
         if wallets.contains(where: { $0.solana == e.address || $0.evm?.lowercased() == e.address.lowercased() }) { return true }
+        if multisigs.contains(where: { $0.address == e.address.lowercased() }) { return true }   // made here; the signer still asks Touch ID once
         let evm: Set<String> = ["base", "arbitrum", "ethereum", "polygon", "robinhood", "tempo", "hyperliquid", "hyperevm", "optimism", "bnb"]
         return confirmedAddresses.contains { c in
             c.memo == e.memo && (evm.contains(c.network) && evm.contains(e.network.rawValue)
@@ -889,7 +890,7 @@ extension Workspace {
             return e.network.rawValue == network || (evm.contains(network) && (evm.contains(e.network.rawValue) || e.network == .hyperliquid))
         }
         let named = addressBook.filter { $0.name.lowercased() == key }, near = addressBook.filter { $0.name.lowercased().contains(key) }
-        return named.first(where: fits) ?? named.first ?? ownWallet(key) ?? near.first(where: fits) ?? near.first
+        return named.first(where: fits) ?? named.first ?? ownWallet(key) ?? multisigEntry(key, network: network) ?? near.first(where: fits) ?? near.first
     }
 
     /// `quiet`: a step of a chain — its card shows, and a confirmed chain signs it at once: no «Sign it» line.
