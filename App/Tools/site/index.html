@@ -142,18 +142,22 @@
   .eyebrow { display: inline-flex; align-items: center; gap: 8px; padding: 6px 13px 6px 7px; border-radius: 18px; text-align: left; background: #FFFFFF; border: 1px solid var(--line);
              font: 600 14px Onest, sans-serif; color: #3A3D44; }
   .eyebrow svg { width: 22px; height: 22px; }
+  /* Every language wraps evenly (ru runs longest): headings, pills and labels balance their lines; paragraphs never
+     end on a lonely word; a wrapped pill hugs its text (hug() below). */
+  p, dd, li { text-wrap: pretty; }
+  h2, h3, dt, .kicker, .eyebrow span, .askb, .rbub, .also, .fine span, .btn span, .chip .l { text-wrap: balance; }
   h1 { font: 800 clamp(44px, 7.6vw, 96px)/1 Onest, sans-serif; letter-spacing: -.035em; margin-top: 22px; max-width: 11ch; text-wrap: balance; }
-  .lead { font-size: clamp(17px, 1.5vw, 20px); color: #3A3D44; max-width: 640px; margin-top: 20px; text-wrap: pretty; }
+  .lead { font-size: clamp(17px, 1.5vw, 20px); color: #3A3D44; max-width: 640px; margin-top: 20px; text-wrap: balance; }
   .b0 .btn { margin-top: 30px; }
   .hint { position: absolute; bottom: 20px; left: 0; right: 0; display: flex; flex-direction: column; align-items: center; gap: 4px; font: 500 12px Onest, sans-serif; color: var(--muted); }
   .kicker { font: 800 12px Onest, sans-serif; letter-spacing: .14em; text-transform: uppercase; color: var(--accent-ink); }
   .beat h2 { font: 800 clamp(32px, 4.4vw, 56px)/1.04 Onest, sans-serif; letter-spacing: -.03em; margin-top: 10px; max-width: 17ch; text-wrap: balance; }
-  .beat h2 + p { color: #3A3D44; font-size: clamp(16px, 1.35vw, 18px); max-width: 620px; margin-top: 14px; text-wrap: pretty; }
+  .beat h2 + p { color: #3A3D44; font-size: clamp(16px, 1.35vw, 18px); max-width: 620px; margin-top: 14px; text-wrap: balance; }
 
   /* Sections below the story: cards on the dotted canvas. */
   .sec { max-width: 1120px; margin: 0 auto; padding: 104px 16px 0; }
   .h { font: 800 clamp(30px, 4vw, 48px)/1.06 Onest, sans-serif; letter-spacing: -.03em; text-align: center; text-wrap: balance; }
-  .sub { text-align: center; color: #3A3D44; font-size: 18px; max-width: 640px; margin: 14px auto 0; text-wrap: pretty; }
+  .sub { text-align: center; color: #3A3D44; font-size: 18px; max-width: 640px; margin: 14px auto 0; text-wrap: balance; }
   .card { background: #FFFFFF; border: 1px solid var(--line); border-radius: 24px; }
   .steps { list-style: none; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; margin-top: 40px; }
   .step { padding: 20px 20px 22px; border-radius: 20px; background: #FFFFFF; border: 1.5px solid var(--line); transition: border-color .25s; }
@@ -351,7 +355,7 @@
   .final { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 60px 24px 56px; background: var(--ink); color: #FFFFFF; border: 0; }
   .final > svg { width: 92px; height: 92px; }
   .final h2 { font: 800 clamp(30px, 4vw, 48px)/1.06 Onest, sans-serif; letter-spacing: -.03em; margin-top: 18px; text-wrap: balance; }
-  .final p { color: rgba(255,255,255,.72); max-width: 520px; margin-top: 12px; text-wrap: pretty; }
+  .final p { color: rgba(255,255,255,.72); max-width: 520px; margin-top: 12px; text-wrap: balance; }
   .final .btn { margin-top: 28px; }
   .final .btn:hover { box-shadow: 0 0 0 3px var(--ink), 0 0 0 5.5px var(--accent); }
   .final .meta { color: rgba(255,255,255,.6); }
@@ -409,7 +413,7 @@
   @media (max-width: 480px) {
     .lang-btn { padding: 0 9px; } .lang-btn b, .lang-btn .chev { display: none; }
     .bar .btn svg { display: none; }
-    .b0::before { width: 170vw; height: 78%; top: 53%; background: radial-gradient(closest-side, rgba(250,250,251,.97) 66%, rgba(250,250,251,0)); }
+    .b0::before { width: 170vw; height: 86%; top: 55%; background: radial-gradient(closest-side, rgba(250,250,251,.97) 66%, rgba(250,250,251,0)); }
   }
   @media (max-width: 380px) { .logo span { font-size: 17px; } }
   @media (hover: none) { .cur { display: none; } }
@@ -970,6 +974,7 @@ function setLang(l) {
   $$('[data-t]').forEach((el) => { el.textContent = T[l][el.dataset.t] ?? T.en[el.dataset.t]; });
   $$('[data-ta]').forEach((el) => { el.setAttribute('aria-label', T[l][el.dataset.ta] ?? T.en[el.dataset.ta]); });
   shares();
+  $$('.eyebrow span, .askb').forEach(hug);
   $$('.askb').forEach((el, k) => { el.textContent = ASK[k].cmds[l]; });
   $('.lang-btn b').textContent = l.toUpperCase(); $('.lang-btn use').setAttribute('href', '#fl-' + l);
   $$('.lang-menu button').forEach((b) => b.setAttribute('aria-checked', b.dataset.l === l));
@@ -990,6 +995,17 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape' && !langMenu.hidden)
 $$('.chip').forEach((b, i) => b.addEventListener('click', () => { sc = i; play(); }));
 
 // The composition is drawn at 1174 wide and scaled to the demo's card, never past the app's 0.8.
+// A wrapped pill hugs its longest line: text-wrap: balance evens the lines but leaves the box at full width.
+function hug(el) {
+  el.style.width = '';
+  const r = document.createRange(); r.selectNodeContents(el);
+  const lines = [...r.getClientRects()];
+  const cs = getComputedStyle(el), pad = parseFloat(cs.paddingLeft) + parseFloat(cs.paddingRight);   // border-box: the width holds the padding
+  if (lines.length > 1) el.style.width = Math.ceil(Math.max(...lines.map((x) => x.width)) + pad) + 1 + 'px';
+}
+addEventListener('resize', () => $$('.eyebrow span, .askb').forEach(hug));
+document.fonts.ready.then(() => $$('.eyebrow span, .askb').forEach(hug));
+
 // The canvas's window is drawn at 1088 wide and scaled to the page.
 const appwrap = $('.appwrap'), app = $('.app');
 const fit = () => { document.documentElement.style.setProperty('--k', Math.min(.8, (demo.clientWidth - 48) / 1174)); appwrap.style.setProperty('--ak', Math.min(1, appwrap.clientWidth / 1088)); };
