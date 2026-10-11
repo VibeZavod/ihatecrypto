@@ -44,11 +44,11 @@ let package = Package(
         .target(name: "EVMChain", dependencies: ["WalletCore", .product(name: "P256K", package: "swift-secp256k1")], path: "Sources/Chains/EVM"),
         // Write-before-send journal; later the approval envelope and step states.
         .target(name: "ExecutionCore", path: "Sources/Execution", exclude: ["Trade"]),
-        .target(name: "JupiterSwap", path: "Sources/Protocols/Jupiter"),
-        .target(name: "OneClickKit", path: "Sources/Protocols/OneClick"),
+        .target(name: "JupiterSwap", dependencies: ["WalletCore"], path: "Sources/Protocols/Jupiter"),
+        .target(name: "OneClickKit", dependencies: ["WalletCore"], path: "Sources/Protocols/OneClick"),
         .target(name: "RelayBridge", dependencies: ["SolanaChain", "WalletCore"], path: "Sources/Protocols/Relay"),
         // DeFi: one folder per protocol. Jupiter Lend Earn first.
-        .target(name: "DeFiJupiterLend", path: "Sources/DeFi/JupiterLend"),
+        .target(name: "DeFiJupiterLend", dependencies: ["WalletCore"], path: "Sources/DeFi/JupiterLend"),
         .target(name: "DeFiKamino", path: "Sources/DeFi/Kamino"),
         // Where money earns now across the DeFi modules: lending, liquid staking, Hyperliquid's HLP.
         .target(name: "DeFiYields", dependencies: ["DeFiJupiterLend", "DeFiKamino"], path: "Sources/DeFi/Yields"),

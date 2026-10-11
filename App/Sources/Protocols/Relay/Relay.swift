@@ -218,6 +218,6 @@ public enum Relay {
 
 public struct RelayError: LocalizedError {
     public let message: String
-    init(_ data: Data) { message = String(decoding: data.prefix(300), as: UTF8.self) }
+    init(_ data: Data) { message = RPCRetry.said(data) }
     public var errorDescription: String? { "Relay: \(message)" }
 }

@@ -463,3 +463,25 @@ import WalletCore
     #expect(CostlyMove(lost: lost, paid: 2, what: "Relay").localizedDescription
             == "Relay keeps ≈ $0.23 of $2.00 (12%): more than a move may lose on its own. Nothing was signed.")
 }
+
+/// Kamino's first-deposit rent on a small deposit is asked about the same way, not refused (2026-10-11: «…and put 3 USDC
+/// into Kamino» would have stopped a chain at its last step): over a tenth of the deposit stops with the numbers and
+/// names Jupiter Lend; a big enough deposit, or the rent taken on with «Send anyway», goes.
+@Test func kaminoRentOnASmallDepositIsAskedNotRefused() throws {
+    let rent = Decimal(string: "0.0298")!, sol: Decimal = 117
+    let stop = try #require(Executor.kaminoRent(sol: rent, solPrice: sol, depositUSD: 3, accepted: 0))
+    #expect(stop.lost == rent * sol && stop.paid == 3)
+    #expect(stop.localizedDescription.hasPrefix("The first Kamino deposit creates your accounts: rent ≈ 0.0298 SOL (≈ $3.49) on a $3.00 deposit"))
+    #expect(stop.localizedDescription.contains("Jupiter Lend has no rent") && stop.localizedDescription.hasSuffix("Nothing was signed."))
+    #expect(Executor.kaminoRent(sol: rent, solPrice: sol, depositUSD: 50, accepted: 0) == nil)
+    #expect(Executor.kaminoRent(sol: rent, solPrice: sol, depositUSD: 3, accepted: stop.lost * Decimal(string: "1.25")! + Decimal(string: "0.05")!) == nil)
+}
+
+/// A gateway's error page never reaches the chat as markup (2026-10-11: Jupiter's nginx 503 was printed as raw HTML);
+/// a service's own words stay as they are.
+@Test func aGatewaysErrorPageIsSaidAsItsStatus() {
+    let page = Data("<html>\r\n<head><title>503 Service Temporarily Unavailable</title></head>\r\n<body>…</body></html>".utf8)
+    #expect(RPCRetry.said(page, status: 503) == "no answer right now (HTTP 503). Try again in a minute.")
+    #expect(RPCRetry.said(Data(), status: 0) == "no answer right now. Try again in a minute.")
+    #expect(RPCRetry.said(Data(#"{"error":"Could not find any route"}"#.utf8), status: 400) == #"{"error":"Could not find any route"}"#)
+}

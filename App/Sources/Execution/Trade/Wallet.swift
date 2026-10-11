@@ -788,9 +788,17 @@ extension Executor {
         (valueUSD / priceUSD * Decimal(string: "1.01")!).rounded(6, .up)
     }
 
+    /// The first Kamino deposit's rent against what goes in: over a tenth of it, and over what the user took on with
+    /// «Send anyway» (`accepted`, dollars), is a stop to ask about; nil lets the deposit go.
+    static func kaminoRent(sol: Decimal, solPrice: Decimal, depositUSD: Decimal, accepted: Decimal) -> CostlyMove? {
+        let rent = sol * solPrice
+        guard rent > depositUSD / 10, rent > accepted else { return nil }
+        return CostlyMove(lost: rent, paid: depositUSD, what: "Kamino", words: "The first Kamino deposit creates your accounts: rent ≈ \(Fmt.num(sol, maxFraction: 4)) SOL (≈ \(Fmt.usd(rent))) on a \(Fmt.usd(depositUSD)) deposit — over 10% of the amount. Jupiter Lend has no rent; Kamino makes sense from ≈ \(Fmt.usd((rent * 10).rounded(0, .up))). Nothing was signed.")
+    }
+
     /// Kamino Lend, main market. `symbol`: USDC, SOL, USDT… `amount` in tokens; withdraw with nil takes the whole
     /// position (its dollars at the token's price). `dryRun` only simulates: the first deposit's rent shows up here.
-    /// `acceptRent`: the user asked for Kamino knowing the first deposit's rent, so the 10% rule does not stop it.
+    /// `acceptRent`: the plan showed the first deposit's rent (a rebalance, the CLI's flag), so the 10% rule does not ask.
     public func kamino(_ symbol: String, amount requested: Decimal?, deposit: Bool, dryRun: Bool = false, acceptRent: Bool = false) async throws -> String {
         guard let reserve = try await Kamino.reserves().first(where: { $0.symbol.uppercased() == symbol.uppercased() }) else {
             throw ExecutionError("Kamino has no \(symbol) market.")
@@ -832,15 +840,15 @@ extension Executor {
                                      : (firstTime ? -60_000_000 : -5_000_000)
         if firstTime, !dryRun, !acceptRent {
             // The first deposit pays ~0.03 SOL of rent for Kamino's user accounts and lookup table. Not worth it for
-            // a small amount: simulate first and refuse when the rent is over a tenth of what goes in.
+            // a small amount: simulate first, and when the rent is over a tenth of what goes in, stop and ask (CostlyMove:
+            // «Send anyway», or Jupiter Lend, which has no rent). It was refused outright, which stopped a chain of moves
+            // at its last step with no way on.
             let preview = try await signAndSend(wire, lastValid: lastValid, owners: [myToken: wallet.solana], rules: rules,
                                                 note: "Kamino \(symbol)", lamportsAtLeast: lamports, dryRun: true)
             let solPrice = try await Hyperliquid.markets()["SOL"]?.markPx ?? 0
             let rentSOL = Self.solSpent(preview)
             let valueUSD = native ? amount * solPrice : amount
-            if rentSOL * solPrice > valueUSD / 10 {
-                throw ExecutionError("The first Kamino deposit creates your accounts: rent ≈ \(Fmt.num(rentSOL, maxFraction: 4)) SOL (≈ \(Fmt.usd(rentSOL * solPrice))) on a \(Fmt.usd(valueUSD)) deposit — over 10% of the amount. For small amounts Jupiter Lend is better; Kamino makes sense from ≈ \(Fmt.usd((rentSOL * solPrice * 10).rounded(0, .up))).")
-            }
+            if let stop = Self.kaminoRent(sol: rentSOL, solPrice: solPrice, depositUSD: valueUSD, accepted: Self.lossAccepted) { throw stop }
         }
         let changes = try await signAndSend(wire, lastValid: lastValid, owners: [myToken: wallet.solana], rules: rules,
                                             note: "Kamino \(deposit ? "deposit" : "withdraw") \(symbol)", lamportsAtLeast: lamports, dryRun: dryRun)

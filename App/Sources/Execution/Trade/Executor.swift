@@ -94,8 +94,10 @@ public struct CostlyMove: LocalizedError, Sendable {
     public let paid: Decimal
     /// Who keeps it: «Relay», «Relay's swap».
     public let what: String
+    /// Its own words, where the loss isn't a share the move keeps: Kamino's first-deposit rent comes on top, in SOL.
+    var words: String?
     public var errorDescription: String? {
-        "\(what) keeps ≈ \(Fmt.usd(lost)) of \(Fmt.usd(paid)) (\(Fmt.num(lost / max(paid, Decimal(string: "0.01")!) * 100, maxFraction: 0))%): "
+        words ?? "\(what) keeps ≈ \(Fmt.usd(lost)) of \(Fmt.usd(paid)) (\(Fmt.num(lost / max(paid, Decimal(string: "0.01")!) * 100, maxFraction: 0))%): "
             + "more than a move may lose on its own. Nothing was signed."
     }
 }

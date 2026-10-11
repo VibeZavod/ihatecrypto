@@ -35,6 +35,14 @@ public enum RPCRetry {
         }
     }
 
+    /// What a service answered when it refused, as a line for the chat: its own words, never a gateway's error page —
+    /// Jupiter's nginx «503 Service Temporarily Unavailable» once went into the chat as raw HTML. `status` 0: not known.
+    public static func said(_ body: Data, status: Int = 0) -> String {
+        let text = String(decoding: body.prefix(300), as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard text.isEmpty || text.hasPrefix("<") else { return text }
+        return "no answer right now\(status > 0 ? " (HTTP \(status))" : ""). Try again in a minute."
+    }
+
     /// A node's error message that a second ask may not get.
     public static func transient(_ message: String) -> Bool {
         let m = message.lowercased()

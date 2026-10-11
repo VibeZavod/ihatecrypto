@@ -1,4 +1,5 @@
 import Foundation
+import WalletCore
 
 /// Jupiter Lend Earn: deposit a token, receive jl-shares that grow with interest, withdraw any time.
 /// First protocol of the DeFi module; a shared Vault type gets extracted when the second one arrives.
@@ -66,10 +67,13 @@ public enum JupiterLend {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, _) = try await URLSession.shared.data(for: request)
-        guard let b64 = (try JSONSerialization.jsonObject(with: data) as? [String: Any])?["transaction"] as? String,
-              let wire = Data(base64Encoded: b64) else { throw LendError(data) }
-        return wire
+        let ask = request
+        // The same host as Jupiter's swap API, whose 503 stopped a chain once: nothing is signed yet, so asked again.
+        return try await RPCRetry.run({ try await URLSession.shared.data(for: ask) }) { data, status in
+            guard let b64 = ((try? JSONSerialization.jsonObject(with: data)) as? [String: Any])?["transaction"] as? String,
+                  let wire = Data(base64Encoded: b64) else { throw RPCRetry.Again(status == 429 || status >= 500, LendError(data, status)) }
+            return wire
+        }
     }
 
     static func get(_ url: URL) async throws -> Data { try await URLSession.shared.data(from: url).0 }
@@ -77,6 +81,6 @@ public enum JupiterLend {
 
 public struct LendError: LocalizedError {
     public let message: String
-    init(_ data: Data) { message = String(decoding: data.prefix(300), as: UTF8.self) }
+    init(_ data: Data, _ status: Int = 0) { message = RPCRetry.said(data, status: status) }
     public var errorDescription: String? { "Jupiter Lend: \(message)" }
 }

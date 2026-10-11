@@ -1,4 +1,5 @@
 import Foundation
+import WalletCore
 
 /// Jupiter's on-chain DCA (Recurring v1, program DCA265…): the whole amount goes into an order account of the user's
 /// own and Jupiter's keepers swap one part every interval; what's bought comes to the wallet after each fill, and
@@ -47,9 +48,8 @@ public enum JupiterRecurring {
         for page in 1...5 {
             let url = URL(string: "\(base)/getRecurringOrders?user=\(user)&orderStatus=active&recurringType=time&includeFailedTx=false&page=\(page)")!
             let (data, response) = try await URLSession.shared.data(from: url)
-            guard (response as? HTTPURLResponse)?.statusCode == 200, let j = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-                throw JupiterError(String(decoding: data.prefix(300), as: UTF8.self))
-            }
+            let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+            guard status == 200, let j = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any] else { throw JupiterError(data, status) }
             all += (j["time"] as? [[String: Any]] ?? []).compactMap(order)
             if page >= (j["totalPages"] as? Int ?? 0) { break }
         }
@@ -76,11 +76,11 @@ public enum JupiterRecurring {
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.httpBody = try JSONSerialization.data(withJSONObject: body)
-        let (data, _) = try await URLSession.shared.data(for: request)
-        let j = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let (data, response) = try await URLSession.shared.data(for: request)
+        let j = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
         guard let id = j?["requestId"] as? String, let b64 = j?["transaction"] as? String, let wire = Data(base64Encoded: b64) else {
             // «Each order valued at 30.00 USDC, minimum is 50.00 USDC»: Jupiter's own words are the clearest.
-            throw JupiterError(j?["error"] as? String ?? String(decoding: data.prefix(300), as: UTF8.self))
+            throw JupiterError(data, (response as? HTTPURLResponse)?.statusCode ?? 0)
         }
         return (id, wire)
     }

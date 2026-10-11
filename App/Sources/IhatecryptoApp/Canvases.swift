@@ -1186,7 +1186,8 @@ nonisolated enum RouteFill: String, Codable, Hashable, Sendable {
 extension Workspace {
     /// The route of a money move waiting for «do it»: a withdrawal to Solana, USDC into Aave on Base, a stock token,
     /// a way back to Solana, or any move between the user's own places. nil for commands that aren't drawn as one.
-    func route(_ command: WalletCommand) -> MoveRoute? {
+    /// `ahead`: for a step of a chain, the USDC the steps before it add to a network (or take off it), see `chainSteps`.
+    func route(_ command: WalletCommand, ahead: [String: Decimal] = [:]) -> MoveRoute? {
         switch command {
         case .withdrawToSolana(let asked): withdrawRoute(asked)
         case .aave(deposit: true, amount: let amount?, network: let net): aaveRoute(amount, network: net)
@@ -1198,8 +1199,8 @@ extension Workspace {
         case .arbitrumToSolana(let amount): backRoute(from: "arbitrum", amount: amount)
         case .robinhoodToSolana(let amount): backRoute(from: "robinhood", amount: amount)
         case .solanaTo(let place, let amount?): outRoute(to: place, amount: amount)
-        case .buyStock(let symbol, let usdc?): stockRoute(symbol, usdc)
-        case .buyOn(let place, let token, let usdc?, let from): swapRoute(place, token, usdc: usdc, sell: nil, from: from)
+        case .buyStock(let symbol, let usdc?): stockRoute(symbol, usdc, ahead: ahead)
+        case .buyOn(let place, let token, let usdc?, let from): swapRoute(place, token, usdc: usdc, sell: nil, from: from, ahead: ahead)
         case .sellOn(let place, let token, let amount, let keep): swapRoute(place, token, usdc: nil, sell: amount, keep: keep)
         case .swapOn(let place, let from, let to, let amount): pairRoute(place, from, to, amount)
         case .crossSwap(let a, let from, let b, let to, let amount): crossRoute(a, from, b, to, amount)
@@ -1654,9 +1655,33 @@ extension Workspace {
         // Where the steps before bring money: a deposit there spends it, so its card draws no bridge from Solana
         // («Ethereum → Arbitrum, then Aave» drew a second bridge, Solana → Arbitrum, that never runs).
         var arrived = Set<String>()
-        if case .wallet(let first)? = pendingAction, let to = Self.arrives(first) { arrived.insert(to) }
+        // And how much: a buy after «move 10 from Base to Solana» is drawn paid as the executor will pay it, by the
+        // balances the moves before it leave. Drawn by the balances before the chain, its card said «Base → Robinhood»
+        // and Solana paid.
+        // ponytail: Relay's cents, and what a buy on another network takes from the one paying it, aren't taken off.
+        var ahead: [String: Decimal] = [:]
+        func count(_ c: WalletCommand) {
+            let sent: Decimal?? = switch c {
+            case .bridge(_, _, let a), .cctp(_, _, let a), .evmToSolana(_, let a), .solanaTo(_, let a), .baseToSolana(let a),
+                 .arbitrumToSolana(let a), .robinhoodToSolana(let a), .withdrawToSolana(let a): a
+            default: nil
+            }
+            if let sent, let from = Self.source(c), let moved = sent ?? usdc(on: from) {   // no amount: all of it
+                ahead[from, default: 0] -= moved
+                if let to = Self.arrives(c) { ahead[to, default: 0] += moved }
+            } else if let spent = Self.solanaUSDC(c) {
+                ahead["solana", default: 0] -= spent
+            }
+        }
+        if case .wallet(let first)? = pendingAction {
+            if let to = Self.arrives(first) { arrived.insert(to) }
+            count(first)
+        }
         return steps.compactMap(WalletCommand.parse).flatMap { c -> [ActivityBubble] in
-            defer { if let to = Self.arrives(c) { arrived.insert(to) } }
+            defer {
+                if let to = Self.arrives(c) { arrived.insert(to) }
+                count(c)
+            }
             let brought = Self.spends(c).map(arrived.contains) ?? false
             switch c {
             // Spread and rebalance have no route of their own: their split is planned when the money before them has landed.
@@ -1678,7 +1703,7 @@ extension Workspace {
                                        status: "then", logo: network.logo, fill: RouteFill(rawValue: network.rawValue) ?? .check)]
             default:
                 // Any other step without a route still shows, as its words: a chain never loses a step on the canvas.
-                return route(c)?.steps.filter { !$0.label.hasPrefix("FROM") && !$0.label.hasPrefix("APPROVE")
+                return route(c, ahead: ahead)?.steps.filter { !$0.label.hasPrefix("FROM") && !$0.label.hasPrefix("APPROVE")
                     && !(brought && ($0.label.hasPrefix("BRIDGE") || $0.label.hasPrefix("GAS"))) }.map { var s = $0; s.status = "then"; return s }
                     ?? [ActivityBubble(kind: "step", label: "THEN", title: readable(c.summary), status: "then", logo: "usdc", fill: .check)]
             }
@@ -1705,7 +1730,16 @@ extension Workspace {
         }
     }
 
-    private func stockRoute(_ symbolOrContract: String, _ asked: Decimal) -> MoveRoute {
+    /// Where the USDC a move needs on `target` comes from when Solana is short (EVMNetwork.source, the executor's rule),
+    /// by the balances as the steps before it in a chain leave them (`ahead`).
+    private func source(arrive: Decimal, target: String, ahead: [String: Decimal]) -> (net: EVMNetwork, send: Decimal)? {
+        solana.flatMap { s in
+            EVMNetwork.source(arrive: arrive, onSolana: s.usdc + (ahead["solana"] ?? 0), target: target,
+                              held: { net in self.usdc(on: net).map { $0 + (ahead[net] ?? 0) } })
+        }
+    }
+
+    private func stockRoute(_ symbolOrContract: String, _ asked: Decimal, ahead: [String: Decimal] = [:]) -> MoveRoute {
         // The three ways as quoted while the card waits (quoteStock): the best names the BUY step, the others are its line.
         let ways = swapQuote.flatMap { q in q.command == .buyStock(symbol: symbolOrContract, usdc: asked) ? q.ways : nil }
         // A contract («купи 0x…»): its name and price from the favorites when it's there.
@@ -1719,7 +1753,7 @@ extension Workspace {
         let fits = usdg > 0 && usdg < asked && asked - usdg <= max(1, asked / 50)
         let usdc = fits ? usdg : asked, bring = max(0, usdc - usdg)
         // Solana short: the USDC comes straight from the EVM network holding it, as Executor.ensureEVM does.
-        let elsewhere = bring > 0 ? solana.flatMap { s in EVMNetwork.source(arrive: bring, onSolana: s.usdc, target: "robinhood", held: { self.usdc(on: $0) }) } : nil
+        let elsewhere = bring > 0 ? source(arrive: bring, target: "robinhood", ahead: ahead) : nil
         let robinhoodUSDG = { (delta: Decimal, approx: Bool) in [MoneyMove(place: "Robinhood", symbol: "USDG", was: usdg, after: max(0, usdg + delta), approx: approx)] }
         let from = bring == 0
             ? step("robinhood", "FROM · ROBINHOOD CHAIN", "\(Fmt.num(usdc)) USDG", fits ? "what's there · the cents short aren't worth a bridge" : "already there · no bridge", .robinhood,
@@ -1756,7 +1790,8 @@ extension Workspace {
     /// A token on an EVM network: bought with the USDC already there (or brought from the network `from` names), else
     /// with USDC from Solana; sold back to Solana, or for USDC that stays there (`keep`). Solana's way (Relay's swap, or
     /// Relay's bridge and Uniswap) is chosen when it runs, by what leaves more after gas.
-    private func swapRoute(_ place: String, _ token: String, usdc: Decimal?, sell: Decimal?, from: String? = nil, keep: Bool = false) -> MoveRoute {
+    private func swapRoute(_ place: String, _ token: String, usdc: Decimal?, sell: Decimal?, from: String? = nil, keep: Bool = false,
+                           ahead: [String: Decimal] = [:]) -> MoveRoute {
         let name = WalletCommand.placeName(place)
         let fill = RouteFill(rawValue: place) ?? .check
         let label = token.hasPrefix("0x") ? tokenSymbol(token) ?? "\(token.prefix(6))…\(token.suffix(4))" : Stablecoins.find(token, on: place)?.symbol ?? token.uppercased()
@@ -1768,7 +1803,7 @@ extension Workspace {
         // decides (EVMNetwork.source) — the card said «from Solana» while Base paid.
         let auto = usdc.flatMap { u in
             from == nil && routeWays[Self.wayKey(place, token)] == nil && (self.usdc(on: place) ?? 0) < u
-                ? solana.flatMap { s in EVMNetwork.source(arrive: u, onSolana: s.usdc, target: place, held: { self.usdc(on: $0) })?.net.key } : nil
+                ? source(arrive: u, target: place, ahead: ahead)?.net.key : nil
         }
         let src = (from ?? auto).flatMap { $0 == "solana" || $0 == place ? nil : $0 }
         // A source the user named is the card's, never Solana's ways: if it can't pay, the move is refused, not swapped.

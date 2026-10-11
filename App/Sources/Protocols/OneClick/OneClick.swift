@@ -1,4 +1,5 @@
 import Foundation
+import WalletCore
 
 /// NEAR Intents 1Click: cross-chain swaps and bridges as quote → deposit → status.
 /// Works without a partner key (checked 2026-09-25), so there is no server of our own.
@@ -193,6 +194,6 @@ public enum OneClick {
 
 public struct OneClickError: LocalizedError {
     public let message: String
-    init(_ data: Data) { message = String(decoding: data.prefix(300), as: UTF8.self) }
+    init(_ data: Data) { message = RPCRetry.said(data) }
     public var errorDescription: String? { "1Click: \(message)" }
 }

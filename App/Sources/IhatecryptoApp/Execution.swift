@@ -640,10 +640,14 @@ extension Workspace {
                 // Send anyway?»). The cards run it again with that loss accepted, or leave it.
                 costlyMove = (command, costly.lost)
                 reply(costly.localizedDescription + say(" Send it anyway?", " Отправить всё равно?"))
+                // Kamino's first-deposit rent: Jupiter Lend takes the same deposit without it, one card away.
+                let lend: WalletCommand? = if case .kamino(deposit: true, symbol: let s, amount: let a?) = command, ["USDC", "SOL"].contains(s) { .lendDeposit(s, a) } else { nil }
                 withAnimation(StudioView.spring) {
                     nextSteps = NextSteps(options: [
                         ChatRouter.Option(title: say("Send anyway · ≈ \(Fmt.usd(costly.lost)) lost", "Отправить всё равно · потеря ≈ \(Fmt.usd(costly.lost))"),
                                           comment: costly.localizedDescription, command: Self.sendAnyway),
+                    ] + (lend.map { [ChatRouter.Option(title: say("Jupiter Lend instead · no rent", "Лучше в Jupiter Lend · без аренды"),
+                                                       comment: say("The same deposit, no accounts to pay for", "Тот же депозит, без платы за аккаунты"), command: $0.summary)] } ?? []) + [
                         ChatRouter.Option(title: say("Cancel", "Отмена"), comment: say("Nothing was signed", "Ничего не подписано"), command: Self.leaveCostly),
                     ], userText: "", found: [], canvas: canvasID)
                 }
