@@ -627,6 +627,10 @@ public enum EVMCall: Equatable, Sendable {
     case unwrap(amount: Data)
     /// Circle's CCTP burn: `amount` of USDC minted on `domain` to `recipient` (nil: not an EVM address).
     case cctpBurn(recipient: String?, domain: UInt32, amount: Data)
+    /// A LayerZero OFT's send (Tether's USDT0): `amount` of the token leaves for `recipient` on the network `eid` (nil: not
+    /// an EVM address, or unreadable); `plain`: no options, compose message or command with it; `refund` gets back what
+    /// LayerZero doesn't take of the fee sent as the call's value.
+    case oftSend(recipient: String?, eid: UInt32, amount: Data, plain: Bool, refund: String)
     /// Aave's borrow: `amount` of `asset` sent to the caller, the debt on `onBehalfOf`; its repay pays down that debt.
     case borrow(asset: String, amount: Data, onBehalfOf: String)
     case repay(asset: String, amount: Data, onBehalfOf: String)
@@ -669,6 +673,10 @@ public enum EVMCall: Equatable, Sendable {
         case "d0e30db0": return .wrap
         case "2e1a7d4d": if let a = word(0) { return .unwrap(amount: a) }
         case "8e0250ee", "779b432d": if let b = CCTP.readBurn(data) { return .cctpBurn(recipient: b.recipient, domain: b.domain, amount: b.amount) }
+        // A send that can't be read is still a send: it's refused, not signed as some contract's call.
+        case "c7c7f5b3":
+            let s = USDT0.readSend(data)
+            return .oftSend(recipient: s?.recipient, eid: s?.eid ?? 0, amount: s?.amount ?? Data(count: 32), plain: s?.plain ?? false, refund: s?.refund ?? "")
         case "a415bcad": if let a = address(0), let x = word(1), let o = address(4) { return .borrow(asset: a, amount: x, onBehalfOf: o) }
         case "573ade81": if let a = address(0), let x = word(1), let o = address(3) { return .repay(asset: a, amount: x, onBehalfOf: o) }
         default: break
@@ -710,6 +718,9 @@ public enum EVMCall: Equatable, Sendable {
         case .lending: "use the lending pool \(short(to)) \(net), for this wallet"
         case .nftTransfer(_, let recipient): "send NFTs of \(short(to)) to \(short(recipient)) \(net)"
         case .cctpBurn(let recipient, let domain, let a): "move \(units(a, 6)) USDC \(net) to \(recipient.map(short) ?? "?") on \(CCTP.chainName(domain)) through Circle's CCTP"
+        case .oftSend(let recipient, let eid, let a, _, _):
+            "move \(USDT0.on(chainId)?.oft == to.lowercased() ? "\(units(a, 6)) USDT" : "\(units(a, 0)) units of the token of \(short(to))") \(net) "
+                + "to \(recipient.map(short) ?? "?") on \(USDT0.networkName(eid: eid)) through LayerZero"
         case .borrow(let asset, let a, _): "borrow \(amount(a, of: asset)) from the lending pool \(short(to)) \(net), a debt of this wallet's"
         case .repay(let asset, let a, _): a.allSatisfy({ $0 == 0xff }) ? "repay all of this wallet's \(EVMRPC.dollars[asset.lowercased()] ?? short(asset)) debt to \(short(to)) \(net)"
             : "repay \(amount(a, of: asset)) of this wallet's debt to \(short(to)) \(net)"
@@ -729,11 +740,13 @@ public enum EVMCall: Equatable, Sendable {
 
     /// Contracts ihatecrypto itself lets spend its tokens on a network: Uniswap's routers (v2, v3, and v4's with Permit2),
     /// Aave's pools, Morpho's vaults, Relay's depository and approval proxy (one address on every network, api.relay.link/chains
-    /// 2026-10-03), Circle's CCTP TokenMessenger, Tempo's exchange. An approve to any other spender needs it approved in person, like a recipient.
+    /// 2026-10-03), Circle's CCTP TokenMessenger, USDT0's adapter on Ethereum, Tempo's exchange. An approve to any other spender
+    /// needs it approved in person, like a recipient.
     public static func knownSpenders(chainId: UInt64) -> Set<String> {
         var s = ["0x4cd00e387622c35bddb9b4c962c136462338bc31", "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be"]
         s += AaveV3.markets.filter { $0.rpc.chainId == chainId }.map(\.pool) + MorphoVault.vaults.filter { $0.rpc.chainId == chainId }.map(\.address)
         if CCTP.domain(chainId) != nil { s.append(CCTP.tokenMessenger) }
+        if let usdt0 = USDT0.on(chainId), usdt0.approves { s.append(usdt0.oft) }
         if chainId == EVMRPC.tempo.chainId { s.append(Tempo.exchange) }
         if let uni = UniswapV3.on(chainId) { s.append(uni.router) }
         if let v2 = UniswapV2.on(chainId) { s.append(v2.router) }
@@ -751,6 +764,8 @@ public enum EVMCall: Equatable, Sendable {
         case .transfer(let r, _), .nftTransfer(_, let r): out.append(r)
         // What CCTP mints goes to its recipient: this wallet, or an address allowed in person.
         case .cctpBurn(let r?, _, _): out.append(r)
+        // What an OFT sends goes to its recipient on the other network, and the fee it didn't need to `refund`.
+        case .oftSend(let r?, _, _, _, let refund): out += [r, refund]
         // What the multisig pays out: the coins it sends (a word past 64 bits pays `target` too) and its call's own payees.
         case .multisigExec(let target, let v, let d, _):
             let coins = ABI.uint(in: v, word: 0)
@@ -772,6 +787,9 @@ public enum EVMCall: Equatable, Sendable {
         case .wrap: to.lowercased() == UniswapV2.on(chainId)?.weth
         case .v4Swap(let s): to.lowercased() == UniswapV4.on(chainId)?.router && s.currencyIn == UniswapV4.native
             && s.amountIn == Decimal(value) && s.settleMax == s.amountIn
+        // A plain send through one of USDT0's own OFTs: the value is LayerZero's message fee, and what it doesn't take
+        // goes to `refund`, a payee of its own.
+        case .oftSend(_, _, _, let plain, _): plain && USDT0.on(chainId)?.oft == to.lowercased()
         default: false
         }
     }
@@ -790,6 +808,7 @@ public enum EVMCall: Equatable, Sendable {
             return "A multisig move by DELEGATECALL runs another contract's code as the multisig. Refused."
         }
         if case .cctpBurn(nil, _, _) = self { return "The CCTP burn mints to an account that isn't an EVM address. ihatecrypto mints only to EVM addresses." }
+        if case .oftSend(nil, _, _, _, _) = self { return "The LayerZero send can't be read, or pays an account that isn't an EVM address. ihatecrypto sends only to EVM addresses." }
         if case .borrow(_, _, let owner) = self, owner.lowercased() != sender.lowercased() { return "The borrow would put the debt on \(owner), not this wallet." }
         if case .repay(_, _, let owner) = self, owner.lowercased() != sender.lowercased() { return "The repay would pay \(owner)'s debt, not this wallet's." }
         if case .permit2Approve(_, _, let amount, let expiration) = self {

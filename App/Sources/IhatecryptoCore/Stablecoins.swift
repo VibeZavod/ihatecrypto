@@ -63,6 +63,9 @@ public enum Stablecoins {
                  Coin(symbol: "USDT", address: "usdt.tether-token.near", decimals: 6)],
     ]
 
+    /// The networks Tether's own bridge (USDT0 on LayerZero) moves USDT between: EVMChain.USDT0.deployments by name.
+    public static let usdt0Networks: Set<String> = ["ethereum", "arbitrum", "optimism", "polygon", "hyperevm"]
+
     /// The coin a ticker names on a network: «usdt» is USD₮0 on Arbitrum and Polygon, USDT0 on HyperEVM and Hyperliquid.
     public static func find(_ ticker: String, on network: String) -> Coin? {
         let want = ticker.trimmingCharacters(in: CharacterSet(charactersIn: "$ ")).uppercased()

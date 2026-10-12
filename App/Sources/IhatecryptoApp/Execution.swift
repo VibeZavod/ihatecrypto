@@ -157,6 +157,7 @@ extension Workspace {
             case "near": "https://nearblocks.io/txns/\(e.id)"
             case "relay": "Relay order \(e.id)"
             case "1click": "1Click deposit \(e.id)"
+            case "layerzero": "https://layerzeroscan.com/tx/\(e.id)"
             case "hyperliquid": "Hyperliquid «\(e.note)»"
             default: EVMNetwork.named(e.chain).map { "\($0.explorer)/tx/\(e.id)" } ?? "\(e.chain) \(e.id)"
             }
@@ -520,6 +521,9 @@ extension Workspace {
             case .cctp(let from, let to, let amount):
                 guard let a = EVMNetwork.named(from), let b = EVMNetwork.named(to) else { throw ExecutionError("Circle's CCTP moves USDC between Ethereum, Arbitrum, Base and Polygon.") }
                 reply(try await e.cctpBridge(from: a, to: b, usdc: amount), note: "Circle's CCTP · \(a.name) → \(b.name)")
+            case .usdt(let from, let to, let amount, let layerZero):
+                guard let a = EVMNetwork.named(from), let b = EVMNetwork.named(to) else { throw ExecutionError("ihatecrypto doesn't move USDT between \(from) and \(to).") }
+                reply(try await e.usdtMove(from: a, to: b, usdt: amount, layerZero: layerZero), note: "\(layerZero ? "USDT0 · LayerZero" : "Relay") · \(a.name) → \(b.name)")
             case .aaveBorrow(let x, let net), .aaveRepay(let x, let net), .aaveCollateral(let x, let net):
                 guard let m = AaveV3.markets.first(where: { $0.chain == net }) else {
                     throw ExecutionError("ihatecrypto uses Aave on Base, Arbitrum, Polygon and Ethereum, not on \(WalletCommand.placeName(net)).")
@@ -677,6 +681,17 @@ extension Workspace {
     /// from its node now: Blockscout indexes a few seconds behind, and «move all USDC from Optimism to Solana» two seconds
     /// after 2 USDC landed there was refused with «Optimism has 0 USDC». Base, Arbitrum and Robinhood are read live anyway.
     func freshenSource(_ command: WalletCommand) async {
+        // The USDT a move takes, the same way on each of USDT0's networks: 0.7 USDT that LayerZero had just landed on
+        // Polygon read as «Polygon has 0 USDT» (2026-10-13).
+        if case .usdt(let from, _, _, _) = command {
+            guard let net = EVMNetwork.named(from), let token = USDT0.on(net.rpc.chainId)?.token, isEVMAddress(hlAddress),
+                  let units = try? await net.rpc.tokenBalance(token, owner: hlAddress) else { return }
+            let known = otherTokens.first { $0.chain == from && $0.contract == token }
+            let fresh = Holdings.dollar(from, contract: token, amount: Decimal(units) / 1_000_000, symbol: known?.symbol ?? "USDT", icon: known?.icon)
+            otherTokens = otherTokens.filter { !($0.chain == from && $0.contract == token) } + (units > 0 ? [fresh] : [])
+            usdtRead = (from, fresh.amount, Date())
+            return
+        }
         let place: String? = switch command {
         case .evmToSolana(let n, _), .bridge(from: let n, to: _, _), .cctp(from: let n, to: _, _): n
         case .buyOn(_, _, _, let from?): from
@@ -716,6 +731,8 @@ extension Workspace {
         // Not inside a chain: a step before it may have just brought the money, and those balances load after the refresh.
         case .evmToSolana(let net, let asked) where !inChain, .bridge(from: let net, to: _, let asked) where !inChain:
             return lacks(usdc(on: net), asked, WalletCommand.placeName(net), net == "robinhood" ? "USDG" : "USDC")
+        case .usdt(let net, _, let asked, _) where !inChain:
+            return lacks(EVMNetwork.named(net).flatMap { USDT0.on($0.rpc.chainId) }.flatMap { heldUSDC(net, $0.token) }, asked, WalletCommand.placeName(net), "USDT")
         // A buy that names where its money comes from («с арбитрума») pays from there or not at all: said before the card.
         case .buyOn(_, _, let asked?, let from?) where !inChain && from != "solana":
             return lacks(usdc(on: from), asked, WalletCommand.placeName(from), from == "robinhood" ? "USDG" : "USDC")

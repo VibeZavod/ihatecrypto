@@ -189,6 +189,9 @@ func moveMoney(_ text: String) async throws {
     case .sweepDust: throw ExecutionError("Sweeping dust works in the ihatecrypto app, where the portfolio is.")
     case .swapOn(let place, let from, let to, let amount): print(try await executor.swapOn(EVMNetwork.named(place) ?? .base, from: from, to: to, amount: amount))
     case .cctp(let from, let to, let amount): print(try await executor.cctpBridge(from: EVMNetwork.named(from) ?? .base, to: EVMNetwork.named(to) ?? .arbitrum, usdc: amount))
+    case .usdt(let from, let to, let amount, let layerZero):
+        guard let a = EVMNetwork.named(from), let b = EVMNetwork.named(to) else { throw ExecutionError("ihatecrypto doesn't move USDT between \(from) and \(to).") }
+        print(try await executor.usdtMove(from: a, to: b, usdt: amount, layerZero: layerZero))
     case .aaveBorrow(let x, let net): print(try await executor.aaveBorrow(AaveV3.markets.first { $0.chain == net } ?? AaveV3.base, usdc: x ?? 0))
     case .aaveRepay(let x, let net): print(try await executor.aaveRepay(AaveV3.markets.first { $0.chain == net } ?? AaveV3.base, usdc: x))
     case .aaveCollateral(let x, let net): print(try await executor.aaveSupplyETH(AaveV3.markets.first { $0.chain == net } ?? AaveV3.base, eth: x ?? 0))

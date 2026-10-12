@@ -524,7 +524,7 @@ struct RouteCard: View {
     /// tickers keep their capitals.
     static func pretty(_ place: String) -> String {
         let small: Set = ["ON", "OF", "TO", "OR", "AND", "IN", "AT", "FOR", "WITH", "FROM"]
-        let kept = ["USDC": "USDC", "USDG": "USDG", "USDT": "USDT", "NEAR": "NEAR", "JITOSOL": "JitoSOL", "1CLICK": "1Click", "HYPEREVM": "HyperEVM"]
+        let kept = ["USDC": "USDC", "USDG": "USDG", "USDT": "USDT", "NEAR": "NEAR", "JITOSOL": "JitoSOL", "1CLICK": "1Click", "HYPEREVM": "HyperEVM", "LAYERZERO": "LayerZero", "CCTP": "CCTP"]
         return place.split(separator: " ").enumerated().map { i, w in
             let word = String(w)
             if let k = kept[word] { return k }
@@ -1183,6 +1183,7 @@ struct StepDetails: View {
     static func pretty(_ label: String) -> String {
         label.lowercased().capitalized.replacingOccurrences(of: " Or ", with: " or ").replacingOccurrences(of: "Usdc", with: "USDC")
             .replacingOccurrences(of: "Jitosol", with: "JitoSOL").replacingOccurrences(of: "Hlp", with: "HLP").replacingOccurrences(of: "V3", with: "v3")
+            .replacingOccurrences(of: "Layerzero", with: "LayerZero").replacingOccurrences(of: "Cctp", with: "CCTP")
     }
 
     var body: some View {

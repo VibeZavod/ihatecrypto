@@ -350,6 +350,9 @@ final class Browser {
             lines.append("Carry out a signed move of the multisig \(to): " + call.summary(chainId: rpc.chainId, to: to, value: value) + ".")
         case .cctpBurn(let r, let domain, let a):
             lines.append("Circle's CCTP: burn \(amount(a, 6)) USDC here to mint on \(CCTP.chainName(domain)) to \(r.map { $0.lowercased() == from.lowercased() ? "this wallet" : $0 } ?? "a non-EVM account").")
+        case .oftSend(let r, let eid, let a, let plain, _):
+            let known = USDT0.on(rpc.chainId)?.oft == to.lowercased()
+            lines.append("LayerZero: send \(known ? "\(amount(a, 6)) USDT" : "tokens of \(to)") to \(r.map { $0.lowercased() == from.lowercased() ? "this wallet" : $0 } ?? "an account that can't be read") on \(USDT0.networkName(eid: eid))\(plain ? "" : ", with options or a message of its own").")
         case .v4Swap(let s):
             let (a, b) = (await token(s.currencyIn), await token(s.currencyOut))
             func n(_ x: Decimal, _ d: Int) -> String { Fmt.num(x / Decimal(sign: .plus, exponent: d, significand: 1), maxFraction: 6) }

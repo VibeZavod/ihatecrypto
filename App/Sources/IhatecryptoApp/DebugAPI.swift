@@ -1,4 +1,5 @@
 import AppKit
+import EVMChain
 import GuardJev
 import IhatecryptoCore
 import Network
@@ -246,7 +247,8 @@ final class DebugAPI {
                 "total": num(ws.equity), "solanaUSDC": num(ws.solana?.usdc), "sol": num(ws.solana?.sol),
                 "hyperliquid": num(ws.hlTotal), "near": num(ws.near), "kamino": num(ws.kamino), "jupiterLend": num(ws.lendTotal),
                 "baseAave": num(ws.base?.aave), "baseMorpho": num(ws.base?.morpho), "baseUSDC": num(ws.base?.usdc),
-                "robinhoodUSDG": num(ws.robinhood?.usdg),
+                "robinhoodUSDG": num(ws.robinhood?.usdg), "arbitrumUSDC": num(ws.arbitrumUSDC),
+                "arbitrumUSDT": num(USDT0.on(42161).flatMap { ws.heldUSDC("arbitrum", $0.token) }),
             ] as [String: Any],
             "positions": ws.positions.map { "\($0.size > 0 ? "long" : "short") \($0.coin) pnl \($0.unrealizedPnl)" },
             "wallet": ["solana": ws.solanaAddress, "evm": ws.hlAddress, "test": ws.activeWallet?.isTest == true] as [String: Any],

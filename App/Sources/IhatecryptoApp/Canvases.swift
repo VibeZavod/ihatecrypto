@@ -1228,6 +1228,7 @@ extension Workspace {
         case .multisigCreate, .multisigSend: multisigRoute(command)
         case .bridge(let from, let to, let amount): bridgeRoute(from, to, amount)
         case .cctp(let from, let to, let amount): bridgeRoute(from, to, amount, cctp: true)
+        case .usdt(let from, let to, let amount, let layerZero): usdtRoute(command, from, to, amount, layerZero: layerZero)
         case .aaveBorrow(let x?, let net), .aaveCollateral(let x?, let net): aaveDebtRoute(command, x, net)
         case .aaveRepay(let x, let net): aaveDebtRoute(command, x, net)
         case .gas(let place, let usd): gasRoute(place, usd ?? 1)
@@ -2172,6 +2173,14 @@ extension Workspace {
             return
         case .swapOn(let p, let a, let b, let x): await quotePair(command, p, a, b, x); return
         case .crossSwap(let a, let from, let b, let to, let x): await quoteCross(command, a, from, b, to, x); return
+        // A move between networks: what each bridge lands, costs and takes, the one it goes by first. Not a priced swap:
+        // Confirm doesn't wait for it, and the executor asks them all again before signing.
+        case .usdt(let from, let to, let x, let layerZero):
+            if let a = EVMNetwork.named(from), let b = EVMNetwork.named(to) { await quoteBridges(command) { try await $0.usdtWays(from: a, to: b, usdt: x, layerZero: layerZero) } }
+            return
+        case .bridge(let from, let to, let x):
+            if let a = EVMNetwork.named(from), let b = EVMNetwork.named(to) { await quoteBridges(command) { try await $0.bridgeWays(from: a, to: b, usdc: x) } }
+            return
         // Solana through Jupiter: what the buy gets, or the sale leaves.
         case .buy(let asset, let u?): await quoteJupiter(command, from: .usdc, to: asset, amount: u); return
         case .sell(let asset, let a?): await quoteJupiter(command, from: asset, to: .usdc, amount: a); return
@@ -2332,6 +2341,18 @@ extension Workspace {
             guard !Task.isCancelled else { return }
             if let q { swapQuote = (command, [(q.way, q.gets, 0)]); return }
             if swapQuote?.command != command { swapQuote = (command, []) }
+            try? await Task.sleep(for: .seconds(15))
+        }
+    }
+
+    /// The bridges of a move between networks as they quote it now (Executor.usdtWays, bridgeWays); asked again every
+    /// 15 s until they answer.
+    private func quoteBridges(_ command: WalletCommand, _ ways: (Executor) async throws -> [BridgeWay]) async {
+        guard let wallet = previewWallet else { return }
+        while !Task.isCancelled {
+            let quoted = try? await ways(executor(wallet))
+            guard !Task.isCancelled else { return }
+            if let quoted, !quoted.isEmpty { swapQuote = (command, quoted); return }
             try? await Task.sleep(for: .seconds(15))
         }
     }
@@ -2499,6 +2520,7 @@ extension Workspace {
     /// `cctp`: through Circle's CCTP as asked, whatever Relay would land.
     private func bridgeRoute(_ from: String, _ to: String, _ amount: Decimal?, cctp: Bool = false) -> MoveRoute {
         let a = WalletCommand.placeName(from), b = WalletCommand.placeName(to), stable = to == "robinhood" ? "USDG" : "USDC"
+        let quoted = cctp ? nil : swapQuote.flatMap { $0.command == .bridge(from: from, to: to, amount) ? $0.ways : nil }
         let have = usdc(on: from), moving = amount.map { min($0, have ?? $0) } ?? have
         func fill(_ place: String) -> RouteFill { RouteFill(rawValue: place) ?? .relay }
         let shown = moving.map { Fmt.num($0) } ?? "all"
@@ -2512,9 +2534,52 @@ extension Workspace {
             step(ModuleNetwork(place: from)?.logo ?? "eth", "FROM · \(a.uppercased())", "\(shown) USDC", "USDC on \(a)", fill(from),
                  money: moneyMove("USDC", on: from, by: moving.map { -$0 })),
             cctp ? step("usdc", "BURN & MINT · CIRCLE'S CCTP", "\(shown) USDC", "≈ 1.3 bp + ≈ $0.08 of gas · Circle mints there", .relay)
-                 : step("relay", "BRIDGE · RELAY", "\(shown) USDC", "≈ $0.03 · a few seconds · no stop on Solana", .relay),
-            step(ModuleNetwork(place: to)?.logo ?? "eth", "TO · \(b.uppercased())", "≈ \(shown) \(stable)", "your own address ✓", fill(to),
+                 : bridgeStep(quoted, title: "\(shown) USDC", fallback: ("relay", "BRIDGE · RELAY", "≈ $0.03 · a few seconds · no stop on Solana")),
+            step(ModuleNetwork(place: to)?.logo ?? "eth", "TO · \(b.uppercased())", bridgeLands(quoted) ?? "≈ \(shown) \(stable)", "your own address ✓", fill(to),
                  money: moving.map { moneyMove(stable, on: to, by: $0, approx: true) } ?? []),
+        ])
+    }
+
+    static func bridgeName(_ way: String) -> String { ["relay": "Relay", "cctp": "CCTP", "1click": "NEAR Intents", "layerzero": "LayerZero"][way] ?? way }
+
+    /// What the bridge a move goes by lands, once quoted («≈ 0.9785 USDC»): the route's last step says it.
+    private func bridgeLands(_ ways: [BridgeWay]?) -> String? { ways?.first?.gets.components(separatedBy: " · ").first }
+
+    /// The bridge step of a move between networks, once its bridges are quoted (quoteBridges): the one the move goes by
+    /// with what it lands, then a row for each bridge — what it costs and how long it takes. `fallback` until then.
+    private func bridgeStep(_ ways: [BridgeWay]?, title: String, fallback: (logo: String, label: String, line: String)) -> ActivityBubble {
+        guard let ways, let taken = ways.first else { return step(fallback.logo, fallback.label, title, fallback.line, .relay) }
+        // «≈ 99.96 USDT · $0.04 · ≈ 3 s»: what lands is the step's title, the rest the bridge's row.
+        func parts(_ w: BridgeWay) -> [String] { w.gets.components(separatedBy: " · ") }
+        let rows = ways.map { "\(Self.bridgeName($0.way))\t" + parts($0).dropFirst().joined(separator: " · ") }
+        return ActivityBubble(kind: "step", label: "BRIDGE · \(Self.bridgeName(taken.way).uppercased())", title: parts(taken).first ?? title,
+                              lines: rows + ["prices now · asked again before signing"],
+                              logo: ["cctp": "usdc", "1click": "near", "layerzero": "usdt"][taken.way] ?? "relay", fill: .relay, money: nil)
+    }
+
+    /// USDT from one of USDT0's networks to another, both our own address: Relay's swap of it, or — asked for by name —
+    /// Tether's own bridge on LayerZero, the same amount for cents of gas after its wait.
+    private func usdtRoute(_ command: WalletCommand, _ from: String, _ to: String, _ amount: Decimal?, layerZero: Bool) -> MoveRoute {
+        let a = WalletCommand.placeName(from), b = WalletCommand.placeName(to)
+        let source = EVMNetwork.named(from), usdt0 = source.flatMap { USDT0.on($0.rpc.chainId) }
+        let read = usdtRead.flatMap { $0.place == from && Date().timeIntervalSince($0.at) < 300 ? $0.amount : nil }
+        let have = read ?? usdt0.flatMap { heldUSDC(from, $0.token) }, moving = amount.map { min($0, have ?? $0) } ?? have
+        let there = EVMNetwork.named(to).flatMap { USDT0.on($0.rpc.chainId) }.flatMap { heldUSDC(to, $0.token) }
+        func fill(_ place: String) -> RouteFill { RouteFill(rawValue: place) ?? .relay }
+        let shown = moving.map { Fmt.num($0) } ?? "all", wait = usdt0.map { USDT0.wait($0.minutes) } ?? "a while"
+        let footer = layerZero
+            ? "Tether's own bridge, USDT0 on LayerZero: \(usdt0?.approves == true ? "an exact approve, then " : "")one call on \(a) sends the USDT with LayerZero's fee in "
+                + "\(source?.gasCoin ?? "ETH"), and the same amount is minted on \(b) in \(wait) — in transit on the portfolio until then. "
+            : "Relay's swap of USDT for USDT: an exact approve and its deposit on \(a), checked before signing, seconds. Tether's own bridge on LayerZero "
+                + "moves it for cents of gas but takes \(wait): say «via LayerZero» for it. "
+        let quoted = swapQuote.flatMap { $0.command == command ? $0.ways : nil }
+        return MoveRoute(title: "Move \(shown) USDT · \(a) → \(b)", footer: footer + "It pays only your own address on \(b). Press Confirm.", steps: [
+            step(ModuleNetwork(place: from)?.logo ?? "eth", "FROM · \(a.uppercased())", "\(shown) USDT", "USDT on \(a)", fill(from),
+                 money: have.flatMap { h in moving.map { [MoneyMove(place: a, symbol: "USDT", was: h, after: max(0, h - $0))] } } ?? []),
+            bridgeStep(quoted, title: "\(shown) USDT",
+                       fallback: layerZero ? ("usdt", "BRIDGE · LAYERZERO", "Tether's USDT0 · cents of gas · \(wait)") : ("relay", "BRIDGE · RELAY", "a few cents · seconds")),
+            step(ModuleNetwork(place: to)?.logo ?? "eth", "TO · \(b.uppercased())", bridgeLands(quoted) ?? "≈ \(shown) USDT", "your own address ✓", fill(to),
+                 money: there.flatMap { t in moving.map { [MoneyMove(place: b, symbol: "USDT", was: t, after: t + $0, approx: !layerZero)] } } ?? []),
         ])
     }
 

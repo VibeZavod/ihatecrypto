@@ -18,6 +18,8 @@ extension Executor {
             } else if entry.chain == "cctp", let colon = entry.id.firstIndex(of: ":"), let source = UInt32(entry.id[..<colon]),
                       let mint = await Self.cctpForward(source: source, burn: String(entry.id[entry.id.index(after: colon)...])) {
                 end = (.settled, mint)
+            } else if entry.chain == "layerzero", let s = await Self.layerZeroStatus(tx: entry.id) {
+                if s.status == "DELIVERED" { end = (.settled, s.delivered ?? s.status) } else if s.status == "FAILED" { end = (.failed, s.status) }
             } else if entry.chain == "1click", let s = try? await OneClick.status(depositAddress: entry.id) {
                 if s.isFinal { end = (s.status == "SUCCESS" ? .settled : .failed, s.status) }
                 // A receiving address nobody sent to by its hour's deadline is over.

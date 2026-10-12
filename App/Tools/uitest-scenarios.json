@@ -646,5 +646,59 @@
       "command_contains": "arbitrum",
       "command_contains_2": "optimism"
     }
+  },
+  {
+    "name": "USDT over LayerZero with none there → said at once, no card",
+    "send": [
+      "переведи 5 USDT с арбитрума на оптимизм через LayerZero"
+    ],
+    "only_if": {
+      "balance": "arbitrumUSDT",
+      "below": 0.01
+    },
+    "expect": {
+      "no_pending": true,
+      "reply_contains": "USDT"
+    }
+  },
+  {
+    "name": "USDT over LayerZero → Tether's own bridge on the card, between the two networks",
+    "send": [
+      "переведи 1 USDT с арбитрума на оптимизм через LayerZero"
+    ],
+    "only_if": {
+      "balance": "arbitrumUSDT",
+      "at_least": 1
+    },
+    "expect": {
+      "pending_kind": "wallet",
+      "drawn_route": true,
+      "steps": [
+        "ARBITRUM",
+        "LAYERZERO",
+        "OPTIMISM"
+      ],
+      "title_contains": "USDT"
+    }
+  },
+  {
+    "name": "USDT between networks with no bridge named → Relay's swap, LayerZero only when asked",
+    "send": [
+      "переведи 1 USDT с арбитрума на оптимизм"
+    ],
+    "only_if": {
+      "balance": "arbitrumUSDT",
+      "at_least": 1
+    },
+    "expect": {
+      "pending_kind": "wallet",
+      "drawn_route": true,
+      "steps": [
+        "ARBITRUM",
+        "RELAY",
+        "OPTIMISM"
+      ],
+      "title_contains": "USDT"
+    }
   }
 ]

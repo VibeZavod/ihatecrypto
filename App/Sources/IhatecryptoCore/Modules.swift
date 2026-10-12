@@ -319,6 +319,14 @@ public struct Modules: Equatable, Sendable {
         case .cctp(let from, let to, _):
             if let off = [from, to].compactMap(ModuleNetwork.init(place:)).lazy.compactMap({ self.refusal(network: $0, ru: ru) }).first { return off }
             return isOn(.bridges) ? nil : ru ? "\(ModuleKind.bridges.name) выключены в Settings › Modules." : "\(ModuleKind.bridges.name) is off in Settings › Modules."
+        case .usdt(let from, let to, _, let layerZero):
+            if layerZero, !(Stablecoins.usdt0Networks.contains(from) && Stablecoins.usdt0Networks.contains(to)) {
+                return ru ? "Мост USDT0 на LayerZero ходит между Ethereum, Arbitrum, Optimism, Polygon и HyperEVM. Между другими сетями USDT меняет Relay: «swap N USDT on \(from) for USDT on \(to)»."
+                    : "Tether's USDT0 bridge on LayerZero runs between Ethereum, Arbitrum, Optimism, Polygon and HyperEVM. Between other networks Relay swaps USDT: «swap N USDT on \(from) for USDT on \(to)»."
+            }
+            if let off = [from, to].compactMap(ModuleNetwork.init(place:)).lazy.compactMap({ self.refusal(network: $0, ru: ru) }).first { return off }
+            if layerZero { return isOn(.bridges) ? nil : ru ? "\(ModuleKind.bridges.name) выключены в Settings › Modules." : "\(ModuleKind.bridges.name) is off in Settings › Modules." }
+            return isOn(.swaps) ? r(.relay) : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
         case .multisigCreate(_, _, _, let nets): return nets.compactMap(ModuleNetwork.init(place:)).lazy.compactMap { self.refusal(network: $0, ru: ru) }.first
         case .multisigSend(_, _, _, let net): return net.flatMap(ModuleNetwork.init(place:)).flatMap { refusal(network: $0, ru: ru) }
         case .sendTo, .yields, .receive, .stopSchedules, .multisigShow: return nil

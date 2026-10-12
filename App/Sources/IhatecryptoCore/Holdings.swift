@@ -156,8 +156,8 @@ public enum Holdings {
     }
 
     /// A dollar stablecoin read straight from its network's node (the app's fresh read before a move: Workspace.freshenSource).
-    public static func dollar(_ chain: String, contract: String, amount: Decimal, icon: URL?) -> Holding {
-        Holding(chain: chain, contract: contract, amount: amount, symbol: "USDC", icon: icon, price: 1, verified: true)
+    public static func dollar(_ chain: String, contract: String, amount: Decimal, symbol: String = "USDC", icon: URL?) -> Holding {
+        Holding(chain: chain, contract: contract, amount: amount, symbol: symbol, icon: icon, price: 1, verified: true)
     }
 
     /// HyperEVM, read from its node (its explorers have no API ihatecrypto can use): HYPE itself, USDC — what Relay

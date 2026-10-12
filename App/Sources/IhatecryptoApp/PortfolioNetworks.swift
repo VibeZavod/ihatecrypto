@@ -516,6 +516,7 @@ struct InTransit: View {
         switch e.chain {
         case "1click": ("NEAR Intents", "near")
         case "cctp": ("Circle's CCTP", "usdc")
+        case "layerzero": ("LayerZero", "usdt")
         default: ("Relay", "relay")
         }
     }
@@ -591,6 +592,10 @@ private struct TransitDetails: View {
             guard let colon = e.id.firstIndex(of: ":"), let source = UInt32(e.id[..<colon]) else { return "unknown" }
             return await Executor.cctpForward(source: source, burn: String(e.id[e.id.index(after: colon)...])).map { "minted by Circle (\($0.prefix(10))…)" }
                 ?? "burned, waiting for Circle's mint"
+        case "layerzero":
+            guard let s = await Executor.layerZeroStatus(tx: e.id) else { return "LayerZero hasn't seen it yet" }
+            return ["INFLIGHT": "on its way: waiting for the source network's finality", "CONFIRMING": "verified, being delivered",
+                    "DELIVERED": "landed", "FAILED": "failed"][s.status] ?? s.status.lowercased()
         default:
             guard let s = try? await Relay.status(requestId: e.id).status else { return "Relay didn't answer" }
             return ["waiting": "waiting for the deposit", "pending": "deposit seen, filling", "submitted": "fill sent", "success": "landed",
@@ -606,6 +611,7 @@ private struct TransitDetails: View {
             if let colon = e.id.firstIndex(of: ":"), let source = UInt32(e.id[..<colon]),
                let net = EVMNetwork.all.first(where: { CCTP.domain($0.rpc.chainId) == source }),
                let u = URL(string: "\(net.explorer)/tx/\(e.id[e.id.index(after: colon)...])") { out.append(("Burn on \(net.name)", u)) }
+        case "layerzero": if let u = URL(string: "https://layerzeroscan.com/tx/\(e.id)") { out.append(("LayerZero Scan", u)) }
         default: if let u = URL(string: "https://relay.link/transaction/\(e.id)") { out.append(("Relay", u)) }
         }
         if e.chain != "cctp", let tx = transaction(e) {

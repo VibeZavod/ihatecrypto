@@ -359,6 +359,9 @@ final class Workspace {
     var routeWays: [String: String] = [:]
     /// Both ways of the Base or Arbitrum trade waiting for Confirm, quoted now, the better first (Workspace.quoteSwap):
     /// its card shows the one that leaves more. Empty = neither quotes.
+    /// USDT just read from a network's node for a move of it (freshenSource): its card's balance while the explorer the
+    /// tokens are read through is still behind — a refresh from it put «Move 0 USDT» on a card of 0.7 that had landed.
+    var usdtRead: (place: String, amount: Decimal, at: Date)?
     var swapQuote: (command: WalletCommand, ways: [(way: String, gets: String, worth: Decimal)])? {
         didSet { if swapQuote?.ways.isEmpty == false { swapQuotedAt = Date() } }
     }

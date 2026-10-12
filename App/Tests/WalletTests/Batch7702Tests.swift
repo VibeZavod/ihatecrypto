@@ -129,7 +129,7 @@ private let calls = [Batch7702.Call(to: baseUSDC, data: approve), Batch7702.Call
 // MARK: - Fork run
 
 /// Signs with a throwaway key under the same rules as the signing process (Signer.swift), for the fork run.
-private struct ForkSigner: TradeSigner {
+struct ForkSigner: TradeSigner {
     let key: Data
     let address: String
     var batches = true

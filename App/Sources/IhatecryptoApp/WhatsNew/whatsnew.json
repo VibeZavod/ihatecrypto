@@ -1,5 +1,47 @@
 [
   {
+    "version": "0.6.1",
+    "date": "2026-10-13",
+    "stories": [
+      {
+        "title": "A multisig in one move",
+        "text": "Say «make a multisig»: a card with its keys — this Mac's, your Ledger's, any saved address, as many as you want — how many of them must sign, and the networks you pick. One Confirm makes it at the same address on each; then pay from it in the chat.",
+        "symbol": "key.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "What every bridge costs",
+        "text": "A move between networks lists each bridge that can make it — Relay, Circle's CCTP, NEAR Intents, LayerZero — with what it costs and how long it takes, on the bridge's own step. The one the move goes by comes first.",
+        "symbol": "arrow.left.arrow.right.circle.fill",
+        "color": "2775CA"
+      },
+      {
+        "title": "USDT over Tether's own bridge",
+        "text": "«Move 50 USDT from Arbitrum to Polygon via LayerZero» sends it over USDT0: the same amount arrives, for cents of gas, between Ethereum, Arbitrum, Optimism, Polygon and HyperEVM. It takes minutes to hours, so the card says the wait and the portfolio shows it in transit.",
+        "symbol": "point.3.connected.trianglepath.dotted",
+        "color": "26A17B"
+      },
+      {
+        "title": "How full the chat is",
+        "text": "A chip beside the model's name shows how much of its window the chat fills — «21k / 1M» — or, when an API key pays, what the answers cost. Click it for what it's made of: the instructions, the chat, the canvas and your balances.",
+        "symbol": "cpu",
+        "color": "5856D6"
+      },
+      {
+        "title": "A chat that keeps the thread",
+        "text": "Each message now goes with the canvas's chat from its start — its newest part once it grows long — not just the last few lines, so «as usual» still means what you said it means. And the newest block is always on top: finished moves sit under the current one, newest first.",
+        "symbol": "bubble.left.and.text.bubble.right.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Smaller things",
+        "text": "A small first Kamino deposit asks «Send anyway?» with its rent in numbers instead of refusing. Jupiter is asked again when it's busy, and its errors read as a sentence. The window's buttons stay in their corner after a relaunch.",
+        "symbol": "wrench.and.screwdriver.fill",
+        "color": "8E8E93"
+      }
+    ]
+  },
+  {
     "version": "0.6.0",
     "date": "2026-10-09",
     "stories": [

@@ -202,6 +202,10 @@ public enum WalletCommand: Equatable, Sendable {
     case bridge(from: String, to: String, Decimal?)
     /// The same move through Circle's CCTP, asked for by name («… via CCTP»): Ethereum, Arbitrum, Base, Polygon.
     case cctp(from: String, to: String, Decimal?)
+    /// USDT between two of USDT0's networks (Stablecoins.usdt0Networks) at our own address: Relay's swap of it, seconds —
+    /// or, asked for by name («… via LayerZero»), Tether's own bridge: the same amount on the other side for cents of
+    /// gas, in minutes to hours. nil = all the USDT on `from`.
+    case usdt(from: String, to: String, Decimal?, layerZero: Bool)
     /// The network's own coin for fees («robinhood», «base», …), `usd` worth of it over Relay; nil = $1.
     case gas(String, usd: Decimal?)
     /// A paid API on Tempo (MPP): the request as the service documents it; the price comes from its 402 answer and
@@ -450,6 +454,16 @@ public enum WalletCommand: Equatable, Sendable {
         if !q.contains(/\baave\b|ааве|morpho|морфо/),
            let m = q.firstMatch(of: /(?:\bfrom\b|\bиз\b|\bс\b|\bсо\b)\s+(?:the\s+|my\s+)?(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|binance\s+smart\s+chain|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*)(?:[^.]|\.(?=\d))*?(?:\bto\b|\binto\b|\bв\b|\bна\b)\s+(?:the\s+)?(hyperevm|hyper\s+evm|хайперевм\w*|гиперевм\w*|optimism|оптимизм\w*|bnb(?:\s+(?:smart\s+)?chain)?|bsc|бнб\w*|бсц\w*|binance\s+smart\s+chain|base|бейс\w*|бейз\w*|arbitrum|арбитрум\w*|robinhood|робин[гх]уд\w*|polygon|полигон\w*|ethereum|эфириум\w*|tempo|темпо\w*|hyperliquid|гипер\w*|хайпер\w*|hl\b)/),
            let from = Self.network(String(m.1)), let to = Self.network(String(m.2)), from != to {
+            // USDT, not USDC: Tether's own bridge when LayerZero is named, else Relay's swap of it — with that bridge's
+            // price beside it on the card where it runs. Optimism's «USDT» is the old bridged token, not USDT0
+            // (Stablecoins): a plain move from there swaps the one they hold.
+            if q.contains(/\busdt0?\b|usd₮|\btether\b|юсдт|тезер/), !q.contains(/usdc|юсдс|юсдц/), to != "hyperliquid" {
+                let layerZero = q.contains(/layer\s*zero|л[еэ]й?ер\s*зеро|(?:via|through|over|by|через|по)\s+(?:the\s+)?usdt0|\boft\b/)
+                if layerZero || (Stablecoins.usdt0Networks.contains(from) && Stablecoins.usdt0Networks.contains(to) && from != "optimism") {
+                    return .usdt(from: from, to: to, coins, layerZero: layerZero)
+                }
+                return .crossSwap(from: "USDT", on: from, to: "USDT", at: to, amount: coins)
+            }
             // «… via CCTP», «… через Circle»: Circle's burn and mint, whatever Relay would land.
             if q.contains(/\bcctp\b|\bcircle\b|циркл|сиркл/), !["hyperliquid", "robinhood", "tempo"].contains(from), !["hyperliquid", "robinhood", "tempo"].contains(to) {
                 return .cctp(from: from, to: to, amount)
@@ -931,6 +945,8 @@ extension WalletCommand {
         case .gas(let place, let usd): return "add ≈ \(Fmt.usd(usd ?? 1)) of gas on \(Self.placeName(place))"
         case .bridge(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to))" + (to == "robinhood" ? " (arrives as USDG)" : "")
         case .cctp(let from, let to, let x): return "move \(n(x)) USDC from \(Self.placeName(from)) to \(Self.placeName(to)) via CCTP"
+        case .usdt(let from, let to, let x, let layerZero):
+            return "move \(n(x)) USDT from \(Self.placeName(from)) to \(Self.placeName(to))" + (layerZero ? " via LayerZero" : "")
         case .aaveBorrow(let x, let net): return "borrow \(n(x)) USDC on Aave on \(Self.placeName(net))"
         case .aaveRepay(let x, let net): return x == nil ? "repay all USDC on Aave on \(Self.placeName(net))" : "repay \(n(x)) USDC on Aave on \(Self.placeName(net))"
         case .aaveCollateral(let x, let net): return "supply \(n(x)) ETH as collateral on Aave on \(Self.placeName(net))"

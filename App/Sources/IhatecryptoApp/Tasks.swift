@@ -316,7 +316,7 @@ extension Workspace {
     /// Where a step takes its money from: what it spends on, or the place a bridge leg leaves; nil when it names none.
     static func source(_ c: WalletCommand) -> String? {
         switch c {
-        case .bridge(let from, _, _), .cctp(let from, _, _), .evmToSolana(let from, _): from
+        case .bridge(let from, _, _), .cctp(let from, _, _), .evmToSolana(let from, _), .usdt(let from, _, _, _): from
         case .baseToSolana: "base"
         case .arbitrumToSolana: "arbitrum"
         case .robinhoodToSolana: "robinhood"
