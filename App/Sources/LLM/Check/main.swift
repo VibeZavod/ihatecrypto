@@ -78,7 +78,7 @@ if prompt == "--route" {
     if let m = env["IHATECRYPTO_ROUTE_MEMORY"] { context.memory = m.components(separatedBy: "|") }
     // Counted: the model calls of each message and what went in and out of them, for the agent checks.
     let counter = CallCounter()
-    let client = CountingClient(base: try provider.client(credential, save: { _ in }), counter: counter)
+    let client = CountingClient(base: MeteredClient(try provider.client(credential, save: { _ in })) { usage, _ in counter.count(usage) }, counter: counter)
     // `IHATECRYPTO_MARKETS="BTC,ETH,…,xyz:CL"`: Hyperliquid's real list, for the plans test.
     let markets: Set<String> = env["IHATECRYPTO_MARKETS"].map { Set($0.components(separatedBy: ",")) } ?? ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]
     // Real token lookups; the app's own data (portfolio, markets, rates) is what the context above says.
@@ -156,7 +156,7 @@ if prompt == "--route" {
             for l in reading.lookups { line += "\n   lookup: \(l.tool) \(l.arg)" }
             if let show = reading.show { line += "\n   show: \(show)  " + verdict(show, found: reading.found) }
             for o in reading.options { line += "\n   \(o.recommended ? "★" : "·") \(o.title) — \(o.comment)\n       \(o.command)  " + verdict(o.command, found: reading.found) }
-            print("«\(message)» \(String(format: "%.1f", Date().timeIntervalSince(started))) s\n   → \(line)")
+            print("«\(message)» \(String(format: "%.1f", Date().timeIntervalSince(started))) s\(counter.context)\n   → \(line)")
         } catch {
             print("«\(message)» → error: \(error.localizedDescription)")
         }
@@ -166,9 +166,10 @@ if prompt == "--route" {
 
 do {
     let started = Date()
-    let client = try provider.client(credential, save: { _ in })
+    let counter = CallCounter()
+    let client = MeteredClient(try provider.client(credential, save: { _ in })) { usage, _ in counter.count(usage) }
     let reply = try await client.complete(LLMRequest(model: model, messages: [LLMMessage(.user, prompt)]))
-    print("\(provider.info.name) · \(model) · \(String(format: "%.1f", Date().timeIntervalSince(started))) s")
+    print("\(provider.info.name) · \(model) · \(String(format: "%.1f", Date().timeIntervalSince(started))) s\(counter.context)")
     print(reply)
 } catch {
     fputs("\(provider.info.name) · \(model): \(error.localizedDescription)\n", stderr)
@@ -180,7 +181,14 @@ do {
 final class CallCounter: @unchecked Sendable {
     private let lock = NSLock()
     private var calls = 0, inChars = 0, outChars = 0
-    func reset() { lock.withLock { (calls, inChars, outChars) = (0, 0, 0) } }
+    /// What the service itself counted: the biggest prompt of the message's calls, its window and price when told.
+    private var read = 0, window: Int?, cost = 0.0
+    func reset() { lock.withLock { (calls, inChars, outChars, read, cost) = (0, 0, 0, 0, 0) } }
+    func count(_ u: LLMUsage) { lock.withLock { read = max(read, u.input); window = u.window ?? window; cost += u.cost ?? 0 } }
+    /// « · read 11204 tokens of 1000000 · $0.0312», empty when the service counted nothing.
+    var context: String {
+        lock.withLock { read == 0 ? "" : " · read \(read) tokens" + (window.map { " of \($0)" } ?? "") + (cost > 0 ? String(format: " · $%.4f", cost) : "") }
+    }
     func add(_ r: LLMRequest, _ out: String) {
         lock.withLock { calls += 1; inChars += r.messages.reduce(0) { $0 + $1.text.count }; outChars += out.count }
     }

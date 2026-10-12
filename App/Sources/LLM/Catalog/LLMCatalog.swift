@@ -25,6 +25,9 @@ public enum LLMCatalog {
         all.first { $0.info.id == id }
     }
 
+    /// A context window known before a service's first answer: Ollama's is the one its client asks for.
+    public static func window(provider id: String) -> Int? { id == "ollama" ? OllamaChatClient.context : nil }
+
     /// A model id as people write it: «gpt-6-sol» → «GPT 6 SOL», «claude-haiku-4-5» → «Claude Haiku 4.5»,
     /// «deepseek/deepseek-v4.1-flash» → «DeepSeek V4.1 Flash», «qwen3.5:9b» → «Qwen3.5 9B».
     /// Why a model can't run the chat (too small for its brief); nil when it can.

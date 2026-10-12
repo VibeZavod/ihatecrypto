@@ -1271,8 +1271,6 @@ struct StudioCanvas: View {
             LedgerBoard()
             if ws.showFavorites { FavoritesBoard().transition(.opacity) }
             if ws.showHistory { HistoryBoard().transition(.opacity) }
-            // Moves already done on this canvas stay above the current one.
-            EarlierBoards()
             // A move waiting for its signature or running has its own title and status: no «Plan · waiting» over it.
             if hasRoute || ws.allocationPreview != nil || (ws.pendingAction == nil && !ws.moveRunning && ws.currentScheduleKey == nil) {
                 HStack(spacing: 8) {
@@ -1361,6 +1359,8 @@ struct StudioCanvas: View {
                         .transition(.opacity)
                 }
             }
+            // Moves already done on this canvas stay under the current one, the newest first: the newest block is on top.
+            EarlierBoards()
         }
     }
 
@@ -2679,6 +2679,9 @@ private struct ChatComposer: View {
                 HStack(spacing: 6) {
                     ChatModelMenu()
                     NetworksChip()
+                    Spacer(minLength: 0)
+                    // What the chat fills of the model's window, or what a key paid for its answers; after the first answer.
+                    ContextChip()
                 }
             }
             if case .failed(let why) = voice.state {

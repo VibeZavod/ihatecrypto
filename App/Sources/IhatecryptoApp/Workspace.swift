@@ -652,8 +652,18 @@ final class Workspace {
         guard p.info.unavailable == nil, credential != nil || p.info.kind == .local,
               let client = try? p.client(credential, save: { Keychain.save($0, for: id) }) else { return nil }
         // Settings › Models › «Think before answering»: every request reasons first.
-        return UserDefaults.standard.bool(forKey: "modelThinking") ? ThinkingClient(client) : client
+        let asked: any LLMClient = UserDefaults.standard.bool(forKey: "modelThinking") ? ThinkingClient(client) : client
+        // Every answer says what it read and cost: the chip over the chat's field (ContextMeter.swift).
+        return MeteredClient(asked) { [weak self] usage, request in
+            Task { @MainActor in await self?.count(usage, for: request, provider: id) }
+        }
     }
+
+    /// What the open canvas's chat fills of its model's window, and what its answers cost.
+    var meter = ContextMeter()
+    /// Windows and list prices of the models a key pays for, by `ModelFacts.key`; read when one first answers.
+    @ObservationIgnored var modelFacts: [String: ModelFacts] = [:]
+    @ObservationIgnored var modelFactsAsked = Date.distantPast
 
     func signIn() async {
         llmBusy = true

@@ -238,6 +238,9 @@ final class DebugAPI {
             "jev": ws.planReview.map { ["label": $0.label, "concern": $0.concern, "text": $0.text] as [String: Any] } ?? ws.jevNote ?? NSNull(),
             "checklist": ws.planChecklist,
             "busy": ws.busy,
+            // The chip over the field: tokens the model read with the last message, its window, the answers' dollars.
+            "context": ["used": ws.meter.used ?? NSNull(), "window": ws.meter.window ?? NSNull(), "sent": ws.meter.sent, "lines": ws.meter.lines,
+                        "spent": ws.meter.spent] as [String: Any],
             "messages": ws.messages.dropFirst(since).map { ["user": $0.fromUser, "text": $0.text, "note": $0.note ?? NSNull()] as [String: Any] },
             "balances": [
                 "total": num(ws.equity), "solanaUSDC": num(ws.solana?.usdc), "sol": num(ws.solana?.sol),

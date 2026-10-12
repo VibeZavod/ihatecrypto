@@ -48,7 +48,9 @@ struct ClaudeCodeClient: LLMClient {
 
     func complete(_ r: LLMRequest) async throws -> String {
         let prompt = r.dialogue.map(\.text).joined(separator: "\n\n")
-        return try Self.result(try await Self.run(path, Self.arguments(r), input: prompt))
+        let output = try await Self.run(path, Self.arguments(r), input: prompt)
+        LLMUsage.report(Self.usage(output))
+        return try Self.result(output)
     }
 
     /// The same answer, its words told to `partial` as Claude Code writes them (text_delta events).
@@ -62,7 +64,23 @@ struct ClaudeCodeClient: LLMClient {
         }
         // The result is the last event; a run that wrote none (an old Claude Code) is read as one JSON answer.
         let last = output.split(separator: 0x0a).last { (try? JSONSerialization.jsonObject(with: Data($0)) as? [String: Any])?["type"] as? String == "result" }
+        LLMUsage.report(Self.usage(last.map { Data($0) } ?? output))
         return try Self.result(last.map { Data($0) } ?? output)
+    }
+
+    /// What the run used, from its result object: the tokens of its one answer, the price Claude Code puts on them (a
+    /// subscription isn't billed it) and the model's context window.
+    static func usage(_ output: Data) -> LLMUsage? {
+        guard let result = try? JSONSerialization.jsonObject(with: output) as? [String: Any],
+              var usage = LLMUsage(reported: result["usage"] as? [String: Any]) else { return nil }
+        usage.cost = (result["total_cost_usd"] as? NSNumber)?.doubleValue
+        // A run may count a small helper model beside the one asked: the window is the one that read the most.
+        let models = (result["modelUsage"] as? [String: Any])?.values.compactMap { $0 as? [String: Any] } ?? []
+        func read(_ m: [String: Any]) -> Int {
+            ["inputTokens", "cacheReadInputTokens", "cacheCreationInputTokens"].reduce(0) { $0 + ((m[$1] as? NSNumber)?.intValue ?? 0) }
+        }
+        usage.window = (models.max { read($0) < read($1) }?["contextWindow"] as? NSNumber)?.intValue
+        return usage
     }
 
     /// The answer in Claude Code's result object, or why there's none.

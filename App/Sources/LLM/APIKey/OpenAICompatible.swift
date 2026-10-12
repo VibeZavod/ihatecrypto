@@ -68,7 +68,7 @@ public struct OpenAICompatible: LLMProvider {
 public struct OllamaChatClient: LLMClient {
     let base: String
     // ponytail: one size for every model; a Mac short of memory for 16k on a big model would want it from /api/show.
-    static let context = 16_384
+    public static let context = 16_384
 
     /// `think: false`: a thinking model (Gemma 4, Qwen 3.x) otherwise reasons to itself before its JSON — 544 tokens and
     /// 18.5 s instead of 19 and 5.3 s for «купи SOL на 5 долларов» on Gemma 4 12B, and ≈ 2 minutes an answer with the
@@ -107,7 +107,13 @@ public struct OllamaChatClient: LLMClient {
                 text += words
                 partial(text)
             }
-            if event["done"] as? Bool == true { break }
+            if event["done"] as? Bool == true {
+                // The last line counts what it read and wrote; the window is the one asked for above.
+                if let read = event["prompt_eval_count"] as? Int {
+                    LLMUsage.report(LLMUsage(input: read, output: event["eval_count"] as? Int ?? 0, window: Self.context))
+                }
+                break
+            }
         }
         guard !text.isEmpty else { throw LLMError("The model returned an empty reply.") }
         return text
@@ -159,18 +165,27 @@ public struct OpenAIChatClient: LLMClient {
         guard let text = try JSONDecoder().decode(Completion.self, from: data).choices.first?.message.content, !text.isEmpty else {
             throw LLMError("The model returned an empty reply.")
         }
+        LLMUsage.report(LLMUsage(reported: (try? JSONSerialization.jsonObject(with: data) as? [String: Any])?["usage"] as? [String: Any]))
         return text
     }
 
     /// The same answer as server-sent events, `partial` told the text so far: OpenAI's, OpenRouter's, Ollama's and LM
     /// Studio's /chat/completions all speak them. A server that ignores «stream» and answers with one body still works.
     public func stream(_ r: LLMRequest, partial: @escaping @Sendable (String) -> Void) async throws -> String {
-        try await withoutThinking(r) { try await streamOnce($0, partial: partial) }
+        try await withoutThinking(r) { r in
+            // The stream's last event is asked to count the tokens. A server that refuses a request it doesn't know every
+            // field of (400 or 422, whatever it names) is asked again without the option: the count is never worth the answer.
+            do { return try await streamOnce(r, counted: true, partial: partial) } catch let refused as NetError
+                where ["HTTP 400", "HTTP 422"].contains(where: refused.message.hasPrefix) && !"\(refused)".localizedCaseInsensitiveContains("reasoning") {
+                return try await streamOnce(r, counted: false, partial: partial)
+            }
+        }
     }
 
-    private func streamOnce(_ r: LLMRequest, partial: @escaping @Sendable (String) -> Void) async throws -> String {
+    private func streamOnce(_ r: LLMRequest, counted: Bool, partial: @escaping @Sendable (String) -> Void) async throws -> String {
         var b = body(r)
         b["stream"] = true
+        if counted { b["stream_options"] = ["include_usage": true] }
         let request = try HTTP.request(baseURL + "/chat/completions", method: "POST", body: try JSONSerialization.data(withJSONObject: b),
                                        contentType: "application/json", headers: headers.merging(["Accept": "text/event-stream"]) { mine, _ in mine },
                                        timeout: r.thinking ? 180 : 90)
@@ -180,7 +195,7 @@ public struct OpenAIChatClient: LLMClient {
             for try await byte in bytes.prefix(600) { body.append(byte) }
             try HTTP.check(response, body: body)
         }
-        var text = "", plain = ""
+        var text = "", plain = "", usage: LLMUsage?
         for try await line in bytes.lines {
             // «: OPENROUTER PROCESSING» keep-alives are comments; a line that isn't an event is a plain answer's.
             guard line.hasPrefix("data:") else { if !line.hasPrefix(":") { plain += line + "\n" }; continue }
@@ -188,17 +203,21 @@ public struct OpenAIChatClient: LLMClient {
             if payload == "[DONE]" { break }
             guard let event = (try? JSONSerialization.jsonObject(with: Data(payload.utf8))) as? [String: Any] else { continue }
             if let error = event["error"] { throw LLMError("The model service: \(error)") }
+            // The count comes in an event of its own after the words (OpenRouter's with the price it charged).
+            usage = LLMUsage(reported: event["usage"] as? [String: Any]) ?? usage
             let words = ((event["choices"] as? [[String: Any]])?.first?["delta"] as? [String: Any])?["content"] as? String ?? ""
             if !words.isEmpty {
                 text += words
                 partial(text)
             }
         }
-        if text.isEmpty, let whole = (try? JSONSerialization.jsonObject(with: Data(plain.utf8)) as? [String: Any])?["choices"] as? [[String: Any]] {
-            text = (whole.first?["message"] as? [String: Any])?["content"] as? String ?? ""
+        if text.isEmpty, let whole = try? JSONSerialization.jsonObject(with: Data(plain.utf8)) as? [String: Any] {
+            text = ((whole["choices"] as? [[String: Any]])?.first?["message"] as? [String: Any])?["content"] as? String ?? ""
+            usage = LLMUsage(reported: whole["usage"] as? [String: Any])
             if !text.isEmpty { partial(text) }
         }
         guard !text.isEmpty else { throw LLMError("The model returned an empty reply.") }
+        LLMUsage.report(usage)
         return text
     }
 

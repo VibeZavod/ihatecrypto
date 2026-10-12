@@ -37,8 +37,21 @@ public struct ChatGPTSubscription: LLMProvider {
         guard let access, let data = try? await HTTP.get(Self.models + "?client_version=0.200.0", headers: [
             "Authorization": "Bearer \(access.token)", "chatgpt-account-id": access.account, "originator": "codex_cli_rs",
         ]) else { return info.models }
+        // The same list says each model's context window: kept for the client, which reports it with an answer.
+        for (model, window) in Self.windows(data) { ModelWindows.told[model] = window }
         let live = Self.listed(data)
         return live.isEmpty ? info.models : live
+    }
+
+    /// Each model's context window in a Codex backend reply (272,000 for a subscription's, 2026-10-13; the API's own
+    /// window for the same model is wider).
+    static func windows(_ data: Data) -> [String: Int] {
+        guard let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let rows = json["models"] as? [[String: Any]] else { return [:] }
+        return Dictionary(rows.compactMap { row in
+            guard let slug = row["slug"] as? String, let window = (row["context_window"] as? NSNumber)?.intValue else { return nil }
+            return (slug, window)
+        }, uniquingKeysWith: { first, _ in first })
     }
 
     static let models = "https://chatgpt.com/backend-api/codex/models"
@@ -161,6 +174,10 @@ actor ChatGPTClient: LLMClient {
             if stream.text.count != before { partial(stream.text) }
         }
         guard !stream.text.isEmpty else { throw LLMError("ChatGPT returned an empty reply.") }
+        if var usage = stream.usage {
+            usage.window = ModelWindows.told[r.model]
+            LLMUsage.report(usage)
+        }
         return stream.text
     }
 
@@ -216,6 +233,8 @@ actor ChatGPTClient: LLMClient {
 /// Collects text from the Responses API event stream.
 struct CodexStream {
     private(set) var text = ""
+    /// What the completed response says it read and wrote.
+    private(set) var usage: LLMUsage?
 
     /// Returns true when the response is complete.
     mutating func feed(_ line: String) throws -> Bool {
@@ -226,6 +245,7 @@ struct CodexStream {
         case "response.output_text.delta":
             text += event["delta"] as? String ?? ""
         case "response.completed":
+            usage = LLMUsage(reported: (event["response"] as? [String: Any])?["usage"] as? [String: Any])
             return true
         case "response.failed", "response.incomplete", "error":
             let error = ((event["response"] as? [String: Any])?["error"] as? [String: Any])?["message"] as? String

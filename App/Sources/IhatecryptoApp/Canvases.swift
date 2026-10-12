@@ -125,6 +125,8 @@ nonisolated struct CanvasSession: Codable, Identifiable, Equatable {
     var icon: AddressIcon?
     /// A scheduled item's own canvas («task:<id>», «buy:SOL», «perp:BTC»): its card shows on it, like a chat's board.
     var schedule: String?
+    /// What its chat filled of the model's window and what its answers cost, as of its last message (ContextMeter.swift).
+    var meter: ContextMeter?
     var displayTitle: String { name ?? (title.isEmpty ? "Canvas" : title) }
 }
 
@@ -156,6 +158,7 @@ extension Workspace {
         c.intent = intent
         c.executed = executed != nil && executed == intent
         c.chart = chart
+        c.meter = meter == ContextMeter() ? nil : meter
         if let board = canvasBubbles() {
             // A new move after a finished one: the finished one stays on the canvas, above it.
             if let done = old?.outcome, let old, finishedAction?.outcome != done {
@@ -356,6 +359,7 @@ extension Workspace {
         noteCard = notes.isEmpty ? nil : NoteCard(canvas: c.id, folder: c.folder, texts: notes)
         intent = c.intent
         executed = c.executed ? c.intent : nil
+        meter = c.meter ?? ContextMeter()
         if LLMCatalog.provider(id: c.providerID) != nil {
             providerID = c.providerID
             modelChoices[c.providerID] = c.model
@@ -380,6 +384,7 @@ extension Workspace {
     private func clearCanvas() {
         if let pendingAction, let canvasID { parkedPending[canvasID] = (pendingAction, pendingText, Date()) }
         newCanvasFolder = nil
+        meter = ContextMeter()
         takeChoices = nil
         nextSteps = nil
         yieldOptions = nil
@@ -796,15 +801,17 @@ struct CanvasRow: View {
     }
 }
 
-/// The moves already carried out on the open canvas, oldest first, above what is on it now.
+/// The moves already carried out on the open canvas, under what is on it now, the newest first: the newest block is
+/// always the top one.
 struct EarlierBoards: View {
     @Environment(Workspace.self) private var ws
     /// Finished moves are one line each, so the current one stays in view; a click shows a move's route again.
+    /// By a move's place in the kept list (oldest first), which a new move never shifts.
     @State private var open: Set<Int> = []
 
     var body: some View {
         let earlier = ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []
-        ForEach(Array(earlier.enumerated()), id: \.offset) { i, done in
+        ForEach(Array(earlier.enumerated()).reversed(), id: \.offset) { i, done in
             VStack(alignment: .leading, spacing: 10) {
                 Button { withAnimation(.snappy) { if open.contains(i) { open.remove(i) } else { open.insert(i) } } } label: {
                     HStack(spacing: 8) {
@@ -2927,14 +2934,21 @@ extension Workspace {
         }
     }
 
-    /// The last few lines of this canvas's chat, for a model reading a follow-up like «1» or «yes».
-    func recentChat() -> [String] {
+    /// This canvas's chat as a model is given it, oldest first, a line a message.
+    func chatLines() -> [String] {
         let chat = Array(messages.dropFirst())
         // A message the guard stopped never reaches a model, not even as history behind a «pass it»: only the guard's reply stays.
         let stopped = Set(chat.indices.dropLast().filter { chat[$0].fromUser && Message.stopsSteering(chat[$0 + 1].note) })
         // A long message the person wrote is read whole (up to 3000 characters); our own replies only need their gist.
-        return chat.indices.filter { !stopped.contains($0) }.suffix(12).map { i in
+        return chat.indices.filter { !stopped.contains($0) }.map { i in
             chat[i].fromUser ? "user: " + chat[i].text.prefix(3000) : "ihatecrypto: " + chat[i].text.prefix(600)
         }
+    }
+
+    /// The chat that goes with a message: all of it while it's short, its newest lines once it's long or the model's
+    /// window is small (ChatRecall), so a follow-up like «1», «yes» or «as last time» is read by what was said before
+    /// and a long chat goes on. It was the last 12 lines until 2026-10-13.
+    func recentChat() -> [String] {
+        sentChat(chatLines())
     }
 }

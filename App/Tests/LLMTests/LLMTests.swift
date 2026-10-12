@@ -215,3 +215,69 @@ private func jwt(_ claims: [String: Any]) -> String {
     #expect(body["think"] as? Bool == false)
     #expect(client.body(LLMRequest(model: "gpt-oss:20b", messages: [], wantsJSON: true), stream: true, think: true)["think"] == nil)
 }
+
+// MARK: What an answer used (the chat's context chip)
+
+@Test func usageReadsEachServicesShape() throws {
+    // Chat completions: the cached part is counted inside prompt_tokens; OpenRouter adds the price it charged.
+    let openRouter = ["prompt_tokens": 11_000, "completion_tokens": 40, "prompt_tokens_details": ["cached_tokens": 10_240], "cost": 0.0123] as [String: Any]
+    #expect(LLMUsage(reported: openRouter) == LLMUsage(input: 11_000, cached: 10_240, output: 40, cost: 0.0123))
+    // The Responses API (the Codex backend).
+    let responses = ["input_tokens": 9_000, "input_tokens_details": ["cached_tokens": 8_000], "output_tokens": 25] as [String: Any]
+    #expect(LLMUsage(reported: responses) == LLMUsage(input: 9_000, cached: 8_000, output: 25))
+    // Anthropic: the cached parts are beside input_tokens, not in them.
+    let anthropic = ["input_tokens": 521, "cache_creation_input_tokens": 100, "cache_read_input_tokens": 10_000, "output_tokens": 36] as [String: Any]
+    #expect(LLMUsage(reported: anthropic) == LLMUsage(input: 10_621, cached: 10_000, output: 36))
+    #expect(LLMUsage(reported: ["total_tokens": 5]) == nil && LLMUsage(reported: nil) == nil)
+}
+
+/// The result object of a real `claude -p` run (2026-10-13), cut to what is read.
+@Test func claudeCodeResultTellsWhatTheRunUsed() {
+    let result = #"{"type":"result","is_error":false,"result":"works","total_cost_usd":0.000701,"usage":{"input_tokens":521,"cache_creation_input_tokens":0,"cache_read_input_tokens":0,"output_tokens":36},"modelUsage":{"claude-haiku-4-5":{"inputTokens":521,"outputTokens":36,"cacheReadInputTokens":0,"cacheCreationInputTokens":0,"costUSD":0.000701,"contextWindow":200000}}}"#
+    #expect(ClaudeCodeClient.usage(Data(result.utf8)) == LLMUsage(input: 521, output: 36, window: 200_000, cost: 0.000701))
+    #expect(ClaudeCodeClient.usage(Data("not json".utf8)) == nil)
+}
+
+@Test func codexStreamKeepsWhatTheResponseUsedAndTheBackendsListSaysEachWindow() throws {
+    var stream = CodexStream()
+    _ = try stream.feed(#"data: {"type":"response.output_text.delta","delta":"ok"}"#)
+    #expect(try stream.feed(#"data: {"type":"response.completed","response":{"usage":{"input_tokens":9000,"input_tokens_details":{"cached_tokens":8000},"output_tokens":25,"total_tokens":9025}}}"#))
+    #expect(stream.usage == LLMUsage(input: 9_000, cached: 8_000, output: 25))
+    // ~/.codex/models_cache.json holds the same reply: 272,000 for a subscription's models.
+    let list = #"{"models":[{"slug":"gpt-6-luna","visibility":"list","priority":4,"context_window":272000,"max_context_window":872000},{"slug":"old"}]}"#
+    #expect(ChatGPTSubscription.windows(Data(list.utf8)) == ["gpt-6-luna": 272_000])
+}
+
+@Test func modelFactsReadOpenRoutersListAndPriceAnAnswer() throws {
+    let list = #"{"data":[{"id":"anthropic/claude-opus-5.5","context_length":1000000,"pricing":{"prompt":"0.000004","completion":"0.00002","input_cache_read":"0.0000002"}},{"id":"deepseek/deepseek-v4.1-flash:free","context_length":1048576,"pricing":{"prompt":"0","completion":"0"}},{"id":"~deepseek/deepseek-flash-latest","context_length":1048576,"pricing":{"prompt":"0.00000015","completion":"0.0000006"}},{"id":"no-window"}]}"#
+    let table = ModelFacts.table(Data(list.utf8))
+    // The Anthropic API's own spelling of the model finds OpenRouter's row; a «:free» variant is a row of its own.
+    let opus = try #require(table[ModelFacts.key("claude-opus-5-5")])
+    #expect(opus.window == 1_000_000 && table.count == 3 && table[ModelFacts.key("deepseek-v4.1-flash")] == nil)
+    // DeepSeek's own «deepseek-flash» isn't the list's «…-latest» alias, whose prices are its own: left unpriced.
+    #expect(table[ModelFacts.key("deepseek-flash")] == nil)
+    // A row with no cache price reads from the cache at the full one.
+    #expect(table[ModelFacts.key("deepseek-flash-latest")] == ModelFacts(window: 1_048_576, input: 0.00000015, cached: 0.00000015, output: 0.0000006))
+    // 1,000 tokens read anew, 10,000 from the cache, 100 written.
+    #expect(abs(opus.cost(LLMUsage(input: 11_000, cached: 10_000, output: 100)) - 0.008) < 1e-12)
+    // Ollama's window is the one its client asks for: known before its first answer.
+    #expect(LLMCatalog.window(provider: "ollama") == 16_384 && LLMCatalog.window(provider: "openai") == nil)
+}
+
+@Test func aMeteredClientHearsWhatItsAnswersUsed() async throws {
+    struct Counting: LLMClient {
+        func complete(_ request: LLMRequest) async throws -> String {
+            LLMUsage.report(LLMUsage(input: 7, output: 1))
+            return "ok"
+        }
+    }
+    final class Heard: @unchecked Sendable { let lock = NSLock(); var all: [(LLMUsage, String)] = [] }
+    let heard = Heard()
+    let client = MeteredClient(Counting()) { usage, request in heard.lock.withLock { heard.all.append((usage, request.model)) } }
+    #expect(try await client.complete(LLMRequest(model: "m", messages: [])) == "ok")
+    _ = try await client.stream(LLMRequest(model: "n", messages: [])) { _ in }
+    #expect(heard.all.map(\.1) == ["m", "n"] && heard.all.allSatisfy { $0.0.input == 7 })
+    // Nobody listening: a client's report goes nowhere.
+    _ = try await Counting().complete(LLMRequest(model: "m", messages: []))
+    #expect(heard.all.count == 2)
+}
