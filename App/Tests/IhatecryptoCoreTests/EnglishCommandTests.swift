@@ -75,6 +75,19 @@ import Testing
     }
 }
 
+/// The classifier's second reading gets only the sections of the forms its command is written in.
+@Test func aCommandsOwnSectionsOfTheForms() {
+    let lend = ChatRouter.forms(for: "lend 15 USDC")
+    #expect(lend.contains("EARNING:") && lend.contains("Jupiter Lend") && !lend.contains("TRADE PLAN"))
+    #expect(ChatRouter.forms(for: "long oil 5 USDC").hasPrefix("TRADE PLAN"))
+    // Every step of a chain, and what a schedule runs.
+    let chain = ChatRouter.forms(for: "withdraw 10 USDC to Solana then deposit 10 USDC to kamino")
+    #expect(chain.contains("EARNING:") && chain.contains("MOVING MONEY"))
+    #expect(ChatRouter.forms(for: "in 1 week: rebalance USDC").contains("rebalance"))
+    // A verb no form starts with: all of them, rather than nothing to judge by.
+    #expect(ChatRouter.forms(for: "frobnicate 5 USDC") == ChatRouter.forms)
+}
+
 @Test func routerFormsCoverTheParsers() {
     // Every form the model is told to write must parse locally, in the order the app tries the parsers.
     let ai = "0x2E8c31162b855A2ffa90F6F8634643Ad6F111e18", markets: Set<String> = ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]

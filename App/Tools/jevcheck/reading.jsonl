@@ -1,0 +1,910 @@
+{"lang": "ru", "kind": "kamino_in", "message": "закинь $0.5 в каминно", "id": 0, "command": "deposit 0.5 USDC to kamino", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "kamino_in", "message": "закинь $0.5 в каминно", "id": 1, "command": "withdraw 0.5 USDC to kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "kamino_in", "message": "закинь $0.5 в каминно", "id": 2, "command": "deposit 5 USDC to kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "kamino_in", "message": "закинь $0.5 в каминно", "id": 3, "command": "deposit 0.6 USDC to kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "kamino_in", "message": "закинь $0.5 в каминно", "id": 4, "command": "deposit 0.5 USDC to HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "kamino_in", "message": "put 1.5 USDC into Kamino", "id": 5, "command": "deposit 1.5 USDC to kamino", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "kamino_in", "message": "put 1.5 USDC into Kamino", "id": 6, "command": "withdraw 1.5 USDC to kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "kamino_in", "message": "put 1.5 USDC into Kamino", "id": 7, "command": "deposit 15 USDC to kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "kamino_in", "message": "put 1.5 USDC into Kamino", "id": 8, "command": "deposit 1.8 USDC to kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "kamino_in", "message": "put 1.5 USDC into Kamino", "id": 9, "command": "deposit 1.5 USDC to HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "kamino_in", "message": "deposita 10 pvos en Kamino", "id": 10, "command": "deposit 10 USDC to kamino", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "kamino_in", "message": "deposita 10 pvos en Kamino", "id": 11, "command": "withdraw 10 USDC to kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "kamino_in", "message": "deposita 10 pvos en Kamino", "id": 12, "command": "deposit 100 USDC to kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "kamino_in", "message": "deposita 10 pvos en Kamino", "id": 13, "command": "deposit 12 USDC to kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "kamino_in", "message": "deposita 10 pvos en Kamino", "id": 14, "command": "deposit 10 USDC to HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "kamino_out", "message": "сними два баксов с kaminno", "id": 15, "command": "withdraw 2 USDC from kamino", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "kamino_out", "message": "сними два баксов с kaminno", "id": 16, "command": "deposit 2 USDC from kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "kamino_out", "message": "сними два баксов с kaminno", "id": 17, "command": "withdraw 20 USDC from kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "kamino_out", "message": "сними два баксов с kaminno", "id": 18, "command": "withdraw 2.4 USDC from kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "kamino_out", "message": "сними два баксов с kaminno", "id": 19, "command": "withdraw 2 USDC from HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "kamino_out", "message": "withdraw $12 from Kamino", "id": 20, "command": "withdraw 12 USDC from kamino", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "kamino_out", "message": "withdraw $12 from Kamino", "id": 21, "command": "deposit 12 USDC from kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "kamino_out", "message": "withdraw $12 from Kamino", "id": 22, "command": "withdraw 120 USDC from kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "kamino_out", "message": "withdraw $12 from Kamino", "id": 23, "command": "withdraw 14.4 USDC from kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "kamino_out", "message": "withdraw $12 from Kamino", "id": 24, "command": "withdraw 12 USDC from HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "kamino_out", "message": "retira $2.5 de Kamino", "id": 25, "command": "withdraw 2.5 USDC from kamino", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "kamino_out", "message": "retira $2.5 de Kamino", "id": 26, "command": "deposit 2.5 USDC from kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "kamino_out", "message": "retira $2.5 de Kamino", "id": 27, "command": "withdraw 25 USDC from kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "kamino_out", "message": "retira $2.5 de Kamino", "id": 28, "command": "withdraw 3 USDC from kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "kamino_out", "message": "retira $2.5 de Kamino", "id": 29, "command": "withdraw 2.5 USDC from HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "lend", "message": "депозит $15 в юпитер волт", "id": 30, "command": "lend 15 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "lend", "message": "депозит $15 в юпитер волт", "id": 31, "command": "lend 150 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "lend", "message": "депозит $15 в юпитер волт", "id": 32, "command": "lend 18 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "lend", "message": "put 20 usdc in the jupiter vault", "id": 33, "command": "lend 20 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "lend", "message": "put 20 usdc in the jupiter vault", "id": 34, "command": "lend 200 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "lend", "message": "put 20 usdc in the jupiter vault", "id": 35, "command": "lend 24 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "lend", "message": "presta 20 usdc en Jupiter Lend", "id": 36, "command": "lend 20 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "lend", "message": "presta 20 usdc en Jupiter Lend", "id": 37, "command": "lend 200 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "lend", "message": "presta 20 usdc en Jupiter Lend", "id": 38, "command": "lend 24 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "hl_out", "message": "сними три баксов с hyperliquid", "id": 39, "command": "withdraw 3 USDC to Solana", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "hl_out", "message": "сними три баксов с hyperliquid", "id": 40, "command": "deposit 3 USDC to Solana", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "hl_out", "message": "сними три баксов с hyperliquid", "id": 41, "command": "withdraw 30 USDC to Solana", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "hl_out", "message": "сними три баксов с hyperliquid", "id": 42, "command": "withdraw 3.6 USDC to Solana", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "hl_out", "message": "сними три баксов с hyperliquid", "id": 43, "command": "withdraw 3 USDC to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "hl_out", "message": "withdraw 7 bucks from Hyperliquid", "id": 44, "command": "withdraw 7 USDC to Solana", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "hl_out", "message": "withdraw 7 bucks from Hyperliquid", "id": 45, "command": "deposit 7 USDC to Solana", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "hl_out", "message": "withdraw 7 bucks from Hyperliquid", "id": 46, "command": "withdraw 70 USDC to Solana", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "hl_out", "message": "withdraw 7 bucks from Hyperliquid", "id": 47, "command": "withdraw 8.4 USDC to Solana", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "hl_out", "message": "withdraw 7 bucks from Hyperliquid", "id": 48, "command": "withdraw 7 USDC to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "hl_out", "message": "saca $1.5 de Hyperliquid", "id": 49, "command": "withdraw 1.5 USDC to Solana", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "hl_out", "message": "saca $1.5 de Hyperliquid", "id": 50, "command": "deposit 1.5 USDC to Solana", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "hl_out", "message": "saca $1.5 de Hyperliquid", "id": 51, "command": "withdraw 15 USDC to Solana", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "hl_out", "message": "saca $1.5 de Hyperliquid", "id": 52, "command": "withdraw 1.8 USDC to Solana", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "hl_out", "message": "saca $1.5 de Hyperliquid", "id": 53, "command": "withdraw 1.5 USDC to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "hlp_in", "message": "закниь 5$ в хлп", "id": 54, "command": "deposit 5 USDC to HLP", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "hlp_in", "message": "закниь 5$ в хлп", "id": 55, "command": "withdraw 5 USDC to HLP", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "hlp_in", "message": "закниь 5$ в хлп", "id": 56, "command": "deposit 50 USDC to HLP", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "hlp_in", "message": "закниь 5$ в хлп", "id": 57, "command": "deposit 6 USDC to HLP", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "hlp_in", "message": "закниь 5$ в хлп", "id": 58, "command": "deposit 5 USDC to kamino", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "hlp_in", "message": "put $20 in the HLP vault", "id": 59, "command": "deposit 20 USDC to HLP", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "hlp_in", "message": "put $20 in the HLP vault", "id": 60, "command": "withdraw 20 USDC to HLP", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "hlp_in", "message": "put $20 in the HLP vault", "id": 61, "command": "deposit 200 USDC to HLP", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "hlp_in", "message": "put $20 in the HLP vault", "id": 62, "command": "deposit 24 USDC to HLP", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "hlp_in", "message": "put $20 in the HLP vault", "id": 63, "command": "deposit 20 USDC to kamino", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "hlp_in", "message": "deposita 20 pavos en HLP", "id": 64, "command": "deposit 20 USDC to HLP", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "hlp_in", "message": "deposita 20 pavos en HLP", "id": 65, "command": "withdraw 20 USDC to HLP", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "hlp_in", "message": "deposita 20 pavos en HLP", "id": 66, "command": "deposit 200 USDC to HLP", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "hlp_in", "message": "deposita 20 pavos en HLP", "id": 67, "command": "deposit 24 USDC to HLP", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "hlp_in", "message": "deposita 20 pavos en HLP", "id": 68, "command": "deposit 20 USDC to kamino", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "aave_in", "message": "закинь 2$ в aave на эфириум", "id": 69, "command": "lend 2 USDC on Aave on Ethereum", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "aave_in", "message": "закинь 2$ в aave на эфириум", "id": 70, "command": "lend 20 USDC on Aave on Ethereum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "aave_in", "message": "закинь 2$ в aave на эфириум", "id": 71, "command": "lend 2.4 USDC on Aave on Ethereum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "aave_in", "message": "закинь 2$ в aave на эфириум", "id": 72, "command": "lend 2 USDC on Aave on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "aave_in", "message": "закинь 2$ в aave на эфириум", "id": 73, "command": "lend 2 USDC on Morpho on Ethereum", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "aave_in", "message": "lend $2.5 on Aave on etheeum", "id": 74, "command": "lend 2.5 USDC on Aave on Ethereum", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "aave_in", "message": "lend $2.5 on Aave on etheeum", "id": 75, "command": "lend 25 USDC on Aave on Ethereum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "aave_in", "message": "lend $2.5 on Aave on etheeum", "id": 76, "command": "lend 3 USDC on Aave on Ethereum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "aave_in", "message": "lend $2.5 on Aave on etheeum", "id": 77, "command": "lend 2.5 USDC on Aave on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "aave_in", "message": "lend $2.5 on Aave on etheeum", "id": 78, "command": "lend 2.5 USDC on Morpho on Ethereum", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "aave_in", "message": "presta 3 USDC en Aave en Base", "id": 79, "command": "lend 3 USDC on Aave on Base", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "aave_in", "message": "presta 3 USDC en Aave en Base", "id": 80, "command": "lend 30 USDC on Aave on Base", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "aave_in", "message": "presta 3 USDC en Aave en Base", "id": 81, "command": "lend 3.6 USDC on Aave on Base", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "aave_in", "message": "presta 3 USDC en Aave en Base", "id": 82, "command": "lend 3 USDC on Aave on Arbitrum", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "aave_in", "message": "presta 3 USDC en Aave en Base", "id": 83, "command": "lend 3 USDC on Morpho on Base", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "morpho_in", "message": "положи 20 баксов в морфо на арбитум", "id": 84, "command": "deposit 20 USDC into Morpho on Arbitrum", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "morpho_in", "message": "положи 20 баксов в морфо на арбитум", "id": 85, "command": "withdraw 20 USDC into Morpho on Arbitrum", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "morpho_in", "message": "положи 20 баксов в морфо на арбитум", "id": 86, "command": "deposit 200 USDC into Morpho on Arbitrum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "morpho_in", "message": "положи 20 баксов в морфо на арбитум", "id": 87, "command": "deposit 24 USDC into Morpho on Arbitrum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "morpho_in", "message": "положи 20 баксов в морфо на арбитум", "id": 88, "command": "deposit 20 USDC into Morpho on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "morpho_in", "message": "положи 20 баксов в морфо на арбитум", "id": 89, "command": "deposit 20 USDC into Aave on Arbitrum", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "morpho_in", "message": "deposit 12 dollars into Morpho on arbitrum", "id": 90, "command": "deposit 12 USDC into Morpho on Arbitrum", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "morpho_in", "message": "deposit 12 dollars into Morpho on arbitrum", "id": 91, "command": "withdraw 12 USDC into Morpho on Arbitrum", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "morpho_in", "message": "deposit 12 dollars into Morpho on arbitrum", "id": 92, "command": "deposit 120 USDC into Morpho on Arbitrum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "morpho_in", "message": "deposit 12 dollars into Morpho on arbitrum", "id": 93, "command": "deposit 14.4 USDC into Morpho on Arbitrum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "morpho_in", "message": "deposit 12 dollars into Morpho on arbitrum", "id": 94, "command": "deposit 12 USDC into Morpho on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "morpho_in", "message": "deposit 12 dollars into Morpho on arbitrum", "id": 95, "command": "deposit 12 USDC into Aave on Arbitrum", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "morpho_in", "message": "deposita 7 USDC en Morpho en mainnet", "id": 96, "command": "deposit 7 USDC into Morpho on Ethereum", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "morpho_in", "message": "deposita 7 USDC en Morpho en mainnet", "id": 97, "command": "withdraw 7 USDC into Morpho on Ethereum", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "morpho_in", "message": "deposita 7 USDC en Morpho en mainnet", "id": 98, "command": "deposit 70 USDC into Morpho on Ethereum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "morpho_in", "message": "deposita 7 USDC en Morpho en mainnet", "id": 99, "command": "deposit 8.4 USDC into Morpho on Ethereum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "morpho_in", "message": "deposita 7 USDC en Morpho en mainnet", "id": 100, "command": "deposit 7 USDC into Morpho on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "morpho_in", "message": "deposita 7 USDC en Morpho en mainnet", "id": 101, "command": "deposit 7 USDC into Aave on Ethereum", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "evm_to_sol", "message": "верни 0,5 бачей с оптимизма на солану", "id": 102, "command": "move 0.5 USDC from Optimism to Solana", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "evm_to_sol", "message": "верни 0,5 бачей с оптимизма на солану", "id": 103, "command": "move 0.5 USDC from Solana to Optimism", "label": "mismatch", "mutation": "direction"}
+{"lang": "ru", "kind": "evm_to_sol", "message": "верни 0,5 бачей с оптимизма на солану", "id": 104, "command": "move 5 USDC from Optimism to Solana", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "evm_to_sol", "message": "верни 0,5 бачей с оптимизма на солану", "id": 105, "command": "move 0.6 USDC from Optimism to Solana", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "evm_to_sol", "message": "верни 0,5 бачей с оптимизма на солану", "id": 106, "command": "move 0.5 USDC from Base to Solana", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "evm_to_sol", "message": "bring 15 dollars back from arbitrum to solana", "id": 107, "command": "move 15 USDC from Arbitrum to Solana", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "evm_to_sol", "message": "bring 15 dollars back from arbitrum to solana", "id": 108, "command": "move 15 USDC from Solana to Arbitrum", "label": "mismatch", "mutation": "direction"}
+{"lang": "en", "kind": "evm_to_sol", "message": "bring 15 dollars back from arbitrum to solana", "id": 109, "command": "move 150 USDC from Arbitrum to Solana", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "evm_to_sol", "message": "bring 15 dollars back from arbitrum to solana", "id": 110, "command": "move 18 USDC from Arbitrum to Solana", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "evm_to_sol", "message": "bring 15 dollars back from arbitrum to solana", "id": 111, "command": "move 15 USDC from Base to Solana", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "evm_to_sol", "message": "muvee 10 usdc de base a Solana", "id": 112, "command": "move 10 USDC from Base to Solana", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "evm_to_sol", "message": "muvee 10 usdc de base a Solana", "id": 113, "command": "move 10 USDC from Solana to Base", "label": "mismatch", "mutation": "direction"}
+{"lang": "es", "kind": "evm_to_sol", "message": "muvee 10 usdc de base a Solana", "id": 114, "command": "move 100 USDC from Base to Solana", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "evm_to_sol", "message": "muvee 10 usdc de base a Solana", "id": 115, "command": "move 12 USDC from Base to Solana", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "evm_to_sol", "message": "muvee 10 usdc de base a Solana", "id": 116, "command": "move 10 USDC from Arbitrum to Solana", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "sol_to_evm", "message": "переведи 15 бачей из соланы на оптимизм", "id": 117, "command": "move 15 USDC from Solana to Optimism", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "sol_to_evm", "message": "переведи 15 бачей из соланы на оптимизм", "id": 118, "command": "move 15 USDC from Optimism to Solana", "label": "mismatch", "mutation": "direction"}
+{"lang": "ru", "kind": "sol_to_evm", "message": "переведи 15 бачей из соланы на оптимизм", "id": 119, "command": "move 150 USDC from Solana to Optimism", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "sol_to_evm", "message": "переведи 15 бачей из соланы на оптимизм", "id": 120, "command": "move 18 USDC from Solana to Optimism", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "sol_to_evm", "message": "переведи 15 бачей из соланы на оптимизм", "id": 121, "command": "move 15 USDC from Solana to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "sol_to_evm", "message": "move 2 USDC from Solana to bnb", "id": 122, "command": "move 2 USDC from Solana to BNB", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "sol_to_evm", "message": "move 2 USDC from Solana to bnb", "id": 123, "command": "move 2 USDC from BNB to Solana", "label": "mismatch", "mutation": "direction"}
+{"lang": "en", "kind": "sol_to_evm", "message": "move 2 USDC from Solana to bnb", "id": 124, "command": "move 20 USDC from Solana to BNB", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "sol_to_evm", "message": "move 2 USDC from Solana to bnb", "id": 125, "command": "move 2.4 USDC from Solana to BNB", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "sol_to_evm", "message": "move 2 USDC from Solana to bnb", "id": 126, "command": "move 2 USDC from Base to BNB", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "sol_to_evm", "message": "mueve 100 pavos de Solana a Robinhood", "id": 127, "command": "move 100 USDC from Solana to Robinhood", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "sol_to_evm", "message": "mueve 100 pavos de Solana a Robinhood", "id": 128, "command": "move 100 USDC from Robinhood to Solana", "label": "mismatch", "mutation": "direction"}
+{"lang": "es", "kind": "sol_to_evm", "message": "mueve 100 pavos de Solana a Robinhood", "id": 129, "command": "move 1000 USDC from Solana to Robinhood", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "sol_to_evm", "message": "mueve 100 pavos de Solana a Robinhood", "id": 130, "command": "move 120 USDC from Solana to Robinhood", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "sol_to_evm", "message": "mueve 100 pavos de Solana a Robinhood", "id": 131, "command": "move 100 USDC from Base to Robinhood", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "evm_to_evm", "message": "перекинь 12$ с оптимизма на эфир", "id": 132, "command": "move 12 USDC from Optimism to Ethereum", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "evm_to_evm", "message": "перекинь 12$ с оптимизма на эфир", "id": 133, "command": "move 12 USDC from Ethereum to Optimism", "label": "mismatch", "mutation": "direction"}
+{"lang": "ru", "kind": "evm_to_evm", "message": "перекинь 12$ с оптимизма на эфир", "id": 134, "command": "move 120 USDC from Optimism to Ethereum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "evm_to_evm", "message": "перекинь 12$ с оптимизма на эфир", "id": 135, "command": "move 14.4 USDC from Optimism to Ethereum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "evm_to_evm", "message": "перекинь 12$ с оптимизма на эфир", "id": 136, "command": "move 12 USDC from Base to Ethereum", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "evm_to_evm", "message": "bridge 1 bucks optimism -> ethereum", "id": 137, "command": "move 1 USDC from Optimism to Ethereum", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "evm_to_evm", "message": "bridge 1 bucks optimism -> ethereum", "id": 138, "command": "move 1 USDC from Ethereum to Optimism", "label": "mismatch", "mutation": "direction"}
+{"lang": "en", "kind": "evm_to_evm", "message": "bridge 1 bucks optimism -> ethereum", "id": 139, "command": "move 10 USDC from Optimism to Ethereum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "evm_to_evm", "message": "bridge 1 bucks optimism -> ethereum", "id": 140, "command": "move 1.2 USDC from Optimism to Ethereum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "evm_to_evm", "message": "bridge 1 bucks optimism -> ethereum", "id": 141, "command": "move 1 USDC from Base to Ethereum", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "evm_to_evm", "message": "pasa cincuenta dólares de Polygon a Ethereum", "id": 142, "command": "move 50 USDC from Polygon to Ethereum", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "evm_to_evm", "message": "pasa cincuenta dólares de Polygon a Ethereum", "id": 143, "command": "move 50 USDC from Ethereum to Polygon", "label": "mismatch", "mutation": "direction"}
+{"lang": "es", "kind": "evm_to_evm", "message": "pasa cincuenta dólares de Polygon a Ethereum", "id": 144, "command": "move 500 USDC from Polygon to Ethereum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "evm_to_evm", "message": "pasa cincuenta dólares de Polygon a Ethereum", "id": 145, "command": "move 60 USDC from Polygon to Ethereum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "evm_to_evm", "message": "pasa cincuenta dólares de Polygon a Ethereum", "id": 146, "command": "move 50 USDC from Base to Ethereum", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "evm_to_hl", "message": "закинь 10 юсдс с бейза на гипер", "id": 147, "command": "move 10 USDC from Base to Hyperliquid", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "evm_to_hl", "message": "закинь 10 юсдс с бейза на гипер", "id": 148, "command": "move 10 USDC from Hyperliquid to Base", "label": "mismatch", "mutation": "direction"}
+{"lang": "ru", "kind": "evm_to_hl", "message": "закинь 10 юсдс с бейза на гипер", "id": 149, "command": "move 100 USDC from Base to Hyperliquid", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "evm_to_hl", "message": "закинь 10 юсдс с бейза на гипер", "id": 150, "command": "move 12 USDC from Base to Hyperliquid", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "evm_to_hl", "message": "закинь 10 юсдс с бейза на гипер", "id": 151, "command": "move 10 USDC from Arbitrum to Hyperliquid", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "evm_to_hl", "message": "move 4 dollars from arbitrum to Hyperliquid", "id": 152, "command": "move 4 USDC from Arbitrum to Hyperliquid", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "evm_to_hl", "message": "move 4 dollars from arbitrum to Hyperliquid", "id": 153, "command": "move 4 USDC from Hyperliquid to Arbitrum", "label": "mismatch", "mutation": "direction"}
+{"lang": "en", "kind": "evm_to_hl", "message": "move 4 dollars from arbitrum to Hyperliquid", "id": 154, "command": "move 40 USDC from Arbitrum to Hyperliquid", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "evm_to_hl", "message": "move 4 dollars from arbitrum to Hyperliquid", "id": 155, "command": "move 4.8 USDC from Arbitrum to Hyperliquid", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "evm_to_hl", "message": "move 4 dollars from arbitrum to Hyperliquid", "id": 156, "command": "move 4 USDC from Base to Hyperliquid", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "evm_to_hl", "message": "mueve 2.5 pavos de arbitrum a Hyperliquid", "id": 157, "command": "move 2.5 USDC from Arbitrum to Hyperliquid", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "evm_to_hl", "message": "mueve 2.5 pavos de arbitrum a Hyperliquid", "id": 158, "command": "move 2.5 USDC from Hyperliquid to Arbitrum", "label": "mismatch", "mutation": "direction"}
+{"lang": "es", "kind": "evm_to_hl", "message": "mueve 2.5 pavos de arbitrum a Hyperliquid", "id": 159, "command": "move 25 USDC from Arbitrum to Hyperliquid", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "evm_to_hl", "message": "mueve 2.5 pavos de arbitrum a Hyperliquid", "id": 160, "command": "move 3 USDC from Arbitrum to Hyperliquid", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "evm_to_hl", "message": "mueve 2.5 pavos de arbitrum a Hyperliquid", "id": 161, "command": "move 2.5 USDC from Base to Hyperliquid", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "buy_evm", "message": "закупи OP на optimiism на $12", "id": 162, "command": "buy OP on optimism for 12 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "buy_evm", "message": "закупи OP на optimiism на $12", "id": 163, "command": "sell OP on optimism for 12 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "buy_evm", "message": "закупи OP на optimiism на $12", "id": 164, "command": "buy OP on optimism for 120 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "buy_evm", "message": "закупи OP на optimiism на $12", "id": 165, "command": "buy OP on optimism for 14.4 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "buy_evm", "message": "закупи OP на optimiism на $12", "id": 166, "command": "buy ARB on optimism for 12 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "buy_evm", "message": "закупи OP на optimiism на $12", "id": 167, "command": "buy OP on Base for 12 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "buy_evm", "message": "get me 1.5 USDC of AERO on base", "id": 168, "command": "buy AERO on base for 1.5 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "buy_evm", "message": "get me 1.5 USDC of AERO on base", "id": 169, "command": "sell AERO on base for 1.5 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "buy_evm", "message": "get me 1.5 USDC of AERO on base", "id": 170, "command": "buy AERO on base for 15 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "buy_evm", "message": "get me 1.5 USDC of AERO on base", "id": 171, "command": "buy AERO on base for 1.8 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "buy_evm", "message": "get me 1.5 USDC of AERO on base", "id": 172, "command": "buy AERO on Arbitrum for 1.5 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "buy_evm", "message": "compra OP en Optimism por 3 usdc", "id": 173, "command": "buy OP on optimism for 3 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "buy_evm", "message": "compra OP en Optimism por 3 usdc", "id": 174, "command": "sell OP on optimism for 3 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "buy_evm", "message": "compra OP en Optimism por 3 usdc", "id": 175, "command": "buy OP on optimism for 30 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "buy_evm", "message": "compra OP en Optimism por 3 usdc", "id": 176, "command": "buy OP on optimism for 3.6 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "buy_evm", "message": "compra OP en Optimism por 3 usdc", "id": 177, "command": "buy ARB on optimism for 3 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "buy_evm", "message": "compra OP en Optimism por 3 usdc", "id": 178, "command": "buy OP on Base for 3 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "send_name", "message": "отправь 12 usdc маме", "id": 179, "command": "send 12 USDC to Mom", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "send_name", "message": "отправь 12 usdc маме", "id": 180, "command": "send 120 USDC to Mom", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "send_name", "message": "отправь 12 usdc маме", "id": 181, "command": "send 14.4 USDC to Mom", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "send_name", "message": "отправь 12 usdc маме", "id": 182, "command": "send 12 USDC to Bybit", "label": "mismatch", "mutation": "recipient"}
+{"lang": "en", "kind": "send_name", "message": "send Bybit 2 bucks", "id": 183, "command": "send 2 USDC to Bybit", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "send_name", "message": "send Bybit 2 bucks", "id": 184, "command": "send 20 USDC to Bybit", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "send_name", "message": "send Bybit 2 bucks", "id": 185, "command": "send 2.4 USDC to Bybit", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "send_name", "message": "send Bybit 2 bucks", "id": 186, "command": "send 2 USDC to Mom", "label": "mismatch", "mutation": "recipient"}
+{"lang": "es", "kind": "send_name", "message": "envía 10 USDC a Bybti", "id": 187, "command": "send 10 USDC to Bybit", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "send_name", "message": "envía 10 USDC a Bybti", "id": 188, "command": "send 100 USDC to Bybit", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "send_name", "message": "envía 10 USDC a Bybti", "id": 189, "command": "send 12 USDC to Bybit", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "send_name", "message": "envía 10 USDC a Bybti", "id": 190, "command": "send 10 USDC to Mom", "label": "mismatch", "mutation": "recipient"}
+{"lang": "ru", "kind": "send_name_net", "message": "отправь 20 юсдс на Bybit в сети арб", "id": 191, "command": "send 20 USDC to Bybit on arbitrum", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "send_name_net", "message": "отправь 20 юсдс на Bybit в сети арб", "id": 192, "command": "send 200 USDC to Bybit on arbitrum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "send_name_net", "message": "отправь 20 юсдс на Bybit в сети арб", "id": 193, "command": "send 24 USDC to Bybit on arbitrum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "send_name_net", "message": "отправь 20 юсдс на Bybit в сети арб", "id": 194, "command": "send 20 USDC to Bybit on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "send_name_net", "message": "отправь 20 юсдс на Bybit в сети арб", "id": 195, "command": "send 20 USDC to Mom on arbitrum", "label": "mismatch", "mutation": "recipient"}
+{"lang": "en", "kind": "send_name_net", "message": "send 0.5 bucks to bybit via arbitrum", "id": 196, "command": "send 0.5 USDC to Bybit on arbitrum", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "send_name_net", "message": "send 0.5 bucks to bybit via arbitrum", "id": 197, "command": "send 5 USDC to Bybit on arbitrum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "send_name_net", "message": "send 0.5 bucks to bybit via arbitrum", "id": 198, "command": "send 0.6 USDC to Bybit on arbitrum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "send_name_net", "message": "send 0.5 bucks to bybit via arbitrum", "id": 199, "command": "send 0.5 USDC to Bybit on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "send_name_net", "message": "send 0.5 bucks to bybit via arbitrum", "id": 200, "command": "send 0.5 USDC to Mom on arbitrum", "label": "mismatch", "mutation": "recipient"}
+{"lang": "es", "kind": "send_name_net", "message": "envía $15 a Bbit en Arbitrum", "id": 201, "command": "send 15 USDC to Bybit on arbitrum", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "send_name_net", "message": "envía $15 a Bbit en Arbitrum", "id": 202, "command": "send 150 USDC to Bybit on arbitrum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "send_name_net", "message": "envía $15 a Bbit en Arbitrum", "id": 203, "command": "send 18 USDC to Bybit on arbitrum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "send_name_net", "message": "envía $15 a Bbit en Arbitrum", "id": 204, "command": "send 15 USDC to Bybit on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "send_name_net", "message": "envía $15 a Bbit en Arbitrum", "id": 205, "command": "send 15 USDC to Mom on arbitrum", "label": "mismatch", "mutation": "recipient"}
+{"lang": "ru", "kind": "send_sol", "message": "отправь 0.02 сол на Bybit", "id": 206, "command": "send 0.02 SOL to Bybit", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "send_sol", "message": "отправь 0.02 сол на Bybit", "id": 207, "command": "send 0.2 SOL to Bybit", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "send_sol", "message": "отправь 0.02 сол на Bybit", "id": 208, "command": "send 0.024 SOL to Bybit", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "send_sol", "message": "отправь 0.02 сол на Bybit", "id": 209, "command": "send 0.02 ETH to Bybit", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "send_sol", "message": "отправь 0.02 сол на Bybit", "id": 210, "command": "send 0.02 SOL to Mom", "label": "mismatch", "mutation": "recipient"}
+{"lang": "en", "kind": "send_sol", "message": "send 0.05 SOL to Bybit", "id": 211, "command": "send 0.05 SOL to Bybit", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "send_sol", "message": "send 0.05 SOL to Bybit", "id": 212, "command": "send 0.5 SOL to Bybit", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "send_sol", "message": "send 0.05 SOL to Bybit", "id": 213, "command": "send 0.06 SOL to Bybit", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "send_sol", "message": "send 0.05 SOL to Bybit", "id": 214, "command": "send 0.05 ETH to Bybit", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "send_sol", "message": "send 0.05 SOL to Bybit", "id": 215, "command": "send 0.05 SOL to Mom", "label": "mismatch", "mutation": "recipient"}
+{"lang": "es", "kind": "send_sol", "message": "envía 0.1 SOL a Bybit", "id": 216, "command": "send 0.1 SOL to Bybit", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "send_sol", "message": "envía 0.1 SOL a Bybit", "id": 217, "command": "send 1 SOL to Bybit", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "send_sol", "message": "envía 0.1 SOL a Bybit", "id": 218, "command": "send 0.12 SOL to Bybit", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "send_sol", "message": "envía 0.1 SOL a Bybit", "id": 219, "command": "send 0.1 ETH to Bybit", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "send_sol", "message": "envía 0.1 SOL a Bybit", "id": 220, "command": "send 0.1 SOL to Mom", "label": "mismatch", "mutation": "recipient"}
+{"lang": "ru", "kind": "buy_spot", "message": "закупись джуп на пять долларов", "id": 221, "command": "buy JUP for 5 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "buy_spot", "message": "закупись джуп на пять долларов", "id": 222, "command": "sell JUP for 5 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "buy_spot", "message": "закупись джуп на пять долларов", "id": 223, "command": "buy JUP for 50 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "buy_spot", "message": "закупись джуп на пять долларов", "id": 224, "command": "buy JUP for 6 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "buy_spot", "message": "закупись джуп на пять долларов", "id": 225, "command": "buy BONK for 5 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "buy_spot", "message": "buy bitcoin for 7 bucks", "id": 226, "command": "buy BTC for 7 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "buy_spot", "message": "buy bitcoin for 7 bucks", "id": 227, "command": "sell BTC for 7 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "buy_spot", "message": "buy bitcoin for 7 bucks", "id": 228, "command": "buy BTC for 70 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "buy_spot", "message": "buy bitcoin for 7 bucks", "id": 229, "command": "buy BTC for 8.4 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "buy_spot", "message": "buy bitcoin for 7 bucks", "id": 230, "command": "buy ETH for 7 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "buy_spot", "message": "compra bitcoin por 1 pavos", "id": 231, "command": "buy BTC for 1 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "buy_spot", "message": "compra bitcoin por 1 pavos", "id": 232, "command": "sell BTC for 1 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "buy_spot", "message": "compra bitcoin por 1 pavos", "id": 233, "command": "buy BTC for 10 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "buy_spot", "message": "compra bitcoin por 1 pavos", "id": 234, "command": "buy BTC for 1.2 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "buy_spot", "message": "compra bitcoin por 1 pavos", "id": 235, "command": "buy ETH for 1 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "sell_spot", "message": "продй 0.5 сол", "id": 236, "command": "sell 0.5 SOL", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "sell_spot", "message": "продй 0.5 сол", "id": 237, "command": "buy 0.5 SOL", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "sell_spot", "message": "продй 0.5 сол", "id": 238, "command": "sell 5 SOL", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "sell_spot", "message": "продй 0.5 сол", "id": 239, "command": "sell 0.6 SOL", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "sell_spot", "message": "продй 0.5 сол", "id": 240, "command": "sell 0.5 ETH", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "sell_spot", "message": "dump 0.01 sol", "id": 241, "command": "sell 0.01 SOL", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "sell_spot", "message": "dump 0.01 sol", "id": 242, "command": "buy 0.01 SOL", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "sell_spot", "message": "dump 0.01 sol", "id": 243, "command": "sell 0.1 SOL", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "sell_spot", "message": "dump 0.01 sol", "id": 244, "command": "sell 0.012 SOL", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "sell_spot", "message": "dump 0.01 sol", "id": 245, "command": "sell 0.01 ETH", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "sell_spot", "message": "vende 0.1 SOL", "id": 246, "command": "sell 0.1 SOL", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "sell_spot", "message": "vende 0.1 SOL", "id": 247, "command": "buy 0.1 SOL", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "sell_spot", "message": "vende 0.1 SOL", "id": 248, "command": "sell 1 SOL", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "sell_spot", "message": "vende 0.1 SOL", "id": 249, "command": "sell 0.12 SOL", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "sell_spot", "message": "vende 0.1 SOL", "id": 250, "command": "sell 0.1 ETH", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "jup_token", "message": "возьми WIF на солае на 50 долларов", "id": 251, "command": "buy WIF on solana for 50 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "jup_token", "message": "возьми WIF на солае на 50 долларов", "id": 252, "command": "sell WIF on solana for 50 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "jup_token", "message": "возьми WIF на солае на 50 долларов", "id": 253, "command": "buy WIF on solana for 500 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "jup_token", "message": "возьми WIF на солае на 50 долларов", "id": 254, "command": "buy WIF on solana for 60 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "jup_token", "message": "возьми WIF на солае на 50 долларов", "id": 255, "command": "buy BONK on solana for 50 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "jup_token", "message": "возьми WIF на солае на 50 долларов", "id": 256, "command": "buy WIF on Base for 50 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "jup_token", "message": "get me fifty dollars of JTO on solana", "id": 257, "command": "buy JTO on solana for 50 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "jup_token", "message": "get me fifty dollars of JTO on solana", "id": 258, "command": "sell JTO on solana for 50 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "jup_token", "message": "get me fifty dollars of JTO on solana", "id": 259, "command": "buy JTO on solana for 500 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "jup_token", "message": "get me fifty dollars of JTO on solana", "id": 260, "command": "buy JTO on solana for 60 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "jup_token", "message": "get me fifty dollars of JTO on solana", "id": 261, "command": "buy JTO on Base for 50 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "jup_token", "message": "compra RAY por 1.5 usdc", "id": 262, "command": "buy RAY on solana for 1.5 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "jup_token", "message": "compra RAY por 1.5 usdc", "id": 263, "command": "sell RAY on solana for 1.5 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "jup_token", "message": "compra RAY por 1.5 usdc", "id": 264, "command": "buy RAY on solana for 15 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "jup_token", "message": "compra RAY por 1.5 usdc", "id": 265, "command": "buy RAY on solana for 1.8 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "jup_token", "message": "compra RAY por 1.5 usdc", "id": 266, "command": "buy RAY on Base for 1.5 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "evm_token", "message": "купи DEGEN на бейзе на три баксов", "id": 267, "command": "buy DEGEN on base for 3 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "evm_token", "message": "купи DEGEN на бейзе на три баксов", "id": 268, "command": "sell DEGEN on base for 3 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "evm_token", "message": "купи DEGEN на бейзе на три баксов", "id": 269, "command": "buy DEGEN on base for 30 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "evm_token", "message": "купи DEGEN на бейзе на три баксов", "id": 270, "command": "buy DEGEN on base for 3.6 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "evm_token", "message": "купи DEGEN на бейзе на три баксов", "id": 271, "command": "buy BRETT on base for 3 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "evm_token", "message": "купи DEGEN на бейзе на три баксов", "id": 272, "command": "buy DEGEN on Arbitrum for 3 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "evm_token", "message": "buy AERO on base for a hundred dollars", "id": 273, "command": "buy AERO on base for 100 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "evm_token", "message": "buy AERO on base for a hundred dollars", "id": 274, "command": "sell AERO on base for 100 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "evm_token", "message": "buy AERO on base for a hundred dollars", "id": 275, "command": "buy AERO on base for 1000 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "evm_token", "message": "buy AERO on base for a hundred dollars", "id": 276, "command": "buy AERO on base for 120 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "evm_token", "message": "buy AERO on base for a hundred dollars", "id": 277, "command": "buy AERO on Arbitrum for 100 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "plan_long", "message": "открой лонг по нефти на 20 юсдс х3", "id": 278, "command": "long oil 20 USDC leverage 3x", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "plan_long", "message": "открой лонг по нефти на 20 юсдс х3", "id": 279, "command": "short oil 20 USDC leverage 3x", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "plan_long", "message": "открой лонг по нефти на 20 юсдс х3", "id": 280, "command": "long oil 200 USDC leverage 3x", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "plan_long", "message": "открой лонг по нефти на 20 юсдс х3", "id": 281, "command": "long oil 24 USDC leverage 3x", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "plan_long", "message": "открой лонг по нефти на 20 юсдс х3", "id": 282, "command": "long gold 20 USDC leverage 3x", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "plan_long", "message": "открой лонг по нефти на 20 юсдс х3", "id": 283, "command": "long oil risk $20 leverage 3x", "label": "mismatch", "mutation": "role"}
+{"lang": "en", "kind": "plan_long", "message": "long brent oil with $20 at 5x", "id": 284, "command": "long brent 20 USDC leverage 5x", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "plan_long", "message": "long brent oil with $20 at 5x", "id": 285, "command": "short brent 20 USDC leverage 5x", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "plan_long", "message": "long brent oil with $20 at 5x", "id": 286, "command": "long brent 200 USDC leverage 5x", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "plan_long", "message": "long brent oil with $20 at 5x", "id": 287, "command": "long brent 24 USDC leverage 5x", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "plan_long", "message": "long brent oil with $20 at 5x", "id": 288, "command": "long brent risk $20 leverage 5x", "label": "mismatch", "mutation": "role"}
+{"lang": "ru", "kind": "plan_book", "message": "лонг нефть по правилам", "id": 289, "command": "long oil by the book", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "plan_book", "message": "лонг нефть по правилам", "id": 290, "command": "short oil by the book", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "plan_book", "message": "лонг нефть по правилам", "id": 291, "command": "long gold by the book", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "plan_book", "message": "long PEPE, do it properly", "id": 292, "command": "long PEPE by the book", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "plan_book", "message": "long PEPE, do it properly", "id": 293, "command": "short PEPE by the book", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "plan_book", "message": "long PEPE, do it properly", "id": 294, "command": "long DOGE by the book", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "alert", "message": "скажи когда эфира будет выше 3000", "id": 295, "command": "alert me when ETH is above 3000", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "alert", "message": "скажи когда эфира будет выше 3000", "id": 296, "command": "alert me when ETH is below 3000", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "alert", "message": "скажи когда эфира будет выше 3000", "id": 297, "command": "alert me when BTC is above 3000", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "alert", "message": "tell me when oil goes below 70", "id": 298, "command": "alert me when oil is below 70", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "alert", "message": "tell me when oil goes below 70", "id": 299, "command": "alert me when oil is above 70", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "alert", "message": "tell me when oil goes below 70", "id": 300, "command": "alert me when gold is below 70", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "spread", "message": "разложи 1000 юсдс по лучшим ставкам", "id": 301, "command": "spread 1000 USDC across the best rates", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "spread", "message": "разложи 1000 юсдс по лучшим ставкам", "id": 302, "command": "spread 10000 USDC across the best rates", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "spread", "message": "разложи 1000 юсдс по лучшим ставкам", "id": 303, "command": "spread 1200 USDC across the best rates", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "spread", "message": "spread $100 across the best rates", "id": 304, "command": "spread 100 USDC across the best rates", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "spread", "message": "spread $100 across the best rates", "id": 305, "command": "spread 1000 USDC across the best rates", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "spread", "message": "spread $100 across the best rates", "id": 306, "command": "spread 120 USDC across the best rates", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "spread", "message": "reparte 10 dólares entre las mejores tasas sin Kamino", "id": 307, "command": "spread 10 USDC across the best rates without kamino", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "spread", "message": "reparte 10 dólares entre las mejores tasas sin Kamino", "id": 308, "command": "spread 100 USDC across the best rates without kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "spread", "message": "reparte 10 dólares entre las mejores tasas sin Kamino", "id": 309, "command": "spread 12 USDC across the best rates without kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "spread", "message": "reparte 10 dólares entre las mejores tasas sin Kamino", "id": 310, "command": "spread 10 USDC across the best rates without HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "rebalance", "message": "переложи депозиты в лучшие ставки", "id": 311, "command": "rebalance USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "rebalance", "message": "move my deposits to better rates", "id": 312, "command": "rebalance USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "rebalance", "message": "rebalancea mis depósitos", "id": 313, "command": "rebalance USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "stake", "message": "стейкни 0.01 SOL", "id": 314, "command": "stake 0.01 SOL", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "stake", "message": "стейкни 0.01 SOL", "id": 315, "command": "unstake 0.01 SOL", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "stake", "message": "стейкни 0.01 SOL", "id": 316, "command": "stake 0.1 SOL", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "stake", "message": "стейкни 0.01 SOL", "id": 317, "command": "stake 0.012 SOL", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "stake", "message": "стейкни 0.01 SOL", "id": 318, "command": "stake 0.01 ETH", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "later", "message": "через неделю переложи депозиты в лучшие ставки", "id": 319, "command": "in 1 week: rebalance USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "later", "message": "через неделю переложи депозиты в лучшие ставки", "id": 320, "command": "in 10 week: rebalance USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "later", "message": "через неделю переложи депозиты в лучшие ставки", "id": 321, "command": "in 1.2 week: rebalance USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "stop_dca", "message": "останови регулярные покупки", "id": 322, "command": "stop recurring buys", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "stop_dca", "message": "stop my recurring buys", "id": 323, "command": "stop recurring buys", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "stop_dca", "message": "detén las compras recurrentes", "id": 324, "command": "stop recurring buys", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "cancel_alerts", "message": "отмени все алерты", "id": 325, "command": "cancel alerts", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "cancel_alerts", "message": "cacel all my alerts", "id": 326, "command": "cancel alerts", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "cancel_alerts", "message": "cancela todas las alertas", "id": 327, "command": "cancel alerts", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "hlp_out", "message": "выведи всё из HLP", "id": 328, "command": "withdraw USDC from HLP", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "hlp_out", "message": "выведи всё из HLP", "id": 329, "command": "deposit USDC from HLP", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "hlp_out", "message": "выведи всё из HLP", "id": 330, "command": "withdraw USDC from kamino", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "hlp_out", "message": "withdraw everything from HLP", "id": 331, "command": "withdraw USDC from HLP", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "hlp_out", "message": "withdraw everything from HLP", "id": 332, "command": "deposit USDC from HLP", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "hlp_out", "message": "withdraw everything from HLP", "id": 333, "command": "withdraw USDC from kamino", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "hlp_out", "message": "retira todo de HLP", "id": 334, "command": "withdraw USDC from HLP", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "hlp_out", "message": "retira todo de HLP", "id": 335, "command": "deposit USDC from HLP", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "hlp_out", "message": "retira todo de HLP", "id": 336, "command": "withdraw USDC from kamino", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "aave_out", "message": "забери всё из aave на арбитруме", "id": 337, "command": "withdraw USDC from Aave on Arbitrum", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "aave_out", "message": "забери всё из aave на арбитруме", "id": 338, "command": "deposit USDC from Aave on Arbitrum", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "aave_out", "message": "забери всё из aave на арбитруме", "id": 339, "command": "withdraw USDC from Aave on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "aave_out", "message": "забери всё из aave на арбитруме", "id": 340, "command": "withdraw USDC from Morpho on Arbitrum", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "aave_out", "message": "withdraw all my USDC from Aave on Abritrum", "id": 341, "command": "withdraw USDC from Aave on Arbitrum", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "aave_out", "message": "withdraw all my USDC from Aave on Abritrum", "id": 342, "command": "deposit USDC from Aave on Arbitrum", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "aave_out", "message": "withdraw all my USDC from Aave on Abritrum", "id": 343, "command": "withdraw USDC from Aave on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "aave_out", "message": "withdraw all my USDC from Aave on Abritrum", "id": 344, "command": "withdraw USDC from Morpho on Arbitrum", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "aave_out", "message": "saca todo de Aave en Arbtirum", "id": 345, "command": "withdraw USDC from Aave on Arbitrum", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "aave_out", "message": "saca todo de Aave en Arbtirum", "id": 346, "command": "deposit USDC from Aave on Arbitrum", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "aave_out", "message": "saca todo de Aave en Arbtirum", "id": 347, "command": "withdraw USDC from Aave on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "aave_out", "message": "saca todo de Aave en Arbtirum", "id": 348, "command": "withdraw USDC from Morpho on Arbitrum", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "usdg_back", "message": "верни usdg с робингуда на солану", "id": 349, "command": "move USDG from Robinhood to Solana", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "usdg_back", "message": "верни usdg с робингуда на солану", "id": 350, "command": "move USDG from Solana to Robinhood", "label": "mismatch", "mutation": "direction"}
+{"lang": "ru", "kind": "usdg_back", "message": "верни usdg с робингуда на солану", "id": 351, "command": "move USDG from Robinhood to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "usdg_back", "message": "bring my USDG from Robinhodo back to Solana", "id": 352, "command": "move USDG from Robinhood to Solana", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "usdg_back", "message": "bring my USDG from Robinhodo back to Solana", "id": 353, "command": "move USDG from Solana to Robinhood", "label": "mismatch", "mutation": "direction"}
+{"lang": "en", "kind": "usdg_back", "message": "bring my USDG from Robinhodo back to Solana", "id": 354, "command": "move USDG from Robinhood to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "usdg_back", "message": "devuelve mis USDG de Robinhood a Solana", "id": 355, "command": "move USDG from Robinhood to Solana", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "usdg_back", "message": "devuelve mis USDG de Robinhood a Solana", "id": 356, "command": "move USDG from Solana to Robinhood", "label": "mismatch", "mutation": "direction"}
+{"lang": "es", "kind": "usdg_back", "message": "devuelve mis USDG de Robinhood a Solana", "id": 357, "command": "move USDG from Robinhood to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "sweep", "message": "продавай награды раз в час, когда наберется $10", "id": 358, "command": "every hour: sweep rewards over $10 into USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "sweep", "message": "продавай награды раз в час, когда наберется $10", "id": 359, "command": "every hour: sweep rewards over $100 into USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "sweep", "message": "продавай награды раз в час, когда наберется $10", "id": 360, "command": "every hour: sweep rewards over $12 into USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "sweep", "message": "every hour sell my rewards once they're worth $10", "id": 361, "command": "every hour: sweep rewards over $10 into USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "sweep", "message": "every hour sell my rewards once they're worth $10", "id": 362, "command": "every hour: sweep rewards over $100 into USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "sweep", "message": "every hour sell my rewards once they're worth $10", "id": 363, "command": "every hour: sweep rewards over $12 into USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "sweep", "message": "cada hora vende mis recompensas cuanod valgan 10 dólares", "id": 364, "command": "every hour: sweep rewards over $10 into USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "sweep", "message": "cada hora vende mis recompensas cuanod valgan 10 dólares", "id": 365, "command": "every hour: sweep rewards over $100 into USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "sweep", "message": "cada hora vende mis recompensas cuanod valgan 10 dólares", "id": 366, "command": "every hour: sweep rewards over $12 into USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "kamino_in", "message": "положи 4$ в kamino", "id": 367, "command": "deposit 4 USDC to kamino", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "kamino_in", "message": "положи 4$ в kamino", "id": 368, "command": "withdraw 4 USDC to kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "kamino_in", "message": "положи 4$ в kamino", "id": 369, "command": "deposit 40 USDC to kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "kamino_in", "message": "положи 4$ в kamino", "id": 370, "command": "deposit 4.8 USDC to kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "kamino_in", "message": "положи 4$ в kamino", "id": 371, "command": "deposit 4 USDC to HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "kamino_in", "message": "throw twenty bucks in kamino pls", "id": 372, "command": "deposit 20 USDC to kamino", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "kamino_in", "message": "throw twenty bucks in kamino pls", "id": 373, "command": "withdraw 20 USDC to kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "kamino_in", "message": "throw twenty bucks in kamino pls", "id": 374, "command": "deposit 200 USDC to kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "kamino_in", "message": "throw twenty bucks in kamino pls", "id": 375, "command": "deposit 24 USDC to kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "kamino_in", "message": "throw twenty bucks in kamino pls", "id": 376, "command": "deposit 20 USDC to HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "kamino_in", "message": "pon 100 USDC en Kamino", "id": 377, "command": "deposit 100 USDC to kamino", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "kamino_in", "message": "pon 100 USDC en Kamino", "id": 378, "command": "withdraw 100 USDC to kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "kamino_in", "message": "pon 100 USDC en Kamino", "id": 379, "command": "deposit 1000 USDC to kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "kamino_in", "message": "pon 100 USDC en Kamino", "id": 380, "command": "deposit 120 USDC to kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "kamino_in", "message": "pon 100 USDC en Kamino", "id": 381, "command": "deposit 100 USDC to HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "kamino_out", "message": "забери 1 usdc из камино", "id": 382, "command": "withdraw 1 USDC from kamino", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "kamino_out", "message": "забери 1 usdc из камино", "id": 383, "command": "deposit 1 USDC from kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "kamino_out", "message": "забери 1 usdc из камино", "id": 384, "command": "withdraw 10 USDC from kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "kamino_out", "message": "забери 1 usdc из камино", "id": 385, "command": "withdraw 1.2 USDC from kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "kamino_out", "message": "забери 1 usdc из камино", "id": 386, "command": "withdraw 1 USDC from HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "kamino_out", "message": "take 2.5 bucsk out of kamino", "id": 387, "command": "withdraw 2.5 USDC from kamino", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "kamino_out", "message": "take 2.5 bucsk out of kamino", "id": 388, "command": "deposit 2.5 USDC from kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "kamino_out", "message": "take 2.5 bucsk out of kamino", "id": 389, "command": "withdraw 25 USDC from kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "kamino_out", "message": "take 2.5 bucsk out of kamino", "id": 390, "command": "withdraw 3 USDC from kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "kamino_out", "message": "take 2.5 bucsk out of kamino", "id": 391, "command": "withdraw 2.5 USDC from HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "kamino_out", "message": "retira 2.5 pavos de Kamion", "id": 392, "command": "withdraw 2.5 USDC from kamino", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "kamino_out", "message": "retira 2.5 pavos de Kamion", "id": 393, "command": "deposit 2.5 USDC from kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "kamino_out", "message": "retira 2.5 pavos de Kamion", "id": 394, "command": "withdraw 25 USDC from kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "kamino_out", "message": "retira 2.5 pavos de Kamion", "id": 395, "command": "withdraw 3 USDC from kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "kamino_out", "message": "retira 2.5 pavos de Kamion", "id": 396, "command": "withdraw 2.5 USDC from HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "lend", "message": "положи 100$ в джупитер", "id": 397, "command": "lend 100 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "lend", "message": "положи 100$ в джупитер", "id": 398, "command": "lend 1000 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "lend", "message": "положи 100$ в джупитер", "id": 399, "command": "lend 120 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "lend", "message": "put 7 usdc in the jupiter vault", "id": 400, "command": "lend 7 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "lend", "message": "put 7 usdc in the jupiter vault", "id": 401, "command": "lend 70 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "lend", "message": "put 7 usdc in the jupiter vault", "id": 402, "command": "lend 8.4 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "lend", "message": "deposita 12 USDC en el vault de Jupiter", "id": 403, "command": "lend 12 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "lend", "message": "deposita 12 USDC en el vault de Jupiter", "id": 404, "command": "lend 120 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "lend", "message": "deposita 12 USDC en el vault de Jupiter", "id": 405, "command": "lend 14.4 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "hl_out", "message": "верни $7 с хайпера на солану", "id": 406, "command": "withdraw 7 USDC to Solana", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "hl_out", "message": "верни $7 с хайпера на солану", "id": 407, "command": "deposit 7 USDC to Solana", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "hl_out", "message": "верни $7 с хайпера на солану", "id": 408, "command": "withdraw 70 USDC to Solana", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "hl_out", "message": "верни $7 с хайпера на солану", "id": 409, "command": "withdraw 8.4 USDC to Solana", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "hl_out", "message": "верни $7 с хайпера на солану", "id": 410, "command": "withdraw 7 USDC to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "hl_out", "message": "pull $5 off HL back to solana", "id": 411, "command": "withdraw 5 USDC to Solana", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "hl_out", "message": "pull $5 off HL back to solana", "id": 412, "command": "deposit 5 USDC to Solana", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "hl_out", "message": "pull $5 off HL back to solana", "id": 413, "command": "withdraw 50 USDC to Solana", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "hl_out", "message": "pull $5 off HL back to solana", "id": 414, "command": "withdraw 6 USDC to Solana", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "hl_out", "message": "pull $5 off HL back to solana", "id": 415, "command": "withdraw 5 USDC to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "hl_out", "message": "saca $100 de Hperliquid", "id": 416, "command": "withdraw 100 USDC to Solana", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "hl_out", "message": "saca $100 de Hperliquid", "id": 417, "command": "deposit 100 USDC to Solana", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "hl_out", "message": "saca $100 de Hperliquid", "id": 418, "command": "withdraw 1000 USDC to Solana", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "hl_out", "message": "saca $100 de Hperliquid", "id": 419, "command": "withdraw 120 USDC to Solana", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "hl_out", "message": "saca $100 de Hperliquid", "id": 420, "command": "withdraw 100 USDC to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "hlp_in", "message": "полложи 20$ в HLP", "id": 421, "command": "deposit 20 USDC to HLP", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "hlp_in", "message": "полложи 20$ в HLP", "id": 422, "command": "withdraw 20 USDC to HLP", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "hlp_in", "message": "полложи 20$ в HLP", "id": 423, "command": "deposit 200 USDC to HLP", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "hlp_in", "message": "полложи 20$ в HLP", "id": 424, "command": "deposit 24 USDC to HLP", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "hlp_in", "message": "полложи 20$ в HLP", "id": 425, "command": "deposit 20 USDC to kamino", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "hlp_in", "message": "deposit 5 USDC into HLP", "id": 426, "command": "deposit 5 USDC to HLP", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "hlp_in", "message": "deposit 5 USDC into HLP", "id": 427, "command": "withdraw 5 USDC to HLP", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "hlp_in", "message": "deposit 5 USDC into HLP", "id": 428, "command": "deposit 50 USDC to HLP", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "hlp_in", "message": "deposit 5 USDC into HLP", "id": 429, "command": "deposit 6 USDC to HLP", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "hlp_in", "message": "deposit 5 USDC into HLP", "id": 430, "command": "deposit 5 USDC to kamino", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "hlp_in", "message": "deposita 5 USDC en HLP", "id": 431, "command": "deposit 5 USDC to HLP", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "hlp_in", "message": "deposita 5 USDC en HLP", "id": 432, "command": "withdraw 5 USDC to HLP", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "hlp_in", "message": "deposita 5 USDC en HLP", "id": 433, "command": "deposit 50 USDC to HLP", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "hlp_in", "message": "deposita 5 USDC en HLP", "id": 434, "command": "deposit 6 USDC to HLP", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "hlp_in", "message": "deposita 5 USDC en HLP", "id": 435, "command": "deposit 5 USDC to kamino", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "aave_in", "message": "положи 2,5 usdc в ааве на аритрум", "id": 436, "command": "lend 2.5 USDC on Aave on Arbitrum", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "aave_in", "message": "положи 2,5 usdc в ааве на аритрум", "id": 437, "command": "lend 25 USDC on Aave on Arbitrum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "aave_in", "message": "положи 2,5 usdc в ааве на аритрум", "id": 438, "command": "lend 3 USDC on Aave on Arbitrum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "aave_in", "message": "положи 2,5 usdc в ааве на аритрум", "id": 439, "command": "lend 2.5 USDC on Aave on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "aave_in", "message": "положи 2,5 usdc в ааве на аритрум", "id": 440, "command": "lend 2.5 USDC on Morpho on Arbitrum", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "aave_in", "message": "put 2.5 dollars into aave on Polygon", "id": 441, "command": "lend 2.5 USDC on Aave on Polygon", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "aave_in", "message": "put 2.5 dollars into aave on Polygon", "id": 442, "command": "lend 25 USDC on Aave on Polygon", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "aave_in", "message": "put 2.5 dollars into aave on Polygon", "id": 443, "command": "lend 3 USDC on Aave on Polygon", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "aave_in", "message": "put 2.5 dollars into aave on Polygon", "id": 444, "command": "lend 2.5 USDC on Aave on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "aave_in", "message": "put 2.5 dollars into aave on Polygon", "id": 445, "command": "lend 2.5 USDC on Morpho on Polygon", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "aave_in", "message": "persta 50 usdc en Aave en Ethereum", "id": 446, "command": "lend 50 USDC on Aave on Ethereum", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "aave_in", "message": "persta 50 usdc en Aave en Ethereum", "id": 447, "command": "lend 500 USDC on Aave on Ethereum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "aave_in", "message": "persta 50 usdc en Aave en Ethereum", "id": 448, "command": "lend 60 USDC on Aave on Ethereum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "aave_in", "message": "persta 50 usdc en Aave en Ethereum", "id": 449, "command": "lend 50 USDC on Aave on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "aave_in", "message": "persta 50 usdc en Aave en Ethereum", "id": 450, "command": "lend 50 USDC on Morpho on Ethereum", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "morpho_in", "message": "положи 15 баачей в морфо на бейз", "id": 451, "command": "deposit 15 USDC into Morpho on Base", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "morpho_in", "message": "положи 15 баачей в морфо на бейз", "id": 452, "command": "withdraw 15 USDC into Morpho on Base", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "morpho_in", "message": "положи 15 баачей в морфо на бейз", "id": 453, "command": "deposit 150 USDC into Morpho on Base", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "morpho_in", "message": "положи 15 баачей в морфо на бейз", "id": 454, "command": "deposit 18 USDC into Morpho on Base", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "morpho_in", "message": "положи 15 баачей в морфо на бейз", "id": 455, "command": "deposit 15 USDC into Morpho on Arbitrum", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "morpho_in", "message": "положи 15 баачей в морфо на бейз", "id": 456, "command": "deposit 15 USDC into Aave on Base", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "morpho_in", "message": "put 15 USDC in morpho on arbitrum", "id": 457, "command": "deposit 15 USDC into Morpho on Arbitrum", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "morpho_in", "message": "put 15 USDC in morpho on arbitrum", "id": 458, "command": "withdraw 15 USDC into Morpho on Arbitrum", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "morpho_in", "message": "put 15 USDC in morpho on arbitrum", "id": 459, "command": "deposit 150 USDC into Morpho on Arbitrum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "morpho_in", "message": "put 15 USDC in morpho on arbitrum", "id": 460, "command": "deposit 18 USDC into Morpho on Arbitrum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "morpho_in", "message": "put 15 USDC in morpho on arbitrum", "id": 461, "command": "deposit 15 USDC into Morpho on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "morpho_in", "message": "put 15 USDC in morpho on arbitrum", "id": 462, "command": "deposit 15 USDC into Aave on Arbitrum", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "morpho_in", "message": "deposita 20 USDC en Morpho en Ethereum", "id": 463, "command": "deposit 20 USDC into Morpho on Ethereum", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "morpho_in", "message": "deposita 20 USDC en Morpho en Ethereum", "id": 464, "command": "withdraw 20 USDC into Morpho on Ethereum", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "morpho_in", "message": "deposita 20 USDC en Morpho en Ethereum", "id": 465, "command": "deposit 200 USDC into Morpho on Ethereum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "morpho_in", "message": "deposita 20 USDC en Morpho en Ethereum", "id": 466, "command": "deposit 24 USDC into Morpho on Ethereum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "morpho_in", "message": "deposita 20 USDC en Morpho en Ethereum", "id": 467, "command": "deposit 20 USDC into Morpho on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "morpho_in", "message": "deposita 20 USDC en Morpho en Ethereum", "id": 468, "command": "deposit 20 USDC into Aave on Ethereum", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "evm_to_sol", "message": "переведи 50 usdc с поолигона в солану", "id": 469, "command": "move 50 USDC from Polygon to Solana", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "evm_to_sol", "message": "переведи 50 usdc с поолигона в солану", "id": 470, "command": "move 50 USDC from Solana to Polygon", "label": "mismatch", "mutation": "direction"}
+{"lang": "ru", "kind": "evm_to_sol", "message": "переведи 50 usdc с поолигона в солану", "id": 471, "command": "move 500 USDC from Polygon to Solana", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "evm_to_sol", "message": "переведи 50 usdc с поолигона в солану", "id": 472, "command": "move 60 USDC from Polygon to Solana", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "evm_to_sol", "message": "переведи 50 usdc с поолигона в солану", "id": 473, "command": "move 50 USDC from Base to Solana", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "evm_to_sol", "message": "move 15 dollars from arbitrum to Solana", "id": 474, "command": "move 15 USDC from Arbitrum to Solana", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "evm_to_sol", "message": "move 15 dollars from arbitrum to Solana", "id": 475, "command": "move 15 USDC from Solana to Arbitrum", "label": "mismatch", "mutation": "direction"}
+{"lang": "en", "kind": "evm_to_sol", "message": "move 15 dollars from arbitrum to Solana", "id": 476, "command": "move 150 USDC from Arbitrum to Solana", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "evm_to_sol", "message": "move 15 dollars from arbitrum to Solana", "id": 477, "command": "move 18 USDC from Arbitrum to Solana", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "evm_to_sol", "message": "move 15 dollars from arbitrum to Solana", "id": 478, "command": "move 15 USDC from Base to Solana", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "evm_to_sol", "message": "mueve 2 USDC de Base a Solana", "id": 479, "command": "move 2 USDC from Base to Solana", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "evm_to_sol", "message": "mueve 2 USDC de Base a Solana", "id": 480, "command": "move 2 USDC from Solana to Base", "label": "mismatch", "mutation": "direction"}
+{"lang": "es", "kind": "evm_to_sol", "message": "mueve 2 USDC de Base a Solana", "id": 481, "command": "move 20 USDC from Base to Solana", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "evm_to_sol", "message": "mueve 2 USDC de Base a Solana", "id": 482, "command": "move 2.4 USDC from Base to Solana", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "evm_to_sol", "message": "mueve 2 USDC de Base a Solana", "id": 483, "command": "move 2 USDC from Arbitrum to Solana", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "sol_to_evm", "message": "закинь 15 юсдс с соланы на эфир", "id": 484, "command": "move 15 USDC from Solana to Ethereum", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "sol_to_evm", "message": "закинь 15 юсдс с соланы на эфир", "id": 485, "command": "move 15 USDC from Ethereum to Solana", "label": "mismatch", "mutation": "direction"}
+{"lang": "ru", "kind": "sol_to_evm", "message": "закинь 15 юсдс с соланы на эфир", "id": 486, "command": "move 150 USDC from Solana to Ethereum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "sol_to_evm", "message": "закинь 15 юсдс с соланы на эфир", "id": 487, "command": "move 18 USDC from Solana to Ethereum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "sol_to_evm", "message": "закинь 15 юсдс с соланы на эфир", "id": 488, "command": "move 15 USDC from Solana to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "sol_to_evm", "message": "send 100 bucks from solana over to optimism", "id": 489, "command": "move 100 USDC from Solana to Optimism", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "sol_to_evm", "message": "send 100 bucks from solana over to optimism", "id": 490, "command": "move 100 USDC from Optimism to Solana", "label": "mismatch", "mutation": "direction"}
+{"lang": "en", "kind": "sol_to_evm", "message": "send 100 bucks from solana over to optimism", "id": 491, "command": "move 1000 USDC from Solana to Optimism", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "sol_to_evm", "message": "send 100 bucks from solana over to optimism", "id": 492, "command": "move 120 USDC from Solana to Optimism", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "sol_to_evm", "message": "send 100 bucks from solana over to optimism", "id": 493, "command": "move 100 USDC from Solana to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "sol_to_evm", "message": "mueve 4 USDC de Solana a HyperEVM", "id": 494, "command": "move 4 USDC from Solana to HyperEVM", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "sol_to_evm", "message": "mueve 4 USDC de Solana a HyperEVM", "id": 495, "command": "move 4 USDC from HyperEVM to Solana", "label": "mismatch", "mutation": "direction"}
+{"lang": "es", "kind": "sol_to_evm", "message": "mueve 4 USDC de Solana a HyperEVM", "id": 496, "command": "move 40 USDC from Solana to HyperEVM", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "sol_to_evm", "message": "mueve 4 USDC de Solana a HyperEVM", "id": 497, "command": "move 4.8 USDC from Solana to HyperEVM", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "sol_to_evm", "message": "mueve 4 USDC de Solana a HyperEVM", "id": 498, "command": "move 4 USDC from Base to HyperEVM", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "evm_to_evm", "message": "перекинь 2 usdc с эфира на оптимизм", "id": 499, "command": "move 2 USDC from Ethereum to Optimism", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "evm_to_evm", "message": "перекинь 2 usdc с эфира на оптимизм", "id": 500, "command": "move 2 USDC from Optimism to Ethereum", "label": "mismatch", "mutation": "direction"}
+{"lang": "ru", "kind": "evm_to_evm", "message": "перекинь 2 usdc с эфира на оптимизм", "id": 501, "command": "move 20 USDC from Ethereum to Optimism", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "evm_to_evm", "message": "перекинь 2 usdc с эфира на оптимизм", "id": 502, "command": "move 2.4 USDC from Ethereum to Optimism", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "evm_to_evm", "message": "перекинь 2 usdc с эфира на оптимизм", "id": 503, "command": "move 2 USDC from Ethereum to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "evm_to_evm", "message": "move 20 usdc from bnb to base", "id": 504, "command": "move 20 USDC from BNB to Base", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "evm_to_evm", "message": "move 20 usdc from bnb to base", "id": 505, "command": "move 20 USDC from Base to BNB", "label": "mismatch", "mutation": "direction"}
+{"lang": "en", "kind": "evm_to_evm", "message": "move 20 usdc from bnb to base", "id": 506, "command": "move 200 USDC from BNB to Base", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "evm_to_evm", "message": "move 20 usdc from bnb to base", "id": 507, "command": "move 24 USDC from BNB to Base", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "evm_to_evm", "message": "move 20 usdc from bnb to base", "id": 508, "command": "move 20 USDC from BNB to Arbitrum", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "evm_to_evm", "message": "pasa 7 dólares de BNB a Robinhood", "id": 509, "command": "move 7 USDC from BNB to Robinhood", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "evm_to_evm", "message": "pasa 7 dólares de BNB a Robinhood", "id": 510, "command": "move 7 USDC from Robinhood to BNB", "label": "mismatch", "mutation": "direction"}
+{"lang": "es", "kind": "evm_to_evm", "message": "pasa 7 dólares de BNB a Robinhood", "id": 511, "command": "move 70 USDC from BNB to Robinhood", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "evm_to_evm", "message": "pasa 7 dólares de BNB a Robinhood", "id": 512, "command": "move 8.4 USDC from BNB to Robinhood", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "evm_to_evm", "message": "pasa 7 dólares de BNB a Robinhood", "id": 513, "command": "move 7 USDC from BNB to Base", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "evm_to_hl", "message": "закинь 15$ с арбитрума на гипер", "id": 514, "command": "move 15 USDC from Arbitrum to Hyperliquid", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "evm_to_hl", "message": "закинь 15$ с арбитрума на гипер", "id": 515, "command": "move 15 USDC from Hyperliquid to Arbitrum", "label": "mismatch", "mutation": "direction"}
+{"lang": "ru", "kind": "evm_to_hl", "message": "закинь 15$ с арбитрума на гипер", "id": 516, "command": "move 150 USDC from Arbitrum to Hyperliquid", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "evm_to_hl", "message": "закинь 15$ с арбитрума на гипер", "id": 517, "command": "move 18 USDC from Arbitrum to Hyperliquid", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "evm_to_hl", "message": "закинь 15$ с арбитрума на гипер", "id": 518, "command": "move 15 USDC from Base to Hyperliquid", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "evm_to_hl", "message": "move 1.5 USDC from arbitrum to Hyperliquid", "id": 519, "command": "move 1.5 USDC from Arbitrum to Hyperliquid", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "evm_to_hl", "message": "move 1.5 USDC from arbitrum to Hyperliquid", "id": 520, "command": "move 1.5 USDC from Hyperliquid to Arbitrum", "label": "mismatch", "mutation": "direction"}
+{"lang": "en", "kind": "evm_to_hl", "message": "move 1.5 USDC from arbitrum to Hyperliquid", "id": 521, "command": "move 15 USDC from Arbitrum to Hyperliquid", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "evm_to_hl", "message": "move 1.5 USDC from arbitrum to Hyperliquid", "id": 522, "command": "move 1.8 USDC from Arbitrum to Hyperliquid", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "evm_to_hl", "message": "move 1.5 USDC from arbitrum to Hyperliquid", "id": 523, "command": "move 1.5 USDC from Base to Hyperliquid", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "evm_to_hl", "message": "mueve $4 de base a Hyperliquid", "id": 524, "command": "move 4 USDC from Base to Hyperliquid", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "evm_to_hl", "message": "mueve $4 de base a Hyperliquid", "id": 525, "command": "move 4 USDC from Hyperliquid to Base", "label": "mismatch", "mutation": "direction"}
+{"lang": "es", "kind": "evm_to_hl", "message": "mueve $4 de base a Hyperliquid", "id": 526, "command": "move 40 USDC from Base to Hyperliquid", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "evm_to_hl", "message": "mueve $4 de base a Hyperliquid", "id": 527, "command": "move 4.8 USDC from Base to Hyperliquid", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "evm_to_hl", "message": "mueve $4 de base a Hyperliquid", "id": 528, "command": "move 4 USDC from Arbitrum to Hyperliquid", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "buy_evm", "message": "купи AAVE в полигон на один баксов", "id": 529, "command": "buy AAVE on polygon for 1 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "buy_evm", "message": "купи AAVE в полигон на один баксов", "id": 530, "command": "sell AAVE on polygon for 1 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "buy_evm", "message": "купи AAVE в полигон на один баксов", "id": 531, "command": "buy AAVE on polygon for 10 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "buy_evm", "message": "купи AAVE в полигон на один баксов", "id": 532, "command": "buy AAVE on polygon for 1.2 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "buy_evm", "message": "купи AAVE в полигон на один баксов", "id": 533, "command": "buy AAVE on Base for 1 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "buy_evm", "message": "get me 1.5 usdc of CAKE on bnb", "id": 534, "command": "buy CAKE on bnb for 1.5 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "buy_evm", "message": "get me 1.5 usdc of CAKE on bnb", "id": 535, "command": "sell CAKE on bnb for 1.5 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "buy_evm", "message": "get me 1.5 usdc of CAKE on bnb", "id": 536, "command": "buy CAKE on bnb for 15 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "buy_evm", "message": "get me 1.5 usdc of CAKE on bnb", "id": 537, "command": "buy CAKE on bnb for 1.8 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "buy_evm", "message": "get me 1.5 usdc of CAKE on bnb", "id": 538, "command": "buy CAKE on Base for 1.5 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "buy_evm", "message": "compra CAKE en BSC por diez dólares", "id": 539, "command": "buy CAKE on bnb for 10 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "buy_evm", "message": "compra CAKE en BSC por diez dólares", "id": 540, "command": "sell CAKE on bnb for 10 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "buy_evm", "message": "compra CAKE en BSC por diez dólares", "id": 541, "command": "buy CAKE on bnb for 100 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "buy_evm", "message": "compra CAKE en BSC por diez dólares", "id": 542, "command": "buy CAKE on bnb for 12 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "buy_evm", "message": "compra CAKE en BSC por diez dólares", "id": 543, "command": "buy CAKE on Base for 10 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "send_name", "message": "отправь 7 баксов на Bybit", "id": 544, "command": "send 7 USDC to Bybit", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "send_name", "message": "отправь 7 баксов на Bybit", "id": 545, "command": "send 70 USDC to Bybit", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "send_name", "message": "отправь 7 баксов на Bybit", "id": 546, "command": "send 8.4 USDC to Bybit", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "send_name", "message": "отправь 7 баксов на Bybit", "id": 547, "command": "send 7 USDC to Mom", "label": "mismatch", "mutation": "recipient"}
+{"lang": "en", "kind": "send_name", "message": "send 5 bucks to Mom", "id": 548, "command": "send 5 USDC to Mom", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "send_name", "message": "send 5 bucks to Mom", "id": 549, "command": "send 50 USDC to Mom", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "send_name", "message": "send 5 bucks to Mom", "id": 550, "command": "send 6 USDC to Mom", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "send_name", "message": "send 5 bucks to Mom", "id": 551, "command": "send 5 USDC to Bybit", "label": "mismatch", "mutation": "recipient"}
+{"lang": "es", "kind": "send_name", "message": "manda 10 usdc a Bybit", "id": 552, "command": "send 10 USDC to Bybit", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "send_name", "message": "manda 10 usdc a Bybit", "id": 553, "command": "send 100 USDC to Bybit", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "send_name", "message": "manda 10 usdc a Bybit", "id": 554, "command": "send 12 USDC to Bybit", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "send_name", "message": "manda 10 usdc a Bybit", "id": 555, "command": "send 10 USDC to Mom", "label": "mismatch", "mutation": "recipient"}
+{"lang": "ru", "kind": "send_name_net", "message": "переведи 12 баксов на bybit по arbitrum сети", "id": 556, "command": "send 12 USDC to Bybit on arbitrum", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "send_name_net", "message": "переведи 12 баксов на bybit по arbitrum сети", "id": 557, "command": "send 120 USDC to Bybit on arbitrum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "send_name_net", "message": "переведи 12 баксов на bybit по arbitrum сети", "id": 558, "command": "send 14.4 USDC to Bybit on arbitrum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "send_name_net", "message": "переведи 12 баксов на bybit по arbitrum сети", "id": 559, "command": "send 12 USDC to Bybit on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "send_name_net", "message": "переведи 12 баксов на bybit по arbitrum сети", "id": 560, "command": "send 12 USDC to Mom on arbitrum", "label": "mismatch", "mutation": "recipient"}
+{"lang": "en", "kind": "send_name_net", "message": "send 20 USDC to bybit via ethereum", "id": 561, "command": "send 20 USDC to Bybit on ethereum", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "send_name_net", "message": "send 20 USDC to bybit via ethereum", "id": 562, "command": "send 200 USDC to Bybit on ethereum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "send_name_net", "message": "send 20 USDC to bybit via ethereum", "id": 563, "command": "send 24 USDC to Bybit on ethereum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "send_name_net", "message": "send 20 USDC to bybit via ethereum", "id": 564, "command": "send 20 USDC to Bybit on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "send_name_net", "message": "send 20 USDC to bybit via ethereum", "id": 565, "command": "send 20 USDC to Mom on ethereum", "label": "mismatch", "mutation": "recipient"}
+{"lang": "es", "kind": "send_name_net", "message": "envía 15 dólares a Bybit en arbitrum", "id": 566, "command": "send 15 USDC to Bybit on arbitrum", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "send_name_net", "message": "envía 15 dólares a Bybit en arbitrum", "id": 567, "command": "send 150 USDC to Bybit on arbitrum", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "send_name_net", "message": "envía 15 dólares a Bybit en arbitrum", "id": 568, "command": "send 18 USDC to Bybit on arbitrum", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "send_name_net", "message": "envía 15 dólares a Bybit en arbitrum", "id": 569, "command": "send 15 USDC to Bybit on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "send_name_net", "message": "envía 15 dólares a Bybit en arbitrum", "id": 570, "command": "send 15 USDC to Mom on arbitrum", "label": "mismatch", "mutation": "recipient"}
+{"lang": "ru", "kind": "send_sol", "message": "скинь 0.5 SOL маме", "id": 571, "command": "send 0.5 SOL to Mom", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "send_sol", "message": "скинь 0.5 SOL маме", "id": 572, "command": "send 5 SOL to Mom", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "send_sol", "message": "скинь 0.5 SOL маме", "id": 573, "command": "send 0.6 SOL to Mom", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "send_sol", "message": "скинь 0.5 SOL маме", "id": 574, "command": "send 0.5 ETH to Mom", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "send_sol", "message": "скинь 0.5 SOL маме", "id": 575, "command": "send 0.5 SOL to Bybit", "label": "mismatch", "mutation": "recipient"}
+{"lang": "en", "kind": "send_sol", "message": "send 0.5 SOL to Bybit", "id": 576, "command": "send 0.5 SOL to Bybit", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "send_sol", "message": "send 0.5 SOL to Bybit", "id": 577, "command": "send 5 SOL to Bybit", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "send_sol", "message": "send 0.5 SOL to Bybit", "id": 578, "command": "send 0.6 SOL to Bybit", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "send_sol", "message": "send 0.5 SOL to Bybit", "id": 579, "command": "send 0.5 ETH to Bybit", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "send_sol", "message": "send 0.5 SOL to Bybit", "id": 580, "command": "send 0.5 SOL to Mom", "label": "mismatch", "mutation": "recipient"}
+{"lang": "es", "kind": "send_sol", "message": "envía 0.1 SOL a Byit", "id": 581, "command": "send 0.1 SOL to Bybit", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "send_sol", "message": "envía 0.1 SOL a Byit", "id": 582, "command": "send 1 SOL to Bybit", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "send_sol", "message": "envía 0.1 SOL a Byit", "id": 583, "command": "send 0.12 SOL to Bybit", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "send_sol", "message": "envía 0.1 SOL a Byit", "id": 584, "command": "send 0.1 ETH to Bybit", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "send_sol", "message": "envía 0.1 SOL a Byit", "id": 585, "command": "send 0.1 SOL to Mom", "label": "mismatch", "mutation": "recipient"}
+{"lang": "ru", "kind": "buy_spot", "message": "купи BTC на сто баксов", "id": 586, "command": "buy BTC for 100 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "buy_spot", "message": "купи BTC на сто баксов", "id": 587, "command": "sell BTC for 100 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "buy_spot", "message": "купи BTC на сто баксов", "id": 588, "command": "buy BTC for 1000 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "buy_spot", "message": "купи BTC на сто баксов", "id": 589, "command": "buy BTC for 120 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "buy_spot", "message": "купи BTC на сто баксов", "id": 590, "command": "buy ETH for 100 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "buy_spot", "message": "grab 1 USDC worth of JUP", "id": 591, "command": "buy JUP for 1 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "buy_spot", "message": "grab 1 USDC worth of JUP", "id": 592, "command": "sell JUP for 1 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "buy_spot", "message": "grab 1 USDC worth of JUP", "id": 593, "command": "buy JUP for 10 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "buy_spot", "message": "grab 1 USDC worth of JUP", "id": 594, "command": "buy JUP for 1.2 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "buy_spot", "message": "grab 1 USDC worth of JUP", "id": 595, "command": "buy BONK for 1 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "buy_spot", "message": "comppra JUP por 2 dólares", "id": 596, "command": "buy JUP for 2 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "buy_spot", "message": "comppra JUP por 2 dólares", "id": 597, "command": "sell JUP for 2 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "buy_spot", "message": "comppra JUP por 2 dólares", "id": 598, "command": "buy JUP for 20 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "buy_spot", "message": "comppra JUP por 2 dólares", "id": 599, "command": "buy JUP for 2.4 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "buy_spot", "message": "comppra JUP por 2 dólares", "id": 600, "command": "buy BONK for 2 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "sell_spot", "message": "слей 0.05 SOL", "id": 601, "command": "sell 0.05 SOL", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "sell_spot", "message": "слей 0.05 SOL", "id": 602, "command": "buy 0.05 SOL", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "sell_spot", "message": "слей 0.05 SOL", "id": 603, "command": "sell 0.5 SOL", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "sell_spot", "message": "слей 0.05 SOL", "id": 604, "command": "sell 0.06 SOL", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "sell_spot", "message": "слей 0.05 SOL", "id": 605, "command": "sell 0.05 ETH", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "sell_spot", "message": "sell 0.01 SOL", "id": 606, "command": "sell 0.01 SOL", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "sell_spot", "message": "sell 0.01 SOL", "id": 607, "command": "buy 0.01 SOL", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "sell_spot", "message": "sell 0.01 SOL", "id": 608, "command": "sell 0.1 SOL", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "sell_spot", "message": "sell 0.01 SOL", "id": 609, "command": "sell 0.012 SOL", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "sell_spot", "message": "sell 0.01 SOL", "id": 610, "command": "sell 0.01 ETH", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "sell_spot", "message": "vende 0.01 SOL", "id": 611, "command": "sell 0.01 SOL", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "sell_spot", "message": "vende 0.01 SOL", "id": 612, "command": "buy 0.01 SOL", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "sell_spot", "message": "vende 0.01 SOL", "id": 613, "command": "sell 0.1 SOL", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "sell_spot", "message": "vende 0.01 SOL", "id": 614, "command": "sell 0.012 SOL", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "sell_spot", "message": "vende 0.01 SOL", "id": 615, "command": "sell 0.01 ETH", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "jup_token", "message": "купи WIF на 10 долларов", "id": 616, "command": "buy WIF on solana for 10 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "jup_token", "message": "купи WIF на 10 долларов", "id": 617, "command": "sell WIF on solana for 10 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "jup_token", "message": "купи WIF на 10 долларов", "id": 618, "command": "buy WIF on solana for 100 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "jup_token", "message": "купи WIF на 10 долларов", "id": 619, "command": "buy WIF on solana for 12 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "jup_token", "message": "купи WIF на 10 долларов", "id": 620, "command": "buy BONK on solana for 10 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "jup_token", "message": "купи WIF на 10 долларов", "id": 621, "command": "buy WIF on Base for 10 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "jup_token", "message": "buy BONK for 0.5 dollars", "id": 622, "command": "buy BONK on solana for 0.5 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "jup_token", "message": "buy BONK for 0.5 dollars", "id": 623, "command": "sell BONK on solana for 0.5 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "jup_token", "message": "buy BONK for 0.5 dollars", "id": 624, "command": "buy BONK on solana for 5 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "jup_token", "message": "buy BONK for 0.5 dollars", "id": 625, "command": "buy BONK on solana for 0.6 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "jup_token", "message": "buy BONK for 0.5 dollars", "id": 626, "command": "buy WIF on solana for 0.5 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "jup_token", "message": "buy BONK for 0.5 dollars", "id": 627, "command": "buy BONK on Base for 0.5 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "jup_token", "message": "comra RAY por $2.5", "id": 628, "command": "buy RAY on solana for 2.5 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "jup_token", "message": "comra RAY por $2.5", "id": 629, "command": "sell RAY on solana for 2.5 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "jup_token", "message": "comra RAY por $2.5", "id": 630, "command": "buy RAY on solana for 25 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "jup_token", "message": "comra RAY por $2.5", "id": 631, "command": "buy RAY on solana for 3 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "jup_token", "message": "comra RAY por $2.5", "id": 632, "command": "buy RAY on Base for 2.5 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "evm_token", "message": "купи DEGEN на бейзе на 12 бакксов", "id": 633, "command": "buy DEGEN on base for 12 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "evm_token", "message": "купи DEGEN на бейзе на 12 бакксов", "id": 634, "command": "sell DEGEN on base for 12 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "evm_token", "message": "купи DEGEN на бейзе на 12 бакксов", "id": 635, "command": "buy DEGEN on base for 120 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "evm_token", "message": "купи DEGEN на бейзе на 12 бакксов", "id": 636, "command": "buy DEGEN on base for 14.4 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "evm_token", "message": "купи DEGEN на бейзе на 12 бакксов", "id": 637, "command": "buy BRETT on base for 12 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "evm_token", "message": "купи DEGEN на бейзе на 12 бакксов", "id": 638, "command": "buy DEGEN on Arbitrum for 12 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "evm_token", "message": "buy WPOL on polygon for 1.5 USDC", "id": 639, "command": "buy WPOL on polygon for 1.5 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "evm_token", "message": "buy WPOL on polygon for 1.5 USDC", "id": 640, "command": "sell WPOL on polygon for 1.5 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "evm_token", "message": "buy WPOL on polygon for 1.5 USDC", "id": 641, "command": "buy WPOL on polygon for 15 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "evm_token", "message": "buy WPOL on polygon for 1.5 USDC", "id": 642, "command": "buy WPOL on polygon for 1.8 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "evm_token", "message": "buy WPOL on polygon for 1.5 USDC", "id": 643, "command": "buy WPOL on Base for 1.5 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "evm_token", "message": "commpra PENDLE en arbitrum por 20 usdc", "id": 644, "command": "buy PENDLE on arbitrum for 20 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "evm_token", "message": "commpra PENDLE en arbitrum por 20 usdc", "id": 645, "command": "sell PENDLE on arbitrum for 20 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "evm_token", "message": "commpra PENDLE en arbitrum por 20 usdc", "id": 646, "command": "buy PENDLE on arbitrum for 200 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "evm_token", "message": "commpra PENDLE en arbitrum por 20 usdc", "id": 647, "command": "buy PENDLE on arbitrum for 24 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "evm_token", "message": "commpra PENDLE en arbitrum por 20 usdc", "id": 648, "command": "buy PENDLE on Base for 20 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "stock", "message": "купи акции теслы на 4 бачей", "id": 649, "command": "buy TSLA stock for 4 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "stock", "message": "купи акции теслы на 4 бачей", "id": 650, "command": "sell TSLA stock for 4 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "stock", "message": "купи акции теслы на 4 бачей", "id": 651, "command": "buy TSLA stock for 40 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "stock", "message": "купи акции теслы на 4 бачей", "id": 652, "command": "buy TSLA stock for 4.8 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "stock", "message": "купи акции теслы на 4 бачей", "id": 653, "command": "buy NVDA stock for 4 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "stock", "message": "buy $3 of SaceX stock", "id": 654, "command": "buy SpaceX stock for 3 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "stock", "message": "buy $3 of SaceX stock", "id": 655, "command": "sell SpaceX stock for 3 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "stock", "message": "buy $3 of SaceX stock", "id": 656, "command": "buy SpaceX stock for 30 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "stock", "message": "buy $3 of SaceX stock", "id": 657, "command": "buy SpaceX stock for 3.6 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "stock", "message": "compra acciones de SpaceX por $0.5", "id": 658, "command": "buy SpaceX stock for 0.5 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "stock", "message": "compra acciones de SpaceX por $0.5", "id": 659, "command": "sell SpaceX stock for 0.5 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "stock", "message": "compra acciones de SpaceX por $0.5", "id": 660, "command": "buy SpaceX stock for 5 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "stock", "message": "compra acciones de SpaceX por $0.5", "id": 661, "command": "buy SpaceX stock for 0.6 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "plan_long", "message": "открой лонг по TSLA на 3 бачей х5", "id": 662, "command": "long TSLA 3 USDC leverage 5x", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "plan_long", "message": "открой лонг по TSLA на 3 бачей х5", "id": 663, "command": "short TSLA 3 USDC leverage 5x", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "plan_long", "message": "открой лонг по TSLA на 3 бачей х5", "id": 664, "command": "long TSLA 30 USDC leverage 5x", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "plan_long", "message": "открой лонг по TSLA на 3 бачей х5", "id": 665, "command": "long TSLA 3.6 USDC leverage 5x", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "plan_long", "message": "открой лонг по TSLA на 3 бачей х5", "id": 666, "command": "long NVDA 3 USDC leverage 5x", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "plan_long", "message": "открой лонг по TSLA на 3 бачей х5", "id": 667, "command": "long TSLA risk $3 leverage 5x", "label": "mismatch", "mutation": "role"}
+{"lang": "en", "kind": "plan_long", "message": "open a 2x long on gold for $3", "id": 668, "command": "long gold 3 USDC leverage 2x", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "plan_long", "message": "open a 2x long on gold for $3", "id": 669, "command": "short gold 3 USDC leverage 2x", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "plan_long", "message": "open a 2x long on gold for $3", "id": 670, "command": "long gold 30 USDC leverage 2x", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "plan_long", "message": "open a 2x long on gold for $3", "id": 671, "command": "long gold 3.6 USDC leverage 2x", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "plan_long", "message": "open a 2x long on gold for $3", "id": 672, "command": "long oil 3 USDC leverage 2x", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "plan_long", "message": "open a 2x long on gold for $3", "id": 673, "command": "long gold risk $3 leverage 2x", "label": "mismatch", "mutation": "role"}
+{"lang": "es", "kind": "plan_long", "message": "long en TSLA por 20 dólares apalancaimento 5", "id": 674, "command": "long TSLA 20 USDC leverage 5x", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "plan_long", "message": "long en TSLA por 20 dólares apalancaimento 5", "id": 675, "command": "short TSLA 20 USDC leverage 5x", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "plan_long", "message": "long en TSLA por 20 dólares apalancaimento 5", "id": 676, "command": "long TSLA 200 USDC leverage 5x", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "plan_long", "message": "long en TSLA por 20 dólares apalancaimento 5", "id": 677, "command": "long TSLA 24 USDC leverage 5x", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "plan_long", "message": "long en TSLA por 20 dólares apalancaimento 5", "id": 678, "command": "long NVDA 20 USDC leverage 5x", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "plan_long", "message": "long en TSLA por 20 dólares apalancaimento 5", "id": 679, "command": "long TSLA risk $20 leverage 5x", "label": "mismatch", "mutation": "role"}
+{"lang": "ru", "kind": "plan_short_risk", "message": "зашорть золота, рискую 2 бакса, стоп 1.5%", "id": 680, "command": "short gold risk $2 stop 1.5%", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "plan_short_risk", "message": "зашорть золота, рискую 2 бакса, стоп 1.5%", "id": 681, "command": "long gold risk $2 stop 1.5%", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "plan_short_risk", "message": "зашорть золота, рискую 2 бакса, стоп 1.5%", "id": 682, "command": "short gold risk $20 stop 1.5%", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "plan_short_risk", "message": "зашорть золота, рискую 2 бакса, стоп 1.5%", "id": 683, "command": "short gold risk $2.4 stop 1.5%", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "plan_short_risk", "message": "зашорть золота, рискую 2 бакса, стоп 1.5%", "id": 684, "command": "short oil risk $2 stop 1.5%", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "plan_short_risk", "message": "зашорть золота, рискую 2 бакса, стоп 1.5%", "id": 685, "command": "short gold 2 USDC stop 1.5%", "label": "mismatch", "mutation": "role"}
+{"lang": "en", "kind": "plan_short_risk", "message": "short brent, riskng $0.5, 2% stop", "id": 686, "command": "short brent risk $0.5 stop 2%", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "plan_short_risk", "message": "short brent, riskng $0.5, 2% stop", "id": 687, "command": "long brent risk $0.5 stop 2%", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "plan_short_risk", "message": "short brent, riskng $0.5, 2% stop", "id": 688, "command": "short brent risk $5 stop 2%", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "plan_short_risk", "message": "short brent, riskng $0.5, 2% stop", "id": 689, "command": "short brent risk $0.6 stop 2%", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "plan_short_risk", "message": "short brent, riskng $0.5, 2% stop", "id": 690, "command": "short brent 0.5 USDC stop 2%", "label": "mismatch", "mutation": "role"}
+{"lang": "es", "kind": "plan_short_risk", "message": "short en solana con riesgo de 0.5 dólares y stop del 3%", "id": 691, "command": "short SOL risk $0.5 stop 3%", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "plan_short_risk", "message": "short en solana con riesgo de 0.5 dólares y stop del 3%", "id": 692, "command": "long SOL risk $0.5 stop 3%", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "plan_short_risk", "message": "short en solana con riesgo de 0.5 dólares y stop del 3%", "id": 693, "command": "short SOL risk $5 stop 3%", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "plan_short_risk", "message": "short en solana con riesgo de 0.5 dólares y stop del 3%", "id": 694, "command": "short SOL risk $0.6 stop 3%", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "plan_short_risk", "message": "short en solana con riesgo de 0.5 dólares y stop del 3%", "id": 695, "command": "short ETH risk $0.5 stop 3%", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "plan_short_risk", "message": "short en solana con riesgo de 0.5 dólares y stop del 3%", "id": 696, "command": "short SOL 0.5 USDC stop 3%", "label": "mismatch", "mutation": "role"}
+{"lang": "ru", "kind": "plan_book", "message": "лонг неефти по правилам", "id": 697, "command": "long oil by the book", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "plan_book", "message": "лонг неефти по правилам", "id": 698, "command": "short oil by the book", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "plan_book", "message": "лонг неефти по правилам", "id": 699, "command": "long gold by the book", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "plan_book", "message": "long de eter según las reglas", "id": 700, "command": "long ETH by the book", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "plan_book", "message": "long de eter según las reglas", "id": 701, "command": "short ETH by the book", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "plan_book", "message": "long de eter según las reglas", "id": 702, "command": "long BTC by the book", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "chart", "message": "покажи график пепе", "id": 703, "command": "chart PEPE", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "chart", "message": "покажи график пепе", "id": 704, "command": "chart DOGE", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "chart", "message": "chart brent", "id": 705, "command": "chart brent", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "chart", "message": "muéstrame el gráfico de Nvidia de la semana", "id": 706, "command": "chart NVDA week", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "chart", "message": "muéstrame el gráfico de Nvidia de la semana", "id": 707, "command": "chart TSLA week", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "alert", "message": "алеррт если эфир поднимется выше 3000", "id": 708, "command": "alert me when ETH is above 3000", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "alert", "message": "алеррт если эфир поднимется выше 3000", "id": 709, "command": "alert me when ETH is below 3000", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "alert", "message": "алеррт если эфир поднимется выше 3000", "id": 710, "command": "alert me when BTC is above 3000", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "alert", "message": "ping me if gold dorps under 4500", "id": 711, "command": "alert me when gold is below 4500", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "alert", "message": "ping me if gold dorps under 4500", "id": 712, "command": "alert me when gold is above 4500", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "alert", "message": "ping me if gold dorps under 4500", "id": 713, "command": "alert me when oil is below 4500", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "alert", "message": "avísame cuando SOL baje de 200", "id": 714, "command": "alert me when SOL is below 200", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "alert", "message": "avísame cuando SOL baje de 200", "id": 715, "command": "alert me when SOL is above 200", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "alert", "message": "avísame cuando SOL baje de 200", "id": 716, "command": "alert me when ETH is below 200", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "pnl", "message": "сколько я заработал за неделю?", "id": 717, "command": "profit and loss week", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "pnl", "message": "how much did I make this month?", "id": 718, "command": "profit and loss month", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "pnl", "message": "cuánto gané?", "id": 719, "command": "profit and loss", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "spread", "message": "раскидай 20 долларов по лучшим волтам", "id": 720, "command": "spread 20 USDC across the best rates", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "spread", "message": "раскидай 20 долларов по лучшим волтам", "id": 721, "command": "spread 200 USDC across the best rates", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "spread", "message": "раскидай 20 долларов по лучшим волтам", "id": 722, "command": "spread 24 USDC across the best rates", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "evm_token", "message": "compra WPOL en polygon por 10 dólares", "id": 723, "command": "buy WPOL on polygon for 10 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "evm_token", "message": "compra WPOL en polygon por 10 dólares", "id": 724, "command": "sell WPOL on polygon for 10 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "evm_token", "message": "compra WPOL en polygon por 10 dólares", "id": 725, "command": "buy WPOL on polygon for 100 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "evm_token", "message": "compra WPOL en polygon por 10 dólares", "id": 726, "command": "buy WPOL on polygon for 12 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "evm_token", "message": "compra WPOL en polygon por 10 dólares", "id": 727, "command": "buy WPOL on Base for 10 USDC", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "stock", "message": "купи акции спейсикс на 20 юсдс", "id": 728, "command": "buy SpaceX stock for 20 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "stock", "message": "купи акции спейсикс на 20 юсдс", "id": 729, "command": "sell SpaceX stock for 20 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "stock", "message": "купи акции спейсикс на 20 юсдс", "id": 730, "command": "buy SpaceX stock for 200 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "stock", "message": "купи акции спейсикс на 20 юсдс", "id": 731, "command": "buy SpaceX stock for 24 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "stock", "message": "buy 100 usdc of Tesla stock", "id": 732, "command": "buy TSLA stock for 100 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "stock", "message": "buy 100 usdc of Tesla stock", "id": 733, "command": "sell TSLA stock for 100 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "stock", "message": "buy 100 usdc of Tesla stock", "id": 734, "command": "buy TSLA stock for 1000 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "stock", "message": "buy 100 usdc of Tesla stock", "id": 735, "command": "buy TSLA stock for 120 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "stock", "message": "buy 100 usdc of Tesla stock", "id": 736, "command": "buy NVDA stock for 100 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "stock", "message": "copmra acciones de SpaceX por 7 USDC", "id": 737, "command": "buy SpaceX stock for 7 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "stock", "message": "copmra acciones de SpaceX por 7 USDC", "id": 738, "command": "sell SpaceX stock for 7 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "stock", "message": "copmra acciones de SpaceX por 7 USDC", "id": 739, "command": "buy SpaceX stock for 70 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "stock", "message": "copmra acciones de SpaceX por 7 USDC", "id": 740, "command": "buy SpaceX stock for 8.4 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "plan_long", "message": "abre un long de NVDA con 5 USDC a 5x", "id": 741, "command": "long NVDA 5 USDC leverage 5x", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "plan_long", "message": "abre un long de NVDA con 5 USDC a 5x", "id": 742, "command": "short NVDA 5 USDC leverage 5x", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "plan_long", "message": "abre un long de NVDA con 5 USDC a 5x", "id": 743, "command": "long NVDA 50 USDC leverage 5x", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "plan_long", "message": "abre un long de NVDA con 5 USDC a 5x", "id": 744, "command": "long NVDA 6 USDC leverage 5x", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "plan_long", "message": "abre un long de NVDA con 5 USDC a 5x", "id": 745, "command": "long TSLA 5 USDC leverage 5x", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "plan_long", "message": "abre un long de NVDA con 5 USDC a 5x", "id": 746, "command": "long NVDA risk $5 leverage 5x", "label": "mismatch", "mutation": "role"}
+{"lang": "ru", "kind": "plan_short_risk", "message": "шорт золота риск 1$ стоп 1.5%", "id": 747, "command": "short gold risk $1 stop 1.5%", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "plan_short_risk", "message": "шорт золота риск 1$ стоп 1.5%", "id": 748, "command": "long gold risk $1 stop 1.5%", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "plan_short_risk", "message": "шорт золота риск 1$ стоп 1.5%", "id": 749, "command": "short gold risk $10 stop 1.5%", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "plan_short_risk", "message": "шорт золота риск 1$ стоп 1.5%", "id": 750, "command": "short gold risk $1.2 stop 1.5%", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "plan_short_risk", "message": "шорт золота риск 1$ стоп 1.5%", "id": 751, "command": "short oil risk $1 stop 1.5%", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "plan_short_risk", "message": "шорт золота риск 1$ стоп 1.5%", "id": 752, "command": "short gold 1 USDC stop 1.5%", "label": "mismatch", "mutation": "role"}
+{"lang": "en", "kind": "plan_short_risk", "message": "short ethereum risk $2 stop 1.5%", "id": 753, "command": "short ETH risk $2 stop 1.5%", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "plan_short_risk", "message": "short ethereum risk $2 stop 1.5%", "id": 754, "command": "long ETH risk $2 stop 1.5%", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "plan_short_risk", "message": "short ethereum risk $2 stop 1.5%", "id": 755, "command": "short ETH risk $20 stop 1.5%", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "plan_short_risk", "message": "short ethereum risk $2 stop 1.5%", "id": 756, "command": "short ETH risk $2.4 stop 1.5%", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "plan_short_risk", "message": "short ethereum risk $2 stop 1.5%", "id": 757, "command": "short BTC risk $2 stop 1.5%", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "plan_short_risk", "message": "short ethereum risk $2 stop 1.5%", "id": 758, "command": "short ETH 2 USDC stop 1.5%", "label": "mismatch", "mutation": "role"}
+{"lang": "es", "kind": "plan_short_risk", "message": "short en gold con riesgo de 0.5 dólares y stop del 1.5%", "id": 759, "command": "short gold risk $0.5 stop 1.5%", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "plan_short_risk", "message": "short en gold con riesgo de 0.5 dólares y stop del 1.5%", "id": 760, "command": "long gold risk $0.5 stop 1.5%", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "plan_short_risk", "message": "short en gold con riesgo de 0.5 dólares y stop del 1.5%", "id": 761, "command": "short gold risk $5 stop 1.5%", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "plan_short_risk", "message": "short en gold con riesgo de 0.5 dólares y stop del 1.5%", "id": 762, "command": "short gold risk $0.6 stop 1.5%", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "plan_short_risk", "message": "short en gold con riesgo de 0.5 dólares y stop del 1.5%", "id": 763, "command": "short oil risk $0.5 stop 1.5%", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "plan_short_risk", "message": "short en gold con riesgo de 0.5 dólares y stop del 1.5%", "id": 764, "command": "short gold 0.5 USDC stop 1.5%", "label": "mismatch", "mutation": "role"}
+{"lang": "es", "kind": "plan_book", "message": "long de ether según las reglas", "id": 765, "command": "long ETH by the book", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "plan_book", "message": "long de ether según las reglas", "id": 766, "command": "short ETH by the book", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "plan_book", "message": "long de ether según las reglas", "id": 767, "command": "long BTC by the book", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "chart", "message": "покажи график эфира за неделю", "id": 768, "command": "chart ETH week", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "chart", "message": "покажи график эфира за неделю", "id": 769, "command": "chart BTC week", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "chart", "message": "chart Nviida week", "id": 770, "command": "chart NVDA week", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "chart", "message": "chart Nviida week", "id": 771, "command": "chart TSLA week", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "chart", "message": "muéstrame el gráfico de NVDA", "id": 772, "command": "chart NVDA", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "chart", "message": "muéstrame el gráfico de NVDA", "id": 773, "command": "chart TSLA", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "alert", "message": "avísame cuado SOL baje de 175", "id": 774, "command": "alert me when SOL is below 175", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "alert", "message": "avísame cuado SOL baje de 175", "id": 775, "command": "alert me when SOL is above 175", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "alert", "message": "avísame cuado SOL baje de 175", "id": 776, "command": "alert me when ETH is below 175", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "pnl", "message": "сколько я заработал за сегодня?", "id": 777, "command": "profit and loss today", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "pnl", "message": "what's my pnl this week", "id": 778, "command": "profit and loss week", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "pnl", "message": "cuáto gané?", "id": 779, "command": "profit and loss", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "stake", "message": "stake 0.1 SOL", "id": 780, "command": "stake 0.1 SOL", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "stake", "message": "stake 0.1 SOL", "id": 781, "command": "unstake 0.1 SOL", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "stake", "message": "stake 0.1 SOL", "id": 782, "command": "stake 1 SOL", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "stake", "message": "stake 0.1 SOL", "id": 783, "command": "stake 0.12 SOL", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "stake", "message": "stake 0.1 SOL", "id": 784, "command": "stake 0.1 ETH", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "stake", "message": "haz staking de 0.01 SOL", "id": 785, "command": "stake 0.01 SOL", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "stake", "message": "haz staking de 0.01 SOL", "id": 786, "command": "unstake 0.01 SOL", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "stake", "message": "haz staking de 0.01 SOL", "id": 787, "command": "stake 0.1 SOL", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "stake", "message": "haz staking de 0.01 SOL", "id": 788, "command": "stake 0.012 SOL", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "stake", "message": "haz staking de 0.01 SOL", "id": 789, "command": "stake 0.01 ETH", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "gas", "message": "доинь газа на бейз", "id": 790, "command": "add gas on Base", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "gas", "message": "доинь газа на бейз", "id": 791, "command": "add gas on Arbitrum", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "gas", "message": "top up gas on robinhood", "id": 792, "command": "add gas on Robinhood", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "gas", "message": "top up gas on robinhood", "id": 793, "command": "add gas on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "gas", "message": "añade gas en arbitrum", "id": 794, "command": "add gas on Arbitrum", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "gas", "message": "añade gas en arbitrum", "id": 795, "command": "add gas on Base", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "later", "message": "in a week rebalance my deposits", "id": 796, "command": "in 1 week: rebalance USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "later", "message": "in a week rebalance my deposits", "id": 797, "command": "in 10 week: rebalance USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "later", "message": "in a week rebalance my deposits", "id": 798, "command": "in 1.2 week: rebalance USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "later", "message": "dentro de una semana rebalancea mis depósitos", "id": 799, "command": "in 1 week: rebalance USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "later", "message": "dentro de una semana rebalancea mis depósitos", "id": 800, "command": "in 10 week: rebalance USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "later", "message": "dentro de una semana rebalancea mis depósitos", "id": 801, "command": "in 1.2 week: rebalance USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "recurring", "message": "покупай сол на 10 долларов каждую неделю", "id": 802, "command": "buy SOL for 10 USDC every week", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "recurring", "message": "покупай сол на 10 долларов каждую неделю", "id": 803, "command": "sell SOL for 10 USDC every week", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "recurring", "message": "покупай сол на 10 долларов каждую неделю", "id": 804, "command": "buy SOL for 100 USDC every week", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "recurring", "message": "покупай сол на 10 долларов каждую неделю", "id": 805, "command": "buy SOL for 12 USDC every week", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "recurring", "message": "покупай сол на 10 долларов каждую неделю", "id": 806, "command": "buy ETH for 10 USDC every week", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "recurring", "message": "buy ten dollars of SOL every week", "id": 807, "command": "buy SOL for 10 USDC every week", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "recurring", "message": "buy ten dollars of SOL every week", "id": 808, "command": "sell SOL for 10 USDC every week", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "recurring", "message": "buy ten dollars of SOL every week", "id": 809, "command": "buy SOL for 100 USDC every week", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "recurring", "message": "buy ten dollars of SOL every week", "id": 810, "command": "buy SOL for 12 USDC every week", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "recurring", "message": "buy ten dollars of SOL every week", "id": 811, "command": "buy ETH for 10 USDC every week", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "recurring", "message": "compra SOL por 10 pavos cada semana", "id": 812, "command": "buy SOL for 10 USDC every week", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "recurring", "message": "compra SOL por 10 pavos cada semana", "id": 813, "command": "sell SOL for 10 USDC every week", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "recurring", "message": "compra SOL por 10 pavos cada semana", "id": 814, "command": "buy SOL for 100 USDC every week", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "recurring", "message": "compra SOL por 10 pavos cada semana", "id": 815, "command": "buy SOL for 12 USDC every week", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "recurring", "message": "compra SOL por 10 pavos cada semana", "id": 816, "command": "buy ETH for 10 USDC every week", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "monthly_send", "message": "каждое 1-е число переводи маме 10 бачей", "id": 817, "command": "every month on the 1st: send 10 USDC to Mom", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "monthly_send", "message": "каждое 1-е число переводи маме 10 бачей", "id": 818, "command": "every month on the 1st: send 100 USDC to Mom", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "monthly_send", "message": "каждое 1-е число переводи маме 10 бачей", "id": 819, "command": "every month on the 1st: send 12 USDC to Mom", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "monthly_send", "message": "каждое 1-е число переводи маме 10 бачей", "id": 820, "command": "every month on the 1st: send 10 USDC to Bybit", "label": "mismatch", "mutation": "recipient"}
+{"lang": "en", "kind": "monthly_send", "message": "send mom $10 on the 1st of every month", "id": 821, "command": "every month on the 1st: send 10 USDC to Mom", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "monthly_send", "message": "send mom $10 on the 1st of every month", "id": 822, "command": "every month on the 1st: send 100 USDC to Mom", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "monthly_send", "message": "send mom $10 on the 1st of every month", "id": 823, "command": "every month on the 1st: send 12 USDC to Mom", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "monthly_send", "message": "send mom $10 on the 1st of every month", "id": 824, "command": "every month on the 1st: send 10 USDC to Bybit", "label": "mismatch", "mutation": "recipient"}
+{"lang": "es", "kind": "monthly_send", "message": "envía 20 pavos a Mom el día 1 de cada mes", "id": 825, "command": "every month on the 1st: send 20 USDC to Mom", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "monthly_send", "message": "envía 20 pavos a Mom el día 1 de cada mes", "id": 826, "command": "every month on the 1st: send 200 USDC to Mom", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "monthly_send", "message": "envía 20 pavos a Mom el día 1 de cada mes", "id": 827, "command": "every month on the 1st: send 24 USDC to Mom", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "monthly_send", "message": "envía 20 pavos a Mom el día 1 de cada mes", "id": 828, "command": "every month on the 1st: send 20 USDC to Bybit", "label": "mismatch", "mutation": "recipient"}
+{"lang": "ru", "kind": "alert_steps", "message": "если ETH опустится ниже 3000, лонгани с плечом 3", "id": 829, "command": "when ETH is below 3000: long ETH leverage 3x", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "alert_steps", "message": "если ETH опустится ниже 3000, лонгани с плечом 3", "id": 830, "command": "when ETH is below 3000: short ETH leverage 3x", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "alert_steps", "message": "если ETH опустится ниже 3000, лонгани с плечом 3", "id": 831, "command": "when ETH is above 3000: long ETH leverage 3x", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "alert_steps", "message": "если ETH опустится ниже 3000, лонгани с плечом 3", "id": 832, "command": "when BTC is below 3000: long ETH leverage 3x", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "alert_steps", "message": "when ETH drops below 2680 open a 3x long", "id": 833, "command": "when ETH is below 2680: long ETH leverage 3x", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "alert_steps", "message": "when ETH drops below 2680 open a 3x long", "id": 834, "command": "when ETH is below 2680: short ETH leverage 3x", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "alert_steps", "message": "when ETH drops below 2680 open a 3x long", "id": 835, "command": "when ETH is above 2680: long ETH leverage 3x", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "alert_steps", "message": "when ETH drops below 2680 open a 3x long", "id": 836, "command": "when BTC is below 2680: long ETH leverage 3x", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "alert_steps", "message": "cuando ETH baje de 3000 abre un long a 3x", "id": 837, "command": "when ETH is below 3000: long ETH leverage 3x", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "alert_steps", "message": "cuando ETH baje de 3000 abre un long a 3x", "id": 838, "command": "when ETH is below 3000: short ETH leverage 3x", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "alert_steps", "message": "cuando ETH baje de 3000 abre un long a 3x", "id": 839, "command": "when ETH is above 3000: long ETH leverage 3x", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "alert_steps", "message": "cuando ETH baje de 3000 abre un long a 3x", "id": 840, "command": "when BTC is below 3000: long ETH leverage 3x", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "chain", "message": "сними 10 бачей с хайпера, а потом закинь в kamino", "id": 841, "command": "withdraw 10 USDC to Solana then deposit 10 USDC to kamino", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "chain", "message": "сними 10 бачей с хайпера, а потом закинь в kamino", "id": 842, "command": "withdraw 10 USDC to Solana then withdraw 10 USDC to kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "chain", "message": "сними 10 бачей с хайпера, а потом закинь в kamino", "id": 843, "command": "withdraw 100 USDC to Solana then deposit 10 USDC to kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "chain", "message": "сними 10 бачей с хайпера, а потом закинь в kamino", "id": 844, "command": "withdraw 12 USDC to Solana then deposit 10 USDC to kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "chain", "message": "сними 10 бачей с хайпера, а потом закинь в kamino", "id": 845, "command": "withdraw 10 USDC to Base then deposit 10 USDC to kamino", "label": "mismatch", "mutation": "network"}
+{"lang": "ru", "kind": "chain", "message": "сними 10 бачей с хайпера, а потом закинь в kamino", "id": 846, "command": "withdraw 10 USDC to Solana then deposit 10 USDC to HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "en", "kind": "chain", "message": "withdraw 5 usdc from hyperliquid and put it in kamino", "id": 847, "command": "withdraw 5 USDC to Solana then deposit 5 USDC to kamino", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "chain", "message": "withdraw 5 usdc from hyperliquid and put it in kamino", "id": 848, "command": "withdraw 5 USDC to Solana then withdraw 5 USDC to kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "chain", "message": "withdraw 5 usdc from hyperliquid and put it in kamino", "id": 849, "command": "withdraw 50 USDC to Solana then deposit 5 USDC to kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "chain", "message": "withdraw 5 usdc from hyperliquid and put it in kamino", "id": 850, "command": "withdraw 6 USDC to Solana then deposit 5 USDC to kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "chain", "message": "withdraw 5 usdc from hyperliquid and put it in kamino", "id": 851, "command": "withdraw 5 USDC to Base then deposit 5 USDC to kamino", "label": "mismatch", "mutation": "network"}
+{"lang": "en", "kind": "chain", "message": "withdraw 5 usdc from hyperliquid and put it in kamino", "id": 852, "command": "withdraw 5 USDC to Solana then deposit 5 USDC to HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "es", "kind": "chain", "message": "saca cinco dólares de Hyperliquid y ponlos en Kamino", "id": 853, "command": "withdraw 5 USDC to Solana then deposit 5 USDC to kamino", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "chain", "message": "saca cinco dólares de Hyperliquid y ponlos en Kamino", "id": 854, "command": "withdraw 5 USDC to Solana then withdraw 5 USDC to kamino", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "chain", "message": "saca cinco dólares de Hyperliquid y ponlos en Kamino", "id": 855, "command": "withdraw 50 USDC to Solana then deposit 5 USDC to kamino", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "chain", "message": "saca cinco dólares de Hyperliquid y ponlos en Kamino", "id": 856, "command": "withdraw 6 USDC to Solana then deposit 5 USDC to kamino", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "chain", "message": "saca cinco dólares de Hyperliquid y ponlos en Kamino", "id": 857, "command": "withdraw 5 USDC to Base then deposit 5 USDC to kamino", "label": "mismatch", "mutation": "network"}
+{"lang": "es", "kind": "chain", "message": "saca cinco dólares de Hyperliquid y ponlos en Kamino", "id": 858, "command": "withdraw 5 USDC to Solana then deposit 5 USDC to HLP", "label": "mismatch", "mutation": "place"}
+{"lang": "ru", "kind": "claim", "message": "збери награды", "id": 859, "command": "claim rewards", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "claim", "message": "claim my rewards", "id": 860, "command": "claim rewards", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "claim", "message": "reclama mis recompensas", "id": 861, "command": "claim rewards", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "fav", "message": "добавь Bybit в избранное", "id": 862, "command": "add Bybit to favorites", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "fav", "message": "добавь Bybit в избранное", "id": 863, "command": "add Mom to favorites", "label": "mismatch", "mutation": "recipient"}
+{"lang": "en", "kind": "fav", "message": "add Bybit to favorites", "id": 864, "command": "add Bybit to favorites", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "fav", "message": "add Bybit to favorites", "id": 865, "command": "add Mom to favorites", "label": "mismatch", "mutation": "recipient"}
+{"lang": "es", "kind": "fav", "message": "añade Bybit a favoritos", "id": 866, "command": "add Bybit to favorites", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "fav", "message": "añade Bybit a favoritos", "id": 867, "command": "add Mom to favorites", "label": "mismatch", "mutation": "recipient"}
+{"lang": "ru", "kind": "new_canvas", "message": "созадй новый холст", "id": 868, "command": "new canvas", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "new_canvas", "message": "open a fresh canvas", "id": 869, "command": "new canvas", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "new_canvas", "message": "crea un lienzo nuevo", "id": 870, "command": "new canvas", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "folder_save", "message": "сохрани этот холст в папку Ресерч", "id": 871, "command": "save this canvas to folder Ресерч", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "folder_save", "message": "save this canvas to my Research folder", "id": 872, "command": "save this canvas to folder Research", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "folder_save", "message": "guarda este lienzo en la carpeta Reseach", "id": 873, "command": "save this canvas to folder Research", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "folder_note", "message": "запиши в папку Идеи: купить эфир на откате, алерт на 2500", "id": 874, "command": "write to folder Идеи: купить эфир на откате, алерт на 2500", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "folder_note", "message": "write to folder Ideas: buy ETH on a dip, aleert at 2500", "id": 875, "command": "write to folder Ideas: buy ETH on a dip, aleert at 2500", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "folder_note", "message": "write to folder Ideas: buy ETH on a dip, aleert at 2500", "id": 876, "command": "write to folder Ideas: sell ETH on a dip, aleert at 2500", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "folder_note", "message": "write to folder Ideas: buy ETH on a dip, aleert at 2500", "id": 877, "command": "write to folder Ideas: buy BTC on a dip, aleert at 2500", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "folder_note", "message": "escribe en la carpta Ideas: comprar ETH en una caída, alerta en 2500", "id": 878, "command": "write to folder Ideas: comprar ETH en una caída, alerta en 2500", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "folder_note", "message": "escribe en la carpta Ideas: comprar ETH en una caída, alerta en 2500", "id": 879, "command": "write to folder Ideas: comprar BTC en una caída, alerta en 2500", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "near_buy", "message": "купи неар на 5$", "id": 880, "command": "buy NEAR for 5 USDC", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "near_buy", "message": "купи неар на 5$", "id": 881, "command": "sell NEAR for 5 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "near_buy", "message": "купи неар на 5$", "id": 882, "command": "buy NEAR for 50 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "near_buy", "message": "купи неар на 5$", "id": 883, "command": "buy NEAR for 6 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "near_buy", "message": "купи неар на 5$", "id": 884, "command": "buy SOL for 5 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "near_buy", "message": "buy 2 bucs of NEAR", "id": 885, "command": "buy NEAR for 2 USDC", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "near_buy", "message": "buy 2 bucs of NEAR", "id": 886, "command": "sell NEAR for 2 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "near_buy", "message": "buy 2 bucs of NEAR", "id": 887, "command": "buy NEAR for 20 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "near_buy", "message": "buy 2 bucs of NEAR", "id": 888, "command": "buy NEAR for 2.4 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "near_buy", "message": "buy 2 bucs of NEAR", "id": 889, "command": "buy SOL for 2 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "near_buy", "message": "compra NEAR por 5 dólares", "id": 890, "command": "buy NEAR for 5 USDC", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "near_buy", "message": "compra NEAR por 5 dólares", "id": 891, "command": "sell NEAR for 5 USDC", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "near_buy", "message": "compra NEAR por 5 dólares", "id": 892, "command": "buy NEAR for 50 USDC", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "near_buy", "message": "compra NEAR por 5 dólares", "id": 893, "command": "buy NEAR for 6 USDC", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "near_buy", "message": "compra NEAR por 5 dólares", "id": 894, "command": "buy SOL for 5 USDC", "label": "mismatch", "mutation": "asset"}
+{"lang": "ru", "kind": "unstake", "message": "анстейкни 0.02 jitosol", "id": 895, "command": "unstake 0.02 JitoSOL", "label": "match", "mutation": ""}
+{"lang": "ru", "kind": "unstake", "message": "анстейкни 0.02 jitosol", "id": 896, "command": "stake 0.02 JitoSOL", "label": "mismatch", "mutation": "flip"}
+{"lang": "ru", "kind": "unstake", "message": "анстейкни 0.02 jitosol", "id": 897, "command": "unstake 0.2 JitoSOL", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "ru", "kind": "unstake", "message": "анстейкни 0.02 jitosol", "id": 898, "command": "unstake 0.024 JitoSOL", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "ru", "kind": "unstake", "message": "анстейкни 0.02 jitosol", "id": 899, "command": "unstake 0.02 mSOL", "label": "mismatch", "mutation": "asset"}
+{"lang": "en", "kind": "unstake", "message": "unstake 0.02 JitoSOL", "id": 900, "command": "unstake 0.02 JitoSOL", "label": "match", "mutation": ""}
+{"lang": "en", "kind": "unstake", "message": "unstake 0.02 JitoSOL", "id": 901, "command": "stake 0.02 JitoSOL", "label": "mismatch", "mutation": "flip"}
+{"lang": "en", "kind": "unstake", "message": "unstake 0.02 JitoSOL", "id": 902, "command": "unstake 0.2 JitoSOL", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "en", "kind": "unstake", "message": "unstake 0.02 JitoSOL", "id": 903, "command": "unstake 0.024 JitoSOL", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "en", "kind": "unstake", "message": "unstake 0.02 JitoSOL", "id": 904, "command": "unstake 0.02 mSOL", "label": "mismatch", "mutation": "asset"}
+{"lang": "es", "kind": "unstake", "message": "retira 0.01 JitoSOL del staking", "id": 905, "command": "unstake 0.01 JitoSOL", "label": "match", "mutation": ""}
+{"lang": "es", "kind": "unstake", "message": "retira 0.01 JitoSOL del staking", "id": 906, "command": "stake 0.01 JitoSOL", "label": "mismatch", "mutation": "flip"}
+{"lang": "es", "kind": "unstake", "message": "retira 0.01 JitoSOL del staking", "id": 907, "command": "unstake 0.1 JitoSOL", "label": "mismatch", "mutation": "amount_x10"}
+{"lang": "es", "kind": "unstake", "message": "retira 0.01 JitoSOL del staking", "id": 908, "command": "unstake 0.012 JitoSOL", "label": "mismatch", "mutation": "amount_near"}
+{"lang": "es", "kind": "unstake", "message": "retira 0.01 JitoSOL del staking", "id": 909, "command": "unstake 0.01 mSOL", "label": "mismatch", "mutation": "asset"}

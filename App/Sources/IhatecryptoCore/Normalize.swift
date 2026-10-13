@@ -248,6 +248,21 @@ public enum ChatRouter {
       («через неделю переложи депозиты в лучшие ставки» = in 1 week: rebalance USDC; «каждый день в 9 продавай SOL и клади USDC в vault» = every day at 09:00: sell SOL then lend USDC. Recurring BUYS keep their own form above. A step no form can do makes the whole request "clarify": say which step ihatecrypto can't do yet.)
     """
 
+    /// The sections of `forms` that have one of the command's verbs — the first word of each step, and of what follows a
+    /// schedule's or a note's colon — or all of them when none has it. For a second reader with a small window (the
+    /// classifier): it judges «lend 15 USDC» right for «депозит в юпитер волт» only once told what lend is.
+    public static func forms(for command: String) -> String {
+        // A section starts at every line that isn't indented.
+        let sections = forms.split(separator: "\n", omittingEmptySubsequences: false).reduce(into: [String]()) { out, line in
+            if out.isEmpty || line.first?.isWhitespace == false { out.append(String(line)) } else { out[out.count - 1] += "\n" + line }
+        }
+        let verbs = Set(command.components(separatedBy: " then ").flatMap { step in
+            [step] + (step.range(of: ": ").map { [String(step[$0.upperBound...])] } ?? [])
+        }.compactMap { $0.trimmingCharacters(in: .whitespaces).prefixMatch(of: /[A-Za-z]+/).map { $0.output.lowercased() } })
+        let hit = sections.filter { !verbs.isDisjoint(with: $0.split(whereSeparator: { !$0.isLetter }).map(String.init)) }
+        return hit.isEmpty ? forms : hit.joined(separator: "\n")
+    }
+
     /// Where money lives and how it moves: the chat's brief and the second reading's, so neither takes «deposit into
     /// Morpho on Base» for a deposit that skips the bridge.
     static let places = """

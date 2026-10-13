@@ -236,6 +236,7 @@ extension Workspace {
         async let modelSays = byModel()
         async let classifierSays = byClassifier()
         let (m, c) = await (modelSays, classifierSays)
+        if let c { FileHandle.standardError.write(Data("ihatecrypto plan check: \(c.label) \(c.confidence) «\(lines.first ?? "")»\n".utf8)) }
         guard intent == reviewedIntent else { return }   // the plan changed meanwhile: its own review follows
         // The model's reading decides; the classifier's reasonless alarm on right plans («лонг нефти на 5$») counts only
         // when the model couldn't answer.

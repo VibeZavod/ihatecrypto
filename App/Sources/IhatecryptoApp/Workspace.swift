@@ -578,6 +578,12 @@ final class Workspace {
     var openRouterKey: String? {
         _ = credentialVersion
         if case .apiKey(let key)? = Keychain.load("openrouter") { return key }
+        // A debug build takes it from the environment too, as WalletCheck's jev-screen does: the Dev copy has its own
+        // model logins and no OpenRouter one, so the second check runs there without a sign-in in the browser
+        // (`open --env OPENROUTER_API_KEY=… "ihatecrypto Dev.app"`).
+        #if DEBUG
+        if let key = ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"], !key.isEmpty { return key }
+        #endif
         return nil
     }
     private var credentialVersion = 0
@@ -1260,19 +1266,25 @@ final class Workspace {
         @Sendable func modelReading(_ command: String) async -> (answered: Bool, why: String?) {
             do { return (true, try await ChatRouter.verify(text, command: command, context: context, client: client, model: model)) } catch { return (false, nil) }
         }
+        // What a follow-up is about: the plan, the blocks with a card waiting for Confirm among them, the cards offered.
+        let seen = (context.plan.map { ["plan on the canvas: " + $0] } ?? []) + context.canvas
+            + (context.offered.isEmpty ? [] : ["cards offered after the last reply: " + context.offered.joined(separator: "; ")])
         @Sendable func classifierReading(_ command: String) async -> JevReview? {
             guard let key else { return nil }
-            return try? await JevReviewer.reading(message: text, recent: recent, command: command, apiKey: key)
+            return try? await JevReviewer.reading(message: text, recent: recent, canvas: seen, command: command, forms: ChatRouter.forms(for: command), apiKey: key)
         }
-        // Both at once. The model's reading decides and says what differs; the OpenRouter classifier raised false alarms
-        // on right commands (no reason given), so it counts only when the model couldn't answer. Neither answering is
-        // no agreement: the command or the «yes» waits for the user.
+        // Both at once. The model's reading decides and says what differs. The OpenRouter classifier used to raise false
+        // alarms on right commands with no reason given, so it counted only when the model couldn't answer; since
+        // 2026-10-13 it is told what the forms mean and names what differs (JevReviewer.reading: no false alarm on 284
+        // right commands), so it also stops a command the model passed when it is strongly against it. Neither answering
+        // is no agreement: the command or the «yes» waits for the user.
         let unchecked = say("it couldn't run this time (no answer to it).", "в этот раз она не прошла — ответа не было.")
         @Sendable func secondReading(_ command: String) async -> String? {
             async let byModel = modelReading(command)
             async let other = classifierReading(command)
             let (m, review) = await (byModel, other)
-            if m.answered { return m.why }
+            if let review { FileHandle.standardError.write(Data("ihatecrypto second check: «\(command)» \(review.label) \(review.confidence) model=\(m.answered ? (m.why ?? "ok") : "no answer")\n".utf8)) }
+            if m.answered { return m.why ?? review.flatMap { $0.concern && $0.confidence >= JevReviewer.strongDoubt ? $0.text : nil } }
             guard let review else { return unchecked }
             return review.concern ? review.text : nil
         }

@@ -434,6 +434,13 @@ struct ContentView: View {
                 let r = try? await JevReviewer.plan(requests: asked, plan: plan, apiKey: key)
                 log("\(name): \(r?.label ?? "error") \(r?.confidence ?? -1)")
             }
+            // The second reading of a command, with the forms it is written in: right, the opposite side, money as risk.
+            for (name, message, command) in [("reading good", "лонг нефти на 5$", "long oil 5 USDC"), ("reading side", "лонг нефти на 5$", "short oil 5 USDC"),
+                                             ("reading role", "лонг нефти на 5$", "long oil risk $5"), ("reading good", "депозит $15 в юпитер волт", "lend 15 USDC"),
+                                             ("reading place", "депозит $15 в юпитер волт", "deposit 15 USDC to kamino")] {
+                let r = try? await JevReviewer.reading(message: message, recent: [], command: command, forms: ChatRouter.forms(for: command), apiKey: key)
+                log("\(name): «\(message)» → «\(command)»: \(r?.label ?? "error") \(r?.confidence ?? -1) \(r?.text ?? "")")
+            }
             let sites: [(String, String, String, [String], [String])] = [
                 ("site good", "jup.ag", "Swap | Jupiter", ["Compute Budget", "Jupiter Swap"], ["USDC: −5", "SOL: +0.0271"]),
                 ("site drainer", "jupp.ag", "Claim your JUP airdrop now", ["SPL Token", "unknown Dr41n3r…"], ["USDC: −350", "JUP: −1200", "SOL: −0.9"]),
