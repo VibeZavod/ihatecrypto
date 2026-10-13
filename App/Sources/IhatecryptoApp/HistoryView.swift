@@ -173,7 +173,7 @@ struct HistoryView: View {
         defer { loading = false }
         loadError = nil
         // Signatures from the app and from the terminal tool, which trades from the same wallet.
-        let appJournal = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "ihatecrypto/journal.jsonl")
+        let appJournal = LocalStore.url("journal.jsonl")
         let cliJournal = FileManager.default.homeDirectoryForCurrentUser.appending(path: ".ihatecrypto/journal.jsonl")
         // Off the main thread: every signature ever, a JSON line each.
         let files = [appJournal, cliJournal]

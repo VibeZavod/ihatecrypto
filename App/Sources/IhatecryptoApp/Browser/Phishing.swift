@@ -12,7 +12,7 @@ final class PhishingList {
     private var loading = false
 
     private var file: URL {
-        FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "ihatecrypto/phishing.json")
+        LocalStore.url("phishing.json")
     }
 
     func contains(_ host: String) -> Bool { SiteCheck.listed(host: host, blocked: blocked, allowed: allowed) }

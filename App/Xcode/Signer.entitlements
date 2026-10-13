@@ -6,7 +6,7 @@
 	<true/>
 	<key>keychain-access-groups</key>
 	<array>
-		<string>$(AppIdentifierPrefix)app.ihatecrypto.mac.signer</string>
+		<string>$(AppIdentifierPrefix)$(APP_ID).signer</string>
 	</array>
 </dict>
 </plist>

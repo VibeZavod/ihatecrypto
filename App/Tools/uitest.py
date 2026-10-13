@@ -3,6 +3,7 @@
 
     python3 App/Tools/uitest.py                 # every scenario in uitest-scenarios.json
     python3 App/Tools/uitest.py deposit chart   # only those whose name contains a word
+    IHATECRYPTO_APP=work python3 App/Tools/uitest.py   # against the working app, not «ihatecrypto Dev»
 
 A scenario is one or more phrases and what the canvas and the reply must show after the last ("send" + "expect"), or a
 conversation checked after every message ("turns": [{"send": "…", "expect": {…}}, …]): a card that waits while it's
@@ -21,8 +22,11 @@ import time
 import urllib.request
 
 HERE = os.path.dirname(os.path.abspath(__file__))
-TOKEN = open(os.path.expanduser("~/Library/Application Support/ihatecrypto/debug-token")).read().strip()
-BASE = "http://127.0.0.1:51789"
+# The development copy («ihatecrypto Dev», build-app.sh) by default: tests never open canvases in the working app.
+# IHATECRYPTO_APP=work runs them against the working ihatecrypto.app (a release's smoke test).
+WORK = os.environ.get("IHATECRYPTO_APP") == "work"
+TOKEN = open(os.path.expanduser("~/Library/Application Support/ihatecrypto" + ("" if WORK else "-dev") + "/debug-token")).read().strip()
+BASE = "http://127.0.0.1:" + ("51789" if WORK else "51790")
 
 
 def call(method, path, body=None, timeout=240):

@@ -141,11 +141,7 @@ extension Workspace {
     }
 
     /// Everything signed, written before it's sent (Journal.swift).
-    var journalURL: URL {
-        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "ihatecrypto")
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        return folder.appending(path: "journal.jsonl")
-    }
+    var journalURL: URL { LocalStore.url("journal.jsonl") }
 
     /// What went out since `start` with no outcome yet — signed in the journal and nothing after: a receipt that didn't
     /// come, a Relay order still on its way. Each as where to look.
@@ -732,7 +728,7 @@ extension Workspace {
         case .evmToSolana(let net, let asked) where !inChain, .bridge(from: let net, to: _, let asked) where !inChain:
             return lacks(usdc(on: net), asked, WalletCommand.placeName(net), net == "robinhood" ? "USDG" : "USDC")
         case .usdt(let net, _, let asked, _) where !inChain:
-            return lacks(EVMNetwork.named(net).flatMap { USDT0.on($0.rpc.chainId) }.flatMap { heldUSDC(net, $0.token) }, asked, WalletCommand.placeName(net), "USDT")
+            return lacks(heldUSDT(net), asked, WalletCommand.placeName(net), "USDT")
         // A buy that names where its money comes from («с арбитрума») pays from there or not at all: said before the card.
         case .buyOn(_, _, let asked?, let from?) where !inChain && from != "solana":
             return lacks(usdc(on: from), asked, WalletCommand.placeName(from), from == "robinhood" ? "USDG" : "USDC")

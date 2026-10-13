@@ -26,8 +26,8 @@ Signer/Service         процесс подписи: seed в Keychain, разб
 ## Сборки
 
 - `./run.sh` — быстрая сборка для разработки, без процесса подписи (кошелёк только на просмотр).
-- `./build-app.sh [Release|Debug]` — `ihatecrypto.app` со встроенным `Signer.xpc` через `Xcode/project.yml` (XcodeGen), подпись командой N78L833HCS.
-- Самопроверка процесса подписи на тестовой фразе: `open -W --stdout /dev/stdout .build/xcode/Build/Products/Release/ihatecrypto.app --args -signerSelfTest YES`. Запускать через `open`: при запуске бинарника напрямую launchd не видит XPC-сервис.
+- `./build-app.sh [Release|Debug]` — `ihatecrypto Dev.app`, копия для разработки, со встроенным `Signer.xpc` через `Xcode/project.yml` (XcodeGen), подпись командой N78L833HCS. Она стоит рядом с рабочей `ihatecrypto.app` (релиз: `release.sh`, обновляется сама) и ничего с ней не делит: bundle id `app.ihatecrypto.mac.dev` даёт свою группу Keychain (свои кошельки), свои настройки и входы в модели; из кода (`Flavor`, Canvases.swift) — своя папка данных `Application Support/ihatecrypto-dev`, порт debug API 51790 и агент Keep running. Release ставится в `~/Applications/ihatecrypto Dev.app`; рабочую копию скрипт не трогает. `Tools/uitest.py` ходит в Dev-копию (`IHATECRYPTO_APP=work` — в рабочую).
+- Самопроверка процесса подписи на тестовой фразе: `open -W --stdout /dev/stdout ".build/xcode/Build/Products/Debug/ihatecrypto Dev.app" --args -signerSelfTest YES` (флаги запуска есть только в Debug-сборке). Запускать через `open`: при запуске бинарника напрямую launchd не видит XPC-сервис.
 
 ## Исполнение
 

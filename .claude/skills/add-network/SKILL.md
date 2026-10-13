@@ -78,7 +78,7 @@ curl -s https://api.relay.link/chains | python3 -c "import json,sys; [print(c['i
 3. Живые проверки без денег: `cast estimate` на transfer, approve и прочие вызовы от адреса с балансом; котировка Relay в обе стороны; `WalletCheck move "<команда>"` без `--yes`.
 4. Библиотека блоков: открыть «Add block» и увидеть группу сети с логотипами (скриншот).
 5. UI-сценарий в `App/Tools/uitest-scenarios.json`: бридж рисует маршрут `SOLANA → RELAY → <NET>`. Прогон: `python3 App/Tools/uitest.py <слово>` (нужен Settings › Debugging › Local debug API).
-6. Скриншот Settings › Modules: `open -g ~/Applications/ihatecrypto.app --args -openPlace settings -settingsTab modules`, затем `screencapture -l <windowID>` (id окна через `CGWindowListCopyWindowInfo`). Убедиться, что иконка видна в тёмной теме.
+6. Скриншот Settings › Modules: `open -g ~/Applications/"ihatecrypto Dev.app" --args -openPlace settings -settingsTab modules`, затем `screencapture -l <windowID>` (id окна через `CGWindowListCopyWindowInfo`). Убедиться, что иконка видна в тёмной теме.
 7. Реальные деньги — только после Confirm/Touch ID пользователя или с тестового кошелька в рамках выданного бюджета (память `ihatecrypto-uitest`). Сам никогда не подписывай с основного кошелька.
 
 ## 4. Коммит и сборка (в репозитории параллельно работают другие сессии)
@@ -95,7 +95,7 @@ curl -s https://api.relay.link/chains | python3 -c "import json,sys; [print(c['i
   bash $S/commit.sh $S <files…>
   ```
 - Проверить, что HEAD собирается сам по себе: `git archive HEAD | tar -x -C $S/head`, `cp -cR App/.build $S/head/App/`, затем `swift build --target IhatecryptoApp` там. Рабочая копия может не собираться из-за чужих незаконченных правок, это не твой коммит.
-- Release только из HEAD: `$S/head/App/build-app.sh Release` (перед этим `pgrep -fl "xcodebuild -project"`). Предупредить другие сессии (`ListAgents` / `SendMessage`), затем `osascript -e 'tell application id "app.ihatecrypto.mac" to quit'` и `open -g ~/Applications/ihatecrypto.app`.
+- Release только из HEAD: `$S/head/App/build-app.sh Release` (перед этим `pgrep -fl "xcodebuild -project"`). Предупредить другие сессии (`ListAgents` / `SendMessage`), затем `osascript -e 'tell application id "app.ihatecrypto.mac.dev" to quit'` и `open ~/Applications/"ihatecrypto Dev.app"`. Сборка — это отдельная копия «ihatecrypto Dev» (свои кошельки, данные, порт debug API 51790); рабочую `ihatecrypto.app` не закрывать и не подменять.
 - Сообщение коммита — как в истории: что теперь может пользователь, чем проверено, двигались ли деньги.
 
 ## Ловушки, на которые уже наступали

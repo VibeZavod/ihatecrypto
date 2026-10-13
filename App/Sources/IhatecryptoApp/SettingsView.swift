@@ -337,7 +337,7 @@ struct SettingsView: View {
                     .toggleStyle(AccentSwitch())
                 }
                 SettingsRow("Local address", icon: "network") { Text("127.0.0.1:\(String(DebugAPI.port))").textSelection(.enabled) }
-                SettingsRow("Access token", icon: "key", info: "Stored at Application Support/ihatecrypto/debug-token. Use it as a Bearer token with curl.") {
+                SettingsRow("Access token", icon: "key", info: "Stored at Application Support/\(Flavor.folder)/debug-token. Use it as a Bearer token with curl.") {
                     Text("Changes each start").foregroundStyle(.secondary)
                 }
             }

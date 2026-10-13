@@ -511,6 +511,15 @@ struct WindowDragArea: View {
 }
 
 // MARK: Rail
+/// «DEV» by the logo of the development copy (`Flavor`), beside the working one: nobody types into the wrong window.
+struct DevTag: View {
+    var body: some View {
+        Text("DEV").font(.ui(10, .bold)).foregroundStyle(Brand.accentInk)
+            .padding(.horizontal, 6).frame(height: 18)
+            .background(Capsule().fill(Brand.accent.opacity(0.16)))
+            .help("The development copy: its own wallets, settings and data. The working ihatecrypto is a separate app.")
+    }
+}
 
 struct StudioRail: View {
     @Environment(Workspace.self) private var ws
@@ -613,6 +622,7 @@ struct StudioRail: View {
             HStack(spacing: 8) {
                 WhatsNewLogo()
                 Text("ihatecrypto").font(.brand(19)).lineLimit(1).fixedSize()
+                if Flavor.dev { DevTag() }
                 Spacer(minLength: 0)
                 if fullScreen { collapseButton }
             }
@@ -660,6 +670,7 @@ struct StudioRail: View {
             } label: {
                 VStack(spacing: 8) {
                     BrandLogo(size: 34, mood: refreshing ? .thinking : .idle, animated: true)
+                    if Flavor.dev { DevTag() }
                     VStack(spacing: 1) {
                         if !ws.balancesLoaded {
                             Skeleton(width: 44, height: 11)

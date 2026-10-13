@@ -230,7 +230,8 @@ public struct SignerReply: Codable, Sendable {
 
 /// App side: talks to the XPC service embedded in the bundle. Unavailable when running from `swift run`.
 public final class SignerClient: @unchecked Sendable {
-    public static let serviceName = "app.ihatecrypto.mac.signer"
+    /// The signer built into this copy: app.ihatecrypto.mac.signer, or the development copy's app.ihatecrypto.mac.dev.signer.
+    public static let serviceName = (Bundle.main.bundleIdentifier ?? "app.ihatecrypto.mac") + ".signer"
     /// The service ships inside ihatecrypto.app; a `swift run` build has none.
     public static var isAvailable: Bool {
         FileManager.default.fileExists(atPath: Bundle.main.bundleURL.appending(path: "Contents/XPCServices/Signer.xpc").path)

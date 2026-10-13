@@ -368,7 +368,7 @@ extension Workspace {
 /// it quits or crashes, so scheduled tasks, stops and alerts keep going. It starts the app only when no copy runs, and
 /// hidden (`open -g -j`): the window stays closed, the coin is in the menu bar.
 enum KeepRunning {
-    static let label = "app.ihatecrypto.mac.keeprunning"
+    static let label = Flavor.id + ".keeprunning"
     static var plist: URL { FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/LaunchAgents/\(label).plist") }
     static var isOn: Bool { FileManager.default.fileExists(atPath: plist.path) }
 
@@ -379,11 +379,11 @@ enum KeepRunning {
         let job: [String: Any] = [
             "Label": label,
             // The app as it is now; a moved or rebuilt copy elsewhere re-registers when the switch is set again.
-            "ProgramArguments": ["/bin/sh", "-c", "/usr/bin/pgrep -qx ihatecrypto || /usr/bin/open -g -j '\(Bundle.main.bundlePath)'"],
+            "ProgramArguments": ["/bin/sh", "-c", "/usr/bin/pgrep -qx '\(ProcessInfo.processInfo.processName)' || /usr/bin/open -g -j '\(Bundle.main.bundlePath)'"],
             "RunAtLoad": true,
             "StartInterval": 60,
             "ProcessType": "Background",
-            "AssociatedBundleIdentifiers": [Bundle.main.bundleIdentifier ?? "app.ihatecrypto.mac"],
+            "AssociatedBundleIdentifiers": [Flavor.id],
         ]
         try FileManager.default.createDirectory(at: plist.deletingLastPathComponent(), withIntermediateDirectories: true)
         try PropertyListSerialization.data(fromPropertyList: job, format: .xml, options: 0).write(to: plist)

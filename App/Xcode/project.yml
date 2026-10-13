@@ -26,6 +26,11 @@ settings:
     GENERATE_INFOPLIST_FILE: YES
     MARKETING_VERSION: "0.1"
     CURRENT_PROJECT_VERSION: "1"
+    # Which copy: these two are the working one, the release (release.sh). build-app.sh passes «ihatecrypto Dev» and
+    # app.ihatecrypto.mac.dev: the development copy beside it, with a Keychain group, settings, data folder, debug port
+    # and Keep running agent of its own (`Flavor`), so a build from this tree never touches the working one's.
+    APP_NAME: ihatecrypto
+    APP_ID: app.ihatecrypto.mac
 targets:
   ihatecrypto:
     type: application
@@ -39,8 +44,10 @@ targets:
       - target: IhatecryptoSigner
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.ihatecrypto.mac
-        PRODUCT_NAME: ihatecrypto
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_ID)
+        PRODUCT_NAME: $(APP_NAME)
+        # The module keeps its name whatever the copy is called.
+        PRODUCT_MODULE_NAME: ihatecrypto
         SWIFT_DEFAULT_ACTOR_ISOLATION: MainActor
         # Sparkle's keys, merged into the generated plist. The feed is empty in a local build (no update checks);
         # release.sh passes the site's appcast.
@@ -65,8 +72,8 @@ targets:
       path: Signer-Info.plist
       properties:
         # xcodegen writes this plist from here: the name the Touch ID window shows goes here, not in the file.
-        CFBundleName: ihatecrypto
-        CFBundleDisplayName: ihatecrypto
+        CFBundleName: $(APP_NAME)
+        CFBundleDisplayName: $(APP_NAME)
         XPCService:
           ServiceType: Application
     dependencies:
@@ -74,7 +81,7 @@ targets:
         product: IhatecryptoSignerKit
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: app.ihatecrypto.mac.signer
+        PRODUCT_BUNDLE_IDENTIFIER: $(APP_ID).signer
         PRODUCT_NAME: Signer
         PRODUCT_MODULE_NAME: IhatecryptoSigner
         # The generated plist would put CFBundleName = PRODUCT_NAME over the file's «ihatecrypto».

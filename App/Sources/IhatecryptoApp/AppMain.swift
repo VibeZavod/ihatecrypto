@@ -146,8 +146,10 @@ struct AppMain: App {
 
     func install(_ ws: Workspace) {
         guard item == nil else { return }
-        let item = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+        let item = NSStatusBar.system.statusItem(withLength: Flavor.dev ? NSStatusItem.variableLength : NSStatusItem.squareLength)
         item.button?.image = Self.coinTemplate()
+        // Two coins in the menu bar while both copies run: the development one says which it is.
+        if Flavor.dev { item.button?.title = "DEV"; item.button?.imagePosition = .imageLeading }
         item.button?.target = self
         item.button?.action = #selector(toggle(_:))
         let hosting = NSHostingController(rootView: MenuBarContent().environment(ws).font(.ui(13)))
@@ -339,6 +341,8 @@ struct ContentView: View {
             StatusItem.shared.openWindow = openWindow
             StatusItem.shared.install(ws)
             if UserDefaults.standard.bool(forKey: "debugAPI") { DebugAPI.shared.start(ws) }
+            // The development copy says so in the Dock, beside the working one's same icon.
+            if Flavor.dev { NSApp.dockTile.badgeLabel = "DEV" }
             // Started hidden by Keep running (`open -g -j`, at login or after a crash): it stays in the menu bar, its
             // window closed, instead of coming to the front. Otherwise a regular app (from `swift run` too).
             if NSApp.isHidden { StatusItem.shared.toMenuBar() } else {
@@ -380,8 +384,8 @@ struct ContentView: View {
             await ws.refresh()
             // A crash since the last launch: one line in the chat; the report is kept (Crashes.swift).
             if let crash = Crashes.collect().first {
-                ws.reply(ws.say("ihatecrypto closed unexpectedly on \(Fmt.date(crash.date)) — \(crash.summary). The report is kept in Application Support/ihatecrypto/Crashes.",
-                                "ihatecrypto упал \(Fmt.date(crash.date)) — \(crash.summary). Отчёт сохранён в Application Support/ihatecrypto/Crashes."))
+                ws.reply(ws.say("ihatecrypto closed unexpectedly on \(Fmt.date(crash.date)) — \(crash.summary). The report is kept in Application Support/\(Flavor.folder)/Crashes.",
+                                "ihatecrypto упал \(Fmt.date(crash.date)) — \(crash.summary). Отчёт сохранён в Application Support/\(Flavor.folder)/Crashes."))
             }
             // `-openPlace kamino`: opens that place's card from the rail, to check the canvas layout in a screenshot;
             // `history` and `favorites` open the boards of the rail's buttons, `settings` Settings (the tab: `-settingsTab modules`). Only shows cards, so it stays in Release builds.

@@ -25,7 +25,7 @@ enum Crashes {
         let logs = FileManager.default.homeDirectoryForCurrentUser.appending(path: "Library/Logs/DiagnosticReports")
         let files = [logs, logs.appending(path: "Retired")].flatMap { dir in
             ((try? FileManager.default.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil)) ?? [])
-                .filter { url in url.pathExtension == "ips" && ["ihatecrypto-", "Signer-"].contains { url.lastPathComponent.hasPrefix($0) } }
+                .filter { url in url.pathExtension == "ips" && [ProcessInfo.processInfo.processName + "-", "Signer-"].contains { url.lastPathComponent.hasPrefix($0) } }
         }
         var kept = all
         let firstLook = UserDefaults.standard.object(forKey: "crashesSeen") == nil
@@ -56,7 +56,7 @@ enum Crashes {
         let threads = body["threads"] as? [[String: Any]] ?? []
         let frames = (body["faultingThread"] as? Int).flatMap { $0 < threads.count ? threads[$0]["frames"] as? [[String: Any]] : nil } ?? []
         // The first frame in the app or the signer, else the first with a name.
-        let ours = frames.first { f in (f["imageIndex"] as? Int).flatMap { $0 < images.count ? images[$0] : nil }.map { ["ihatecrypto", "Signer"].contains($0) } ?? false }
+        let ours = frames.first { f in (f["imageIndex"] as? Int).flatMap { $0 < images.count ? images[$0] : nil }.map { [ProcessInfo.processInfo.processName, "Signer"].contains($0) } ?? false }
         let frame = (ours ?? frames.first { $0["symbol"] != nil }).map { f in
             (f["symbol"] as? String ?? "?") + ((f["sourceFile"] as? String).map { " (\($0))" } ?? "")
         }

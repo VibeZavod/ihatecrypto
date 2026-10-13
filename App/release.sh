@@ -57,6 +57,12 @@ xcodebuild -exportArchive -archivePath $out/ihatecrypto.xcarchive -exportPath $o
   -allowProvisioningUpdates > "$log" 2>&1 || fail
 app=$out/export/ihatecrypto.app
 codesign --verify --deep --strict "$app"
+# The working copy's identity and nothing else (build-app.sh's development copy has its own): with another bundle id or
+# Keychain group the update's signer would not find the wallets.
+id() { /usr/libexec/PlistBuddy -c "Print :CFBundleIdentifier" "$1/Contents/Info.plist"; }
+[[ $(id "$app") == app.ihatecrypto.mac && $(id "$app/Contents/XPCServices/Signer.xpc") == app.ihatecrypto.mac.signer ]] \
+  && codesign -d --entitlements - --xml "$app/Contents/XPCServices/Signer.xpc" 2>/dev/null | grep -q ">N78L833HCS.app.ihatecrypto.mac.signer<" \
+  || { echo "not the working copy's bundle ids or Keychain group: nothing is published."; exit 1; }
 [[ -z $site || $(/usr/libexec/PlistBuddy -c "Print :SUFeedURL" "$app/Contents/Info.plist") == $site/appcast.xml ]] || { echo "the feed didn't make it into Info.plist"; exit 1; }
 
 step "notarize (a few minutes)"

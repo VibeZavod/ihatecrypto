@@ -62,7 +62,7 @@ nonisolated final class RemoteIconLoader: @unchecked Sendable {
     /// no-cache headers can't make every launch fetch every icon again.
     /// In the app's own caches folder: the app isn't sandboxed, so a bare «RemoteIcons» would sit in ~/Library/Caches.
     private let files = URLCache(memoryCapacity: 4 << 20, diskCapacity: 100 << 20,
-                                 directory: URL.cachesDirectory.appending(path: "app.ihatecrypto.mac/RemoteIcons"))
+                                 directory: URL.cachesDirectory.appending(path: "\(Flavor.id)/RemoteIcons"))
     /// No cookies or credentials go to (or come from) the icon hosts: an ephemeral session still keeps cookies for the
     /// run, so they're refused outright. A slow host can't hold a request (and every row sharing it) past 30 s.
     private let session: URLSession = {

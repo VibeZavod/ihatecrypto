@@ -7,7 +7,18 @@ import SwiftUI
 import TradeExecution
 import WalletCore
 
-/// Owner-only JSON files in Application Support/ihatecrypto.
+/// Which copy this is. The working one is the release, app.ihatecrypto.mac. Anything else — «ihatecrypto Dev»
+/// (app.ihatecrypto.mac.dev, what build-app.sh makes) or a `swift run` — is a development copy that runs beside it and
+/// shares nothing with it: the bundle id gives it its own settings, model logins and signer Keychain group (so its own
+/// wallets), and from here its own data folder, debug port and Keep running agent.
+enum Flavor {
+    nonisolated static let id = Bundle.main.bundleIdentifier ?? "app.ihatecrypto.mac.dev"
+    nonisolated static let dev = id != "app.ihatecrypto.mac"
+    /// Application Support/ihatecrypto, or ihatecrypto-dev.
+    nonisolated static let folder = dev ? "ihatecrypto-dev" : "ihatecrypto"
+}
+
+/// Owner-only JSON files in Application Support/ihatecrypto (`Flavor.folder`).
 ///
 /// A chat reply changes activity.json and canvases.json several times in one go: each file is encoded once, half a
 /// second after the first change, and encoded and written off the main thread. On main the two (≈ 1.3 MB) took tens of
@@ -22,7 +33,7 @@ enum LocalStore {
     nonisolated(unsafe) private static var written: [String: Data] = [:]
 
     nonisolated static func url(_ name: String) -> URL {
-        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: "ihatecrypto")
+        let folder = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appending(path: Flavor.folder)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         return folder.appending(path: name)
     }
@@ -2495,6 +2506,14 @@ extension Workspace {
     }
 
     /// USDC read with the other networks' tokens; nil until they've been read.
+    /// The USDT on one of USDT0's networks, for a move's card and its «none there»: what the node said before the card
+    /// (`freshenSource`, kept 5 min), else the portfolio's. A wallet holding no token at all has no portfolio row to go
+    /// by: its card for 5 USDT was drawn with none to move (found on the development copy's new wallet, 2026-10-13).
+    func heldUSDT(_ chain: String) -> Decimal? {
+        if let r = usdtRead, r.place == chain, Date().timeIntervalSince(r.at) < 300 { return r.amount }
+        return EVMNetwork.named(chain).flatMap { USDT0.on($0.rpc.chainId) }.flatMap { heldUSDC(chain, $0.token) }
+    }
+
     func heldUSDC(_ chain: String, _ contract: String) -> Decimal? {
         otherTokens.first { $0.chain == chain && $0.contract == contract }?.amount ?? (otherTokens.isEmpty ? nil : 0)
     }
@@ -2562,8 +2581,7 @@ extension Workspace {
     private func usdtRoute(_ command: WalletCommand, _ from: String, _ to: String, _ amount: Decimal?, layerZero: Bool) -> MoveRoute {
         let a = WalletCommand.placeName(from), b = WalletCommand.placeName(to)
         let source = EVMNetwork.named(from), usdt0 = source.flatMap { USDT0.on($0.rpc.chainId) }
-        let read = usdtRead.flatMap { $0.place == from && Date().timeIntervalSince($0.at) < 300 ? $0.amount : nil }
-        let have = read ?? usdt0.flatMap { heldUSDC(from, $0.token) }, moving = amount.map { min($0, have ?? $0) } ?? have
+        let have = heldUSDT(from), moving = amount.map { min($0, have ?? $0) } ?? have
         let there = EVMNetwork.named(to).flatMap { USDT0.on($0.rpc.chainId) }.flatMap { heldUSDC(to, $0.token) }
         func fill(_ place: String) -> RouteFill { RouteFill(rawValue: place) ?? .relay }
         let shown = moving.map { Fmt.num($0) } ?? "all", wait = usdt0.map { USDT0.wait($0.minutes) } ?? "a while"
