@@ -8,8 +8,16 @@ import WalletCore
 struct JevCase: Decodable, Sendable {
     var id: Int
     var kind: String?
+    /// A screen case: the user's own chat message (true) or what a lookup brought back.
+    var own: Bool?
     var message, command, host, title, text, source: String?
     var recent, canvas, requests, plan, signatures, changes, programs: [String]?
+}
+
+private struct Replay: TextClassifier {
+    let name = "The second check"
+    let answer: (String, Double)
+    func classify(_ text: String, source: String) async throws -> (label: String, confidence: Double) { answer }
 }
 
 /// `jev-eval <cases.jsonl>`: every case through the second check exactly as the app asks it, one JSON line per case
@@ -21,8 +29,14 @@ func jevEval(_ path: String) async throws {
         var out: [String: Any] = ["id": c.id]
         do {
             if c.kind == "screen" {
-                let (label, confidence) = try await JevClassifier(apiKey: key).classify(c.text ?? "", source: c.source ?? "web page")
-                out["label"] = label; out["confidence"] = confidence
+                let text = c.text ?? "", own = c.own ?? false
+                let (label, confidence) = try await JevClassifier(apiKey: key, own: own).classify(text, source: c.source ?? "lookup")
+                out["label"] = label; out["confidence"] = confidence; out["concern"] = label != "data"
+                // What the guard decides, its local rules for commands included (asked once: the answer is replayed).
+                let why = own
+                    ? (InjectionHeuristics.findings(text).commands.first.map { "local rules: \($0)" } ?? (label != "data" && confidence >= InjectionGuard.threshold ? label : nil))
+                    : await InjectionGuard.lookupProblem(text, source: c.source ?? "lookup", classifier: Replay(answer: (label, confidence)))
+                out["stopped"] = why != nil; out["text"] = why ?? ""
             } else {
                 let r = switch c.kind {
                 case "plan": try await JevReviewer.plan(requests: c.requests ?? [], plan: c.plan ?? [], apiKey: key)

@@ -269,6 +269,50 @@ private final class Script: LLMClient, @unchecked Sendable {
     #expect(Plan.resolve(both, market: m, equity: 30, policy: RiskPolicy()).intent.amountUSDC == 5)
 }
 
+/// Code's check of the plan's money: a plan built by the rules never trips it, a number in the wrong role does.
+@Test func aPlanNeverHoldsMoreThanItsCommandNamed() throws {
+    let markets = [Market(name: "BTC", markPx: 84_000, szDecimals: 5, maxLeverage: 40), Market(name: "ETH", markPx: 2_680, szDecimals: 4, maxLeverage: 25),
+                   Market(name: "SOL", markPx: Decimal(string: "152.4")!, szDecimals: 2, maxLeverage: 20), Market(name: "kPEPE", markPx: Decimal(string: "0.0113")!, szDecimals: 0, maxLeverage: 10),
+                   Market(name: "xyz:CL", markPx: Decimal(string: "71.35")!, szDecimals: 3, maxLeverage: 20)]
+    var plans = 0
+    for var m in markets {
+        m.atrPct = 2
+        for money in [3, 5, 8, 10, 20, 50, 100, 1000] as [Decimal] {
+            for lev in [nil, 1, 2, 3, 5, 10] as [Decimal?] {
+                for stop in [nil, Decimal(string: "0.5")!, 1, 3, 10] as [Decimal?] {
+                    for equity in [nil, 30, 500, 20_000] as [Decimal?] {
+                        for byRisk in [false, true] {
+                            var i = TradeIntent()
+                            (i.asset, i.leverage, i.stopPct, i.autoRules) = (m.name, lev, stop, true)
+                            if byRisk { i.riskUSD = money / 10 } else { i.amountUSDC = money }
+                            let r = Plan.resolve(i, market: m, equity: equity, policy: RiskPolicy()).intent
+                            guard let s = Plan.evaluate(r, market: m).sizing else { continue }
+                            plans += 1
+                            #expect(Plan.moneyProblem(named: i, sizing: s, market: m) == nil, "\(m.name) \(money) lev \(lev ?? 0) stop \(stop ?? 0) equity \(equity ?? 0) risk \(byRisk): margin \(s.margin) loss \(s.lossAtStopUSD)")
+                        }
+                    }
+                }
+            }
+        }
+    }
+    #expect(plans > 1_000)
+    // «5 USDC» taken as a $5 risk: at a 2% stop that is $250 of position and $50 of margin at 5×.
+    let sol = markets[2]
+    var named = TradeIntent()
+    (named.asset, named.amountUSDC, named.leverage, named.stopPct) = ("SOL", 5, 5, 2)
+    var wrong = named
+    (wrong.amountUSDC, wrong.riskUSD) = (nil, 5)
+    let asRisk = try #require(Plan.evaluate(wrong, market: sol).sizing)
+    #expect(Plan.moneyProblem(named: named, sizing: asRisk, market: sol)?.contains("more than the 5 USDC") == true)
+    // Ten times the risk named.
+    var risk = TradeIntent()
+    (risk.asset, risk.riskUSD, risk.leverage, risk.stopPct) = ("SOL", 2, 3, 2)
+    var tenfold = risk
+    tenfold.riskUSD = 20
+    let big = try #require(Plan.evaluate(tenfold, market: sol).sizing)
+    #expect(Plan.moneyProblem(named: risk, sizing: big, market: sol)?.contains("more than the $2 risk") == true)
+}
+
 @Test func aSmallAccountReachesTheMinimumOrder() throws {
     // $29 at 1% sizes HYPE under $10: the rules raise the risk to the least that reaches it, within the limit.
     var m = Market(name: "HYPE", markPx: 88, szDecimals: 2, maxLeverage: 10)

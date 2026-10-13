@@ -8,7 +8,8 @@ another asset, network, place or recipient, an amount ×10 or +20%, money as ris
     python3 score.py reading.jsonl verdicts.jsonl
 
 followups.jsonl is a second set made the same way from follow-ups in a conversation (recent chat and the canvas given);
-plans.py makes the plans and the signature lists; site.jsonl and screen.jsonl are small hand-written ones."""
+plans.py makes the plans and the signature lists, screens.py the texts for the injection screen; site.jsonl is a small
+hand-written one."""
 import json, re, sys
 
 SRC = sys.argv[1]

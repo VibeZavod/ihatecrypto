@@ -31,6 +31,7 @@ import WalletCore
 //   lend-withdraw <USDC> [--yes]  withdraw USDC from it
 //   jev-screen <text>             screen untrusted text: local rules, plus Jev if OPENROUTER_API_KEY is set
 //   jev-eval <cases.jsonl>        the second check on labelled cases, one JSON line each (Tools/jevcheck)
+//   lookup <tool> <arg…>          what one of the model's lookups brings back, as the model gets it: token, services, service, call, rpc, hl, fetch
 //   relay <USDC> [--yes]          USDC on Solana → Hyperliquid perp balance through Relay, timed
 //   relay-back <USDC> [--yes]     Hyperliquid perp USDC → USDC on Solana through Relay, timed
 //   evm-sig                       sign an Arbitrum transfer with a random key; the node must name our address
@@ -80,6 +81,10 @@ do {
         let key = ProcessInfo.processInfo.environment["OPENROUTER_API_KEY"]
         printVerdict(await InjectionGuard.screen(text, source: "terminal check", classifier: key.map { JevClassifier(apiKey: $0) }))
     case "jev-eval": try await jevEval(args.dropFirst().first ?? "")
+    case "lookup":
+        let tool = args.dropFirst().first ?? "", arg = args.dropFirst(2).joined(separator: " ")
+        print(tool == "token" ? await TokenResearch.report(arg) : tool == "services" ? await MPP.search(arg) : tool == "service" ? await MPP.service(arg)
+              : await AgentReads.answer(tool, arg, me: .init(evm: nil, solana: nil)))
     case "reconcile": try await reconcile()
     case "hl-sig": try await hyperliquidSignatureCheck()
     case "execute": try await executePlan(args.dropFirst().filter { $0 != "--yes" }.joined(separator: " "))

@@ -897,20 +897,20 @@ final class Workspace {
         defer { snapshotCanvas(); saveCanvas() }
 
         // Before the parser or any model sees it: local rules, plus Jev if the user turned it on.
-        // The classifier reads what looks pasted — an address or a link — where an injection could hide; it took the
-        // user's own «не хочу, отмени» for steering and «переведи на арбитрум» for a redirect. Local rules read everything.
+        // The classifier reads what may hold a paste, where an injection could hide: an address or a link, or a message
+        // longer than anyone types a command (the longest of 262 typed ones was 85 characters, the shortest injected paste
+        // 105; a pasted paragraph with no address in it used to go unread). Local rules read everything.
+        // It is told the message is the user's own (JevClassifier.own), so their «не хочу, отмени», «save 0x… as test
+        // wallet for ai agent» and «купи токен 0x2E8c… на 1 доллар» read as what they are: the three workarounds those
+        // false alarms brought — never on a save, a redirect only noted — are gone.
         // An address already saved in Addresses is that entry, as if its name were written: «переведи 2 USDC на 0x5333…»
         // goes to «main wallet». Only a saved (confirmed) address: any other still never becomes a recipient.
         text = savedNames(in: text)
-        let pasted = text.contains(/0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|https?:\/\/|www\./)
-        // Saving an address the user typed is their own command: the address is the one in this message and the signer
-        // shows it whole on Touch ID before it's kept. The classifier read «save 0x… as test wallet for ai agent» as steering.
-        let saving: Bool = if case .save? = AddressBookCommand.parse(text) { true } else { false }
-        let classifier: (any TextClassifier)? = jevScreening && pasted && !saving ? openRouterKey.map { JevClassifier(apiKey: $0) } : nil
+        // ponytail: «pasted» by its look, not by the pasteboard; a short paste with no address or link is read by the local rules only.
+        let pasted = text.count >= 100 || text.contains(/0x[0-9a-fA-F]{40}|[1-9A-HJ-NP-Za-km-z]{32,44}|https?:\/\/|www\./)
+        let classifier: (any TextClassifier)? = jevScreening && pasted ? openRouterKey.map { JevClassifier(apiKey: $0, own: true) } : nil
         busy = true
-        // «купи токен 0x2E8c… на 1 доллар» read as a redirect: from the chat an address never becomes a recipient (sends go
-        // to address-book names), so only the classifier's «steers the assistant» stops a chat message.
-        let screen = await InjectionGuard.screen(text, source: "chat message", classifier: classifier, redirects: false)
+        let screen = await InjectionGuard.screen(text, source: "chat message", classifier: classifier)
         busy = false
         FileHandle.standardError.write(Data("ihatecrypto screen: ok=\(screen.ok) \(screen.checks + screen.problems)\n".utf8))
         guard screen.ok else {
@@ -1260,7 +1260,7 @@ final class Workspace {
         var failure = "", unreadable = false
         let context = routerContext(offered: offered, messageShown: said == nil)
         // The model's lookups run here, on this canvas's data; the chat shows which one is under way.
-        let lookup: @Sendable (ChatRouter.Lookup) async -> String = { [weak self] l in await self?.agentLookup(l) ?? "" }
+        let lookup: @Sendable (ChatRouter.Lookup) async -> String = { [weak self] l in await self?.screenedLookup(l) ?? "" }
         // A second reader of every command: Jev when OpenRouter is connected, else the model reading it again.
         let key = jevScreening ? openRouterKey : nil, recent = context.recent, model = model
         @Sendable func modelReading(_ command: String) async -> (answered: Bool, why: String?) {

@@ -197,6 +197,30 @@ public enum Plan {
         return e
     }
 
+    /// The money a plan holds against what its command named, by code rather than by a reader: «N USDC» is the most
+    /// that goes in as margin, «risk $N» the most lost at the stop. nil when the plan keeps to it, else what differs.
+    /// `named` is the intent as the commands left it, before the rules (resolve) turned the money into a risk.
+    /// A classifier reading the finished plan missed a tenfold amount or money taken as risk in a quarter of the cases
+    /// (Tools/jevcheck, plans); in the command it sees them, and from the command to the plan the numbers are code's.
+    /// Only «more than named» is a problem: the size rounds down to the market's step, so a little less is the rule.
+    /// What the rules themselves may add is allowed for: an order raised to Hyperliquid's $10 minimum rounds its size up
+    /// by a step and its risk up by a cent, and a cent of risk at a 0.5% stop is $2 of position — «5 USDC» at 2× came
+    /// out as $5.90 of margin (seen 2026-10-14 in this check's own test; the sizing is left as it is).
+    public static func moneyProblem(named i: TradeIntent, sizing s: Sizing, market m: Market) -> String? {
+        guard s.notional > 0, s.lossAtStopUSD > 0 else { return nil }
+        let cent = Decimal(string: "0.01")!
+        // In dollars of position: one step of the size, and what a cent of risk buys.
+        let slack = s.entry / pow(10, m.szDecimals) + cent * s.notional / s.lossAtStopUSD
+        func over(_ got: Decimal, _ named: Decimal) -> Bool { got > named * Decimal(string: "1.01")! + slack * got / s.notional + cent }
+        if i.riskUSD == nil, let money = i.amountUSDC, money > 0, over(s.margin, money) {
+            return "The plan puts \(Fmt.usd(s.margin)) into the trade, more than the \(Fmt.num(money)) USDC its command named."
+        }
+        if let risk = i.riskUSD, risk > 0, over(s.lossAtStopUSD, risk) {
+            return "The plan loses \(Fmt.usd(s.lossAtStopUSD)) at the stop, more than the $\(Fmt.num(risk)) risk its command named."
+        }
+        return nil
+    }
+
     /// USDC that must arrive on HyperCore, or nil when the trading balance already covers margin and fees
     /// or the position has not passed the checks yet.
     /// `mark`: Hyperliquid holds an order's margin at the current price when that's above the limit — a long on a

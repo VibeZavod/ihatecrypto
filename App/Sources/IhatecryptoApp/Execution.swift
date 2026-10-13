@@ -218,7 +218,14 @@ extension Workspace {
     /// Jev reads each sized plan against the user's words; without OpenRouter the chat's model does. It can only warn.
     func reviewPlan() async {
         // Any sized plan, a stopped one too: a misread request («5 USDC» read as risk $5) is what the rules stop.
-        guard evaluation.sizing != nil, intent != reviewedIntent || planReview == nil else { return }
+        guard let sizing = evaluation.sizing, intent != reviewedIntent || planReview == nil else { return }
+        // Code first, second check on or off: the plan never holds more money or more risk than its command named.
+        if let market, let why = Plan.moneyProblem(named: intent, sizing: sizing, market: market) {
+            reviewedIntent = intent
+            planReview = JevReview(label: "mismatch", confidence: 1, concern: true, text: why)
+            jevNote = nil
+            return
+        }
         guard jevScreening else { planReview = nil; jevNote = nil; return }
         reviewedIntent = intent
         let requests = messages.filter(\.fromUser).map(\.text), lines = planLines, key = openRouterKey, client = llmClient(),

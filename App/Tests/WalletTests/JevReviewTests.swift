@@ -30,6 +30,15 @@ private let labels: KeyValuePairs = ["matches": "It does.", "mismatch": "It does
     #expect(throws: JevError.self) { try JevClassifier.answer(Data(half.utf8), criteria: labels, asks: [:]) }
 }
 
+/// The screen's answer: «data» with its probability, or the heavier of the other two with what both hold.
+@Test func theScreenAddsUpWhatIsNotData() {
+    let split = JevClassifier.verdict(["data": 0.2, "instructions": 0.35, "payment_redirect": 0.45])
+    #expect(split.label == "payment_redirect" && abs(split.confidence - 0.8) < 1e-9)
+    let plain = JevClassifier.verdict(["data": 0.9, "instructions": 0.06, "payment_redirect": 0.04])
+    #expect(plain.label == "data" && abs(plain.confidence - 0.9) < 1e-9)
+    #expect(JevClassifier.verdict(["data": 0.55, "instructions": 0.45, "payment_redirect": 0]).label == "data")
+}
+
 /// The verdict is the probability left for the good answer, not the top label and its distance from an even split.
 @Test func aSplitDoubtIsStillADoubt() {
     let texts = ["matches": "matches", "mismatch": "differs", "risky": "risky"]

@@ -48,16 +48,15 @@ public enum InjectionHeuristics {
 
 public protocol TextClassifier: Sendable {
     var name: String { get }
-    /// label: "data", "instructions" or "payment_redirect"; confidence 0…1.
+    /// label: "data", "instructions" or "payment_redirect"; confidence 0…1: how likely the text is plain data when
+    /// the label is «data», how likely it isn't when the label is one of the other two.
     func classify(_ text: String, source: String) async throws -> (label: String, confidence: Double)
 }
 
 public enum InjectionGuard {
     public static let threshold = 0.7
 
-    /// `redirects: false` when an address in the text can't become a recipient anyway (the chat): the classifier's
-    /// payment-redirect label is then a note, not a stop.
-    public static func screen(_ text: String, source: String, classifier: (any TextClassifier)?, redirects: Bool = true) async -> Verdict {
+    public static func screen(_ text: String, source: String, classifier: (any TextClassifier)?) async -> Verdict {
         var v = Verdict()
         let f = InjectionHeuristics.findings(text)
         if !f.commands.isEmpty {
@@ -82,7 +81,7 @@ public enum InjectionGuard {
                 v.checks.append("\(classifier.name): looks like ordinary data (\(percent)%).")
             case "instructions" where confidence >= threshold:
                 v.problems.append("\(classifier.name): the text tries to steer the assistant (\(percent)%).")
-            case "payment_redirect" where confidence >= threshold && redirects:
+            case "payment_redirect" where confidence >= threshold:
                 v.problems.append("\(classifier.name): the text tries to redirect funds to its own address (\(percent)%).")
             default:
                 v.checks.append("\(classifier.name) is unsure: \(label) (\(percent)%). Local rules decide.")
@@ -91,5 +90,19 @@ public enum InjectionGuard {
             v.checks.append("\(classifier.name) is unavailable (\(error.localizedDescription)); local rules apply.")
         }
         return v
+    }
+
+    /// What a lookup brought back for the chat's model — a token's listing, a page, a service's docs, a contract's
+    /// string — before the model reads it: nil when it is plain data, else why it is withheld. The local rules look for
+    /// commands to the assistant only (an address beside «deposit» is what such texts are made of, so that rule stays
+    /// with the chat); the classifier adds what is said in other words. Whatever is decided here, an address a lookup
+    /// finds never becomes a recipient.
+    public static func lookupProblem(_ text: String, source: String, classifier: (any TextClassifier)?) async -> String? {
+        let commands = InjectionHeuristics.findings(text).commands
+        if !commands.isEmpty { return "it has commands for the assistant: “\(commands.joined(separator: "”, “"))”" }
+        guard let classifier, let (label, confidence) = try? await classifier.classify(text, source: source), label != "data", confidence >= threshold else { return nil }
+        let percent = Int(confidence * 100)
+        return label == "instructions" ? "it tries to steer the assistant (\(classifier.name.lowercased()), \(percent)%)"
+            : "it pushes funds to an address of its own (\(classifier.name.lowercased()), \(percent)%)"
     }
 }
