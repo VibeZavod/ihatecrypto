@@ -31,6 +31,14 @@ def render(page: str, lang: str, T: dict) -> str:
     if lang == 'en':
         return page
 
+    # the page's script takes English from the page's own words, which here are this language's: hand it English whole,
+    # or switching to English from /ru/ or /es/ keeps this language
+    ta = {k: html.unescape(v) for k, v in re.findall(r'\bdata-ta="(\w+)"[^>]*?aria-label="([^"]*)"', page)}
+    m = re.search(r'(<script type="application/json" id="i18n">\n)(.*?)(\n</script>)', page, re.S)
+    words_all = json.loads(m.group(2))
+    words_all['en'] = {**en, **ta, **words_all['en']}
+    page = page[:m.start(2)] + json.dumps(words_all, ensure_ascii=False, indent=0).replace('</', '<\\/') + page[m.end(2):]
+
     # the text: every data-t element holds plain words, so its words are swapped whole
     page = re.sub(r'(<(\w+)\b[^>]*?\bdata-t="(\w+)"[^>]*>)[^<]*(</\2>)',
                   lambda m: m.group(1) + html.escape(say(m.group(3)), quote=False) + m.group(4) if m.group(3) in words else m.group(0), page)
@@ -65,6 +73,13 @@ def render(page: str, lang: str, T: dict) -> str:
     return page
 
 
+def enclave(page: str, url: str) -> str:
+    """The Secure Enclave in the text opens Apple's page about it, in the page's language (the page's script does the same
+    on a language switch)."""
+    return re.sub(r'(\bdata-t="\w+"[^>]*>[^<]*)Secure Enclave',
+                  lambda m: m.group(1) + f'<a href="{url}" target="_blank" rel="noopener">Secure Enclave</a>', page)
+
+
 def main():
     version, out = sys.argv[1], Path(sys.argv[2])
     page = (Path(__file__).parent / 'index.html').read_text(encoding='utf-8').replace('{{version}}', version)
@@ -72,7 +87,7 @@ def main():
     for lang, (path, _) in LANGS.items():
         target = out / path / 'index.html'
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(render(page, lang, T), encoding='utf-8')
+        target.write_text(enclave(render(page, lang, T), T[lang]['se']), encoding='utf-8')
         print(target)
 
 
