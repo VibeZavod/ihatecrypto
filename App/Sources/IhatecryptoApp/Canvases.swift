@@ -843,8 +843,8 @@ struct EarlierBoards: View {
                 .help(open.contains(i) ? "Hide its route" : "Show its route")
                 if !open.contains(i) {
                     EmptyView()
-                } else if done.bubbles.allSatisfy({ $0.kind == "step" }) {
-                    RouteCards(steps: done.bubbles, outcome: done.outcome.ok)
+                } else if let steps = ActivityBubble.route(done.bubbles) {
+                    RouteCards(steps: steps, outcome: done.outcome.ok)
                     if let answer = done.bubbles.last?.answer { ServiceAnswerBoard(answer: answer, closable: false) }
                 } else {
                     LazyVGrid(columns: [GridItem(.fixed(220), alignment: .top), GridItem(.fixed(220), alignment: .top)], alignment: .leading, spacing: 14) {
@@ -883,8 +883,8 @@ struct SavedBoard: View {
                 Label("As it was · \(Fmt.date(canvas.boardAt ?? canvas.updated))", systemImage: "clock.arrow.circlepath")
                     .font(.ui(10)).foregroundStyle(.secondary)
             }
-            if !canvas.bubbles.isEmpty, canvas.bubbles.allSatisfy({ $0.kind == "step" }) {
-                RouteCards(steps: canvas.bubbles, outcome: canvas.outcome?.ok, asItWas: canvas.outcome == nil)
+            if !canvas.bubbles.isEmpty, let steps = ActivityBubble.route(canvas.bubbles) {
+                RouteCards(steps: steps, outcome: canvas.outcome?.ok, asItWas: canvas.outcome == nil)
                 if let answer = canvas.bubbles.last?.answer { ServiceAnswerBoard(answer: answer, closable: false) }
             } else {
                 LazyVGrid(columns: [GridItem(.fixed(220), alignment: .top), GridItem(.fixed(220), alignment: .top)], alignment: .leading, spacing: 14) {
@@ -1120,6 +1120,8 @@ struct PendingButtons: View {
                 confirmButton(ws.quoteState(at: Date()))
             }
         }
+        // Whole, always: beside a long title it's the title that wraps («Confi…» was cut, 2026-10-14).
+        .fixedSize()
         .disabled(ws.busy)
     }
 
@@ -1429,7 +1431,43 @@ extension Workspace {
                  usd.map { "≈ \(Fmt.usd($0))" + (close ? " · everything" : asked == nil ? " · ≈ 0.012 NEAR stays" : "") } ?? "", .near,
                  money: nearMove(by: -amount)),
             step(entry.network.logo, "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", .near),
-        ], warning: entry.lastSent == nil ? "First transfer to this address. Sending a small test amount first is the safe habit." : nil)
+        ], warning: firstSendWarning(entry))
+    }
+
+    /// «Send a small test amount first»: for someone else's address the first time — never for one of the user's own wallets.
+    func firstSendWarning(_ entry: SavedAddress) -> String? {
+        guard entry.lastSent == nil, !isOwnWallet(entry.address) else { return nil }
+        return "First transfer to this address. Sending a small test amount first is the safe habit."
+    }
+
+    /// One of this Mac's wallets (Main, Test, Automation, a Ledger), by its Solana, EVM or NEAR address.
+    func isOwnWallet(_ address: String) -> Bool {
+        let a = address.lowercased()
+        return wallets.contains { [$0.solana, $0.evm, $0.near].contains { $0?.lowercased() == a } }
+    }
+
+    /// USDC to a saved address on its network, as every other transfer is drawn (it had a board of its own, in an older
+    /// look, 2026-10-14).
+    func transferRoute(_ entry: SavedAddress, _ amount: Decimal) -> MoveRoute {
+        let net = entry.network, ends = AddressCheck.ends(entry.address), fill = RouteFill(rawValue: net.rawValue) ?? .check
+        let free = usdc(on: net.rawValue)
+        // Solana comes up only when the money there is short: a plain transfer is a plain transfer.
+        let line = net == .hyperliquid ? "perp balance · no bridge, no gas"
+            : free.map { $0 < amount && net != .solana ? "\(Fmt.num(amount - $0)) USDC short: it comes from Solana first" : "free: \(Fmt.num($0)) USDC" } ?? ""
+        let saved = addressBook.first { $0.id == entry.id }
+        let warnings = [
+            saved.flatMap { $0.network != net ? "Saved for \($0.network.title), sent on \(net.title) to the same address. Your own wallet has it there too; an exchange's deposit address may not — check that it takes \(net.title)." : nil },
+            firstSendWarning(entry),
+        ].compactMap { $0 }
+        return MoveRoute(title: "Send \(Fmt.num(amount)) USDC to \(entry.name)",
+                         footer: (isOwnWallet(entry.address) ? "To your own wallet «\(entry.name)», one transfer on \(net.title)."
+                                  : "Only this saved address may receive the money: the guard and the signer check it, the simulation must show exactly \(Fmt.num(amount)) USDC leaving.")
+                            + (net == .ethereum ? " Ethereum mainnet: the fee is in ETH and can be dollars; it's bought for you if the wallet has none there." : "")
+                            + " Press Confirm.",
+                         steps: [
+            step(net.logo, "FROM · \(net.title.uppercased())", "\(Fmt.num(amount)) USDC", line, fill, money: moneyMove("USDC", on: net.rawValue, by: -amount)),
+            step(net.logo, "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", fill),
+        ], warning: warnings.isEmpty ? nil : warnings.joined(separator: " "))
     }
 
     /// SOL to a saved Solana address.
@@ -1442,7 +1480,7 @@ extension Workspace {
             step("sol", "FROM · SOLANA", "\(Fmt.num(amount, maxFraction: 9)) SOL", solana.map { "free: \(Fmt.num($0.sol, maxFraction: 6)) SOL" } ?? "", .solana,
                  money: moneyMove("SOL", on: "solana", by: -amount)),
             step("sol", "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", .solana),
-        ], warning: entry.lastSent == nil ? "First transfer to this address. Sending a small test amount first is the safe habit." : nil)
+        ], warning: firstSendWarning(entry))
     }
 
     /// A token as it is to a saved address, on one network: what the portfolio last read of it there, when it has.
@@ -1460,7 +1498,7 @@ extension Workspace {
                  money: held.map { h in [MoneyMove(place: WalletCommand.placeName(net), symbol: h.symbol, was: h.amount, after: max(0, h.amount - (amount ?? h.amount)))] }
                     ?? moneyMove(token, on: net, by: amount.map { -$0 })),
             step(logo, "TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")", entry.name, "\(ends.start) … \(ends.end)", fill),
-        ], warning: entry.lastSent == nil ? "First transfer to this address. Sending a small test amount first is the safe habit." : nil)
+        ], warning: firstSendWarning(entry))
     }
 
     private func withdrawRoute(_ asked: Decimal?) -> MoveRoute {
@@ -1710,7 +1748,7 @@ extension Workspace {
             case .rebalance(let share):
                 return [ActivityBubble(kind: "step", label: "REBALANCE · BEST RATES", title: "deposits",
                                        lines: ["moves\twhen the money lands", "max per place\t\(Fmt.pct(share ?? 50))"], status: "then", logo: "usdc", fill: .jupiter)]
-            // A transfer to a saved address has no route of its own (its board is TransferBoard): one card, so a chain
+            // A transfer to a saved address later in a chain: one card (transferRoute draws it once it waits), so a chain
             // ending in it («move 20 from Base to Solana, then send 20 to Automation») doesn't look like a bare bridge.
             case .sendTo(let name, let amount, let net):
                 // The same entry and network prepareTransfer will use when the step runs.
@@ -2082,7 +2120,7 @@ extension Workspace {
         ]
         let warning = r.entry.network == .xrp && r.entry.memo.isEmpty
             ? "An exchange's XRP address needs its destination tag: without it the exchange can't credit you. Save the tag as this address's memo first."
-            : r.entry.lastSent == nil ? "First transfer to this address. Sending a small test amount first is the safe habit." : nil
+            : firstSendWarning(r.entry)
         return MoveRoute(title: "Send \(what) to \(r.entry.name)",
                          footer: "NEAR Intents' 1Click turns USDC into \(r.symbol) on \(title) and pays this saved address exactly \(what); what's left of the USDC comes back. "
                             + "Its deposit address is fresh: Touch ID allows it before anything is sent. Press Confirm.",
@@ -2637,7 +2675,7 @@ extension Workspace {
                          footer: (from.count > 1 ? "What's missing on \(name) comes from Solana over Relay, with \(coin) for gas when there's none; then two" : "Two")
                             + " \(name) transactions: approve exactly \(Fmt.num(amount)) USDC, then \(morpho ? "deposit; the shares come to this wallet only" : "supply"). "
                             + "\(morpho ? "The vault's asset is" : "Pool and aToken are") re-read from \(name) first"
-                            + (network == "ethereum" ? "; Ethereum's gas changes by the hour (cents to dollars): ask the chat «сколько газа?» for today's" : "") + ". Press Confirm.",
+                            + (network == "ethereum" ? "; Ethereum's gas changes by the hour (cents to dollars): ask the chat «how much is gas?» for today's" : "") + ". Press Confirm.",
                          steps: from + [
             approve("\(Fmt.num(amount)) USDC", for: protocolName, logo: morpho ? "morpho" : "aave", morpho ? .morpho : .aave),
             morpho ? step("morpho", "MORPHO · \(name.uppercased())", "\(Fmt.num(amount)) USDC", "rate from the vault", .morpho,
@@ -2815,13 +2853,24 @@ extension Workspace {
     }
 }
 
-/// A move of money waiting for «do it», drawn as its route.
+/// A move of money waiting for «do it», drawn as its route; a USDC transfer to a saved address too.
 struct WithdrawBoard: View {
     @Environment(Workspace.self) private var ws
 
     var body: some View {
-        if case .wallet(let command)? = ws.pendingAction {
-            let route = ws.route(command) ?? ws.fallbackRoute(command)
+        switch ws.pendingAction {
+        case .wallet(let command)?:
+            board(ws.route(command) ?? ws.fallbackRoute(command), command)
+                // Again on Refresh (quoteRound).
+                .task(id: QuoteRun(command: command, round: ws.quoteRound)) { await ws.quoteSwap(command) }
+        case .transfer(let entry, let amount)?:
+            board(ws.transferRoute(entry, amount), nil)
+        default:
+            EmptyView()
+        }
+    }
+
+    private func board(_ route: MoveRoute, _ command: WalletCommand?) -> some View {
             VStack(alignment: .leading, spacing: 8) {
                 VStack(alignment: .leading, spacing: 12) {
                     HStack(spacing: 8) {
@@ -2830,7 +2879,7 @@ struct WithdrawBoard: View {
                         Spacer(minLength: 12)
                         PendingButtons()
                     }
-                    if case .multisigCreate = command { MultisigSetupCard() } else {
+                    if case .multisigCreate? = command { MultisigSetupCard() } else {
                         RouteCards(steps: route.steps + ws.chainSteps() + ws.agentNextSteps(), footer: route.footer, pending: command, build: true)
                     }
                     // What will be signed and what's checked: read before Confirm, so it reads as text, not as fine print.
@@ -2843,9 +2892,6 @@ struct WithdrawBoard: View {
             }
             .frame(width: max(470, RouteCards.width(route.steps.count)), alignment: .leading)
             .transition(.opacity)
-            // Again on Refresh (quoteRound).
-            .task(id: QuoteRun(command: command, round: ws.quoteRound)) { await ws.quoteSwap(command) }
-        }
     }
 }
 

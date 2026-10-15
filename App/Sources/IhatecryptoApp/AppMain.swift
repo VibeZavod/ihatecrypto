@@ -98,6 +98,9 @@ struct AppMain: App {
                     .environment(workspace)
                     .environment(\.locale, Locale(identifier: "en_US"))
                     .font(.ui(13))
+                    // Mono and one accent: a prominent button, a switch or a link without a tint of its own was the
+                    // system's blue (the transfer's Confirm, 2026-10-14).
+                    .tint(Brand.accent)
             }
         }
         .defaultSize(width: 1320, height: 860)
@@ -122,12 +125,12 @@ struct AppMain: App {
         }
 
         Window("Browser", id: "browser") {
-            BrowserView().environment(workspace).font(.ui(13))
+            BrowserView().environment(workspace).font(.ui(13)).tint(Brand.accent)
         }
         .defaultSize(width: 1200, height: 860)
 
         Window("Import wallet", id: "import") {
-            ImportWalletView().environment(workspace).font(.ui(13))
+            ImportWalletView().environment(workspace).font(.ui(13)).tint(Brand.accent)
         }
         .windowResizability(.contentSize)
 
@@ -153,7 +156,7 @@ struct AppMain: App {
         if Flavor.dev { item.button?.title = "DEV"; item.button?.imagePosition = .imageLeading }
         item.button?.target = self
         item.button?.action = #selector(toggle(_:))
-        let hosting = NSHostingController(rootView: MenuBarContent().environment(ws).font(.ui(13)))
+        let hosting = NSHostingController(rootView: MenuBarContent().environment(ws).font(.ui(13)).tint(Brand.accent))
         hosting.sizingOptions = [.preferredContentSize]
         popover.contentViewController = hosting
         popover.behavior = .transient

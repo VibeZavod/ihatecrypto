@@ -11,6 +11,9 @@ nonisolated enum TaskRun {
     @TaskLocal static var automation: SignerWallet?
     /// «Run now» pressed: these go at once, even with the user at the window.
     @MainActor static var now: Set<String> = []
+    /// The next run a repeating item had when «Run now» made its run an extra one: it gets it back after that run, so
+    /// «every month on the 1st» run by hand on the 14th still runs on the 1st (it moved to the 14th).
+    @MainActor static var kept: [String: Date] = [:]
     /// Below this the automation wallet can't pay Solana's fee plus a new account's rent (a Jupiter Lend deposit failed
     /// with 0.00198 SOL on 2026-10-06; rent-exempt minimum 0.00089 + a token account 0.00204 + fees).
     static let solFloor = Decimal(string: "0.005")!
@@ -83,7 +86,10 @@ extension Workspace {
         guard asked || Self.userAway || Date().timeIntervalSince(tasks[i].next) > 1800 else { return }
         TaskRun.now.remove(key)
         var task = tasks[i]
-        if task.advance() { tasks[i] = task } else { tasks.remove(at: i) }
+        if task.advance() {
+            if let kept = TaskRun.kept.removeValue(forKey: key) { task.next = kept }
+            tasks[i] = task
+        } else { tasks.remove(at: i) }
         let back = canvasID, frame = showSchedule, place = detail
         // The runs before left their canvases: what they did stays in the Schedule's history. One the user wrote on stays.
         let before = Set(activities.filter { $0.schedule == key }.compactMap(\.canvas))
@@ -417,93 +423,9 @@ enum KeepRunning {
 enum ScheduleCanvas {
     /// «Move deposited USDC to the best rates (max 40% per protocol)» for «rebalance USDC max 40% per protocol».
     static func readable(_ step: String) -> String {
-        guard let s = WalletCommand.parse(step)?.summary else { return step }
+        let s = WalletCommand.parse(step)?.summary ?? step
         return s.prefix(1).uppercased() + s.dropFirst()
     }
 
     static func period(_ days: Int) -> String { days == 1 ? "day" : days == 7 ? "week" : days == 30 ? "month" : "\(days) days" }
-}
-
-/// One scheduled task in detail: when, how often, each step as ihatecrypto reads it and as it will be typed.
-struct TaskDetail: View {
-    @Environment(Workspace.self) private var ws
-    let task: ScheduledTask
-
-    /// A step that moves money: without an automation wallet it would wait for Confirm and Touch ID.
-    private var movesMoney: Bool {
-        task.steps.contains { step in
-            switch WalletCommand.parse(step) {
-            case nil, .yields?, .receive?, .schedule?, .stopSchedules?: false
-            default: true
-            }
-        }
-    }
-
-    /// Automation asked for, and nothing yet that runs it without a finger: the way offered right here, as a card.
-    private var automationOffer: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "clock.arrow.circlepath").font(.system(size: 16, weight: .semibold)).foregroundStyle(Brand.accentInk)
-                .frame(width: 34, height: 34)
-                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Brand.accent.opacity(0.14)))
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Run it by itself, without Touch ID?").font(.ui(13.5, .bold))
-                Text("Right now its moves wait for your Confirm and finger. An automation wallet holds the budget for scheduled tasks and signs them on its own; your main wallet keeps Touch ID.")
-                    .font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Button {
-                    Task { await ws.createAutomationWallet() }
-                } label: {
-                    Label("Create an automation wallet", systemImage: "plus.circle.fill").font(.ui(12, .semibold))
-                }
-                .buttonStyle(.borderedProminent).tint(Brand.accent).controlSize(.small).pointerStyle(.link).padding(.top, 4)
-                .help("Touch ID once; then put the tasks' budget on it")
-            }
-        }
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Brand.accent.opacity(0.5)))
-    }
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                Image(systemName: task.every == nil ? "calendar.badge.clock" : "repeat").foregroundStyle(Brand.accentInk).font(.system(size: 16, weight: .semibold))
-                Text(task.steps.map(ScheduleCanvas.readable).joined(separator: " → ")).font(.ui(15, .bold)).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                StatusChip(text: task.every.map { "every \($0.words)" } ?? "once", tint: Brand.accentInk)
-            }
-            RouteCards(steps: [ActivityBubble(kind: "step", label: task.every.map { "EVERY \($0.words.uppercased()) · RUN" } ?? "LATER · SCHEDULE",
-                                              title: Fmt.date(task.next),
-                                              lines: ["then\t\(task.every.map { "again every \($0.words)" } ?? "done, it’s removed")"] + task.steps.map(ScheduleCanvas.readable),
-                                              fill: .check)])
-            VStack(alignment: .leading, spacing: 0) {
-                ForEach(Array(task.steps.enumerated()), id: \.offset) { i, step in
-                    HStack(alignment: .firstTextBaseline, spacing: 10) {
-                        Text("\(i + 1)").font(.ui(11, .heavy)).foregroundStyle(.secondary).monospacedDigit().frame(width: 16)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(ScheduleCanvas.readable(step)).font(.ui(12.5, .semibold)).fixedSize(horizontal: false, vertical: true)
-                            if ScheduleCanvas.readable(step).lowercased() != step.lowercased() {
-                                Text(step).font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                            }
-                        }
-                    }
-                    .padding(.vertical, 7)
-                    if i < task.steps.count - 1 { Divider() }
-                }
-            }
-            let automation = task.untrusted == true ? nil : ws.wallets.first(where: \.isAutomation)
-            if automation == nil, task.untrusted != true, movesMoney { automationOffer }
-            HStack(alignment: .top) {
-                Text(automation.map { "Runs on a canvas of its own, from the automation wallet «\($0.label)» — no Touch ID; a trade plan still waits for Execute." }
-                     ?? "Runs on a canvas of its own. A money move waits there for your Confirm; the steps after it wait for the move.")
-                    .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                Button("Cancel") { ws.tasks.removeAll { $0.id == task.id } }.buttonStyle(.borderless).foregroundStyle(Brand.loss).pointerStyle(.link)
-            }
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 24).fill(Brand.card))
-        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Brand.cardBorder))
-    }
-
 }

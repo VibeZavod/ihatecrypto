@@ -11,6 +11,8 @@ struct ComposerField: NSViewRepresentable {
     @Binding var caret: Int?
     /// Set to move the caret there (a pick from the «/», «@» or «$» list); cleared once it's there.
     @Binding var moveCaret: Int?
+    /// Set to select that part of the text, the field taking the keys (a button's amount to type over); cleared once done.
+    var select: Binding<NSRange?> = .constant(nil)
     var maxLines = 8
     /// Return, ↑, ↓, Tab, Esc: true when the composer took the key.
     var onKey: (Key) -> Bool
@@ -69,6 +71,12 @@ struct ComposerField: NSViewRepresentable {
             c.place(at)
         }
         if moveCaret != nil { DispatchQueue.main.async { moveCaret = nil } }
+        if let r = select.wrappedValue, c.draft() == text, let view = c.view {
+            let start = Coordinator.storageOffset(r.location, in: text), end = Coordinator.storageOffset(r.location + r.length, in: text)
+            view.window?.makeFirstResponder(view)
+            view.setSelectedRange(NSRange(location: start, length: max(0, end - start)))
+            DispatchQueue.main.async { select.wrappedValue = nil }
+        }
     }
 
     /// One line up to `maxLines`, then it scrolls.
@@ -360,7 +368,8 @@ extension Workspace {
     /// A button's prompt put into the chat's field typed out, a few letters at a time for about half a second whatever
     /// its length (the user: «анимация печатания в чате, чтобы человек понимал куда обращать внимание»). The field
     /// follows the draft and keeps the caret at its end.
-    func suggest(_ text: String) {
+    /// `select`: a part of it to select once it's typed, to type over (the amount of «send 20 USDC to Automation»).
+    func suggest(_ text: String, select: String? = nil) {
         suggesting?.cancel()
         let letters = Array(text), step = max(1, letters.count / 24)
         draft = ""
@@ -371,6 +380,7 @@ extension Workspace {
                 if Task.isCancelled { return }
             }
             draft = text
+            if let select, let r = text.range(of: select) { draftSelection = NSRange(r, in: text) }
         }
     }
 }

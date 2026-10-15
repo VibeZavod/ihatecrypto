@@ -420,7 +420,7 @@ private struct ModelReadyStep: View {
             VStack(alignment: .leading, spacing: 10) {
                 HStack {
                     Spacer()
-                    Text("«купи SOL на 5 долларов», «покажи график эфира», «лонг биткоин, риск $5»…").font(.ui(13)).foregroundStyle(.white)
+                    Text("«buy SOL for $5», «show the ETH chart», «long bitcoin, risk $5»…").font(.ui(13)).foregroundStyle(.white)
                         .padding(.horizontal, 12).padding(.vertical, 8).background(RoundedRectangle(cornerRadius: 12).fill(Color(hex: 0x111111)))
                 }
                 HStack(alignment: .top, spacing: 9) {

@@ -1,5 +1,41 @@
 [
   {
+    "version": "0.6.2",
+    "date": "2026-10-15",
+    "stories": [
+      {
+        "title": "Top up from any network",
+        "text": "Top up lists every network the app works on, in one row. Pick the coin and the amount, or «Any» for either, and the way: a browser wallet like Phantom or MetaMask on a page the app opens, a phone by its QR and the address, or an exchange. When the money lands, Top up says how much arrived and where.",
+        "symbol": "arrow.down.circle.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Where the money went",
+        "text": "History opens on what moved: the day summed up («−25 USDT sent to Automation · 5 sends»), then each move with where it went, the amount and a link to the explorer. Or ask the chat: «where did the money go today?»",
+        "symbol": "clock.arrow.circlepath",
+        "color": "2775CA"
+      },
+      {
+        "title": "The Schedule by date",
+        "text": "Each run is a date tile with its time and who signs it: the automation wallet by itself, or you with Touch ID. A task opens to its whole card. «Run now» keeps the next run where it was.",
+        "symbol": "calendar",
+        "color": "5856D6"
+      },
+      {
+        "title": "Your automation wallet, counted",
+        "text": "The balance in the sidebar is both wallets, with the split under it: Main and Automation. The portfolio has the Automation card, and the Schedule shows its money in dollars. With no SOL for fees, one button sends it 0.01 SOL, and a top-up from the Schedule brings the fee along.",
+        "symbol": "dollarsign.circle.fill",
+        "color": "26A17B"
+      },
+      {
+        "title": "Smaller things",
+        "text": "A transfer and a saved address are drawn as route cards. Buttons and switches are in the app's orange instead of the system's blue. The second check understands what a command means and reads what a lookup brings back before the chat does.",
+        "symbol": "wrench.and.screwdriver.fill",
+        "color": "8E8E93"
+      }
+    ]
+  },
+  {
     "version": "0.6.1",
     "date": "2026-10-13",
     "stories": [

@@ -352,6 +352,8 @@ final class Workspace {
     var currentActivity: UUID?
     /// What the user is typing in the studio chat; templates on the canvas fill it.
     var draft = ""
+    /// A part of the draft to select in the field, to type over (UTF-16 in `draft`); cleared once it's selected.
+    var draftSelection: NSRange?
     /// A route step handed to the chat from its card («Send to chat»): the next message is about it.
     var stepContext: StepContext?
     /// The way a Base or Arbitrum trade takes, picked in its route step's details (Workspace.wayKey → "relay" or
@@ -1194,7 +1196,7 @@ final class Workspace {
         case .transfer(let entry, let amount): await transfer(amount, to: entry)
         case .address(let entry):
             // Touch ID with the whole address on the prompt; only then is it in the book.
-            let bubble = ActivityBubble(kind: "free", label: "Save · \(entry.network.title)", title: entry.name, logo: entry.network.logo)
+            let bubble = Self.saveStep(entry)
             do {
                 try await confirmAddresses([entry])
                 addressBook.append(entry)

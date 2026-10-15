@@ -4,6 +4,7 @@ import Foundation
 import IhatecryptoCore
 import LLMCore
 import TradeExecution
+import WalletCore
 
 /// One thing that happened with ihatecrypto: what the user asked, how it was understood, the bubbles on the canvas at that
 /// moment, and what ihatecrypto said and did. Kept on this Mac only (Application Support/ihatecrypto/activity.json, owner-only).
@@ -49,6 +50,27 @@ nonisolated struct ActivityBubble: Codable, Hashable, Sendable {
     var money: [MoneyMove]?
 }
 
+extension ActivityBubble {
+    /// As a route card's step: a bubble kept from before moves were drawn as route cards (a transfer, a save, a skipped
+    /// place, an old plan's blocks) becomes one, in its network's colour, so a saved canvas or the history shows no older
+    /// card. A chart, rates and take-profit choices aren't steps.
+    var routeStep: ActivityBubble? {
+        if kind == "step" { return self }
+        guard !["chart", "yield", "choice"].contains(kind) else { return nil }
+        var s = self
+        s.kind = "step"
+        s.label = label.uppercased()
+        s.fill = fill ?? logo.flatMap { RouteFill(rawValue: $0 == "sol" ? "solana" : $0) } ?? .check
+        return s
+    }
+
+    /// The bubbles as a route, when every one of them is a step.
+    static func route(_ bubbles: [ActivityBubble]) -> [ActivityBubble]? {
+        let steps = bubbles.compactMap(\.routeStep)
+        return steps.count == bubbles.count ? steps : nil
+    }
+}
+
 /// A balance a route step changes: on `place`, `symbol` goes from `was` to `after`; `approx` when the after is a quote.
 nonisolated struct MoneyMove: Codable, Hashable, Sendable, Identifiable {
     var place: String
@@ -72,6 +94,13 @@ extension Workspace {
         change(&activities[i])
     }
 
+    /// An address saved to the book, as a route card: while it waits for Touch ID and as Done.
+    static func saveStep(_ entry: SavedAddress) -> ActivityBubble {
+        let ends = AddressCheck.ends(entry.address)
+        return ActivityBubble(kind: "step", label: "SAVE · \(entry.network.title.uppercased())", title: entry.name, lines: ["\(ends.start) … \(ends.end)"],
+                              logo: entry.network.logo, fill: RouteFill(rawValue: entry.network.rawValue) ?? .check)
+    }
+
     /// The canvas as it is now, as bubbles: the plan, an allocation, rates or take-profit choices.
     func canvasBubbles() -> (title: String, coin: String?, bubbles: [ActivityBubble])? {
         // A move waiting for «do it»: the canvas and the history name it the way the route does.
@@ -79,17 +108,17 @@ extension Workspace {
         case .wallet(let c)?:
             if let r = route(c) { return (r.title, nil, r.steps) }
             let title = c.summary.prefix(1).uppercased() + c.summary.dropFirst()
-            return (title, nil, [ActivityBubble(kind: "deposit", label: "Waiting for the signature", title: title, logo: Self.logo(for: title))])
+            return (title, nil, [ActivityBubble(kind: "step", label: "SIGN · CONFIRM", title: title, logo: Self.logo(for: title), fill: .check)])
         case .transfer(let entry, let amount)?:
-            return ("Send \(Fmt.num(amount)) USDC to \(entry.name)", nil,
-                    [ActivityBubble(kind: "deposit", label: "Send · \(entry.network.title)", title: entry.name, lines: ["\(Fmt.num(amount)) USDC"], logo: entry.network.logo)])
+            let r = transferRoute(entry, amount)
+            return (r.title, nil, r.steps)
         case .address(let entry)?:
-            return ("Save “\(entry.name)” to Addresses", nil, [ActivityBubble(kind: "free", label: "Save · \(entry.network.title)", title: entry.name, logo: entry.network.logo)])
+            return ("Save “\(entry.name)” to Addresses", nil, [Self.saveStep(entry)])
         default: break
         }
         if let f = finishedAction {
             return (f.title, nil, f.route.isEmpty
-                    ? [ActivityBubble(kind: f.outcome.ok ? "free" : "skipped", label: f.outcome.ok ? "Done" : "Failed", title: f.title, logo: Self.logo(for: f.title))]
+                    ? [ActivityBubble(kind: "step", label: "SIGN · CONFIRM", title: f.title, logo: Self.logo(for: f.title), fill: .check)]
                     : f.route)
         }
         if let c = chart, intent == TradeIntent(), allocationPreview == nil, yieldOptions == nil {
@@ -97,10 +126,8 @@ extension Workspace {
             return ("Chart · \(name)", c.coin, [ActivityBubble(kind: "chart", label: "Chart · \(c.range.title)", title: name,
                                                                lines: c.candles.last.map { ["\(Fmt.price($0.close))"] } ?? [], asset: c.coin)])
         }
-        if showReceive, intent == TradeIntent(), allocationPreview == nil, yieldOptions == nil {
-            return ("Top up ihatecrypto", nil, [ActivityBubble(kind: "free", label: "Receive · Solana", title: "USDC and SOL", logo: "sol"),
-                                         ActivityBubble(kind: "free", label: "Receive · Base", title: "USDC and ETH", logo: "base")])
-        }
+        // Top up isn't the canvas's board: saved as one, it renamed the canvas «Top up ihatecrypto» and drew two
+        // receive cards under the live Top up card.
         if let a = allocationPreview { return ("Spread \(a.asset) across the best rates", nil, allocationBubbles(a)) }
         if let y = yieldOptions, !y.isEmpty {
             return ("Rates", nil, y.prefix(8).map { ActivityBubble(kind: "yield", label: $0.asset, title: $0.place, lines: ["\(Fmt.num($0.apy.rounded(2, .plain)))%"], logo: Self.logo(for: $0.place)) })
@@ -231,6 +258,12 @@ extension Workspace {
             facts.append("Other tokens: " + shownTokens.map { "\(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol)\($0.native ? "" : " (\($0.contract))") on \($0.chain)\($0.usd.map { " ≈ \(Fmt.usd($0))" } ?? "")" }.joined(separator: ", ") + ".")
         }
         if let t = total { facts.append("Portfolio total: \(Fmt.usd(t)), gas included (\(Fmt.usd(solUSD + gasETHUSD)) in SOL and ETH for fees).") }
+        if let w = automationWallet, let b = automationBudget, let usd = automationUSD {
+            let coins = ([b.solana.map { "\(Fmt.num($0)) USDC on Solana" }] + b.tokens.map { "\(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol) on Solana" }
+                         + b.evm.filter { $0.value > 0 }.map { "\(Fmt.num($0.value)) USDC on \(EVMNetwork.named($0.key)?.name ?? $0.key)" }).compactMap { $0 }
+            facts.append("Automation wallet «\(w.label)» (the user's own, signs the Schedule's tasks; the sidebar's balance counts it, the portfolio total doesn't): "
+                         + "\(Fmt.usd(usd)) — \(coins.isEmpty ? "nothing" : coins.joined(separator: ", ")); \(Fmt.num(b.sol ?? 0, maxFraction: 4)) SOL for fees.")
+        }
         let week = equitySeries()
         if week.count > 2, let first = week.first, let last = week.last {
             facts.append("Portfolio since \(Fmt.date(first.at)): \(Fmt.usd(first.usd)) → \(Fmt.usd(last.usd)) (\(signed(last.usd - first.usd))).")
@@ -264,8 +297,21 @@ extension Workspace {
             } ?? ""
             facts.append("Plan on the canvas (not executed): \(intent.side == .long ? "long" : "short") \(IntentParser.pretty(intent.asset))\(sizing).")
         }
-        for a in activities.suffix(10) where (a.request != nil || a.title != nil) && a.stopped != true {
-            facts.append("Activity \(Fmt.date(a.at)): \(a.request.map { "user said “\($0)”" } ?? a.title ?? "") → \(a.lines.first ?? "")")
+        // Where money went, as the History board says it: the latest day's moves summed, then each request with what was
+        // done (the first line of a «do it» was the swap's quote, and the sends after it never reached the model).
+        let moved = activities.filter { $0.stopped != true }.flatMap { a in a.lines.compactMap(MovedLine.init).map { (at: a.at, line: $0) } }
+        if let last = moved.last {
+            let day = moved.filter { Calendar.current.isDate($0.at, inSameDayAs: last.at) }.map(\.line)
+            facts.append("Money moved by ihatecrypto on \(HistoryBoard.day(last.at).lowercased()): " + MovedLine.summary(day).joined(separator: "; ") + ".")
+            let own = Set(day.compactMap(\.to)).filter { name in addressBook.contains { $0.name == name && $0.label == "Your wallet" } }
+            if !own.isEmpty {
+                facts.append("\(own.sorted().joined(separator: ", ")) is the user's own wallet: what went there is still theirs, outside the portfolio total.")
+            }
+        }
+        for a in activities.suffix(12) where (a.request != nil || a.title != nil) && a.stopped != true {
+            let done = a.lines.compactMap(MovedLine.init).map(\.text)
+            facts.append("Activity \(Fmt.date(a.at)): \(a.request.map { "user said “\($0.prefix(120))”" } ?? a.title ?? "")"
+                         + (done.isEmpty ? " → \((a.lines.first ?? "").prefix(200))" : " → done: \(done.joined(separator: "; "))"))
         }
         // Names only: a model never sees or writes an address.
         if !addressBook.isEmpty {

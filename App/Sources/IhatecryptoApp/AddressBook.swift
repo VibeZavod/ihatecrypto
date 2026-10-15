@@ -946,14 +946,13 @@ extension Workspace {
         do { try requireConfirmed(entry) } catch { reply(error.localizedDescription); return }
         executing = true
         defer { executing = false; runningAction = nil }
-        let title = "Send \(Fmt.num(amount)) USDC to \(entry.name)"
-        let bubble = ActivityBubble(kind: "deposit", label: "Send · \(entry.network.title)", title: entry.name, lines: ["\(Fmt.num(amount)) USDC"], logo: entry.network.logo)
+        let route = transferRoute(entry, amount), title = route.title, steps = route.steps
         updateActivity { a in
             a.title = title
-            a.bubbles = [bubble]
+            a.bubbles = steps
         }
         // The card stays on the canvas while it's signed and sent; Done or Failed takes its place in the same frame.
-        runningAction = (title, [bubble], [], Date())
+        runningAction = (title, steps, [], Date())
         do {
             let destination: TradeExecution.Executor.Destination = switch entry.network {
             case .solana: .solana(entry.address)
@@ -973,12 +972,12 @@ extension Workspace {
             let text = try await executor(wallet).sendUSDC(amount, to: destination, label: entry.name)
             if let i = addressBook.firstIndex(where: { $0.id == entry.id }) { addressBook[i].lastSent = Date() }
             runningAction = nil
-            finishedAction = (title, CanvasOutcome(at: Date(), ok: true), [bubble])
+            finishedAction = (title, CanvasOutcome(at: Date(), ok: true), steps)
             recordFlow(-amount, "sent to \(entry.name)")
             reply(text, note: "transfer")
         } catch {
             runningAction = nil
-            finishedAction = (title, CanvasOutcome(at: Date(), ok: false), [bubble])
+            finishedAction = (title, CanvasOutcome(at: Date(), ok: false), steps)
             reply("Failed: \(error.localizedDescription)")
         }
         // The outcome board comes from the saved canvas: now, not after the refresh (a repeated reply doesn't save).
@@ -987,64 +986,3 @@ extension Workspace {
     }
 }
 
-/// A transfer to a saved address waiting for «do it»: from where, to whom (picture, name, the address's ends), how much.
-struct TransferBoard: View {
-    @Environment(Workspace.self) private var ws
-
-    var body: some View {
-        if case .transfer(let entry, let amount)? = ws.pendingAction {
-            let solana = entry.network == .solana, hyper = entry.network == .hyperliquid
-            let from = ws.usdc(on: entry.network.rawValue)
-            let ends = AddressCheck.ends(entry.address)
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 8) {
-                    Text("Send · \(Fmt.num(amount)) USDC to \(entry.name)").font(.ui(14, .semibold))
-                    StatusChip(text: "waiting for the signature", tint: Brand.profit)
-                }
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        TokenLogo(name: entry.network.logo, size: 24)
-                        Text("FROM · \(entry.network.title.uppercased())").font(.ui(9, .heavy)).tracking(0.4).opacity(0.75)
-                        Text(from.map { "\(Fmt.num($0)) → \(Fmt.num(max(0, $0 - amount))) USDC" } ?? "—").font(.ui(13, .bold)).monospacedDigit()
-                        // Solana comes up only when the money there is short: a plain transfer is a plain transfer.
-                        Text(hyper ? "perp balance · no bridge, no gas" : solana ? "your wallet"
-                             : from.map { $0 < amount ? "\(Fmt.num(amount - $0)) USDC short: it comes from Solana first" : "your wallet" } ?? "your wallet")
-                            .font(.ui(10)).opacity(0.8)
-                    }
-                    .padding(11)
-                    .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
-                    .background(ArrowCard(radius: 16, tip: 10).fill(solana ? Brand.solanaTint : hyper ? Brand.hlChip.opacity(0.35) : Color(light: 0xEAF0FF, dark: 0x14213F)))
-                    VStack(alignment: .leading, spacing: 6) {
-                        AddressIconView(entry: entry, size: 30)
-                        Text("TO · \(entry.label?.uppercased() ?? "SAVED ADDRESS")").font(.ui(9, .heavy)).tracking(0.4).opacity(0.75)
-                        Text(entry.name).font(.ui(13, .bold)).lineLimit(1)
-                        Text("\(ends.start) … \(ends.end)").font(.system(size: 11, weight: .semibold, design: .monospaced))
-                    }
-                    .padding(11)
-                    .frame(maxWidth: .infinity, minHeight: 124, alignment: .topLeading)
-                    .background(RoundedRectangle(cornerRadius: 16).fill(Brand.card))
-                    .overlay(RoundedRectangle(cornerRadius: 16).strokeBorder(Brand.accent, lineWidth: 2))
-                }
-                if let saved = ws.addressBook.first(where: { $0.id == entry.id }), saved.network != entry.network {
-                    Label("Saved for \(saved.network.title), sent on \(entry.network.title) to the same address. Your own wallet has it there too; an exchange's deposit address may not — check that it takes \(entry.network.title).",
-                          systemImage: "exclamationmark.triangle.fill")
-                        .font(.ui(10)).foregroundStyle(Brand.jevInk)
-                }
-                if entry.network == .ethereum {
-                    Label("Ethereum mainnet: the fee is in ETH and can be dollars; it's bought for you if the wallet has none there.", systemImage: "fuelpump")
-                        .font(.ui(10)).foregroundStyle(.secondary)
-                }
-                if entry.lastSent == nil {
-                    Label("First transfer to this address. Sending a small test amount first is the safe habit.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.ui(10)).foregroundStyle(Brand.jevInk)
-                }
-                Label("Only this saved address may receive the money: the guard and the signer check it, the simulation must show exactly \(Fmt.num(amount)) USDC leaving. Press Confirm.",
-                      systemImage: "checkmark.shield")
-                    .font(.ui(10)).foregroundStyle(.secondary)
-                PendingButtons()
-            }
-            .frame(width: 470, alignment: .leading)
-            .transition(.opacity)
-        }
-    }
-}

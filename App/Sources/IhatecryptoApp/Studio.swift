@@ -639,7 +639,10 @@ struct StudioRail: View {
                 if !ws.balancesLoaded {
                     Skeleton(width: 150, height: 34, radius: 9).padding(.vertical, 3)
                 } else {
-                    Text(ws.total.map(Fmt.usd) ?? "—").font(.ui(32, .semibold)).monospacedDigit().tracking(-0.6)
+                    // Both wallets: what went to Automation is still the user's (AutomationViews.swift).
+                    let auto = ws.automationUSD.flatMap { $0 >= Decimal(string: "0.01")! ? $0 : nil }
+                    Text(ws.total.map { Fmt.usd($0 + (auto ?? 0)) } ?? "—").font(.ui(32, .semibold)).monospacedDigit().tracking(-0.6)
+                    if let auto, let main = ws.total { AutomationSplit(main: main, automation: auto) }
                 }
                 if !ws.positions.isEmpty {
                     Text("\(signed(ws.positionsPnl)) in positions").font(.ui(12, .semibold))
@@ -648,6 +651,7 @@ struct StudioRail: View {
             }
             .padding(.horizontal, 4)
             .onHover { balanceHover = $0 }
+            .task(id: ws.automationWallet?.id) { await ws.watchAutomation() }
             // The loaded balance fades in instead of popping up.
             .animation(.easeOut(duration: 0.35), value: !ws.balancesLoaded)
             RailActions()
@@ -675,7 +679,7 @@ struct StudioRail: View {
                         if !ws.balancesLoaded {
                             Skeleton(width: 44, height: 11)
                         } else {
-                            Text(ws.total.map(Fmt.usd) ?? "—").font(.ui(11, .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                            Text(ws.total.map { Fmt.usd($0 + (ws.automationUSD ?? 0)) } ?? "—").font(.ui(11, .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                         }
                         if !ws.positions.isEmpty {
                             Text(signed(ws.positionsPnl)).font(.ui(10, .semibold))
@@ -689,6 +693,7 @@ struct StudioRail: View {
             }
             .buttonStyle(LitBlock())
             .disabled(refreshing)
+            .task(id: ws.automationWallet?.id) { await ws.watchAutomation() }
             .help(refreshing ? "Updating the balance…" : "Balance — click to update it")
             WalletChip(compact: true)
             Divider().frame(width: 32)
@@ -1328,7 +1333,6 @@ struct StudioCanvas: View {
             PositionMoveBoard()
             RunningBoard()
             PendingAddressBoard()
-            TransferBoard()
             if let answer = ws.serviceAnswer { ServiceAnswerBoard(answer: answer) }
             if nodes.isEmpty {
                 if (ws.yieldOptions ?? ws.heldAnswer?.yields) == nil, ws.allocationPreview == nil, ws.rebalancePlan == nil {
@@ -2700,6 +2704,7 @@ private struct ChatComposer: View {
             }
             if let step = ws.stepContext, !voice.listening { StepContextChip(step: step) }
             if !voice.listening, case let rows = suggestions, !rows.isEmpty { suggestionList(rows) }
+            if !voice.listening, let amount = ws.topUpDraft { TopUpBalances(amount: amount) }
             if voice.listening { listening(voice) } else if ws.hasModel { field } else { ConnectModelBar() }
         }
         .padding(12)
@@ -2858,7 +2863,7 @@ private struct ChatComposer: View {
                         .padding(.vertical, ComposerField.inset.height).padding(.leading, 5)
                         .allowsHitTesting(false)
                 }
-                ComposerField(text: Bindable(ws).draft, caret: $caretAt, moveCaret: $caretRequest, onKey: key,
+                ComposerField(text: Bindable(ws).draft, caret: $caretAt, moveCaret: $caretRequest, select: Bindable(ws).draftSelection, onKey: key,
                               known: TokenMentions.addresses(ws.draft).filter { ws.contractLookups[$0] != nil }.count,
                               face: ws.tokenFace)
             }

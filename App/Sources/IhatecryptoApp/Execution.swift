@@ -923,6 +923,12 @@ extension Workspace {
         }
     }
 
+    /// After a buy's run: its next date, or the one it had when «Run now» made this run an extra one.
+    func advanceSchedule(_ i: Int) {
+        schedules[i].advance()
+        if let kept = TaskRun.kept.removeValue(forKey: "buy:\(schedules[i].symbol)") { schedules[i].next = kept }
+    }
+
     /// Due regular purchases, one run each; the next date moves on even after a failure, so it does not retry in a loop.
     func runSchedules() async {
         guard let wallet = signerWallet, !executing else { return }
@@ -938,7 +944,7 @@ extension Workspace {
                   let asset = schedules[index].asset else { continue }
             // Jupiter or Solana switched off: this run is skipped, the schedule stays.
             if let off = Modules.current.refusal(.jupiter, ru: modulesRussian) {
-                schedules[index].advance()
+                advanceSchedule(index)
                 notify(.moves, say("Scheduled \(asset.symbol) buy skipped", "Регулярная покупка \(asset.symbol) пропущена"), off, schedule: "buy:\(asset.symbol)", failed: true)
                 continue
             }
@@ -956,7 +962,7 @@ extension Workspace {
             // A move the user started meanwhile has the flag: this buy waits for the next round rather than share it.
             guard !executing, let index = find(symbol) else { continue }
             let usdc = schedules[index].usdc
-            schedules[index].advance()
+            advanceSchedule(index)
             executing = true
             let waiting = Task { @MainActor [weak self] in
                 try await Task.sleep(for: .seconds(4))

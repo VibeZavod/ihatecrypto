@@ -234,13 +234,25 @@ struct HistoryView: View {
     }
 }
 
-/// The latest of what ihatecrypto did, on the canvas with its bubbles; the whole history is one click away.
+/// The latest of what moved, on the canvas, to be read at a glance: what the day did to the money in a line or two, then
+/// each move as one row — what it was, how much, where to — newest first, by day. A row opens to the request with the
+/// bubbles it had; the chat answers «where did my money go» from the same lines; the whole history is one click away.
 struct HistoryBoard: View {
     @Environment(Workspace.self) private var ws
     @AppStorage("canvasMode") private var mode = "plan"
+    /// The activity whose row is open.
+    @State private var open: UUID?
+
+    private typealias Move = (activity: Activity, line: MovedLine, n: Int)
+
+    /// Each move ihatecrypto made, newest first, with the activity it came from.
+    private var moves: [Move] {
+        ws.activities.reversed().flatMap { a in a.lines.compactMap(MovedLine.init).enumerated().reversed().map { (a, $0.element, $0.offset) } }
+    }
 
     var body: some View {
-        let items = ws.activities.reversed().filter { !$0.lines.isEmpty || !$0.bubbles.isEmpty || $0.request != nil }.prefix(5)
+        let moves = self.moves
+        let shown = Array(moves.prefix(14))
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "clock.arrow.circlepath").foregroundStyle(Brand.accentInk).font(.system(size: 16, weight: .semibold))
@@ -255,17 +267,123 @@ struct HistoryBoard: View {
                     .background(RoundedRectangle(cornerRadius: 22).fill(Brand.card))
                     .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Brand.cardBorder))
             }
-            if items.isEmpty {
-                Text("Nothing yet. Every request from now on is kept here with the bubbles it had on the canvas.")
-                    .font(.ui(12)).foregroundStyle(.secondary)
+            if let latest = moves.first {
+                let day = Calendar.current.startOfDay(for: latest.activity.at)
+                summary(day, moves.filter { Calendar.current.startOfDay(for: $0.activity.at) == day }.map(\.line))
             }
-            ForEach(Array(items)) { ActivityCard(activity: $0) }
+            if shown.isEmpty {
+                // Nothing moved yet: the latest requests as they were.
+                let items = ws.activities.reversed().filter { !$0.lines.isEmpty || !$0.bubbles.isEmpty || $0.request != nil }.prefix(3)
+                if items.isEmpty {
+                    Text("Nothing yet. Every move from now on is listed here, and every request keeps the bubbles it had on the canvas.")
+                        .font(.ui(12)).foregroundStyle(.secondary)
+                }
+                ForEach(Array(items)) { ActivityCard(activity: $0) }
+            } else {
+                VStack(alignment: .leading, spacing: 2) {
+                    ForEach(Array(shown.enumerated()), id: \.offset) { i, m in
+                        if i == 0 || !Calendar.current.isDate(m.activity.at, inSameDayAs: shown[i - 1].activity.at) {
+                            Text(Self.day(m.activity.at).uppercased()).font(.ui(9.5, .heavy)).tracking(0.6).foregroundStyle(.secondary)
+                                .padding(.top, i == 0 ? 0 : 10).padding(.bottom, 2).padding(.leading, 10)
+                        }
+                        row(m)
+                        if open == m.activity.id, i + 1 == shown.count || shown[i + 1].activity.id != m.activity.id {
+                            ActivityCard(activity: m.activity).padding(.vertical, 6)
+                        }
+                    }
+                }
+                .padding(8)
+                .background(RoundedRectangle(cornerRadius: 22).fill(Brand.card))
+                .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Brand.cardBorder))
+            }
             Button { withAnimation(.snappy) { mode = "history" } } label: {
-                Label("All history: positions, transfers, signatures", systemImage: "list.bullet.rectangle")
+                Label("All history: requests, positions, transfers, signatures", systemImage: "list.bullet.rectangle")
             }
             .buttonStyle(.borderless).font(.ui(10, .semibold))
         }
         .frame(width: 470, alignment: .leading)
+    }
+
+    /// What the day did to the money, from its moves; and a question for the chat, which reads the same lines.
+    private func summary(_ day: Date, _ lines: [MovedLine]) -> some View {
+        let own = Set(lines.compactMap(\.to).filter(isOwnWallet))
+        return VStack(alignment: .leading, spacing: 6) {
+            Text(Self.day(day)).font(.ui(11, .bold)).foregroundStyle(.secondary)
+            ForEach(MovedLine.summary(lines), id: \.self) { Text($0).font(.ui(14, .semibold)).monospacedDigit() }
+            if !own.isEmpty {
+                Text("\(own.sorted().joined(separator: ", ")) \(own.count == 1 ? "is" : "are") your own wallet: what went there is still yours, outside the balance.")
+                    .font(.ui(10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Button {
+                let ask = ws.say("Where did my money go \(Self.day(day).lowercased())?", "Куда ушли деньги \(Calendar.current.isDateInToday(day) ? "сегодня" : Calendar.current.isDateInYesterday(day) ? "вчера" : Self.day(day))?")
+                Task { await ws.send(ask) }
+            } label: {
+                Label("Ask the chat where the money went", systemImage: "bubble.left.and.text.bubble.right")
+                    .font(.ui(11, .semibold)).padding(.horizontal, 10).padding(.vertical, 5)
+                    .background(Capsule().fill(Color.primary.opacity(0.05))).contentShape(Capsule())
+            }
+            .buttonStyle(.plain).modifier(HoverLift(radius: 20)).padding(.top, 2)
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 22).fill(Brand.card))
+        .overlay(RoundedRectangle(cornerRadius: 22).strokeBorder(Brand.cardBorder))
+    }
+
+    /// One move: what it was, when and where to, how much left or came in; a click opens the request it came from.
+    private func row(_ m: Move) -> some View {
+        let l = m.line, own = l.to.map(isOwnWallet) ?? false
+        let amount: (String, Color)? = switch l.kind {
+        case .sent: l.amount.map { ("−\(Fmt.num($0, maxFraction: 6)) \(l.symbol ?? "")", own ? .secondary : Brand.loss) }
+        case .received: l.amount.map { ("+\(Fmt.num($0, maxFraction: 6)) \(l.symbol ?? "")", Brand.profit) }
+        default: nil
+        }
+        return HStack(spacing: 8) {
+            Button { withAnimation(.snappy) { open = open == m.activity.id ? nil : m.activity.id } } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: Self.icon(l.kind)).font(.system(size: 12, weight: .bold)).foregroundStyle(Brand.accentInk)
+                        .frame(width: 28, height: 28).background(Circle().fill(Color.primary.opacity(0.05)))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(l.text).font(.ui(12.5, .semibold)).lineLimit(1).truncationMode(.middle)
+                        HStack(spacing: 5) {
+                            Text(Fmt.time(m.activity.at)).monospacedDigit()
+                            if own { Text("· your wallet") }
+                            if let q = m.activity.request, q.count > 6 { Text("· “\(q)”").lineLimit(1).truncationMode(.tail) }
+                        }
+                        .font(.ui(10)).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 6)
+                    if let amount { Text(amount.0).font(.ui(12, .bold)).monospacedDigit().foregroundStyle(amount.1).lineLimit(1).fixedSize() }
+                }
+                .padding(.horizontal, 8).padding(.vertical, 7)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain).modifier(HoverLift(radius: 12))
+            .accessibilityLabel(l.text)
+            if let link = l.link {
+                Button { ws.openWeb(link) } label: { Image(systemName: "arrow.up.right.square") }
+                    .buttonStyle(.hoverIcon).help("See it on the explorer")
+            }
+        }
+    }
+
+    private func isOwnWallet(_ name: String) -> Bool { ws.addressBook.contains { $0.name == name && $0.label == "Your wallet" } }
+
+    static func day(_ d: Date) -> String {
+        Calendar.current.isDateInToday(d) ? "Today" : Calendar.current.isDateInYesterday(d) ? "Yesterday"
+            : d.formatted(Date.FormatStyle(locale: Locale(identifier: "en_US")).day().month(.abbreviated))
+    }
+
+    static func icon(_ k: MovedLine.Kind) -> String {
+        switch k {
+        case .sent: "arrow.up.right"
+        case .received: "arrow.down.left"
+        case .swapped, .bought, .sold: "arrow.left.arrow.right"
+        case .moved: "arrow.triangle.branch"
+        case .deposited: "building.columns"
+        case .withdrew: "arrow.uturn.backward"
+        case .closed: "xmark"
+        }
     }
 }
 
@@ -324,11 +442,8 @@ struct HistoryBubble: View {
 
     var body: some View {
         Group {
-            if bubble.kind == "step" {
-                RouteCard(step: bubble, state: .plain, width: 210)
-            } else if let kind = StudioNode.Kind(rawValue: bubble.kind), !bubble.label.hasPrefix("Chart ·") {
-                StudioNodeView(node: StudioNode(id: bubble.title, kind: kind, label: bubble.label, title: bubble.title, lines: Array(bubble.lines.prefix(3)),
-                                                status: status, asset: bubble.asset, long: bubble.long ?? true, signature: bubble.signature))
+            if let step = bubble.routeStep {
+                RouteCard(step: step, state: .plain, width: 210)
             } else {
                 generic
             }
@@ -336,20 +451,9 @@ struct HistoryBubble: View {
         .frame(idealWidth: 210, maxWidth: 210, alignment: .topLeading)
     }
 
-    private var status: Block.Status {
-        switch bubble.status {
-        case "ready": .ready
-        case "warning": .warning
-        case "needsInput": .needsInput
-        case "blocked": .blocked
-        case "noData": .noData
-        default: .info
-        }
-    }
-
+    /// A chart, a rate or a take-profit choice: not a step of a move.
     private var generic: some View {
-        let dark = ["deposit", "result", "position"].contains(bubble.kind)
-        return VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 5) {
             HStack(spacing: 7) {
                 if let logo = bubble.logo { TokenLogo(name: logo, size: 20) }
                 if !bubble.asset.isEmpty { AssetBadge(coin: bubble.asset, size: 20, dark: true) }
@@ -358,30 +462,9 @@ struct HistoryBubble: View {
             Text(bubble.title).font(.ui(14, .bold)).lineLimit(3)
             ForEach(bubble.lines.prefix(2), id: \.self) { Text(ChatText.styled($0)).font(.ui(10)).opacity(0.8).lineLimit(3) }
         }
-        .foregroundStyle(dark ? Color.white : Color.primary)
         .padding(12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(shape.fill(fill))
-        .overlay(shape.stroke(bubble.kind == "skipped" ? Brand.dots : .clear, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
-    }
-
-    private var shape: AnyShape {
-        switch bubble.kind {
-        case "deposit": AnyShape(ArrowCard(radius: 18, tip: 12))
-        case "skipped", "yield": AnyShape(RoundedRectangle(cornerRadius: 28))
-        default: AnyShape(RoundedRectangle(cornerRadius: 18))
-        }
-    }
-
-    private var fill: Color {
-        switch bubble.kind {
-        case "free": Brand.solanaTint
-        case "deposit": bubble.logo == "jup" ? Color(hex: 0x131D27) : bubble.logo == "kamino" ? Color(hex: 0x082A56) : bubble.logo == "jitosol" ? Color(hex: 0x1F9D6A) : Brand.hl
-        case "result": Brand.outcome
-        case "position": Brand.hl
-        case "skipped": .clear
-        default: Brand.card
-        }
+        .background(RoundedRectangle(cornerRadius: bubble.kind == "yield" ? 28 : 18).fill(Brand.card))
     }
 }
 

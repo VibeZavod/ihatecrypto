@@ -252,6 +252,7 @@ final class DebugAPI {
                 "arbitrumUSDT": num(USDT0.on(42161).flatMap { ws.heldUSDC("arbitrum", $0.token) }),
             ] as [String: Any],
             "positions": ws.positions.map { "\($0.size > 0 ? "long" : "short") \($0.coin) pnl \($0.unrealizedPnl)" },
+            "topUpPage": TopUpPage.shared.url?.absoluteString ?? NSNull(),
             "wallet": ["solana": ws.solanaAddress, "evm": ws.hlAddress, "near": ws.nearAddress ?? NSNull(), "test": ws.activeWallet?.isTest == true] as [String: Any],
             "favoriteTokens": ws.favoriteTokens.map { "\($0.symbol) \($0.chain) \($0.address)" },
             // For `screencapture -l <id>` from a terminal allowed to record the screen: the glass chrome doesn't

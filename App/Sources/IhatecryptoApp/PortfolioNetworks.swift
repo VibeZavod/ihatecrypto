@@ -180,6 +180,7 @@ struct NetworkCards: View {
                     ForEach(order.folded, id: \.self) { NetworkCard(network: $0, usd: held[$0] ?? 0) }.transition(.opacity)
                 }
             }
+            AutomationPortfolioCard()
         }
     }
 }

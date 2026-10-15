@@ -17,6 +17,9 @@ final class CanvasPlace {
     var scale: CGFloat { fit * zoom }
     /// The size the canvas content is laid out in (as the window's overlay once proposed it).
     var viewport: CGSize = .zero
+    /// The pointer is on the boards, below the canvas's top margin: the strip that moves the window lets their clicks
+    /// through (a board's close button sat under it and didn't close).
+    var overBoards = false
     /// The content's own size, unscaled, as measured.
     @ObservationIgnored var content: CGSize = .zero
     /// The view the canvas hangs in, told when the content's size changes and asked for drags that start on it.
@@ -45,7 +48,9 @@ struct CanvasScroller<Content: View>: View {
                 .onChange(of: fit, initial: true) { place.fit = fit }
                 .onChange(of: geo.size, initial: true) { place.viewport = geo.size }
         }
-        .overlay(alignment: .top) { if !fullScreen { WindowDragArea().frame(height: 2 * TrafficLights.center.y) } }
+        .overlay(alignment: .top) {
+            if !fullScreen { WindowDragArea().frame(height: 2 * TrafficLights.center.y).allowsHitTesting(!place.overBoards) }
+        }
         .overlay(alignment: .bottomLeading) { zoomBar.padding(18).padding(.leading, leading) }
         .onChange(of: place.scale >= CanvasSharpness.from, initial: true) { _, on in CanvasSharpness.shared.track(on) }
         .onChange(of: place.scale) { CanvasSharpness.shared.hold() }
@@ -91,6 +96,11 @@ private struct CanvasRoot<Content: View>: View {
                     .onGeometryChange(for: CGSize.self) { $0.size } action: { size in
                         place.content = size
                         place.scroller?.contentChanged()
+                    }
+                    // Hover reaches this hosting view under the window's strip too; the boards start 24 pt down.
+                    .onContinuousHover { phase in
+                        let over = if case .active(let p) = phase { p.y > 20 } else { false }
+                        if over != place.overBoards { place.overBoards = over }
                     }
                     .scaleEffect(place.scale, anchor: .topLeading)
                     .allowsHitTesting(!covered && !WhatsNew.shared.open)
@@ -178,9 +188,13 @@ final class CanvasPanView: NSView {
                 }
             },
         ]
-        // A click lands where the canvas is seen: a slide not given to AppKit yet goes first.
-        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown]) { [weak self] event in
-            MainActor.assumeIsolated { self?.commit() }
+        // A click, or the start of a trackpad scroll, lands where the canvas is seen: a slide not given to AppKit yet goes
+        // first. A swipe begun within 0.15 s of a pan went by where the boards had been: over the Top up's row of networks
+        // it moved the whole canvas, up and down too, instead of the row.
+        clickMonitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown, .otherMouseDown, .scrollWheel]) { [weak self] event in
+            if event.type != .scrollWheel || !event.phase.isDisjoint(with: [.mayBegin, .began]) {
+                MainActor.assumeIsolated { self?.commit() }
+            }
             return event
         }
     }
