@@ -167,6 +167,15 @@ extension Workspace {
         openCanvas(c)
     }
 
+    /// A run's canvas from the Schedule's history: as an item's, the frame and the view stay where they were. A plain
+    /// switch closed the frame and refitted the view («нажимаю на кнопку и перекидывает канвас куда-то», 2026-10-15).
+    func openRunCanvas(_ c: CanvasSession) {
+        let frame = showSchedule, place = detail
+        keepViewport = true
+        defer { showSchedule = frame; detail = place; keepViewport = false }
+        openCanvas(c)
+    }
+
     /// Closes an item's canvas: back to the canvas it was opened from (or a new one). Nothing written on it, it was only a
     /// view of the item and leaves the list; the Schedule frame opens it again.
     func closeScheduleCanvas() {
@@ -448,15 +457,15 @@ struct ScheduleFrame: View {
         return HStack(spacing: 8) {
             Text(a.at.formatted(date: .omitted, time: .shortened)).font(.ui(10.5)).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
             Image(systemName: failed ? "xmark.circle.fill" : "checkmark.circle.fill").foregroundStyle(failed ? Brand.loss : Brand.profit).font(.system(size: 13))
-            Text(title).font(.ui(12, .medium)).lineLimit(1)
+            // What it said, on the title only: on the row it covered the button's own tooltip.
+            Text(title).font(.ui(12, .medium)).lineLimit(1).help(a.lines.last ?? title)
             Spacer(minLength: 2)
             if let id = a.canvas, let c = ws.canvases.first(where: { $0.id == id }) {
-                Button { ws.openCanvas(c) } label: { Image(systemName: "arrow.up.right") }
-                    .buttonStyle(.hoverIcon).help("Open the canvas it ran on")
+                Button { ws.openRunCanvas(c) } label: { Image(systemName: "arrow.up.right") }
+                    .buttonStyle(.hoverIcon).help("Open the canvas it ran on").accessibilityLabel("Open its canvas")
             }
         }
         .padding(.vertical, 3)
-        .help(a.lines.last ?? title)
     }
 
     // MARK: Wallet
@@ -925,7 +934,7 @@ struct ScheduleItemBoard: View {
                 Text(Self.said(a)).font(.ui(13, .semibold)).lineLimit(1)
                 Spacer(minLength: 6)
                 if let id = a.canvas, let c = ws.canvases.first(where: { $0.id == id }) {
-                    Button { ws.openCanvas(c) } label: { Label("Its canvas", systemImage: "arrow.up.right").font(.ui(11, .semibold)) }
+                    Button { ws.openRunCanvas(c) } label: { Label("Its canvas", systemImage: "arrow.up.right").font(.ui(11, .semibold)) }
                         .buttonStyle(.borderless).pointerStyle(.link).help("Open the canvas it ran on")
                 }
                 Image(systemName: failed ? "xmark" : "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(failed ? Brand.loss : Brand.profit)
