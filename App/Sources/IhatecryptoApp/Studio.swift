@@ -530,6 +530,7 @@ struct StudioRail: View {
     @State private var edgeHover = false
     @State private var canvasesOpen = false
     @State private var balanceHover = false
+    private var balanceHidden: Bool { BalanceEye.shared.hidden }
     /// The wallet button sits in the balance block but isn't the balance: over it «Updated … ago» stays hidden.
     @State private var walletHover = false
     /// The folded rail's coin was clicked: the balances are being read again.
@@ -631,6 +632,11 @@ struct StudioRail: View {
             VStack(alignment: .leading, spacing: 2) {
                 HStack(spacing: 6) {
                     Text("Balance").font(.ui(12)).foregroundStyle(.secondary)
+                    // Before the refresh: the freshness line that opens after it would push the eye along.
+                    Button { BalanceEye.shared.hidden.toggle() } label: { Image(systemName: balanceHidden ? "eye.slash" : "eye") }
+                        .buttonStyle(HoverIconStyle(size: 18))
+                        .help(balanceHidden ? "Show the balance" : "Hide the balance")
+                        .accessibilityLabel(balanceHidden ? "Show the balance" : "Hide the balance")
                     BalanceFreshness(hovering: balanceHover && !walletHover)
                     Spacer(minLength: 4)
                     // Keeps its whole name: the freshness line gives way, not «Led…».
@@ -641,10 +647,10 @@ struct StudioRail: View {
                 } else {
                     // Both wallets: what went to Automation is still the user's (AutomationViews.swift).
                     let auto = ws.automationUSD.flatMap { $0 >= Decimal(string: "0.01")! ? $0 : nil }
-                    Text(ws.total.map { Fmt.usd($0 + (auto ?? 0)) } ?? "—").font(.ui(32, .semibold)).monospacedDigit().tracking(-0.6)
+                    Text(balanceHidden ? "$•••••" : ws.total.map { Fmt.usd($0 + (auto ?? 0)) } ?? "—").font(.ui(32, .semibold)).monospacedDigit().tracking(-0.6)
                     if let auto, let main = ws.total { AutomationSplit(main: main, automation: auto) }
                 }
-                if !ws.positions.isEmpty {
+                if !ws.positions.isEmpty, !balanceHidden {
                     Text("\(signed(ws.positionsPnl)) in positions").font(.ui(12, .semibold))
                         .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
                 }
@@ -679,9 +685,9 @@ struct StudioRail: View {
                         if !ws.balancesLoaded {
                             Skeleton(width: 44, height: 11)
                         } else {
-                            Text(ws.total.map { Fmt.usd($0 + (ws.automationUSD ?? 0)) } ?? "—").font(.ui(11, .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
+                            Text(balanceHidden ? "$•••" : ws.total.map { Fmt.usd($0 + (ws.automationUSD ?? 0)) } ?? "—").font(.ui(11, .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
                         }
-                        if !ws.positions.isEmpty {
+                        if !ws.positions.isEmpty, !balanceHidden {
                             Text(signed(ws.positionsPnl)).font(.ui(10, .semibold))
                                 .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
                         }
@@ -918,6 +924,22 @@ struct BreathingDots: NSViewRepresentable {
 /// «+$0,48» / «−$0,25».
 func signed(_ d: Decimal) -> String { d < 0 ? Fmt.usd(d) : "+" + Fmt.usd(d) }
 
+/// The eye by «Balance» (the owner, 2026-10-15): closed, the wallet's amounts show as dots on the rail, in the portfolio
+/// and on the canvas's boards. A move's own card keeps its numbers: what gets signed is always seen.
+@Observable final class BalanceEye {
+    static let shared = BalanceEye()
+    var hidden = UserDefaults.standard.bool(forKey: "balanceHidden") {
+        didSet { UserDefaults.standard.set(hidden, forKey: "balanceHidden") }
+    }
+}
+
+/// An amount as shown: while the eye is closed every number in it but a percentage is dots («worth ••• · +4.2%»).
+/// Read in a body, it redraws the view when the eye turns. Only for what's drawn: commands and the model's context
+/// keep their numbers.
+func masked(_ text: String) -> String {
+    BalanceEye.shared.hidden ? Fmt.dots(text) : text
+}
+
 /// ihatecrypto's logo: an orange coin with a ridged edge that rolls its eyes («even crypto hates crypto»). The same
 /// coin is the assistant's face in the chat, and its expression says what it's doing.
 struct BrandLogo: View {
@@ -1085,7 +1107,7 @@ struct PositionChip: View {
                 AssetBadge(coin: position.coin, size: 22)
                 Text("\(position.size > 0 ? "Long" : "Short") \(IntentParser.pretty(position.coin))").font(.ui(13, .semibold)).lineLimit(1)
                 Spacer()
-                Text(signed(position.unrealizedPnl)).font(.ui(13, .bold)).monospacedDigit()
+                Text(masked(signed(position.unrealizedPnl))).font(.ui(13, .bold)).monospacedDigit()
                     .foregroundStyle(position.unrealizedPnl < 0 ? Color(hex: 0xFF9C8F) : Brand.hlMint)
             }
             Text(ws.positionSummary(position)).font(.ui(10)).foregroundStyle(Brand.hlSoft).lineLimit(2)
@@ -1108,7 +1130,7 @@ struct ClosedTrades: View {
             HStack {
                 Text("Closed · 7 days").font(.ui(10)).foregroundStyle(.secondary)
                 Spacer()
-                Text(signed(total)).font(.ui(10, .semibold)).monospacedDigit().foregroundStyle(total < 0 ? Brand.loss : Brand.profit)
+                Text(masked(signed(total))).font(.ui(10, .semibold)).monospacedDigit().foregroundStyle(total < 0 ? Brand.loss : Brand.profit)
             }
             ForEach(all ? stories : Array(stories.prefix(StudioRail.railLimit))) { s in
                 Button {
@@ -1122,7 +1144,7 @@ struct ClosedTrades: View {
                             Text(s.closed.map(Fmt.date) ?? "").font(.ui(10)).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(signed(s.realized)).font(.ui(12, .bold)).monospacedDigit()
+                        Text(masked(signed(s.realized))).font(.ui(12, .bold)).monospacedDigit()
                             .foregroundStyle(s.realized < 0 ? Brand.loss : Brand.profit)
                     }
                     .padding(.vertical, 3).contentShape(Rectangle())
@@ -1277,10 +1299,6 @@ struct StudioCanvas: View {
             }
             // A scheduled item's own canvas: its card first; the chat on it changes it.
             if let key = ws.currentScheduleKey { ScheduleItemBoard(key: key).padding(.bottom, 10) }
-            // The model's ways to go on, under the block its answer opened; with a plan they go under the plan, in its list.
-            if nodes.isEmpty, let steps = ws.nextSteps ?? ws.heldAnswer?.steps, steps.canvas == ws.canvasID {
-                NextStepsBoard(steps: steps).padding(.bottom, 10).allowsHitTesting(ws.nextSteps != nil)
-            }
             if let note = ws.noteCard { NoteBoard(note: note).padding(.bottom, 10) }
             // The rail's buttons put their boards here too.
             if ws.showReceive { ReceiveBoard() }
@@ -1339,7 +1357,7 @@ struct StudioCanvas: View {
                     ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
                     if let dca = ws.jupiterDCAs, !dca.isEmpty { JupiterDCABoard(orders: dca) }
                     // Under a running board (a chain's move done, its next step coming) the saved one would draw it twice.
-                    if let board, !ws.moveRunning { SavedBoard(canvas: board) } else if board == nil, positions.isEmpty, ws.schedules.isEmpty, ws.jupiterDCAs?.isEmpty ?? true, (ws.nextSteps ?? ws.heldAnswer?.steps) == nil, ws.pendingAction == nil, !ws.moveRunning, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
+                    if let board, !ws.moveRunning { SavedBoard(canvas: board) } else if board == nil, positions.isEmpty, ws.schedules.isEmpty, ws.jupiterDCAs?.isEmpty ?? true, ws.pendingAction == nil, !ws.moveRunning, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
                               (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty {
                         // Never blank while something is under way: whatever path left nothing live, the canvas's last
                         // board stays until the answer or the outcome takes its place. The empty canvas is for when nothing runs.
@@ -1358,15 +1376,11 @@ struct StudioCanvas: View {
                            buildKey: String(describing: ws.intent) + route.steps.map(\.label).joined())
                 Label(route.footer, systemImage: "signature").font(.ui(12)).foregroundStyle(.primary.opacity(0.78)).lineSpacing(2)
                     .frame(maxWidth: 560, alignment: .leading)
-                // One list of ways on: what fits (checked by the code), the model's ideas, raising the limit.
-                let blocked = nodes.contains { $0.status == .blocked }
-                let ideas = (ws.nextSteps ?? ws.heldAnswer?.steps).flatMap { $0.canvas == ws.canvasID ? $0 : nil }
-                if blocked || ideas != nil, !ws.assembling {
-                    let fit = blocked ? ws.planFix.map { ChatRouter.Option(title: $0.title, comment: $0.detail, command: $0.command, recommended: true) } : nil
-                    let overLimit = blocked && (ws.evaluation.sizing.map { s in (ws.equity ?? 0) > 0 && s.lossAtStopUSD / ws.equity! * 100 > ws.policy.maxRiskPct } ?? false)
-                    if fit != nil || overLimit || !(ideas?.options.isEmpty ?? true) {
-                        NextStepsBoard(steps: ideas, fit: fit, overLimit: overLimit)
-                    }
+                // A plan the rules stop: what fits (checked by the code), raising the limit. The model's ideas are in the chat.
+                if nodes.contains(where: { $0.status == .blocked }), !ws.assembling {
+                    let fit = ws.planFix.map { ChatRouter.Option(title: $0.title, comment: $0.detail, command: $0.command, recommended: true) }
+                    let overLimit = ws.evaluation.sizing.map { s in (ws.equity ?? 0) > 0 && s.lossAtStopUSD / ws.equity! * 100 > ws.policy.maxRiskPct } ?? false
+                    if fit != nil || overLimit { NextStepsBoard(fit: fit, overLimit: overLimit) }
                 }
                 if let choices = ws.takeChoices ?? ws.heldAnswer?.takes, !ws.assembling {
                     TakeChoices(choices: choices, risk: ws.evaluation.sizing?.lossAtStopUSD)
@@ -1831,9 +1845,9 @@ struct StudioPortfolio: View {
             HStack {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("PORTFOLIO").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
-                    Text(ws.total.map(Fmt.usd) ?? "—").font(.ui(20, .heavy)).monospacedDigit()
+                    Text(masked(ws.total.map(Fmt.usd) ?? "—")).font(.ui(20, .heavy)).monospacedDigit()
                     if series.count > 2, let first = series.first, let last = series.last {
-                        Text("\(signed(last.usd - first.usd)) · \(Int((last.at.timeIntervalSince(first.at) / 86_400).rounded(.up))) d")
+                        Text("\(masked(signed(last.usd - first.usd))) · \(Int((last.at.timeIntervalSince(first.at) / 86_400).rounded(.up))) d")
                             .font(.ui(10, .semibold)).monospacedDigit()
                             .foregroundStyle(last.usd >= first.usd ? Brand.profit : Brand.loss)
                     }
@@ -2339,6 +2353,16 @@ struct FloatingChat: View {
                 .defaultScrollAnchor(.bottom)
                 // Not animated: a scroll animation redraws the whole window every frame, and execution adds a line at a time.
                 .onChange(of: ws.messages.count) { proxy.scrollTo(ChatHistory.end, anchor: .bottom) }
+                // Cards come under a reply already shown: in view with it, and when they don't all fit, the question
+                // they answer stays in view from its top (a reply grouped into steps has no id here: the end it is).
+                .onChange(of: ws.nextSteps?.message) {
+                    guard let id = ws.nextSteps?.message else { return }
+                    proxy.scrollTo(ChatHistory.end, anchor: .bottom)
+                    // After the cards are laid out: in this turn the bottom anchor pulled it back to the end as they grew.
+                    DispatchQueue.main.async { proxy.scrollTo(id, anchor: .top) }
+                }
+                // The card ↑↓ moved to, in view.
+                .onChange(of: ws.cardKey) { if let k = ws.cardKey, let id = ws.nextSteps?.message { proxy.scrollTo(Answers.cardID(id, k)) } }
             }
 
             if ws.assembling {
@@ -2639,15 +2663,23 @@ private struct ChatComposer: View {
     private func key(_ key: ComposerField.Key) -> Bool {
         switch key {
         case .submit:
+            if let k = ws.cardKey, let options = liveCards, options.indices.contains(k) {
+                Task { await ws.pick(options[k]) }
+                return true
+            }
             send()
             return true
-        // ↑↓ walk the «/», «@» or «$» list; otherwise what was sent, as a terminal's history: ↑ in an empty field or on a
-        // message brought back goes one further back, ↓ forward and out to an empty field (SentHistory).
+        // ↑↓ walk the «/», «@» or «$» list; then the cards under the last reply, from an empty field: they sit above it,
+        // so ↑ goes into them from the bottom and ↓ past the last one comes back to the field. Otherwise what was sent,
+        // as a terminal's history: ↑ in an empty field or on a message brought back goes one further back, ↓ forward
+        // and out to an empty field (SentHistory).
         case .up:
             if !suggestions.isEmpty { keyed(max(0, pick - 1)); return true }
+            if let options = liveCards { ws.cardKey = max(0, (ws.cardKey ?? options.count) - 1); return true }
             return walk(up: true)
         case .down:
             if !suggestions.isEmpty { keyed(min(suggestions.count - 1, pick + 1)); return true }
+            if let options = liveCards, let k = ws.cardKey { ws.cardKey = k + 1 < options.count ? k + 1 : nil; return true }
             return walk(up: false)
         case .tab:
             guard let row = picked else { return false }
@@ -2656,6 +2688,7 @@ private struct ChatComposer: View {
         case .escape:
             // Esc stops the model, as the Stop button does.
             if ws.modelRunning, suggestions.isEmpty { ws.stopModel(); return true }
+            if ws.cardKey != nil, suggestions.isEmpty { ws.cardKey = nil; return true }
             guard !suggestions.isEmpty else { return false }
             dismissed = ws.draft
             return true
@@ -2673,6 +2706,12 @@ private struct ChatComposer: View {
         guard let text = ws.pendingText ?? ws.pendingAllocation.map({ ws.readable($0.summary) }) else { return nil }
         let shown = ws.withAmounts(text)
         return shown.prefix(1).uppercased() + shown.dropFirst()
+    }
+
+    /// The cards under the last reply while the keys may walk them: the field empty and nothing under way.
+    private var liveCards: [ChatRouter.Option]? {
+        guard ws.draft.isEmpty, !ws.busy, let options = ws.nextSteps?.options, !options.isEmpty else { return nil }
+        return options
     }
 
     private var suggestions: [ComposerSuggestion] { ws.draft == dismissed ? [] : ComposerSuggestion.for(ws.draft, caret: caret, ws: ws) }
@@ -2708,7 +2747,11 @@ private struct ChatComposer: View {
             if voice.listening { listening(voice) } else if ws.hasModel { field } else { ConnectModelBar() }
         }
         .padding(12)
-        .onChange(of: ws.draft) { pick = 0; keyedRow = nil }
+        .onChange(of: ws.draft) {
+            pick = 0
+            keyedRow = nil
+            if ws.cardKey != nil { ws.cardKey = nil }
+        }
         // A model on this Mac: whether its server answers and has it, before a field is offered.
         .task(id: ws.providerID) { if ws.provider.info.kind == .local { await ws.refreshLocalModels() } }
         // A contract or mint typed after «@» or «$»: asked once, for the list above the field.
@@ -3652,11 +3695,11 @@ struct PositionBoard: View {
                     AssetBadge(coin: position.coin, size: 40, dark: true)
                     VStack(alignment: .leading, spacing: 2) {
                         Text("\(long ? "Long" : "Short") \(IntentParser.pretty(position.coin))").font(.ui(17, .heavy))
-                        Text("\(Fmt.num(abs(position.size), maxFraction: 6)) at \(Fmt.price(position.entry))\(mark.map { " · now \(Fmt.price($0))" } ?? "")")
+                        Text("\(masked(Fmt.num(abs(position.size), maxFraction: 6))) at \(Fmt.price(position.entry))\(mark.map { " · now \(Fmt.price($0))" } ?? "")")
                             .font(.ui(10)).foregroundStyle(.secondary)
                     }
                     Spacer()
-                    Text(signed(position.unrealizedPnl)).font(.ui(22, .heavy)).monospacedDigit()
+                    Text(masked(signed(position.unrealizedPnl))).font(.ui(22, .heavy)).monospacedDigit()
                         .foregroundStyle(position.unrealizedPnl < 0 ? Brand.loss : Brand.profit)
                 }
                 PriceRuler(entry: position.entry, mark: mark, stop: stop, takes: takes)

@@ -111,8 +111,9 @@ public enum IntentParser {
     public static func apply(_ text: String, to intent: TradeIntent, markets: Set<String> = []) -> TradeIntent? {
         let q = plainNumbers(text.lowercased())
         // «sell SOL for 10 USDC», «продай сол на 10 баксов» (a sale in dollars the wallet parser had no coin count for),
-        // «buy SOL for 5 USDC every 0 days» (a recurring buy it refused): never a long of that many USDC.
-        if q.contains(/\bsell\b|прода[йтв]/) || (q.contains(/\bbuy\b|куп|покупа/) && q.contains(/\bevery\b|кажд/)),
+        // «buy SOL for 5 USDC every 0 days» (a recurring buy it refused), «buy USDT for 750 USDC» (a swap with its network
+        // left out): never a long of that many USDC — the last one drew a 5× ETH long for a USDC → USDT swap.
+        if q.contains(/\bsell\b|прода[йтв]|\bbuy\b|куп|покупа/),
            !q.contains(/\b(?:лонг|шорт|long|short)/), q.contains(/\$\s*\d|\d\s*(?:usdc|usdg|\$|долл|dollars?|bucks|бакс)/) { return nil }
         // A money move the wallet parser didn't take («move 5 USDC from Solana to BNB», «swap 0.01 BNB for USDT on bsc»,
         // «buy CAKE on bnb for 5 USDC»): never a trade plan of the ticker it names — the router asks again or says it can't.
@@ -271,6 +272,8 @@ public enum Fmt {
     public static func date(_ d: Date) -> String { d.formatted(Date.FormatStyle(locale: locale).day().month(.abbreviated).hour().minute()) }
     /// «23:48» — for the second end of a span on the same day.
     public static func time(_ d: Date) -> String { d.formatted(Date.FormatStyle(locale: locale).hour().minute()) }
+    /// A shown line with every number in it but a percentage as dots («worth ••• · +4.2%»): the balance hidden.
+    public static func dots(_ text: String) -> String { text.replacing(/[−+-]?\$?\d[\d,]*(?:\.\d+)?(?![\d.,]*%)/, with: "•••") }
 }
 
 extension Decimal {

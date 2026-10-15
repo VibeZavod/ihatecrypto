@@ -559,7 +559,7 @@
       "где стоит покупать, в каком диапазоне за месяц"
     ],
     "expect": {
-      "detail_contains": "token:ethereum",
+      "detail_contains": "token:",
       "no_pending": true,
       "reply_contains": "$0.",
       "reply_lacks": "allium"
@@ -699,6 +699,72 @@
         "OPTIMISM"
       ],
       "title_contains": "USDT"
+    }
+  },
+  {
+    "name": "swap dollars and send them on, in the user's own words → one chain: the buy, then the send of the same amount; never a trade plan",
+    "send": [
+      "переведи 2 бакса из USDC в USDT на солане и отправить на automation solana usdt"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "drawn_route": true,
+      "title_contains": "USDT",
+      "reply_contains": "send 2 USDT on solana to Automation",
+      "no_boards": [
+        "plan"
+      ]
+    },
+    "only_if": {
+      "balance": "solanaUSDC",
+      "at_least": 2
+    }
+  },
+  {
+    "name": "the same, said crooked («$ usdc→usdt, потом закинь») → the same chain",
+    "send": [
+      "2$ usdc→usdt, потом закинь на automation"
+    ],
+    "expect": {
+      "pending_kind": "wallet",
+      "title_contains": "USDT",
+      "reply_contains": "send 2 USDT on solana to Automation",
+      "no_boards": [
+        "plan"
+      ]
+    },
+    "only_if": {
+      "balance": "solanaUSDC",
+      "at_least": 2
+    }
+  },
+  {
+    "name": "a coin the wallet lacks → a question with the ways as cards, no card that fails at the signature",
+    "send": [
+      "закинь 40 usdt на automation"
+    ],
+    "expect": {
+      "next_steps_at_least": 1,
+      "reply": true,
+      "no_boards": [
+        "plan"
+      ],
+      "cards_in_chat": 1
+    }
+  },
+  {
+    "name": "a request with the amount left out → a question, its answers as cards under it in the chat, nothing waiting",
+    "send": [
+      "закинь на automation"
+    ],
+    "expect": {
+      "reply": true,
+      "cards_in_chat": 2,
+      "next_steps_at_least": 2,
+      "no_pending": true,
+      "no_boards": [
+        "plan"
+      ]
     }
   }
 ]

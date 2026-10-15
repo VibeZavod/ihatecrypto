@@ -1,5 +1,41 @@
 [
   {
+    "version": "0.6.3",
+    "date": "2026-10-16",
+    "stories": [
+      {
+        "title": "The chat asks when it's unsure",
+        "text": "When it isn't clear which coin, how much, which network or who gets it, the chat asks one question with answers as cards right under it. Click one, or press ↑ and pick with the arrows and Return. «Swap USDC to USDT and send it to Bybit» now does exactly that, never a trade.",
+        "symbol": "questionmark.bubble.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "P/L on every coin",
+        "text": "Every coin shows how it did since you got it, gas coins too: what you paid comes from the wallet's own history, even for coins bought outside the app. A coin that came in by a transfer or a bridge is counted at its price that day.",
+        "symbol": "chart.line.uptrend.xyaxis",
+        "color": "26A17B"
+      },
+      {
+        "title": "Hide your balance",
+        "text": "The eye next to «Balance» hides the amounts: in the sidebar, the portfolio, the coin cards, positions and P/L. Percentages stay. What you confirm is always shown in full.",
+        "symbol": "eye.slash.fill",
+        "color": "5856D6"
+      },
+      {
+        "title": "Top up, one look",
+        "text": "Browser wallet, Phone wallet and Exchange show the same block: the QR, what to do, and the whole address with Copy. «Other» picks another token, «Custom» types your own amount.",
+        "symbol": "qrcode",
+        "color": "2775CA"
+      },
+      {
+        "title": "Smaller things",
+        "text": "In the canvas list each canvas has its AI company's logo and the full date and time; a long name scrolls when you point at it.",
+        "symbol": "wrench.and.screwdriver.fill",
+        "color": "8E8E93"
+      }
+    ]
+  },
+  {
     "version": "0.6.2",
     "date": "2026-10-15",
     "stories": [

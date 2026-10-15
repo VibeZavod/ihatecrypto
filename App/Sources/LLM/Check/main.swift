@@ -72,13 +72,17 @@ if prompt == "--route" {
     // the canvas and the money as the app gives them, for follow-ups about a waiting card.
     if let canvas = env["IHATECRYPTO_ROUTE_CANVAS"] { context.canvas = canvas.components(separatedBy: "|") }
     if let b = env["IHATECRYPTO_ROUTE_BALANCES"] { context.balances = b.components(separatedBy: "|") }
+    // `IHATECRYPTO_ROUTE_BOOK="Bybit USDT (Solana)|Mom (Base)"`: the address book as the app gives it.
+    if let b = env["IHATECRYPTO_ROUTE_BOOK"] { context.addressBook = b.components(separatedBy: "|") }
     // `IHATECRYPTO_ROUTE_POSITIONS="long ETH|short WTI oil (xyz:CL)"`: open positions, for «стоп в безубыток», «закрой половину».
     if let p = env["IHATECRYPTO_ROUTE_POSITIONS"] { context.positions = p.components(separatedBy: "|") }
     // `IHATECRYPTO_ROUTE_MEMORY="не трогай Ethereum mainnet|риск 1%"`: what the user asked the chat to remember.
     if let m = env["IHATECRYPTO_ROUTE_MEMORY"] { context.memory = m.components(separatedBy: "|") }
     // Counted: the model calls of each message and what went in and out of them, for the agent checks.
     let counter = CallCounter()
-    let client = CountingClient(base: MeteredClient(try provider.client(credential, save: { _ in })) { usage, _ in counter.count(usage) }, counter: counter)
+    // `IHATECRYPTO_THINK=1`: as with «Think before answering» on in Settings › Models.
+    let made = try provider.client(credential, save: { _ in })
+    let client = CountingClient(base: MeteredClient(env["IHATECRYPTO_THINK"] == "1" ? ThinkingClient(made) : made) { usage, _ in counter.count(usage) }, counter: counter)
     // `IHATECRYPTO_MARKETS="BTC,ETH,…,xyz:CL"`: Hyperliquid's real list, for the plans test.
     let markets: Set<String> = env["IHATECRYPTO_MARKETS"].map { Set($0.components(separatedBy: ",")) } ?? ["BTC", "ETH", "SOL", "xyz:CL", "xyz:TSLA"]
     // Real token lookups; the app's own data (portfolio, markets, rates) is what the context above says.
@@ -105,7 +109,7 @@ if prompt == "--route" {
         do {
             let checkContext = context
             @Sendable func secondReading(_ command: String) async -> String? {
-                do { return try await ChatRouter.verify(m, command: command, context: checkContext, client: client, model: model) } catch { return nil }
+                do { return try await ChatRouter.verify(m, command: command, context: checkContext, client: client, model: model, markets: markets) } catch { return nil }
             }
             let reading = try await ChatRouter.route(message, context: context, client: client, model: model, markets: markets,
                                                      lookup: lookup, check: secondReading)
@@ -147,7 +151,7 @@ if prompt == "--route" {
                 (out["calls"], out["in_chars"], out["out_chars"]) = counter.totals
                 if let show = reading.show { out["show"] = show }
                 if let c = reading.corrected { out["corrected"] = c }
-                out["options"] = reading.options.map(\.command)
+                out["options"] = reading.options.map { $0.command.isEmpty ? "answer: " + $0.title : $0.command }
                 print(String(decoding: try JSONSerialization.data(withJSONObject: out, options: [.sortedKeys]), as: UTF8.self))
                 continue
             }
@@ -155,7 +159,7 @@ if prompt == "--route" {
             if case .command(let c) = reading.route { line += "  " + verdict(c) }
             for l in reading.lookups { line += "\n   lookup: \(l.tool) \(l.arg)" }
             if let show = reading.show { line += "\n   show: \(show)  " + verdict(show, found: reading.found) }
-            for o in reading.options { line += "\n   \(o.recommended ? "★" : "·") \(o.title) — \(o.comment)\n       \(o.command)  " + verdict(o.command, found: reading.found) }
+            for o in reading.options { line += "\n   \(o.recommended ? "★" : "·") \(o.title) — \(o.comment)\n       " + (o.command.isEmpty ? "(an answer: back to the model)" : "\(o.command)  " + verdict(o.command, found: reading.found)) }
             print("«\(message)» \(String(format: "%.1f", Date().timeIntervalSince(started))) s\(counter.context)\n   → \(line)")
         } catch {
             print("«\(message)» → error: \(error.localizedDescription)")

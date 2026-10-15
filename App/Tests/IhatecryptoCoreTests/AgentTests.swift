@@ -25,6 +25,19 @@ import Testing
                                                  options: [.init(title: "Watch", comment: "", command: "watch token B5AN")])))
 }
 
+// A question's answers: one with a command does it, one without goes back to the model as the reply — never one with
+// an address, since a picked answer is read as the user's own words. A chat answer's cards all need a command.
+@Test func aQuestionsAnswersMayGoBackToTheModel() throws {
+    let asked = try ChatRouter.step(Data(#"""
+    {"route":"clarify","reply":"На какой срок деньги свободны?",
+     "options":[{"title":"Месяц","comment":"можно в волт с локом"},{"title":"Нужны в любой момент","command":"lend 100 USDC","recommended":true},
+                {"title":"На 0x1111111111111111111111111111111111111111"}]}
+    """#.utf8))
+    guard case .done(let r) = asked else { Issue.record("not an answer"); return }
+    #expect(r.options == [.init(title: "Месяц", comment: "можно в волт с локом", command: ""),
+                          .init(title: "Нужны в любой момент", comment: "", command: "lend 100 USDC", recommended: true)])
+}
+
 @Test func onlyTheFirstObjectOfAReplyCounts() {
     let reply = #"{"route":"lookup","lookups":[{"tool":"token","arg":"a{b}"}]}{"route":"chat","reply":"a guess"}"#
     #expect(ChatRouter.firstObject(in: "ok: " + reply) == #"{"route":"lookup","lookups":[{"tool":"token","arg":"a{b}"}]}"#)
@@ -371,10 +384,26 @@ private final class Script: LLMClient, @unchecked Sendable {
                                            check: { $0 == "risk $5" ? "they asked for 5 USDC in the trade, not a $5 risk" : nil })
     #expect(fixed.route == .command("5 USDC") && fixed.corrected != nil && fixed.doubt == nil)
     #expect(model.sent[1].last?.text.contains("not a $5 risk") == true)
-    // Still disagreeing after that: the user decides.
-    let stubborn = try await ChatRouter.route("увеличь до 5 USDC", context: .init(), client: Script([#"{"route":"command","command":"risk $5"}"#, #"{"route":"command","command":"risk $5"}"#]),
+    // Still disagreeing after that: the model asks the user, with each reading as a card, rather than a third guess.
+    let risk = #"{"route":"command","command":"risk $5"}"#
+    let question = Script([risk, risk, #"{"route":"clarify","reply":"5 USDC в сделку или риск $5?","options":[{"title":"5 USDC в сделку","comment":"маржа","command":"5 USDC","recommended":true},{"title":"Риск $5","comment":"потеря на стопе","command":"risk $5"}]}"#])
+    let asked = try await ChatRouter.route("увеличь до 5 USDC", context: .init(), client: question, model: "m", check: { _ in "not what they asked" })
+    #expect(asked.route == .clarify("5 USDC в сделку или риск $5?") && asked.options.map(\.command) == ["5 USDC", "risk $5"] && asked.doubt == nil)
+    #expect(question.sent[2].last?.text.contains("Don't guess with their money") == true)
+    // A model that writes the same command a third time: nothing runs, the user decides.
+    let stubborn = try await ChatRouter.route("увеличь до 5 USDC", context: .init(), client: Script([risk, risk, risk]),
                                               model: "m", check: { _ in "not what they asked" })
     #expect(stubborn.doubt == "not what they asked")
+}
+
+@Test func aCommandNoFormReadsGoesBackWithItsForms() async throws {
+    // «buy USDT for 750 USDC»: the network left out. The model hears which forms its verb has, and writes one of them.
+    let model = Script([#"{"route":"command","command":"buy USDT for 750 USDC then send 750 USDT on solana to Bybit"}"#,
+                        #"{"route":"command","command":"buy USDT on solana for 750 USDC then send 750 USDT on solana to Bybit"}"#])
+    let r = try await ChatRouter.route("переведи 750 из USDC в USDT на солане и отправь на bybit", context: .init(), client: model, model: "m", markets: ["ETH"])
+    #expect(r.route == .command("buy USDT on solana for 750 USDC then send 750 USDT on solana to Bybit"))
+    let told = model.sent[1].last?.text ?? ""
+    #expect(told.contains("«buy USDT for 750 USDC» can't run") && told.contains("buy <TICKER> on solana for N USDC"))
 }
 
 @Test func whatTheUserLeftOutTheRulesFill() throws {

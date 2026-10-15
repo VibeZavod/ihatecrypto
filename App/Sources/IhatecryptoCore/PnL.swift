@@ -150,26 +150,74 @@ public struct PnLCommand: Equatable, Sendable {
                                           "BASE", "SOLANA", "ARBITRUM", "ETHEREUM", "POLYGON", "ROBINHOOD", "TEMPO", "KAMINO", "JUPITER"]
 }
 
-/// What a token bought in the app cost, for the P/L on its holding row: the average cost. A buy with USDC adds its
-/// tokens and dollars; a sale takes out the same share of both. Tokens that came some other way have no cost here and
-/// count for nothing in the P/L; a token with no known cost shows none.
+/// What a held token cost, for the P/L on its holding row: the average cost. A buy adds its tokens and dollars; tokens
+/// that came in unpaid (a transfer, a bridge, an airdrop) add theirs at the price that day (`came`); a sale or a send
+/// takes out the same share of all of it. Only tokens no price reached count for nothing in the P/L.
 public struct CostBasis: Codable, Equatable, Sendable {
     public var amount: Decimal = 0
     public var usd: Decimal = 0
+    /// When the first of what's still held came in («since you bought on Oct 10»); nil in records kept before it.
+    public var since: Date?
+    /// Of `amount` and `usd`: what came in unpaid, at the price the day it came; nil when all of it was bought.
+    public var received: Decimal?
+    public var receivedUSD: Decimal?
 
     public init() {}
 
-    public mutating func bought(_ tokens: Decimal, for dollars: Decimal) {
+    public mutating func bought(_ tokens: Decimal, for dollars: Decimal, at date: Date = Date()) {
         guard tokens > 0, dollars > 0 else { return }
+        if amount == 0 { since = date }
         amount += tokens
         usd += dollars
     }
 
+    /// Tokens that came in unpaid, counted at what they were worth that day.
+    public mutating func came(_ tokens: Decimal, worth dollars: Decimal, at date: Date = Date()) {
+        guard tokens > 0, dollars > 0 else { return }
+        bought(tokens, for: dollars, at: date)
+        received = (received ?? 0) + tokens
+        receivedUSD = (receivedUSD ?? 0) + dollars
+    }
+
+    /// What one of it cost on average.
+    public var price: Decimal? { amount > 0 ? usd / amount : nil }
+
     public mutating func sold(_ tokens: Decimal) {
         guard amount > 0, tokens > 0 else { return }
-        let left = max(0, amount - tokens)
-        usd = usd * left / amount
+        let left = max(0, amount - tokens), before = amount
+        usd = usd * left / before
+        received = received.map { $0 * left / before }
+        receivedUSD = receivedUSD.map { $0 * left / before }
         amount = left
+        if left == 0 { (since, received, receivedUSD) = (nil, nil, nil) }
+    }
+
+    /// One change in what a wallet holds of a token: tokens in (bought for `paid` dollars, or unpaid: nil) or out.
+    public struct Change: Sendable, Equatable {
+        public let at: Date
+        public let tokens: Decimal
+        public let paid: Decimal?
+        public init(at: Date, tokens: Decimal, paid: Decimal? = nil) { (self.at, self.tokens, self.paid) = (at, tokens, paid) }
+    }
+
+    /// The cost of `held` from its changes, oldest first: tokens bought, at what was paid; tokens in unpaid, at `worth`
+    /// then; tokens out take their share. What was held before the oldest change (the chain gives the newest 50) counts
+    /// at `worth` then too.
+    public static func fold(_ changes: [Change], held: Decimal, worth: (Date) -> Decimal?) -> CostBasis {
+        var basis = CostBasis()
+        let before = held - changes.reduce(0) { $0 + $1.tokens }
+        if before > 0, let first = changes.first, let px = worth(first.at) { basis.came(before, worth: before * px, at: first.at) }
+        for c in changes {
+            if c.tokens < 0 { basis.sold(-c.tokens) }
+            else if let paid = c.paid, paid > 0 { basis.bought(c.tokens, for: paid, at: c.at) }
+            else if let px = worth(c.at) { basis.came(c.tokens, worth: c.tokens * px, at: c.at) }
+        }
+        return basis
+    }
+
+    /// The days `fold` asks a price for: the oldest change's and every unpaid one's.
+    public static func unpaid(_ changes: [Change]) -> [Date] {
+        Array(Set(changes.prefix(1).map(\.at) + changes.filter { $0.tokens > 0 && ($0.paid ?? 0) <= 0 }.map(\.at))).sorted()
     }
 
     /// The P/L of what's held now at `price`: only the tokens with a known cost (at most what was bought here).
@@ -183,26 +231,82 @@ public struct CostBasis: Codable, Equatable, Sendable {
     /// Dollars, as far as a cost goes.
     static let stablecoins = Stablecoins.dollars
 
-    /// What an EVM wallet paid for a token, from Blockscout's token transfers of each transaction that moved it, oldest
-    /// first: tokens in with stablecoins leaving the wallet in the same transaction were bought for them; tokens out
-    /// (sold or sent) take their share of the cost. Tokens in with no dollars out (a transfer, an airdrop, a cross-chain
-    /// order's fill) have no cost here.
-    public static func replay(wallet: String, contract: String, transactions: [[[String: Any]]]) -> CostBasis {
-        let me = wallet.lowercased(), token = contract.lowercased()
-        var basis = CostBasis()
+    /// An EVM wallet's changes in a token, from Blockscout's token transfers of each transaction that moved it, oldest
+    /// first: tokens in with stablecoins leaving the wallet in the same transaction were bought for them; with no
+    /// dollars out (a transfer, an airdrop, a cross-chain order's fill) they came in unpaid; tokens out were sold or sent.
+    public static func replay(wallet: String, contract: String, transactions: [[[String: Any]]]) -> [Change] {
+        let token = contract.lowercased()
+        var out: [Change] = []
         for transfers in transactions {
-            var tokens: Decimal = 0, dollars: Decimal = 0
-            for t in transfers {
-                guard let info = t["token"] as? [String: Any], let raw = Holdings.number((t["total"] as? [String: Any])?["value"]),
-                      let decimals = Int(info["decimals"] as? String ?? "") else { continue }
-                let side = { (key: String) in ((t[key] as? [String: Any])?["hash"] as? String)?.lowercased() }
-                let sign: Decimal = side("to") == me ? 1 : side("from") == me ? -1 : 0
-                let amount = sign * raw / pow(10, decimals)
-                if (info["address_hash"] as? String)?.lowercased() == token { tokens += amount }
-                else if stablecoins.contains((info["symbol"] as? String ?? "").uppercased()) { dollars -= amount }
-            }
-            if tokens > 0 { basis.bought(tokens, for: dollars) } else if tokens < 0 { basis.sold(-tokens) }
+            let tokens = moved(transfers, wallet: wallet).filter { $0.contract == token }.reduce(0) { $0 + $1.amount }
+            let dollars = dollarsOut(transfers, wallet: wallet)
+            let at = (transfers.first?["timestamp"] as? String).flatMap { try? Date($0, strategy: .iso8601) } ?? Date()
+            if tokens != 0 { out.append(Change(at: at, tokens: tokens, paid: tokens > 0 && dollars > 0 ? dollars : nil)) }
         }
-        return basis
+        return out
+    }
+
+    /// The dollars (stablecoins) that left the wallet in one transaction's Blockscout token transfers, net of any back.
+    public static func dollarsOut(_ transfers: [[String: Any]], wallet: String) -> Decimal {
+        -moved(transfers, wallet: wallet).filter { stablecoins.contains($0.symbol) }.reduce(0) { $0 + $1.amount }
+    }
+
+    /// Each transfer as the wallet saw it: the token (lowercased), its symbol (uppercased), and the amount in (+) or out (−).
+    static func moved(_ transfers: [[String: Any]], wallet: String) -> [(contract: String, symbol: String, amount: Decimal)] {
+        let me = wallet.lowercased()
+        return transfers.compactMap { t in
+            guard let info = t["token"] as? [String: Any], let raw = Holdings.number((t["total"] as? [String: Any])?["value"]),
+                  let decimals = Int(info["decimals"] as? String ?? "") else { return nil }
+            let side = { (key: String) in ((t[key] as? [String: Any])?["hash"] as? String)?.lowercased() }
+            let sign: Decimal = side("to") == me ? 1 : side("from") == me ? -1 : 0
+            return ((info["address_hash"] as? String ?? "").lowercased(), (info["symbol"] as? String ?? "").uppercased(), sign * raw / pow(10, decimals))
+        }
+    }
+
+    /// One transaction as a Solana wallet saw it: when, what it gained or lost of each mint, and of SOL (the fee given
+    /// back when it paid it). From `getTransaction` (jsonParsed); nil for a failed one.
+    public struct SolanaMove: Sendable, Equatable {
+        public let at: Date
+        public let change: [String: Decimal]
+        public let sol: Decimal
+
+        public init(at: Date, change: [String: Decimal], sol: Decimal) { (self.at, self.change, self.sol) = (at, change, sol) }
+
+        public init?(_ tx: [String: Any], owner: String) {
+            guard let meta = tx["meta"] as? [String: Any], meta["err"] == nil || meta["err"] is NSNull else { return nil }
+            var change: [String: Decimal] = [:]
+            for (key, sign) in [("postTokenBalances", Decimal(1)), ("preTokenBalances", Decimal(-1))] {
+                for b in meta[key] as? [[String: Any]] ?? [] where b["owner"] as? String == owner {
+                    guard let m = b["mint"] as? String, let ui = b["uiTokenAmount"] as? [String: Any],
+                          let raw = Holdings.number(ui["amount"]), let decimals = (ui["decimals"] as? NSNumber)?.intValue else { continue }
+                    change[m, default: 0] += sign * raw / pow(10, decimals)
+                }
+            }
+            let keys = ((tx["transaction"] as? [String: Any])?["message"] as? [String: Any])?["accountKeys"] as? [[String: Any]] ?? []
+            var sol: Decimal = 0
+            if let i = keys.firstIndex(where: { $0["pubkey"] as? String == owner }), let pre = meta["preBalances"] as? [Any], let post = meta["postBalances"] as? [Any],
+               i < pre.count, i < post.count, let before = Holdings.number(pre[i]), let after = Holdings.number(post[i]) {
+                sol = (after - before + (i == 0 ? Holdings.number(meta["fee"]) ?? 0 : 0)) / 1_000_000_000
+            }
+            self.init(at: (tx["blockTime"] as? NSNumber).map { Date(timeIntervalSince1970: $0.doubleValue) } ?? Date(), change: change, sol: sol)
+        }
+    }
+
+    public static let wsol = "So11111111111111111111111111111111111111112"
+
+    /// A Solana wallet's changes in `mint` from its own transactions, oldest first: tokens in against dollars (Solana's
+    /// stablecoins) out in the same transaction, or else SOL out (wrapped too) at `solPrice` then, were bought; with
+    /// nothing paid (a transfer, an airdrop) they came in unpaid; tokens out were sold or sent. SOL is `wsol`: the
+    /// wallet's own lamports and its wrapped SOL together.
+    public static func replaySolana(mint: String, moves: [SolanaMove], solPrice: (Date) -> Decimal?) -> [Change] {
+        let stables = Set((Stablecoins.byNetwork["solana"] ?? []).map(\.address))
+        return moves.compactMap { m in
+            let tokens = (m.change[mint] ?? 0) + (mint == wsol ? m.sol : 0)
+            guard tokens > 0 else { return tokens < 0 ? Change(at: m.at, tokens: tokens) : nil }
+            let dollars = -m.change.filter { stables.contains($0.key) && $0.value < 0 }.values.reduce(0, +)
+            let sol = mint == wsol ? 0 : m.sol + min(0, m.change[wsol] ?? 0)
+            let paid = dollars > 0 ? dollars : sol < 0 ? solPrice(m.at).map { -sol * $0 } : nil
+            return Change(at: m.at, tokens: tokens, paid: paid)
+        }
     }
 }

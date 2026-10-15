@@ -18,6 +18,7 @@ struct ReceiveBoard: View {
     @AppStorage("topUpNetwork") private var networkKey = "solana"
     /// Empty: any amount.
     @State private var amount = "20"
+    @FocusState private var typing: Bool
     @State private var coin = TopUpOrder.Coin.usdc
     /// A way was used (a page opened, a QR or an address shown): the balance is watched from then on.
     @State private var waiting = false
@@ -105,9 +106,9 @@ struct ReceiveBoard: View {
         VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 if o.coin == .any {
-                    Text("Any coin").font(.ui(30, .bold))
+                    Text("Other token").font(.ui(30, .bold))
                 } else {
-                    TextField("Any", text: $amount).textFieldStyle(.plain).font(.ui(30, .bold)).monospacedDigit()
+                    TextField("0", text: $amount).textFieldStyle(.plain).font(.ui(30, .bold)).monospacedDigit().focused($typing)
                         .fixedSize().frame(minWidth: 40, alignment: .leading)
                         .accessibilityLabel("Amount")
                     Text(o.symbol).font(.ui(18, .bold)).foregroundStyle(.secondary)
@@ -117,15 +118,16 @@ struct ReceiveBoard: View {
                 if let gas = o.network.coin {
                     chip(gas, on: o.coin == .native) { coin = .native; amount = Self.presets(gas).first ?? "" }
                 }
-                chip("Any", on: o.coin == .any) { coin = .any }.accessibilityLabel("Any coin")
+                chip("Other", on: o.coin == .any) { coin = .any }.accessibilityLabel("Other token")
             }
             HStack(spacing: 6) {
                 if o.coin == .any {
                     Text("Any token on \(o.network.title) lands at this wallet's address: \(o.network.usdcSymbol), \(o.network.coin ?? "stablecoins"), memecoins…")
                         .font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 } else {
-                    ForEach(Self.presets(o.coin == .usdc ? nil : o.network.coin), id: \.self) { p in chip(p, on: amount == p) { amount = p } }
-                    chip("Any", on: amount.isEmpty) { amount = "" }.accessibilityLabel("Any amount")
+                    let presets = Self.presets(o.coin == .usdc ? nil : o.network.coin)
+                    ForEach(presets, id: \.self) { p in chip(p, on: amount == p) { amount = p } }
+                    chip("Custom", on: !presets.contains(amount)) { amount = ""; typing = true }.accessibilityLabel("Custom amount")
                     Spacer(minLength: 6)
                     if held.network == o.network.key, let now = held.coins[o.symbol] {
                         let digits = o.coin == .usdc ? 2 : 6
@@ -240,51 +242,51 @@ struct ReceiveBoard: View {
         .accessibilityLabel(title)
     }
 
-    @ViewBuilder private func wayBody(_ o: TopUpOrder) -> some View {
+    /// The same block for all three ways (the owner, 2026-10-16): the QR, what this way does, and the whole address with
+    /// Copy; under it, the browser's button or the exchange's warnings.
+    private func wayBody(_ o: TopUpOrder) -> some View {
         let net = o.network, solana = net.chainId == nil
-        switch way {
+        // An exchange's app wants the plain address; a wallet takes the link with the coin and the amount filled in.
+        let link = way == .exchange ? o.recipient : o.payLink ?? o.recipient
+        let (title, detail): (String, String) = switch way {
         case .browser:
-            VStack(alignment: .leading, spacing: 10) {
-                if let needs = browserNeeds(o) {
-                    Text("A browser wallet is asked for one transfer: \(needs). For any coin or amount, scan with your phone or send from an exchange.")
-                        .font(.ui(11)).fixedSize(horizontal: false, vertical: true)
-                } else {
-                    Text("Your browser opens a page served by this Mac. Pick your wallet there and approve \(o.amount ?? 0) \(o.symbol) on \(net.title): the address is put in by ihatecrypto, so no website can swap it.")
-                        .font(.ui(11)).fixedSize(horizontal: false, vertical: true)
+            ("Approve in your browser wallet", browserNeeds(o).map { "A browser wallet is asked for one transfer: \($0). For any coin or amount, scan with your phone or send from an exchange." }
+                ?? "Your browser opens a page served by this Mac. Pick your wallet there and approve \(o.amount ?? 0) \(o.symbol) on \(net.title): the address is put in by ihatecrypto, so no website can swap it.")
+        case .phone:
+            ("Scan with your phone's wallet", (solana ? "Phantom, Solflare or Backpack: " : "MetaMask, Rainbow or Coinbase Wallet: ")
+                + (o.coin == .any ? "this wallet on \(net.title) is filled in, you pick the coin and the amount."
+                   : o.units != nil ? "\(o.amount ?? 0) \(o.symbol) to this wallet on \(net.title) is filled in, you only approve."
+                   : "\(o.symbol) to this wallet on \(net.title) is filled in, the wallet asks how much."))
+        case .exchange:
+            ("Withdraw to this address on \(net.title)", solana ? "USDC, SOL or any Solana token (SPL). USDC is what ihatecrypto trades with; keep ≈ 0.02 SOL for fees."
+                : "\(net.usdcSymbol)\(net.coin.map { ", \($0)" } ?? "") or any token on \(net.title). The same 0x address is this wallet on every EVM network ihatecrypto uses.")
+        }
+        return VStack(alignment: .leading, spacing: 10) {
+            HStack(alignment: .top, spacing: 14) {
+                if let qr = QR.image(link) {
+                    Image(nsImage: qr).interpolation(.none).resizable().frame(width: 132, height: 132)
+                        .padding(6).background(RoundedRectangle(cornerRadius: 12).fill(.white))
+                        .overlay(alignment: .center) { TokenLogo(name: Self.logo(net), size: 28, round: true) }
+                        .help(way == .exchange ? "Scan with the exchange's app" : "Scan with your phone's wallet")
+                        .accessibilityLabel(link != o.recipient && o.units != nil ? "QR code to top up \(o.amount ?? 0) \(o.symbol)" : "QR code of this wallet on \(net.title)")
                 }
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title).font(.ui(13, .bold))
+                    Text(detail).font(.ui(11)).fixedSize(horizontal: false, vertical: true)
+                    AddressLines(address: o.recipient)
+                }
+            }
+            switch way {
+            case .browser:
                 Button { Task { await openPage(o) } } label: {
                     Label(opening ? "Opening…" : browserNeeds(o) == nil ? "Top up \(o.amount ?? 0) \(o.symbol) from a browser wallet" : "Top up from a browser wallet",
                           systemImage: "arrow.up.forward.app")
                         .font(.ui(13, .semibold)).frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent).controlSize(.large).disabled(o.units == nil || opening)
-            }
-        case .phone:
-            HStack(alignment: .top, spacing: 14) {
-                if let link = o.payLink, let qr = QR.image(link) {
-                    Image(nsImage: qr).interpolation(.none).resizable().frame(width: 132, height: 132)
-                        .padding(6).background(RoundedRectangle(cornerRadius: 12).fill(.white))
-                        .overlay(alignment: .center) { TokenLogo(name: Self.logo(net), size: 28, round: true) }
-                        .accessibilityLabel(o.units != nil ? "QR code to top up \(o.amount ?? 0) \(o.symbol)" : "QR code of this wallet on \(net.title)")
-                }
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Scan with your phone's wallet").font(.ui(13, .bold))
-                    Text((solana ? "Phantom, Solflare or Backpack: " : "MetaMask, Rainbow or Coinbase Wallet: ")
-                         + (o.coin == .any ? "this wallet on \(net.title) is filled in, you pick the coin and the amount."
-                            : o.units != nil ? "\(o.amount ?? 0) \(o.symbol) to this wallet on \(net.title) is filled in, you only approve."
-                            : "\(o.symbol) to this wallet on \(net.title) is filled in, the wallet asks how much."))
-                        .font(.ui(11)).fixedSize(horizontal: false, vertical: true)
-                    AddressLines(address: o.recipient)
-                    Text("An exchange's app wants the plain address: use Exchange.").font(.ui(10)).foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-            }
-        case .exchange:
-            VStack(alignment: .leading, spacing: 8) {
-                ReceiveCard(logo: Self.logo(net), network: net.title, badge: solana ? "recommended" : nil, address: o.recipient,
-                            what: solana ? "Withdraw USDC, SOL or any Solana token (SPL). USDC is what ihatecrypto trades with; keep ≈ 0.02 SOL for fees."
-                                : "Withdraw \(net.usdcSymbol)\(net.coin.map { ", \($0)" } ?? "") or any token on \(net.title). The same 0x address is this wallet on every EVM network ihatecrypto uses.",
-                            tint: solana ? Brand.solanaTint : Color(light: 0xEAF0FF, dark: 0x14213F))
+            case .phone:
+                EmptyView()
+            case .exchange:
                 Label("Pick the network exactly: \(solana ? "Solana (SPL)" : net.title). Sent on another network, money can get stuck. Many exchanges withdraw USDC on Solana or Base for well under a dollar.",
                       systemImage: "exclamationmark.triangle.fill").foregroundStyle(Brand.jevInk).font(.ui(10))
                     .fixedSize(horizontal: false, vertical: true)
@@ -391,9 +393,8 @@ struct ReceiveCard: View {
                             .padding(.horizontal, 6).padding(.vertical, 2).background(Capsule().fill(Brand.accent))
                     }
                 }
-                AddressLines(address: address)
                 Text(what).font(.ui(10)).fixedSize(horizontal: false, vertical: true)
-                CopyButton(title: "Copy address", text: address, help: "Copy the address")
+                AddressLines(address: address)
             }
         }
         .padding(12)
@@ -401,21 +402,22 @@ struct ReceiveCard: View {
     }
 }
 
-/// An address as it's checked by eye: its ends in bold, then the whole of it, selectable.
+/// An address as it's checked by eye: the whole of it in two lines, its ends in bold (the ends a confirm card shows),
+/// and Copy for all of it.
 struct AddressLines: View {
     let address: String
 
     var body: some View {
-        let ends = AddressCheck.ends(address)
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 0) {
-                Text(ends.start).fontWeight(.bold)
-                Text("  …  ").foregroundStyle(.tertiary)
-                Text(ends.end).fontWeight(.bold)
+        let half = (address.count + 1) / 2
+        let first = address.prefix(half), second = address.dropFirst(half)
+        VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: 2) {
+                HStack(spacing: 0) { Text(first.prefix(8)).fontWeight(.bold); Text(first.dropFirst(8)).foregroundStyle(.secondary) }
+                HStack(spacing: 0) { Text(second.dropLast(8)).foregroundStyle(.secondary); Text(second.suffix(8)).fontWeight(.bold) }
             }
             .font(.system(size: 13, design: .monospaced))
-            Text(address).font(.system(size: 10, design: .monospaced)).foregroundStyle(.secondary).textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            .accessibilityElement(children: .ignore).accessibilityLabel(address)
+            CopyButton(title: "Copy address", text: address, help: "Copy the whole address")
         }
     }
 }

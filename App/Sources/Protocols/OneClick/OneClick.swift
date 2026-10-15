@@ -181,6 +181,37 @@ public enum OneClick {
                       refundedFormatted: details?["refundedAmountFormatted"] as? String, destinationTxs: txs)
     }
 
+    /// A finished swap as 1Click keeps it: what went in and came out, and for whom. For the cost of what the wallet got.
+    public struct Settled: Sendable, Equatable {
+        public let origin: String, destination: String, recipient: String, refundTo: String
+        public let amountIn: Decimal, amountOut: Decimal, inUSD: Decimal
+
+        /// From /status; nil unless it succeeded.
+        public init?(_ j: [String: Any]) {
+            let d = j["swapDetails"] as? [String: Any] ?? [:]
+            let q = (j["quoteResponse"] as? [String: Any])?["quoteRequest"] as? [String: Any] ?? [:]
+            func dec(_ x: Any?) -> Decimal? { (x as? String).flatMap { Decimal(string: $0) } }
+            guard j["status"] as? String == "SUCCESS", let i = dec(d["amountInFormatted"]), let o = dec(d["amountOutFormatted"]),
+                  let origin = q["originAsset"] as? String, let destination = q["destinationAsset"] as? String else { return nil }
+            (self.origin, self.destination, amountIn, amountOut) = (origin, destination, i, o)
+            (recipient, refundTo, inUSD) = (q["recipient"] as? String ?? "", q["refundTo"] as? String ?? "", dec(d["amountInUsd"]) ?? 0)
+        }
+
+        /// The NEAR it moved for `account`: + bought, with the dollars it cost (USDC at its amount, another coin at its
+        /// dollar value then); − sold. nil: no NEAR of this account's in it.
+        public func near(for account: String) -> (amount: Decimal, dollars: Decimal)? {
+            let usdc = origin == Asset.solanaUSDC || ["base", "arbitrum", "ethereum"].contains { Asset.usdc(onEVM: $0) == origin }
+            if destination == Asset.near, recipient == account { return (amountOut, usdc ? amountIn : inUSD) }
+            if origin == Asset.near, refundTo == account { return (-amountIn, 0) }
+            return nil
+        }
+    }
+
+    public static func settled(depositAddress: String) async throws -> Settled? {
+        let (data, _) = try await URLSession.shared.data(for: request(URL(string: "\(base)/status?depositAddress=\(depositAddress)")!))
+        return (try JSONSerialization.jsonObject(with: data) as? [String: Any]).flatMap(Settled.init)
+    }
+
     static func post(_ path: String, _ body: [String: Any]) async throws -> Data {
         var r = request(URL(string: base + path)!)
         r.httpMethod = "POST"

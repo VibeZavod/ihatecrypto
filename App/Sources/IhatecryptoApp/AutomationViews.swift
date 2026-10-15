@@ -44,11 +44,11 @@ struct AutomationSplit: View {
                 HStack(spacing: 5) {
                     Circle().fill(Color.primary).frame(width: 7, height: 7)
                     Text("Main")
-                    Text(Fmt.usd(main)).fontWeight(.bold)
+                    Text(masked(Fmt.usd(main))).fontWeight(.bold)
                     Spacer(minLength: 4)
                     Circle().fill(Brand.accent).frame(width: 7, height: 7)
                     Text("Automation")
-                    Text(Fmt.usd(automation)).fontWeight(.bold)
+                    Text(masked(Fmt.usd(automation))).fontWeight(.bold)
                 }
                 .font(.ui(10.5)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.75)
             }
@@ -57,7 +57,7 @@ struct AutomationSplit: View {
         }
         .buttonStyle(.plain)
         .help("The balance is both wallets: Main signs with Touch ID, Automation signs the Schedule’s tasks by itself. Click to open the Schedule.")
-        .accessibilityLabel("Main \(Fmt.usd(main)), Automation \(Fmt.usd(automation))")
+        .accessibilityLabel(masked("Main \(Fmt.usd(main)), Automation \(Fmt.usd(automation))"))
     }
 }
 
@@ -92,7 +92,7 @@ struct AutomationPortfolioCard: View {
                                 .lineLimit(3).fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 4)
-                        Text(Fmt.usd(usd)).font(.ui(13, .bold)).monospacedDigit().lineLimit(1).fixedSize()
+                        Text(masked(Fmt.usd(usd))).font(.ui(13, .bold)).monospacedDigit().lineLimit(1).fixedSize()
                     }
                     ForEach(coins) { row($0) }
                     row(Coin(logo: "sol", symbol: "SOL", amount: sol, place: "gas", usd: sol * (ws.markets["SOL"]?.markPx ?? 0)), dim: sol == 0)
@@ -128,10 +128,10 @@ struct AutomationPortfolioCard: View {
             TokenLogo(name: c.logo, size: 18)
             VStack(alignment: .leading, spacing: 0) {
                 Text(c.symbol).font(.ui(12, .semibold))
-                Text("\(Fmt.num(c.amount, maxFraction: c.symbol == "SOL" ? 4 : 2)) · \(c.place == "gas" ? "gas" : "on \(c.place)")").font(.ui(10)).foregroundStyle(.secondary)
+                Text("\(masked(Fmt.num(c.amount, maxFraction: c.symbol == "SOL" ? 4 : 2))) · \(c.place == "gas" ? "gas" : "on \(c.place)")").font(.ui(10)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
-            Text(c.usd.map(Fmt.usd) ?? "—").font(.ui(12, .semibold)).monospacedDigit()
+            Text(masked(c.usd.map(Fmt.usd) ?? "—")).font(.ui(12, .semibold)).monospacedDigit()
         }
         .opacity(dim ? 0.55 : 1)
     }

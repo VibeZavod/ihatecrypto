@@ -679,12 +679,80 @@ private struct CanvasDrop: ViewModifier {
     }
 }
 
+/// A line of text running past like a ticker: still for a moment, then left at 30 pt a second, a second copy following
+/// it so the loop never jumps. Core Animation moves it: any SwiftUI animation tick redraws the whole window.
+struct Ticker: NSViewRepresentable {
+    let text: String
+    let font: NSFont
+
+    static func font(_ size: CGFloat, _ weight: NSFont.Weight) -> NSFont {
+        guard BrandFonts.ready else { return .systemFont(ofSize: size, weight: weight) }
+        return NSFont(descriptor: NSFontDescriptor(fontAttributes: [.family: "Onest", .traits: [NSFontDescriptor.TraitKey.weight: weight]]), size: size)
+            ?? .systemFont(ofSize: size, weight: weight)
+    }
+
+    static func width(_ text: String, _ font: NSFont) -> CGFloat { ceil(NSAttributedString(string: text, attributes: [.font: font]).size().width) }
+
+    func makeNSView(context: Context) -> Layered { Layered() }
+    func updateNSView(_ view: Layered, context: Context) {
+        guard view.text != text || view.font != font else { return }
+        (view.text, view.font) = (text, font)
+        view.needsLayout = true
+    }
+
+    final class Layered: NSView {
+        var text = ""
+        var font = NSFont.systemFont(ofSize: 13)
+        private let strip = CALayer()
+        private let copies = [CATextLayer(), CATextLayer()]
+        private static let gap: CGFloat = 32
+
+        override init(frame: NSRect) {
+            super.init(frame: frame)
+            wantsLayer = true
+            layer?.masksToBounds = true
+            copies.forEach(strip.addSublayer)
+            layer?.addSublayer(strip)
+        }
+        required init?(coder: NSCoder) { nil }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        override func viewDidChangeEffectiveAppearance() { needsLayout = true }
+        override func viewDidMoveToWindow() { needsLayout = true }
+
+        override func layout() {
+            super.layout()
+            let w = Ticker.width(text, font), step = w + Self.gap
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            strip.frame = CGRect(x: 0, y: 0, width: step + w, height: bounds.height)
+            effectiveAppearance.performAsCurrentDrawingAppearance {
+                for (i, copy) in copies.enumerated() {
+                    copy.string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+                    copy.contentsScale = window?.backingScaleFactor ?? 2
+                    copy.frame = CGRect(x: CGFloat(i) * step, y: 0, width: w, height: bounds.height)
+                }
+            }
+            CATransaction.commit()
+            guard window != nil else { return }
+            let pause = 0.8, run = Double(step / 30)
+            let ticker = CAKeyframeAnimation(keyPath: "transform.translation.x")
+            ticker.values = [0, 0, -step]
+            ticker.keyTimes = [0, NSNumber(value: pause / (pause + run)), 1]
+            ticker.duration = pause + run
+            ticker.repeatCount = .infinity
+            strip.add(ticker, forKey: "ticker")
+        }
+    }
+}
+
 struct CanvasRow: View {
     @Environment(Workspace.self) private var ws
     let canvas: CanvasSession
     let current: Bool
     let open: () -> Void
     @State private var hover = false
+    /// The width the title gets in the row: a longer one runs past under the pointer (Ticker).
+    @State private var titleWidth: CGFloat = 0
     @State private var renaming = false
     @State private var draft = ""
     @State private var newFolder = false
@@ -736,14 +804,26 @@ struct CanvasRow: View {
 
     private var content: some View {
         HStack(spacing: 9) {
-            if let icon = canvas.icon {
-                PickedIcon(icon: icon, size: 26, letter: canvas.displayTitle)
-            } else if canvas.intent != TradeIntent() {
-                AssetBadge(coin: canvas.intent.asset, size: 26, dark: true)
-            } else {
-                RoundedRectangle(cornerRadius: 8).fill(Brand.glassFill).frame(width: 26, height: 26)
-                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Brand.glassRim))
-                    .overlay(Image(systemName: canvas.note != nil ? "note.text" : canvas.bubbles.isEmpty ? "bubble.left" : "square.grid.2x2").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary))
+            Group {
+                if let icon = canvas.icon {
+                    PickedIcon(icon: icon, size: 26, letter: canvas.displayTitle)
+                } else if canvas.intent != TradeIntent() {
+                    AssetBadge(coin: canvas.intent.asset, size: 26, dark: true)
+                } else {
+                    RoundedRectangle(cornerRadius: 8).fill(Brand.glassFill).frame(width: 26, height: 26)
+                        .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Brand.glassRim))
+                        .overlay(Image(systemName: canvas.note != nil ? "note.text" : canvas.bubbles.isEmpty ? "bubble.left" : "square.grid.2x2").font(.system(size: 11, weight: .semibold)).foregroundStyle(.secondary))
+                }
+            }
+            // The model as its company's round logo on the icon's bottom-right corner, never its name (the owner,
+            // 2026-10-15); the name is in the row's tooltip.
+            .overlay(alignment: .bottomTrailing) {
+                if let company = ModelCompany.of(canvas.providerID) {
+                    ModelCompanyLogo(company: company, size: 12).clipShape(Circle())
+                        .overlay(Circle().strokeBorder(Color.primary.opacity(0.12), lineWidth: 0.5))
+                        .padding(1).background(Circle().fill(Brand.card))
+                        .offset(x: 4, y: 4)
+                }
             }
             VStack(alignment: .leading, spacing: 1) {
                 if renaming {
@@ -755,13 +835,19 @@ struct CanvasRow: View {
                         .onChange(of: nameFocused) { if !nameFocused, renaming { commitRename() } }
                 } else {
                     HStack(spacing: 4) {
+                        // A title cut short runs past like a ticker while the pointer is on the row (the owner, 2026-10-15).
+                        let font = Ticker.font(13, current ? .semibold : .medium)
+                        let runs = hover && Ticker.width(canvas.displayTitle, font) > titleWidth + 1
                         Text(canvas.displayTitle).font(.ui(13, current ? .semibold : .medium)).lineLimit(1)
+                            .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { titleWidth = $0 }
+                            .opacity(runs ? 0 : 1)
+                            .overlay { if runs { Ticker(text: canvas.displayTitle, font: font) } }
                         if canvas.pinnedAt != nil {
                             Image(systemName: "pin.fill").font(.system(size: 9, weight: .semibold)).foregroundStyle(.secondary).help("Pinned")
                         }
                     }
                 }
-                Text("\(canvas.model) · \(Fmt.date(canvas.updated))").font(.ui(11)).foregroundStyle(.secondary).lineLimit(1)
+                Text(Fmt.date(canvas.updated)).font(.ui(11)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 0)
         }
@@ -2461,8 +2547,13 @@ extension Workspace {
             }
             options += allThere(c, have: have, unit: "USDC", recommended: options.isEmpty)
             options.append(topUp(place))
-            return (say("On \(place) there's \(Fmt.num(have)) USDC, and this asks \(Fmt.num(have + short)). Pick a way on the canvas.",
-                        "На \(place) \(Fmt.num(have)) USDC, а нужно \(Fmt.num(have + short)). Выбери на холсте, как быть."), options)
+            return (say("On \(place) there's \(Fmt.num(have)) USDC, and this asks \(Fmt.num(have + short)). Pick a way below.",
+                        "На \(place) \(Fmt.num(have)) USDC, а нужно \(Fmt.num(have + short)). Выбери ниже, как быть."), options)
+        }
+        // «send all USDT on solana to …» with none there: said at once, not a card that fails at the signature.
+        if case .sendToken(_, let token, nil, let net?) = c, held(token, on: net) == 0 {
+            let place = WalletCommand.placeName(net)
+            return (say("There's no \(token.uppercased()) on \(place) to send.", "На \(place) нет \(token.uppercased()) — отправлять нечего."), [topUp(place)])
         }
         let asked: (symbol: String, amount: Decimal, net: String)
         switch c {
@@ -2470,6 +2561,8 @@ extension Workspace {
         case .sellOn(let net, let token, let x?, _): asked = (token, x, net)
         case .crossSwap(let from, let on, _, _, let x?): asked = (from, x, on)
         case .sell(let a, let x?): asked = (a.symbol, x, "solana")
+        // «send 40 USDT on solana to Bybit» with no USDT there: said before a card that could only fail after Touch ID.
+        case .sendToken(_, let token, let x?, let net?): asked = (token, x, net)
         default: return nil
         }
         guard let have = held(asked.symbol, on: asked.net), asked.amount > have else { return nil }
@@ -2480,8 +2573,15 @@ extension Workspace {
             bring = [ChatRouter.Option(title: say("Bring \(Fmt.num(asked.amount - have)) USDC to \(place) first", "Сначала довезти \(Fmt.num(asked.amount - have)) USDC на \(place)"),
                                        comment: (legs + [c.summary]).joined(separator: " → "), command: (legs + [c.summary]).joined(separator: " then "), recommended: true)]
         }
-        return (say("On \(place) there's \(Fmt.num(have, maxFraction: 6)) \(symbol), and this asks \(Fmt.num(asked.amount, maxFraction: 6)). Pick a way on the canvas.",
-                    "На \(place) \(Fmt.num(have, maxFraction: 6)) \(symbol), а нужно \(Fmt.num(asked.amount, maxFraction: 6)). Выбери на холсте, как быть."),
+        // Dollars short on Solana where its USDC can buy them: the buy first, then the same move (it spends what the buy gave).
+        let missing = (asked.amount - have).rounded(2, .up)
+        if symbol != "USDC", Stablecoins.isDollar(symbol), asked.net == "solana", (solana?.usdc ?? 0) >= missing {
+            let buy = "buy \(symbol) on solana for \(Fmt.num(missing)) USDC"
+            bring = [ChatRouter.Option(title: say("Buy \(Fmt.num(missing)) \(symbol) for USDC first", "Сначала купить \(Fmt.num(missing)) \(symbol) за USDC"),
+                                       comment: buy + " → " + c.summary, command: buy + " then " + c.summary, recommended: true)]
+        }
+        return (say("On \(place) there's \(Fmt.num(have, maxFraction: 6)) \(symbol), and this asks \(Fmt.num(asked.amount, maxFraction: 6)). Pick a way below.",
+                    "На \(place) \(Fmt.num(have, maxFraction: 6)) \(symbol), а нужно \(Fmt.num(asked.amount, maxFraction: 6)). Выбери ниже, как быть."),
                 bring + allThere(c, have: have, unit: symbol, recommended: bring.isEmpty) + [topUp(place)])
     }
 
@@ -2509,6 +2609,8 @@ extension Workspace {
         case ("solana", "SOL"): return solana?.sol
         case ("base", "ETH"): return base?.eth
         case ("robinhood", "ETH"): return robinhood?.eth
+        // Solana's read lists every token held: one missing from it is none.
+        case ("solana", _) where solana != nil: return solana?.tokens.first { $0.symbol.uppercased() == s || $0.contract == symbol }?.amount ?? 0
         default: return holdings.first { $0.chain == net && ($0.symbol.uppercased() == s || $0.contract.lowercased() == symbol.lowercased()) }?.amount
         }
     }
@@ -2989,8 +3091,8 @@ extension Workspace {
         // Asked for more than is there («swap 150» with 100): the facts in a line and the ways on as cards, not a chain of
         // moves drawn at once. A step of a chain or a task — already chosen — goes on as it was.
         if !quiet, TaskRun.automation == nil, let short = shortChoices(command) {
-            withAnimation(StudioView.spring) { nextSteps = NextSteps(options: short.options, userText: "", found: [], canvas: canvasID) }
             reply(short.line, note: note)
+            offerCards(short.options)
             return
         }
         // A recurring buy can run two ways: both are offered, in a line each, before either starts. Jupiter's DCA named
@@ -3031,8 +3133,8 @@ extension Workspace {
         let app = WalletCommand.schedule(asset, usdc: usdc, days: days)
         dcaChoice = app
         let each = Fmt.num(total / Decimal(rounds))
-        withAnimation(StudioView.spring) {
-            nextSteps = NextSteps(options: [
+        reply(say("\(asset.symbol) over time can be bought two ways — pick one below.", "Покупать \(asset.symbol) регулярно можно двумя способами — выбери ниже."), note: note)
+        offerCards([
                 ChatRouter.Option(title: say("Jupiter DCA: \(rounds) × \(each) USDC → \(asset.symbol)", "Jupiter DCA: \(rounds) × \(each) USDC → \(asset.symbol)"),
                                   comment: say("On-chain: \(Fmt.num(total)) USDC goes in now and Jupiter buys every \(period), even with the app closed. From 100 USDC, 50 a round; 0.1% fee; cancel returns the rest.",
                                                "На блокчейне: \(Fmt.num(total)) USDC вносятся сразу, Jupiter покупает раз в \(periodRU), даже при закрытом приложении. От 100 USDC, по 50 за раз; комиссия 0.1%; отмена вернёт остаток."),
@@ -3041,9 +3143,7 @@ extension Workspace {
                                   comment: say("The money stays in your wallet until each buy; no minimum. Buys while ihatecrypto runs (Keep running), each signed with Touch ID or the automation wallet.",
                                                "Деньги лежат у тебя до каждой покупки; минимума нет. Покупает, пока ihatecrypto работает (Keep running), каждую покупку подписывает Touch ID или кошелёк автоматизации."),
                                   command: app.summary, recommended: usdc < WalletCommand.jupiterDCAMinimum / 2),
-            ], userText: "", found: [], canvas: canvasID)
-        }
-        reply(say("\(asset.symbol) over time can be bought two ways — pick one on the canvas.", "Покупать \(asset.symbol) регулярно можно двумя способами — выбери на холсте."), note: note)
+        ])
     }
 
     /// How a card waiting for Confirm is dropped, after the line that lays it out. With a model a question about the

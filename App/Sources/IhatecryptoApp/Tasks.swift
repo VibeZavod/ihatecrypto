@@ -1,6 +1,7 @@
 import AppKit
 import IhatecryptoCore
 import SignerAPI
+import SolanaChain
 import SwiftUI
 import TradeExecution
 import WalletCore
@@ -112,11 +113,11 @@ extension Workspace {
         if let automation, failed, let address = automation.solana, let sol = try? await Solana.balance(owner: address).sol, sol < TaskRun.solFloor {
             reply(say("The automation wallet «\(automation.label)» has \(Fmt.num(sol, maxFraction: 6)) SOL — too little for Solana’s fees and the accounts a move opens. Send it 0.01 SOL and the next run goes through.",
                       "На кошельке автоматизации «\(automation.label)» \(Fmt.num(sol, maxFraction: 6)) SOL — мало для комиссий Solana и счетов, которые открывает движение. Отправь на него 0.01 SOL, и следующий запуск пройдёт."))
-            nextSteps = NextSteps(options: [
+            offerCards([
                 ChatRouter.Option(title: say("Send 0.01 SOL to \(automation.label)", "Отправить 0.01 SOL на \(automation.label)"),
                                   comment: say("From your main wallet: Confirm and Touch ID.", "С основного кошелька: Confirm и Touch ID."),
                                   command: "send 0.01 SOL to \(automation.label)", recommended: true),
-            ], userText: "", found: [], canvas: canvasID)
+            ])
         }
         // The Schedule canvas opens the canvas it ran on (saved by now).
         if let i = activities.lastIndex(where: { $0.id == run }) { activities[i].canvas = canvasID }
@@ -246,6 +247,24 @@ extension Workspace {
     /// spread 5», «move 100 then lend 100» spend what arrived, and nothing has to be held back for the fee (a dollar was:
     /// «переведи 100 и положи в aave» lent 99 and left a dollar on Arbitrum). A bigger gap is left for the step to refuse.
     func fittedToArrival(_ step: String) async -> String {
+        // «buy USDT on solana for 750 USDC then send 750 USDT on solana to Bybit» (or «then lend 750 USDT»): the swap gave
+        // 749.8 USDT, and the step takes what it gave rather than failing on the cents (or the model writing «all», which
+        // takes what was there before).
+        let token: (symbol: String, asked: Decimal)? = switch WalletCommand.parse(step) {
+        case .sendToken(_, let t, let x?, "solana"?): (t, x)
+        case .lendDeposit(let t, let x?) where !["USDC", "SOL"].contains(t.uppercased()): (t, x)
+        default: nil
+        }
+        // The mint from the dollar coins' table or the tokens already read, then one light read of that account.
+        let mint = token.flatMap { t in
+            Stablecoins.byNetwork["solana"]?.first { $0.symbol.uppercased() == t.symbol.uppercased() }?.address
+                ?? solana?.tokens.first { $0.symbol.uppercased() == t.symbol.uppercased() || $0.contract == t.symbol }?.contract
+        }
+        if let token, token.asked > 0, let mint, let have = try? await SolanaRPC().ownedAmount(owner: solanaAddress, mint: mint),
+           have < token.asked, token.asked - have <= token.asked * Decimal(string: "0.02")!, let c = WalletCommand.parse(step) {
+            let fitted = c.with(amount: have)
+            return WalletCommand.parse(fitted.summary) == fitted ? fitted.summary : step
+        }
         guard let c = WalletCommand.parse(step), let net = Self.spends(c), let asked = c.editableAmount, asked > 0 else { return step }
         let there: Decimal?
         if net == "solana" {
@@ -359,11 +378,11 @@ extension Workspace {
                       + "keep only that there; if this Mac's keychain is lost, so is what's on it.",
                       "Кошелёк автоматизации создан: задачи по расписанию тратят только с него, без Touch ID. Положи туда их бюджет — "
                       + "и только его: если связка ключей этого Мака пропадёт, пропадёт и то, что на нём."), note: note)
-            nextSteps = NextSteps(options: [
+            offerCards([
                 ChatRouter.Option(title: say("Top up 20 USDC", "Пополнить на 20 USDC"),
                                   comment: say("From your wallet on Solana: Touch ID once for the new address.", "С твоего кошелька на Solana: Touch ID один раз на новый адрес."),
                                   command: "send 20 USDC to \(w.label)", recommended: true),
-            ], userText: "", found: [], canvas: canvasID)
+            ])
         } catch {
             reply(say("No automation wallet: ", "Кошелёк автоматизации не создан: ") + error.localizedDescription, note: note)
         }

@@ -71,28 +71,24 @@ extension Workspace {
     }
 
     /// What the wallet holds of an asset on every network («xyz:SPCX» is SPCX on Robinhood Chain too), with its cost:
-    /// on Solana what the app's swaps recorded, on an EVM network what the wallet paid on-chain (Holdings.costBasis).
+    /// what the app's buys recorded or what the wallet paid on-chain, on any network (Workspace.cost).
     func heldLines(_ coin: String?) async -> [HeldLine] {
         guard let coin else { return [] }
         let symbol = (coin.split(separator: ":").last.map(String.init) ?? coin).uppercased()
         var found: [(network: String, contract: String, amount: Decimal, usd: Decimal?)] = []
-        if symbol == "SOL", let sol = solana?.sol, sol > 0 {
-            found.append(("solana", "So11111111111111111111111111111111111111112", sol, markets["SOL"].map { $0.markPx * sol }))
+        for c in coinLines where c.coin == symbol {
+            found.append((c.chain, c.chain == "solana" ? CostBasis.wsol : "native", c.held, markets[c.coin].map { $0.markPx * c.held }))
         }
         for s in robinhood?.stocks ?? [] where s.symbol.uppercased() == symbol && s.amount > 0 {
             found.append(("robinhood", s.address, s.amount, s.price.map { $0 * s.amount }))
         }
         for h in holdings where h.symbol.uppercased() == symbol && h.amount > 0 { found.append((h.chain, h.contract, h.amount, h.usd)) }
-        var out: [HeldLine] = []
-        for f in found {
-            // On an EVM network: what ihatecrypto's own buys recorded, or what the chain shows, whichever covers more of it
-            // (a Relay buy pays in one transaction and delivers in another: only the record knows its cost).
-            let chain = f.network == "solana" || !isEVMAddress(hlAddress) ? nil : await Holdings.costBasis(f.network, address: hlAddress, contract: f.contract)
-            let cost = f.network == "solana" ? costBasis[f.contract]
-                : [costBasis["\(f.network):\(f.contract.lowercased())"], chain].compactMap { $0 }.filter { $0.amount > 0 }.max { $0.amount < $1.amount }
-            out.append(HeldLine(symbol: symbol, network: f.network, amount: f.amount, usd: f.usd, cost: cost))
+        // What the app's buys recorded or what the chain shows, whichever covers more of it (Workspace.cost).
+        await loadChainCosts()
+        return found.map { f in
+            HeldLine(symbol: symbol, network: f.network, amount: f.amount, usd: f.usd,
+                     cost: cost(f.network == "solana" ? f.contract : "\(f.network):\(f.contract.lowercased())"))
         }
-        return out
     }
 
     /// The periods asked for; every one by default, so the board's period switch needs no new request.
@@ -189,9 +185,9 @@ struct PnLBoard: View {
                 } else {
                     VStack(alignment: .leading, spacing: 3) {
                         Text("Trading · \(r.period.title)").font(.ui(10)).foregroundStyle(.secondary)
-                        Text(signed(r.trading)).font(.ui(30, .heavy)).monospacedDigit()
+                        Text(masked(signed(r.trading))).font(.ui(30, .heavy)).monospacedDigit()
                             .foregroundStyle(r.trading < 0 ? Brand.loss : Brand.profit)
-                        Text("realized after fees \(signed(r.realized)) · funding \(signed(r.funding)) · \(r.closedTrades) closed, \(r.wins) in profit")
+                        Text(masked("realized after fees \(signed(r.realized)) · funding \(signed(r.funding))") + " · \(r.closedTrades) closed, \(r.wins) in profit")
                             .font(.ui(10)).foregroundStyle(.secondary)
                     }
                     line("Open positions now", r.unrealized, detail: "not realized yet")
@@ -215,7 +211,7 @@ struct PnLBoard: View {
                                 Text(IntentParser.pretty(a.coin)).font(.ui(13, .semibold)).lineLimit(1)
                                 Text("\(a.closedTrades) closed").font(.ui(10)).foregroundStyle(.secondary)
                                 Spacer(minLength: 4)
-                                Text(signed(a.realized)).font(.ui(13, .bold)).monospacedDigit()
+                                Text(masked(signed(a.realized))).font(.ui(13, .bold)).monospacedDigit()
                                     .foregroundStyle(a.realized < 0 ? Brand.loss : Brand.profit)
                             }
                         }
@@ -242,9 +238,9 @@ struct PnLBoard: View {
         let worth = state.held.compactMap(\.usd).reduce(0, +), gain = priced.reduce(Decimal(0)) { $0 + $1.usd }
         return VStack(alignment: .leading, spacing: 3) {
             Text("Held now · every network").font(.ui(10)).foregroundStyle(.secondary)
-            Text(priced.isEmpty ? Fmt.usd(worth) : signed(gain)).font(.ui(30, .heavy)).monospacedDigit()
+            Text(masked(priced.isEmpty ? Fmt.usd(worth) : signed(gain))).font(.ui(30, .heavy)).monospacedDigit()
                 .foregroundStyle(priced.isEmpty ? Color.primary : gain < 0 ? Brand.loss : Brand.profit)
-            Text("worth \(Fmt.usd(worth))" + (priced.isEmpty ? " · cost unknown" : " · bought for \(Fmt.usd(priced.reduce(Decimal(0)) { $0 + $1.paid }))"))
+            Text(masked("worth \(Fmt.usd(worth))" + (priced.isEmpty ? " · cost unknown" : " · bought for \(Fmt.usd(priced.reduce(Decimal(0)) { $0 + $1.paid }))")))
                 .font(.ui(10)).foregroundStyle(.secondary)
         }
     }
@@ -258,16 +254,16 @@ struct PnLBoard: View {
                     TokenLogo(name: HoldingRow.chainLogos[h.network] ?? "sol", size: 22)
                     VStack(alignment: .leading, spacing: 1) {
                         Text("\(h.symbol) · \(h.place)").font(.ui(13, .semibold)).lineLimit(1)
-                        Text("\(Fmt.num(h.amount, maxFraction: 6))\(h.usd.map { " ≈ \(Fmt.usd($0))" } ?? "")"
-                             + (h.pnl.map { " · bought for \(Fmt.usd($0.paid))\(h.partly ? " (\(Fmt.num(h.cost!.amount, maxFraction: 6)) of it)" : "")" } ?? " · cost unknown"))
+                        Text(masked("\(Fmt.num(h.amount, maxFraction: 6))\(h.usd.map { " ≈ \(Fmt.usd($0))" } ?? "")"
+                             + (h.pnl.map { " · bought for \(Fmt.usd($0.paid))\(h.partly ? " (\(Fmt.num(h.cost!.amount, maxFraction: 6)) of it)" : "")" } ?? " · cost unknown")))
                             .font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer(minLength: 4)
                     if let p = h.pnl {
-                        Text("\(signed(p.usd)) · \(PnLBoard.percent(p.pct))").font(.ui(13, .bold)).monospacedDigit()
+                        Text(masked("\(signed(p.usd)) · \(PnLBoard.percent(p.pct))")).font(.ui(13, .bold)).monospacedDigit()
                             .foregroundStyle(p.usd < 0 ? Brand.loss : Brand.profit)
                     } else {
-                        Text(h.usd.map(Fmt.usd) ?? "no price").font(.ui(13, .bold)).monospacedDigit()
+                        Text(masked(h.usd.map(Fmt.usd) ?? "no price")).font(.ui(13, .bold)).monospacedDigit()
                     }
                 }
             }
@@ -286,10 +282,10 @@ struct PnLBoard: View {
         HStack(alignment: .firstTextBaseline) {
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.ui(13, .semibold))
-                Text(detail).font(.ui(10)).foregroundStyle(.secondary)
+                Text(masked(detail)).font(.ui(10)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
-            Text(signed(value)).font(.ui(15, .bold)).monospacedDigit().foregroundStyle(value < 0 ? Brand.loss : Brand.profit)
+            Text(masked(signed(value))).font(.ui(15, .bold)).monospacedDigit().foregroundStyle(value < 0 ? Brand.loss : Brand.profit)
         }
     }
 
@@ -298,7 +294,7 @@ struct PnLBoard: View {
             Text(label.uppercased()).font(.ui(10, .heavy)).tracking(0.6).foregroundStyle(.secondary).frame(width: 46, alignment: .leading)
             Text("\(t.long ? "Long" : "Short") \(IntentParser.pretty(t.coin)) · \(Fmt.date(t.closed))").font(.ui(10)).lineLimit(1)
             Spacer(minLength: 4)
-            Text(signed(t.realized)).font(.ui(13, .bold)).monospacedDigit().foregroundStyle(t.realized < 0 ? Brand.loss : Brand.profit)
+            Text(masked(signed(t.realized))).font(.ui(13, .bold)).monospacedDigit().foregroundStyle(t.realized < 0 ? Brand.loss : Brand.profit)
         }
     }
 }

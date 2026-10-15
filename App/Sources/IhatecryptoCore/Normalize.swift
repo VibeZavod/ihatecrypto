@@ -28,8 +28,9 @@ public enum ChatRouter {
         public init(_ tool: String, _ arg: String = "") { self.tool = tool; self.arg = arg }
     }
 
-    /// A way to go on, offered as a card: what it is, the model's comment on it, and the English form it runs.
-    public struct Option: Equatable, Sendable {
+    /// A way to go on, offered as a card: what it is, the model's comment on it, and the English form it runs. An answer
+    /// to the model's question («clarify») may have no command: picked, its title goes back to the model as their reply.
+    public struct Option: Equatable, Sendable, Codable {
         public let title: String
         public let comment: String
         public let command: String
@@ -136,7 +137,7 @@ public enum ChatRouter {
       buy token <0xCONTRACT> on <base|arbitrum|polygon|ethereum|optimism|bnb|hyperevm> for N USDC | sell [N] tokens <0xCONTRACT> on <base|arbitrum|polygon|ethereum|optimism|bnb|hyperevm>
       buy <TICKER> on hyperliquid spot for N USDC | sell [N|all] <TICKER> on hyperliquid spot   (HYPE and the other tokens of Hyperliquid's spot book, from 10 USDC; «купи HYPE на споте хайперликвида на 15$»; a leveraged trade is long/short, not spot)
       sweep dust [under $N]   (leftover tokens worth under $N — 5 when not said — on Base, Arbitrum and Polygon, each sold for USDC on its own network; «собери пыль», «convert small balances to USDC»)
-      swap <N|all> <ETH|TICKER|0xCONTRACT> for <ETH|TICKER|0xCONTRACT> on <base|arbitrum|polygon|ethereum|optimism|bnb|hyperevm>   (one token for another on that network, straight on Uniswap — no USDC in the middle; ETH is the network's own coin, POL on Polygon, BNB on BNB Chain, HYPE on HyperEVM (there it's the coin of that network, not Hyperliquid's spot book); on HyperEVM the tokens are UBTC, UETH, USOL, kHYPE, USDT0 or a contract; «поменяй 0.01 ETH на AERO на base» = swap 0.01 ETH for AERO on base, «обменяй весь DEGEN на ETH на бейсе» = swap all DEGEN for ETH on base; USDC.e is the bridged USDC on Polygon and Arbitrum — «поменяй USDC.e на нормальный USDC на полигоне» = swap all USDC.e for USDC on polygon; with USDC on one side and any other token on the other it's the buy or sell form above, except the network's own coin, which stays this swap: «swap 2 USDC for ETH on base», «swap 0.001 ETH for USDC on arbitrum», «swap 2 USDC for POL on polygon»)
+      swap <N|all> <ETH|TICKER|0xCONTRACT> for <ETH|TICKER|0xCONTRACT> on <base|arbitrum|polygon|ethereum|optimism|bnb|hyperevm>   (one token for another on that network, straight on Uniswap — no USDC in the middle; ETH is the network's own coin, POL on Polygon, BNB on BNB Chain, HYPE on HyperEVM (there it's the coin of that network, not Hyperliquid's spot book); on HyperEVM the tokens are UBTC, UETH, USOL, kHYPE, USDT0 or a contract; «поменяй 0.01 ETH на AERO на base» = swap 0.01 ETH for AERO on base, «обменяй весь DEGEN на ETH на бейсе» = swap all DEGEN for ETH on base; USDC.e is the bridged USDC on Polygon and Arbitrum — «поменяй USDC.e на нормальный USDC на полигоне» = swap all USDC.e for USDC on polygon; with USDC on one side and any other token on the other it's the buy or sell form above, except the network's own coin, which stays this swap: «swap 2 USDC for ETH on base», «swap 0.001 ETH for USDC on arbitrum», «swap 2 USDC for POL on polygon»; «купи эфира на 10$ на арбитруме» = swap 10 USDC for ETH on arbitrum — the coin itself, never WETH unless they say WETH)
       swap <N|all> <SOL|TICKER|MINT> for <SOL|TICKER|MINT> on solana   (one Solana token for another through Jupiter, no USDC in the middle; «поменяй 0.1 SOL на BONK» = swap 0.1 SOL for BONK on solana; USDC on a side is the buy or sell form)
       swap <N> <NEAR|TICKER> for <TICKER> on near   (one NEAR token for another through NEAR Intents: AURORA, SWEAT, RHEA, stNEAR, USDC, USDT…; «поменяй 1 NEAR на AURORA»; to or from another network it's the swap across above, through NEAR Intents too)
       swap <N|all> <TICKER> for <TICKER> on hyperliquid spot   (one spot token for another on Hyperliquid's book: a sale and a buy, from 10 USDC; «поменяй HYPE на PURR на споте»)
@@ -145,11 +146,11 @@ public enum ChatRouter {
     STABLECOINS — the five biggest (USDT, USDC, USDS, USDe, DAI), each by its ticker on every network it's on, all counted as dollars:
       \(Stablecoins.brief)
       They trade with the forms above: «поменяй 5 USDC на USDe на base» = buy USDe on base for 5 USDC from base; «поменяй весь DAI на USDC на полигоне» = sell all DAI on polygon and keep the USDC there;
-      neither side USDC: «USDT в DAI в эфире» = swap 2 USDT for DAI on ethereum; Solana: «купи USDT на 3 USDC» = buy USDT on solana for 3 USDC; Hyperliquid (USDT there is USDT0, from 10 USDC):
+      neither side USDC: «USDT в DAI в эфире» = swap 2 USDT for DAI on ethereum; Solana: «купи USDT на 3 USDC» = buy USDT on solana for 3 USDC (with no network named, a swap happens on the network holding the most of what it spends — the balances say which — with no question about the network); Hyperliquid (USDT there is USDT0, from 10 USDC):
       «купи USDT0 на споте хайпера на 11$» = buy USDT0 on hyperliquid spot for 11 USDC; Tempo: «поменяй 2 USDC на USDT в темпо» = swap 2 USDC for USDT0 on tempo; NEAR: «USDC в USDT на NEAR» = swap 2 USDC for USDT on near.
       swap <N|all> <SOL|ETH|NEAR|TICKER|0xCONTRACT> on <solana|base|arbitrum|polygon|ethereum|optimism|bnb|hyperevm|robinhood|near> for <SOL|ETH|NEAR|TICKER|0xCONTRACT> on <another of them>   (a token on one network for a token on another in one signature, through Relay; «обменяй 0.1 SOL на ETH в арбитруме» = swap 0.1 SOL on solana for ETH on arbitrum, «AERO с бейса в SOL на солане» = swap all AERO on base for SOL on solana; SOL is always on solana)
     ANY SOLANA TOKEN BY ITS MINT (Jupiter; only while Safe search is off): buy token <MINT> for N USDC | sell [N] tokens <MINT>
-    EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault") | withdraw [N] <USDC|SOL> from the vault
+    EARNING: lend [N] <USDC|SOL|USDT> (Jupiter Lend, "the vault"; USDT too) | withdraw [N] <USDC|SOL|USDT> from the vault
       deposit N <USDC|SOL> to kamino | withdraw [N] <USDC|SOL> from kamino   (Kamino Lend and Kamino's vaults, deposits made on kamino.com too) | stake N SOL | unstake N JitoSOL
       deposit N USDC to HLP | withdraw [N] USDC from HLP | lend N USDC on Aave [on <Base|Arbitrum|Polygon|Ethereum>] | withdraw [N] USDC from Aave [on <network>]
       deposit N USDC into Morpho [on <Base|Arbitrum|Ethereum>] | withdraw [N] USDC from Morpho [on <network>]   (no network = Base; name it only when the user does)
@@ -180,7 +181,7 @@ public enum ChatRouter {
       send N USDC to <NAME from the address book> [on <network the user names — any, Ethereum mainnet too; they decide about the fee>] | top up (where to send money into ihatecrypto)
       send N NEAR to <NAME from the address book> | send all NEAR to <NAME> | close the NEAR account into <NAME>
       send N SOL to <NAME from the address book>
-      send <N|all> <TICKER, 0xCONTRACT or MINT> on <solana|base|arbitrum|polygon|ethereum|robinhood|tempo> to <NAME from the address book>
+      send <N|all> <TICKER, 0xCONTRACT or MINT> on <solana|base|arbitrum|polygon|ethereum|robinhood|tempo> to <NAME from the address book>   (USDT and every stablecoin too: «send 750 USDT on solana to Bybit USDT»)
       send <N> <BTC|ZEC|TRX|USDT|XRP|DOGE|SUI|USDC> [on <bitcoin|zcash|tron|xrp|dogecoin|sui>] to <NAME from the address book>   (a coin on a network ihatecrypto has no wallet on, bought with USDC on the way through NEAR Intents and paid to that saved address — an exchange's deposit address; «отправь 0.001 BTC на Binance» = send 0.001 BTC to Binance, «20 USDT в троне на Binance» = send 20 USDT on tron to Binance; the address is saved first: «save bc1q… as Binance BTC», «save T… as Binance USDT on tron», an XRP exchange address with its destination tag as the memo)
       receive <N> <SUI|USDC|BTC|ZEC|USDT|TRX|XRP|DOGE> from <sui|bitcoin|zcash|tron|xrp|dogecoin>   (money coming in from a network ihatecrypto has no wallet on: NEAR Intents opens a deposit address there for an hour and what arrives lands as USDC on Solana; «получи 50 USDC с Sui» = receive 50 USDC from sui, «хочу завести 0.01 BTC с биткоина» = receive 0.01 BTC from bitcoin)
         (any token the wallet holds, AS IT IS, on that same network — no swap, no bridge: memecoins, stock tokens (AI, TSLA…), Morpho's,
@@ -230,7 +231,7 @@ public enum ChatRouter {
     NOW, IN STEPS (what no single form does, built from the forms above, up to 5): COMMAND then COMMAND [then COMMAND…]
       («выведи 5 с хайпера и положи в камино» = withdraw 5 USDC to Solana then deposit 5 USDC to kamino). The user confirms the chain once, at its first
       money move, and each step after it runs by itself once the one before went through. Moving money between places costs a
-      bridge fee (cents from Base, Arbitrum or Polygon, up to about a dollar from Ethereum), and a step that spends what an earlier one brought keeps the same amount (withdraw 5 → deposit 5): ihatecrypto spends what actually arrived when the fee leaves it a few cents short. Never hold money back «for the fee» — it stays lying on that network. A step no form can do makes the whole request "clarify".
+      bridge fee (cents from Base, Arbitrum or Polygon, up to about a dollar from Ethereum), and a step that spends what an earlier one brought keeps the same amount (withdraw 5 → deposit 5): ihatecrypto spends what actually arrived when the fee leaves it a few cents short. Never hold money back «for the fee» — it stays lying on that network. Never «all» for what an earlier step brought: «all» also takes what was there before. Dollars swapped for dollars keep the number, and each step names its network as its form does («поменяй 40 USDC на USDT на солане и отправь Маше» = buy USDT on solana for 40 USDC then send 40 USDT on solana to Masha; the send goes out with what the swap gave). A coin bought for USDC has no number until it lands: the buy alone with "continue", and the next step once you hear what arrived. A step no form can do makes the whole request "clarify".
     MEMORY (only when they ask you to keep something in mind from now on — a preference, a rule, their strategy):
       remember: <THEIR OWN WORDS> | forget: <WORDS|all> | what do you remember
       (their words copied as written, never your summary: «запомни, что я не трогаю Ethereum mainnet» = remember: я не трогаю
@@ -395,7 +396,9 @@ public enum ChatRouter {
     - "command": they want ihatecrypto to do something it can do. "command" is ONE line in exactly one of these English forms:
     \(forms)
       Pick the form that means exactly what they asked: the same action, the same direction, the same place. Never swap in a \
-      different action because it looks close — moving money the wrong way is the worst mistake you can make.
+      different action because it looks close — moving money the wrong way is the worst mistake you can make. \
+      Do only what they ask for: a step this message doesn't ask for — sending the money on, depositing it — guessed from \
+      earlier in the chat (an address just saved, a past move) goes into "options" as a card they can pick (what they asked, then that step), never into the command.
       Resolve references from the chat: «да», «давай», «do it», «ok» after your own suggestion or question is that suggestion \
       (after cards you offered, the recommended one; «второй», «the first one» by their order); «то же для ETH», \
       «а теперь половину», «покажи его чарт» build on the last request.
@@ -425,16 +428,24 @@ public enum ChatRouter {
       and your own take: what stands out, the risk, what you'd do — like a sharp friend who trades. The details go on the \
       canvas ("show"), so don't recite every number. Every number comes from the lookups or the context; never invent one. \
       The decision is theirs; never promise an outcome.
-    - "clarify": ambiguous, or no single form does it. "reply" in the reply language, one or two short sentences: say what is missing, or \
-      offer the closest way ihatecrypto can do it as a concrete next step the user can accept with «yes» — e.g. «ihatecrypto can't \
-      stake ETH; it can lend USDC or stake SOL. Stake 0.1 SOL?»
+    - "clarify": a question to them, whenever you aren't sure what they want: two readings would move different money, or a \
+      detail that decides it is missing and nothing in the chat, the balances, the address book or the lookups answers it — which \
+      coin, how much, which network, from where, to whom, how much risk. Ask rather than guess with their money; but never ask \
+      what you can look up or what a clear message already says. Also when no single form does it: say which part ihatecrypto \
+      can't do. "reply" in the reply language: one short question about the one thing that matters most, with what you already \
+      know if it helps («USDT на какой сети — Solana или Base?», «ihatecrypto can't stake ETH; it can lend USDC or stake SOL. \
+      Which one?»). Its "options" are the answers, 2–4, shown under the question in the chat: an answer that settles it is the \
+      whole request with that answer filled in, as its "command" (the likeliest "recommended"); an answer that only steers what \
+      you do next — their goal, how long the money can sit, how much risk they're fine with — has no "command": picking it sends \
+      its "title" back to you as their reply, and you go on from there.
     - "show": one command that opens a block on the canvas beside the reply. An answer about one token, one market or \
       the rates always shows its block: chart <ASSET> [week|month] | \
       chart token <ADDRESS> on <chain> (use the address and chain the token lookup returned) | what's moving | where to keep <USDC|SOL>. \
       A general question (a term, how something works) shows nothing.
     - "options" (with "chat" and "clarify"; leave them out for greetings and thanks): 2–4 ways to go on, shown as cards the user \
-      can pick: [{"title": "a short label in the reply language", "comment": "one sentence in the reply language: what it gives \
-      and the catch, with a number where it helps", "command": "one line in the English forms above", "recommended": true}]. \
+      can pick, under the reply in the chat: [{"title": "a short label in the reply language", "comment": "one sentence in the \
+      reply language: what it gives and the catch, with a number where it helps", "command": "one line in the English forms \
+      above", "recommended": true}] (a "clarify" answer may leave "command" out, see above). \
       Mark exactly one "recommended": the one you'd pick for them. Only forms ihatecrypto has; amounts that fit their balances; \
       a money move among them still waits for their Confirm. Every card does something: «leave it as it is» is not a card, nor one that repeats what the plan already has, \
       and the app's own commands (new canvas, clear the plan, lock) never are. Don't offer what "show" already opens: go one step further \
@@ -457,7 +468,7 @@ public enum ChatRouter {
         check: (@Sendable (String) async -> String?)? = nil,
         draft: (@Sendable (String) -> Void)? = nil
     ) async throws -> Reading {
-        var asked: [Lookup] = [], found: [String] = [], corrected: String?
+        var asked: [Lookup] = [], found: [String] = [], corrected: String?, askedUser = false, rethink = false
         var brief = brief(text, context)
         // A pasted contract or mint is looked up before the model reads the message: one round less.
         if let address = pastedAddress(text) {
@@ -470,7 +481,9 @@ public enum ChatRouter {
         var messages = [LLMMessage(.system, system), LLMMessage(.user, brief)]
         for round in 0...rounds {
             // An answer's words show while the model still writes them (a chat or clarify reply; never a command's).
-            let full = try await client.stream(LLMRequest(model: model, messages: messages, wantsJSON: true)) { text in
+            // After it was told its command can't run or doesn't match, the model thinks first (measured on GPT 6 Luna: the
+            // quick answer gave up with a made-up limit — «the send form can't send USDT» — where a thought-out one didn't).
+            let full = try await client.stream(LLMRequest(model: model, messages: messages, wantsJSON: true, thinking: rethink)) { text in
                 if let draft, let words = partialReply(text) { draft(words) }
             }
             // A model sometimes writes its lookup and then guesses the answer after it: only the first object counts.
@@ -490,10 +503,15 @@ public enum ChatRouter {
             switch next {
             case .done(var reading):
                 if let markets, round < rounds, case .command(let c) = reading.route, let bad = unparsed(c, markets: markets) {
+                    // With the forms its verb has, as ihatecrypto reads them: told only «no form reads it», a model took «buy USDT
+                    // for 750 USDC» (its network left out) for «USDT can't be bought» and offered «buy SOL for 750 USDC».
+                    let near = forms(for: bad)
+                    rethink = true
                     messages.append(LLMMessage(.assistant, reply))
-                    messages.append(LLMMessage(.user, "«\(bad)» can't run: no form reads it, or it names a market Hyperliquid doesn't have. Answer again, as one JSON object: "
-                                               + "the forms that do it (steps joined by « then »), or \"clarify\" saying plainly which part ihatecrypto "
-                                               + "can't do, with the closest ways it can as options."))
+                    messages.append(LLMMessage(.user, "«\(bad)» can't run as written: no form reads it — a word or the network left out, or a market Hyperliquid "
+                                               + "doesn't have. " + (near == forms ? "" : "The forms with its verb, exactly as ihatecrypto reads them:\n\(near)\n")
+                                               + "Answer again, as one JSON object: the same request in the forms that do it (steps joined by « then »), or "
+                                               + "\"clarify\" saying plainly which part ihatecrypto can't do, with the closest ways it can as options."))
                     continue
                 }
                 // A «confirm» signs money: the second reader checks it like a command.
@@ -505,10 +523,21 @@ public enum ChatRouter {
                 if let check, let c = checked, let why = await check(c) {
                     if corrected == nil, round < rounds {
                         corrected = why
+                        rethink = true
                         messages.append(LLMMessage(.assistant, reply))
                         messages.append(LLMMessage(.user, "A second reader checked «\(c)» against the message and disagrees: \(why) "
                                                    + "Read the message again and answer, as one JSON object: the command that does exactly what they "
                                                    + "asked, or \"clarify\" if it really can be read two ways."))
+                        continue
+                    }
+                    // Still in doubt after a second try: a question to the user, not a third guess with their money.
+                    if !askedUser, round < rounds {
+                        askedUser = true
+                        messages.append(LLMMessage(.assistant, reply))
+                        messages.append(LLMMessage(.user, "The second reader still disagrees with «\(c)»: \(why) Don't guess with their money: "
+                                                   + "answer \"clarify\" — one short question in the reply language about the one thing you can't tell "
+                                                   + "(what to buy or move, how much, from where, to whom, which network), with each way they may have "
+                                                   + "meant as a card in \"options\" (the likeliest recommended), so they answer with a tap or a word."))
                         continue
                     }
                     reading.doubt = why
@@ -565,12 +594,13 @@ public enum ChatRouter {
     /// A second reading by a model: does the command do what the message asks? nil when it does, else why not (in the
     /// reply language). For when Jev isn't connected; the same model reading again, with the forms spelled out, still
     /// catches a number put in the wrong role («увеличь до 5 USDC» written as risk $5).
-    public static func verify(_ text: String, command: String, context: Context, client: any LLMClient, model: String) async throws -> String? {
+    public static func verify(_ text: String, command: String, context: Context, client: any LLMClient, model: String,
+                              markets: Set<String> = []) async throws -> String? {
         let ask = brief(text, context) + """
 
 
         Another assistant read the message and wrote this command, in the app's English forms: «\(command)»
-        What ihatecrypto does and how money moves:
+        \(planReading(command, plan: context.plan, markets: markets))What ihatecrypto does and how money moves:
         \(places)
         The forms and what they mean:
         \(forms)
@@ -579,14 +609,21 @@ public enum ChatRouter {
         A command ending in «\(firstStep)» only has to be the right first step: what the request asks after it comes later.
         Check it like a careful second reader: the same action, direction, place and asset as asked; each number the user \
         gave kept, in the same role (money put into a trade «N USDC» vs the loss at the stop «risk $N»; percent vs dollars; \
-        a price vs a percent); nothing they didn't ask for. Read a typo as the word it most likely is in a wallet \
+        a price vs a percent); nothing they didn't ask for: every step is asked for in this message, or is what its «да», \
+        «их», «туда», «то же» points to — a send or a deposit this message doesn't ask for, taken from earlier in the chat (an \
+        address they just saved, a past move), doesn't match even if they might want it. Read a typo as the word it most likely is in a wallet \
         («подай 0,01 сол» is «продай», «выеди» is «выведи») and flag only a real difference in meaning. A follow-up («да», «второй», «то же для ETH») is read against the \
-        recent chat. Numbers they didn't give may be missing: the app fills them by its rules or asks. A bridge fee taken off \
-        a later step's amount is fine.
+        recent chat. Numbers they didn't give may be missing: the app fills them by its rules or asks. A later step that \
+        spends what an earlier one brought («them», «it», «the USDT») is right with the same amount (swap 100 USDC for USDT → \
+        send 100 USDT): ihatecrypto spends what actually arrived when a bridge fee or a swap leaves it cents short; «all» there \
+        would also take what was held before. A dollar coin is a dollar: «отправь 750 USDT, купи их» as buy USDT for 750 USDC \
+        then send 750 USDT is the amount they asked.
         Reply with ONE JSON object: {"matches": true} or {"matches": false, "why": "one short sentence in the reply language: \
         what the user asked and what the command does instead"}.
         """
-        let full = try await client.complete(LLMRequest(model: model, messages: [LLMMessage(.user, ask)], wantsJSON: true))
+        // It stands between the model's reading and a card that moves money: it thinks first. Quick, it passed «send 100 USDC
+        // to Bybit USDT» for «переведи 100 на байбит», USDC to an address saved for USDT.
+        let full = try await client.complete(LLMRequest(model: model, messages: [LLMMessage(.user, ask)], wantsJSON: true, thinking: true))
         guard let json = JSONText.object(in: firstObject(in: full) ?? full),
               let a = try JSONSerialization.jsonObject(with: json) as? [String: Any] else { throw LLMError("The checker did not reply with JSON.") }
         let matches = a["matches"] as? Bool ?? (a["matches"].map { "\($0)" } == "true")
@@ -628,7 +665,7 @@ public enum ChatRouter {
         lines.append("Open positions: " + (context.positions.isEmpty ? "none" : context.positions.joined(separator: "; ")))
         if !context.favorites.isEmpty { lines.append("Favorite tokens: " + context.favorites.joined(separator: "; ")) }
         if !context.addressBook.isEmpty {
-            lines.append("Address book, each name with the network it's saved on (a send goes there unless the user names another network: then \"send N USDC to NAME on <network>\" at once, any EVM network, Ethereum mainnet too — the fee is the user's call, the card warns; write only the name): "
+            lines.append("Address book, each name with the network it's saved on (a send goes there unless the user names another network: then the same send with «on <network>» at once — «send N USDC to NAME on <network>», any EVM network, Ethereum mainnet too; the fee is the user's call, the card warns. Any coin is sent with the send forms, not only USDC, and a bare amount («переведи 300 на X») is USDC. A name saved on several networks takes a coin on that coin's own network: SOL goes to the Solana one. Only an exchange's entry that names a coin — «Bybit USDT», «Binance BTC» — is limited to that coin: another coin to it is \"clarify\". In a command write the name alone, never its network in brackets): "
                          + context.addressBook.joined(separator: ", "))
         }
         if !context.balances.isEmpty { lines.append("Balances: " + context.balances.joined(separator: "; ")) }
@@ -659,9 +696,14 @@ public enum ChatRouter {
             guard !wanted.isEmpty else { throw LLMError("The model asked to look something up but named nothing.") }
             return .lookups(wanted)
         }
+        let route = try decode(json)
+        let question = if case .clarify = route { true } else { false }
         let options = (a["options"] as? [[String: Any]] ?? []).compactMap { c -> Option? in
+            // A question's answer may have no command (its title goes back to the model as the reply): only one with no
+            // address in it, since a picked answer is read as their own words.
+            let command = text(c["command"]).map { commandOnly($0.trimmingCharacters(in: clean)) } ?? ""
             guard let title = text(c["title"])?.trimmingCharacters(in: .whitespacesAndNewlines), !title.isEmpty,
-                  let command = text(c["command"]).map({ commandOnly($0.trimmingCharacters(in: clean)) }), !command.isEmpty, command.count <= maxCommand(command),
+                  command.isEmpty ? question && addresses(title).isEmpty : command.count <= maxCommand(command),
                   // A card that opens a new canvas or clears the plan stands in for «do nothing».
                   !["new canvas", "clear the plan", "lock"].contains(command.lowercased().trimmingCharacters(in: CharacterSet(charactersIn: ".! "))) else { return nil }
             return Option(title: title, comment: text(c["comment"])?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "", command: command,
@@ -670,7 +712,7 @@ public enum ChatRouter {
         var show = text(a["show"])?.trimmingCharacters(in: clean)
         // The details belong on the canvas: a chart the model offered as a card opens with the answer instead.
         if show?.isEmpty != false { show = options.first { $0.command.lowercased().hasPrefix("chart") }?.command }
-        var reading = Reading(route: try decode(json), show: show, options: options.filter { $0.command != show })
+        var reading = Reading(route: route, show: show, options: options.filter { $0.command != show })
         reading.quiet = a["quiet"] as? Bool ?? (text(a["quiet"]) == "true")
         reading.continues = a["continue"] as? Bool ?? (text(a["continue"]) == "true")
         reading.next = reading.continues ? text(a["next"]).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.flatMap { $0.isEmpty ? nil : $0 } : nil
@@ -730,11 +772,25 @@ public enum ChatRouter {
         return steps.joined(separator: " ")
     }
 
-    /// A line only the trade plan's parser reads.
+    /// What the code makes of the steps only the trade plan's parser reads, for the second reader: it judges what will
+    /// happen, not the words. «buy USDT for 750 USDC» read well as words while the code drew a 5× ETH long of 750 USDC.
+    static func planReading(_ command: String, plan: String?, markets: Set<String>) -> String {
+        let base = plan.flatMap { try? JSONDecoder().decode(TradeIntent.self, from: Data($0.utf8)) } ?? TradeIntent()
+        let lines = (steps(command) ?? [command]).compactMap { step -> String? in
+            guard onlyPlan(step, markets: markets), let next = IntentParser.apply(step, to: base, markets: markets) else { return nil }
+            return "ihatecrypto's code reads «\(step)» as the trade plan — a leveraged perp on Hyperliquid — which becomes: \(next.started.command)\n"
+        }
+        return lines.joined()
+    }
+
+    /// A line only the trade plan's parser reads: what the app reads first (a note to a folder, memory, a check, a position's
+    /// order) is not. «write to folder UITest: вернуться к SOL в пятницу» names SOL, and the second reader was told it would
+    /// become a SOL long.
     static func onlyPlan(_ s: String, markets: Set<String>) -> Bool {
         WalletCommand.parse(s) == nil && TokenCommand.parse(s) == nil && ChartCommand.parse(s, markets: markets) == nil
             && AlertCommand.parse(s, markets: markets) == nil && PnLCommand.parse(s, markets: markets) == nil && ScheduledTask.parse(s) == nil
-            && AddressBookCommand.parse(s) == nil && IntentParser.apply(s, to: TradeIntent(), markets: markets) != nil
+            && AddressBookCommand.parse(s) == nil && FolderCommand.parse(s) == nil && MemoryCommand.parse(s) == nil
+            && AgentCheck.parse(s) == nil && PositionCommand.parse(s) == nil && IntentParser.apply(s, to: TradeIntent(), markets: markets) != nil
     }
 
     /// The command, or its first step, that no parser reads. nil when every one does.

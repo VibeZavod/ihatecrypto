@@ -54,6 +54,7 @@ extension Workspace {
         exitRules = UserDefaults.standard.data(forKey: Self.scoped("exitRules", id)).flatMap { try? JSONDecoder().decode([String: ExitRules].self, from: $0) } ?? [:]
         equityHistory = LocalStore.load(Self.scoped("equity", id) + ".json") ?? []
         costBasis = LocalStore.load(Self.scoped("costbasis", id) + ".json") ?? [:]
+        chainCost = [:]
     }
 
     /// A wallet removed from the signer: what this Mac kept under its id goes too. The next wallet made into an empty

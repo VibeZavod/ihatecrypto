@@ -128,6 +128,18 @@ public enum Solana {
 
     /// `lendShares`: Jupiter Lend's share tokens (jlUSDC…) among the tokens too, for a transfer of them as they are.
     public static func balance(owner: String, lendShares: Bool = false) async throws -> Balance {
+        // The public node throttles getTokenAccountsByOwner («Too many requests for a specific RPC call», HTTP 429) when a
+        // chain's step and its transfer read the wallet a moment apart: the USDT a swap brought then failed to send. Asked
+        // again 1, 2, 4 and 8 s later, as RPCRetry asks other nodes.
+        for delay in RPCRetry.delays {
+            do { return try await read(owner: owner, lendShares: lendShares) } catch let e as NetError where RPCRetry.transient(e.message) {
+                try await Task.sleep(for: delay)
+            }
+        }
+        return try await read(owner: owner, lendShares: lendShares)
+    }
+
+    private static func read(owner: String, lendShares: Bool) async throws -> Balance {
         struct RPCError: Decodable { let message: String }
         struct Lamports: Decodable { struct R: Decodable { let value: UInt64 }; let result: R?; let error: RPCError? }
         struct Tokens: Decodable {

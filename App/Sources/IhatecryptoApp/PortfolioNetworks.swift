@@ -3,6 +3,7 @@ import ExecutionCore
 import IhatecryptoCore
 import OneClickKit
 import RelayBridge
+import SolanaChain
 import SwiftUI
 import TradeExecution
 
@@ -166,7 +167,7 @@ struct NetworkCards: View {
                         }
                         .layoutPriority(1)
                         Spacer(minLength: 4)
-                        Text(Fmt.usd(order.folded.reduce(0) { $0 + (held[$1] ?? 0) })).font(.ui(12, .bold)).monospacedDigit().fixedSize()
+                        Text(masked(Fmt.usd(order.folded.reduce(0) { $0 + (held[$1] ?? 0) }))).font(.ui(12, .bold)).monospacedDigit().fixedSize()
                         Image(systemName: unfolded ? "chevron.down" : "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
                     }
                     .padding(.horizontal, 11).padding(.vertical, 9)
@@ -181,6 +182,10 @@ struct NetworkCards: View {
                 }
             }
             AutomationPortfolioCard()
+        }
+        // Every held token's cost from the chain, for the P/L on its row; read again when an amount changes.
+        .task(id: ws.holdings.map(\.amount) + (ws.robinhood?.stocks ?? []).map(\.amount) + [ws.near, ws.solana?.sol ?? 0, ws.base?.eth ?? 0, ws.robinhood?.eth ?? 0]) {
+            await ws.loadChainCosts()
         }
     }
 }
@@ -229,7 +234,7 @@ struct NetworkCard: View {
                     }
                 }
                 Spacer(minLength: 4)
-                Text(Fmt.usd(usd)).font(.ui(13, .bold)).monospacedDigit().lineLimit(1).fixedSize()
+                Text(masked(Fmt.usd(usd))).font(.ui(13, .bold)).monospacedDigit().lineLimit(1).fixedSize()
             }
             if network == .hyperliquid { positions }
             // Coins first, deposits under their own name (the user: «непонятно разделение дефай и токены»).
@@ -260,7 +265,7 @@ struct NetworkCard: View {
     private func subtitle(_ lines: [NetworkLine], tokens: Bool) -> String? {
         switch network {
         case .hyperliquid:
-            return ws.hlMargin.map { "\(Fmt.usd($0)) · margin" + (ws.hlp.equity > 0 ? " · HLP \(Fmt.usd(ws.hlp.equity))" : "") } ?? "no address"
+            return ws.hlMargin.map { masked("\(Fmt.usd($0)) · margin" + (ws.hlp.equity > 0 ? " · HLP \(Fmt.usd(ws.hlp.equity))" : "")) } ?? "no address"
         case .tempo:
             return "USDC for paid services"
         default:
@@ -270,7 +275,7 @@ struct NetworkCard: View {
                 .map { name, kind in (name, lines.filter { $0.kind == kind }.reduce(Decimal(0)) { $0 + $1.usd } + (kind == .idle ? stables : 0)) }
                 .filter { $0.1 >= Decimal(string: "0.01")! }.sorted { $0.1 > $1.1 }
             // No count of tokens: the rows under it show them (the user: «убери слово 5 tokens»).
-            if !sums.isEmpty { return sums.map { "\($0.0) \(Fmt.usd($0.1))" }.joined(separator: " · ") }
+            if !sums.isEmpty { return sums.map { "\($0.0) \(masked(Fmt.usd($0.1)))" }.joined(separator: " · ") }
             return tokens ? nil : "nothing here yet"
         }
     }
@@ -282,7 +287,7 @@ struct NetworkCard: View {
                 HStack {
                     Text("\(p.size > 0 ? "Long" : "Short") \(IntentParser.pretty(p.coin))").font(.ui(13, .semibold)).lineLimit(1)
                     Spacer()
-                    Text(signed(p.unrealizedPnl)).font(.ui(13, .bold)).monospacedDigit()
+                    Text(masked(signed(p.unrealizedPnl))).font(.ui(13, .bold)).monospacedDigit()
                         .foregroundStyle(p.unrealizedPnl < 0 ? Color(hex: 0xFF9C8F) : Brand.hlMint)
                 }
                 Text(ws.positionSummary(p)).font(.ui(10)).foregroundStyle(Brand.hlSoft).lineLimit(2)
@@ -356,9 +361,12 @@ struct NetworkLineRow: View {
 
     /// Idle money, gas, a held coin: laid out like a token (the amount under the name, the day's move on the right).
     @ViewBuilder private var coin: some View {
+        // A network's own coin has its P/L too, gas included (Workspace.loadChainCosts).
+        let cost = line.kind == .idle ? nil : ws.cost(ws.coinKey(line.title, chain: chain))
+        let held = ws.coinHeld(line.title, chain: chain) ?? 0
         let row = HStack(spacing: 8) {
             TokenLogo(name: line.logo, size: 20)
-            CoinName(symbol: line.title, amount: line.detail)
+            CoinName(symbol: line.title, amount: line.detail, pnl: (ws.markets[line.title]?.markPx).flatMap { cost?.pnl(held: held, price: $0) })
             Spacer(minLength: 4)
             // A coin without a price shows its amount; a stablecoin has no day's move to show.
             CoinValue(value: line.usd > 0 ? Fmt.usd(line.usd) : line.amount ?? Fmt.usd(0),
@@ -382,12 +390,12 @@ struct NetworkLineRow: View {
                 if line.usdc {
                     HStack(spacing: 3) {
                         TokenLogo(name: "usdc", size: 12)
-                        Text(Fmt.num(line.usd)).font(.ui(12, .bold)).monospacedDigit()
+                        Text(masked(Fmt.num(line.usd))).font(.ui(12, .bold)).monospacedDigit()
                     }
                 } else {
-                    Text(line.amount ?? Fmt.usd(line.usd)).font(.ui(12, .bold)).monospacedDigit().lineLimit(1)
+                    Text(masked(line.amount ?? Fmt.usd(line.usd))).font(.ui(12, .bold)).monospacedDigit().lineLimit(1)
                 }
-                if line.amount != nil, line.usd > 0 { Text("≈ \(Fmt.usd(line.usd))").font(.ui(9)).foregroundStyle(.secondary).monospacedDigit() }
+                if line.amount != nil, line.usd > 0 { Text(masked("≈ \(Fmt.usd(line.usd))")).font(.ui(9)).foregroundStyle(.secondary).monospacedDigit() }
             }
         }
         .contentShape(Rectangle())
@@ -424,7 +432,7 @@ struct CoinName: View {
     let symbol: String
     let amount: String
     var verified: Bool? = nil
-    /// What it made or lost since it was bought here (Workspace.purchasePnL), after the amount, in its color.
+    /// What it made or lost since it was bought (Workspace.purchasePnL), after the amount, in its color.
     var pnl: (usd: Decimal, pct: Decimal)? = nil
 
     var body: some View {
@@ -436,22 +444,176 @@ struct CoinName: View {
             }
             if let pnl {
                 let sign = pnl.usd < 0 ? "−" : "+"
-                Text("\(Text(amount).foregroundStyle(.secondary)) \(Text("\(sign)\(Fmt.pct(abs(pnl.pct).rounded(1, .plain)))").foregroundStyle(pnl.usd < 0 ? Brand.loss : Brand.profit))")
+                Text("\(Text(masked(amount)).foregroundStyle(.secondary)) \(Text("\(sign)\(Fmt.pct(abs(pnl.pct).rounded(1, .plain)))").foregroundStyle(pnl.usd < 0 ? Brand.loss : Brand.profit))")
                     .font(.ui(9.5)).monospacedDigit().lineLimit(1)
-                    .help("\(pnl.usd < 0 ? "Loss" : "Profit") \(Fmt.usd(abs(pnl.usd))) since it was bought here")
+                    .help(masked("\(pnl.usd < 0 ? "Loss" : "Profit") \(Fmt.usd(abs(pnl.usd))) since it came in"))
             } else {
-                Text(amount).font(.ui(9.5)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
+                Text(masked(amount)).font(.ui(9.5)).foregroundStyle(.secondary).monospacedDigit().lineLimit(1)
             }
         }
     }
 }
 
 extension Workspace {
-    /// What a held token made or lost since it was bought in the app; nil for one that came from elsewhere (no cost to
-    /// compare). Solana's are kept by mint, the others by «network:contract».
+    /// What a held token cost: what the app's own buys recorded or what the chain shows (`chainCost`), whichever covers
+    /// more of it — a Relay buy pays in one transaction and delivers in another, so only the record knows its cost; a buy
+    /// in another wallet app only the chain. Solana's by mint, the others by «network:contract», NEAR by «near:native».
+    func cost(_ key: String) -> CostBasis? {
+        // The same amount both ways: the chain's, which knows when it was bought.
+        [chainCost[key]?.cost, costBasis[key]].compactMap { $0 }.filter { $0.amount > 0 }.max { $0.amount < $1.amount }
+            ?? costBasis["seen:" + key].flatMap { $0.amount > 0 ? $0 : nil }
+    }
+
+    /// The key a network's own coin's cost is kept under: SOL as wrapped SOL's mint (the app's swaps record it so), a
+    /// Hyperliquid spot token by its name (its Holding.id), the others «network:native».
+    func coinKey(_ coin: String, chain: String) -> String {
+        switch chain {
+        case "solana": CostBasis.wsol
+        case "hyperliquid": "hyperliquid:\(coin.lowercased())"
+        default: "\(chain):native"
+        }
+    }
+
+    /// The network coins held that the portfolio shows as lines (gas, NEAR) rather than as tokens; NEAR first, its
+    /// read is one quick one.
+    var coinLines: [(chain: String, coin: String, held: Decimal)] {
+        [("near", "NEAR", near), ("solana", "SOL", solana?.sol), ("base", "ETH", base?.eth), ("robinhood", "ETH", robinhood?.eth)]
+            .compactMap { chain, coin, held in held.flatMap { $0 > 0 ? (chain, coin, $0) : nil } }
+    }
+
+    /// What a held token made or lost since it came in; nil for one with no cost yet.
     func purchasePnL(_ t: Holding) -> (usd: Decimal, pct: Decimal)? {
         guard let price = t.price else { return nil }
-        return (costBasis[t.id] ?? costBasis[t.contract])?.pnl(held: t.amount, price: price)
+        return (cost(t.id) ?? cost(t.contract))?.pnl(held: t.amount, price: price)
+    }
+
+    /// What every held coin cost, gas too (the owner, 2026-10-15: «для всех токенов ЛЮБЫХ чтобы был пнл», «ЛЮБОЙ ТОКЕН
+    /// ДАЖЕ ГАЗ»), from the chain: Solana's from the wallet's own transactions (SOL from all of them), the EVM networks'
+    /// tokens and Robinhood's stocks from Blockscout's transfers and their coins from its balance history, NEAR from
+    /// 1Click, NEAR's tokens from NearBlocks; what came in unpaid (or before the history read) at DefiLlama's price that
+    /// day. Hyperliquid's spot at the cost it keeps itself. A network with no history (BNB Chain, HyperEVM) counts from
+    /// when the app first saw it. Only a coin whose amount changed since it was read; dollars have no P/L to show. One
+    /// at a time: the public Solana node throttles bursts.
+    func loadChainCosts() async {
+        // Not cut short when the view that asked goes or its amounts change (its .task is cancelled then): a cancelled
+        // read answered nothing, which counted as no history and kept the coin's P/L from today.
+        await Task { await readChainCosts() }.value
+    }
+
+    private func readChainCosts() async {
+        typealias Wanted = (key: String, chain: String, contract: String, held: Decimal, price: Decimal?)
+        var wanted: [Wanted] = coinLines.map { c in
+            (coinKey(c.coin, chain: c.chain), c.chain, c.chain == "solana" ? CostBasis.wsol : "native", c.held, markets[c.coin]?.markPx)
+        }
+        wanted += holdings.filter { $0.amount > 0 && !Stablecoins.isGenuine($0.contract, on: $0.chain) }.map { ($0.id, $0.chain, $0.contract, $0.amount, $0.price) }
+        wanted += (robinhood?.stocks ?? []).filter { $0.amount > 0 }.map { ("robinhood:\($0.address.lowercased())", "robinhood", $0.address, $0.amount, $0.price) }
+        wanted = wanted.filter { chainCost[$0.key]?.held != $0.held }
+        // Taken: a run started meanwhile (the portfolio and a card both ask) leaves these to this one.
+        for w in wanted { chainCost[w.key] = (w.held, CostBasis()) }
+        let owner = solanaAddress, evm = isEVMAddress(hlAddress) ? hlAddress : nil
+        var solPrices: [Hyperliquid.Candle]?, spot: [String: CostBasis]?, nearTokens: [String: [CostBasis.Change]]?
+        for w in wanted {
+            var changes: [CostBasis.Change]?, basis: CostBasis?
+            switch w.chain {
+            case "solana":
+                guard !owner.isEmpty else { break }
+                let moves = await SolanaMoves.shared.moves(owner: owner, mint: w.contract)
+                if solPrices == nil, w.contract != CostBasis.wsol, moves.contains(where: { ($0.change[w.contract] ?? 0) > 0 }) {
+                    solPrices = (try? await Hyperliquid.candles(coin: "SOL", interval: "4h", from: Date().addingTimeInterval(-800 * 86_400))) ?? []
+                }
+                changes = moves.isEmpty ? nil : CostBasis.replaySolana(mint: w.contract, moves: moves) { at in solPrices?.last { $0.time <= at }?.close }
+            case "hyperliquid":
+                guard let evm else { break }
+                if spot == nil { spot = await Holdings.hyperliquidEntries(user: evm) }
+                basis = spot.map { $0[w.contract] ?? CostBasis() }
+            case "near":
+                if w.contract == "native" { changes = await nearCoinChanges(); break }
+                if nearTokens == nil, let account = nearAddress { nearTokens = await Holdings.nearTokenChanges(account: account) }
+                changes = nearTokens.map { $0[w.contract] ?? [] }
+            default:
+                guard let evm else { break }
+                changes = w.contract == "native" ? await Holdings.coinChanges(w.chain, address: evm)
+                    : await Holdings.tokenChanges(w.chain, address: evm, contract: w.contract)
+            }
+            if let changes {
+                let days = CostBasis.unpaid(changes)
+                var prices: [Date: Decimal]? = [:]
+                if !days.isEmpty, let id = Holdings.llamaID(chain: w.chain, contract: w.contract) { prices = await Holdings.pastPrices(id, at: days) }
+                basis = prices.map { p in CostBasis.fold(changes, held: w.held) { p[$0] } }   // DefiLlama didn't answer: read again
+            }
+            guard owner == solanaAddress else { return }   // another wallet since: its own read follows
+            chainCost[w.key] = basis.map { (w.held, $0) }   // didn't answer: read again next time
+            // Nothing tells what it cost (no history to read, or none that priced it): from when the app first saw it.
+            let noHistory = Holdings.blockscout[w.chain] == nil && !["solana", "near", "hyperliquid"].contains(w.chain)
+            if (basis != nil || noHistory), (basis?.amount ?? 0) == 0, (costBasis[w.key]?.amount ?? 0) == 0, let price = w.price {
+                seen(w.key, held: w.held, price: price)
+            }
+        }
+    }
+
+    /// Re-reads NEAR's cost after a NEAR swap: its chart's P/L.
+    func loadNearCost() async {
+        chainCost["near:native"] = nil
+        await loadChainCosts()
+    }
+
+    /// The NEAR account's changes in NEAR: every 1Click swap in the journal that touched NEAR, as 1Click itself settled
+    /// it, oldest first. Buying NEAR never kept a cost, so its chart said «not bought here» for NEAR bought in the app
+    /// (the owner, 2026-10-15: «почему не показывает что я купил тут»). NEAR from elsewhere is what was held before.
+    func nearCoinChanges() async -> [CostBasis.Change]? {
+        guard let account = nearAddress, let entries = try? Journal(url: journalURL).entries() else { return nil }
+        var swaps: [(id: String, at: Date)] = []
+        for e in entries where e.chain == "1click" && e.kind == .signed && e.note.contains("NEAR") && !swaps.contains(where: { $0.id == e.id }) {
+            swaps.append((e.id, e.at))
+        }
+        let settled = await withTaskGroup(of: (String, OneClick.Settled?).self) { group in
+            for s in swaps { group.addTask { (s.id, try? await OneClick.settled(depositAddress: s.id)) } }
+            var out: [String: OneClick.Settled] = [:]
+            for await (id, s) in group { out[id] = s }
+            return out
+        }
+        return swaps.compactMap { s in
+            settled[s.id]?.near(for: account).map { CostBasis.Change(at: s.at, tokens: $0.amount, paid: $0.amount > 0 ? $0.dollars : nil) }
+        }
+    }
+
+    /// A coin nothing tells the cost of, counted from when the app first saw it: what's new since at the price then,
+    /// what's gone taking its share. Kept with the app's records as «seen:<key>».
+    func seen(_ key: String, held: Decimal, price: Decimal) {
+        var s = costBasis["seen:" + key] ?? CostBasis()
+        if held > s.amount { s.came(held - s.amount, worth: (held - s.amount) * price) } else if held < s.amount { s.sold(s.amount - held) }
+        if s != costBasis["seen:" + key] { costBasis["seen:" + key] = s }
+    }
+}
+
+/// Each Solana transaction a wallet's token account took part in, read once: a transaction never changes, so a new read
+/// asks the node only for the newer ones.
+actor SolanaMoves {
+    static let shared = SolanaMoves()
+    private var read: [String: CostBasis.SolanaMove] = [:]
+
+    /// The owner's moves in `mint`, oldest first: the 50 newest transactions of its token account (either program's);
+    /// for SOL, of the wallet itself.
+    // ponytail: 50 a token, as on the EVM networks; what was held before them counts at the price then.
+    func moves(owner: String, mint: String) async -> [CostBasis.SolanaMove] {
+        let rpc = SolanaRPC()
+        let accounts = mint == CostBasis.wsol ? [owner]
+            : [SPL.tokenProgram, SPL.token2022Program].compactMap { try? SPL.associatedAccount(owner: owner, mint: mint, program: $0) }
+        var signatures: [String] = []
+        for account in accounts {
+            let list = (try? await rpc.call("getSignaturesForAddress", [account, ["limit": 50]])) as? [[String: Any]] ?? []
+            signatures += list.filter { $0["err"] == nil || $0["err"] is NSNull }.compactMap { $0["signature"] as? String }
+        }
+        var out: [CostBasis.SolanaMove] = []
+        for sig in Set(signatures) {
+            if read[sig] == nil,
+               let tx = (try? await rpc.call("getTransaction", [sig, ["encoding": "jsonParsed", "maxSupportedTransactionVersion": 0]])) as? [String: Any],
+               let move = CostBasis.SolanaMove(tx, owner: owner) {
+                read[sig] = move
+            }
+            if let m = read[sig] { out.append(m) }
+        }
+        return out.sorted { $0.at < $1.at }
     }
 }
 
@@ -462,7 +624,7 @@ struct CoinValue: View {
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 0) {
-            Text(value).font(.ui(12, .bold)).monospacedDigit().lineLimit(1)
+            Text(masked(value)).font(.ui(12, .bold)).monospacedDigit().lineLimit(1)
             if let change {
                 let move = Text("\(change < 0 ? "−" : "+")\(Fmt.pct(abs(change).rounded(1, .plain)))").foregroundStyle(change < 0 ? Brand.loss : Brand.profit)
                 Text("\(move) \(Text("24h").foregroundStyle(.secondary))")

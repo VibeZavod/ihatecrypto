@@ -115,10 +115,10 @@ public enum Holdings {
         }
     }
 
-    /// What the wallet paid for what it holds of one token on an EVM network (CostBasis.replay); nil off Blockscout's
-    /// networks or when it didn't answer. Any token standard: Robinhood's stock tokens are ERC-8056, not ERC-20.
-    // ponytail: the 50 newest transfers, one transaction at a time; an older history counts from there.
-    public static func costBasis(_ chain: String, address: String, contract: String) async -> CostBasis? {
+    /// The wallet's changes in one token on an EVM network (CostBasis.replay); nil off Blockscout's networks or when it
+    /// didn't answer. Any token standard: Robinhood's stock tokens are ERC-8056, not ERC-20.
+    // ponytail: the 50 newest transfers, one transaction at a time; what was held before them counts at the price then.
+    public static func tokenChanges(_ chain: String, address: String, contract: String) async -> [CostBasis.Change]? {
         guard let host = blockscout[chain],
               let list = await retrying({ json(try await HTTP.get("https://\(host)/api/v2/addresses/\(address)/token-transfers?token=\(contract)", headers: browser)) as? [String: Any] }),
               let items = list["items"] as? [[String: Any]] else { return nil }
@@ -131,6 +131,101 @@ public enum Holdings {
             transactions.append(transfers)
         }
         return CostBasis.replay(wallet: address, contract: contract, transactions: transactions)
+    }
+
+    /// The wallet's changes in its network's own coin (ETH, POL), from Blockscout's coin balance history, oldest first:
+    /// coin in with stablecoins leaving the wallet in the same transaction was bought for them (a swap for ETH); gas and
+    /// sends went out. nil off Blockscout's networks or when it didn't answer.
+    // ponytail: the 50 newest balance changes; what was held before them counts at the price then.
+    public static func coinChanges(_ chain: String, address: String) async -> [CostBasis.Change]? {
+        guard let host = blockscout[chain],
+              let list = await retrying({ json(try await HTTP.get("https://\(host)/api/v2/addresses/\(address)/coin-balance-history", headers: browser)) as? [String: Any] }),
+              let items = list["items"] as? [[String: Any]] else { return nil }
+        var out: [CostBasis.Change] = []
+        for item in items.reversed() {
+            guard let wei = number(item["delta"]), wei != 0 else { continue }
+            let at = (item["block_timestamp"] as? String).flatMap { try? Date($0, strategy: .iso8601) } ?? Date()
+            var paid: Decimal?
+            if wei > 0, let hash = item["transaction_hash"] as? String,
+               let tx = await retrying({ json(try await HTTP.get("https://\(host)/api/v2/transactions/\(hash)/token-transfers", headers: browser)) as? [String: Any] }) {
+                let dollars = CostBasis.dollarsOut(tx["items"] as? [[String: Any]] ?? [], wallet: address)
+                paid = dollars > 0 ? dollars : nil
+            }
+            out.append(CostBasis.Change(at: at, tokens: wei / pow(10, 18), paid: paid))
+        }
+        return out
+    }
+
+    /// The NEAR account's changes in each of its tokens, by contract, from NearBlocks' token transfers (the 50 newest),
+    /// oldest first: a token in with NEAR's stablecoins leaving in the same transaction was bought for them. nil when it
+    /// didn't answer.
+    public static func nearTokenChanges(account: String) async -> [String: [CostBasis.Change]]? {
+        guard let list = await retrying({ json(try await HTTP.get("https://api.nearblocks.io/v1/account/\(account)/ft-txns?per_page=50")) as? [String: Any] }),
+              let txns = list["txns"] as? [[String: Any]] else { return nil }
+        let stables = Set((Stablecoins.byNetwork["near"] ?? []).map(\.address))
+        let moved: [(hash: String, contract: String, at: Date, amount: Decimal)] = txns.compactMap { t in
+            guard t["affected_account_id"] as? String == account, let ft = t["ft"] as? [String: Any], let contract = ft["contract"] as? String,
+                  let raw = number(t["delta_amount"]), let decimals = (ft["decimals"] as? NSNumber)?.intValue, let ns = number(t["block_timestamp"]) else { return nil }
+            return (t["transaction_hash"] as? String ?? "", contract, Date(timeIntervalSince1970: NSDecimalNumber(decimal: ns / 1_000_000_000).doubleValue), raw / pow(10, decimals))
+        }
+        var out: [String: [CostBasis.Change]] = [:]
+        for m in moved.reversed() where !stables.contains(m.contract) && m.amount != 0 {
+            let dollars = -moved.filter { $0.hash == m.hash && stables.contains($0.contract) && $0.amount < 0 }.reduce(0) { $0 + $1.amount }
+            out[m.contract, default: []].append(CostBasis.Change(at: m.at, tokens: m.amount, paid: m.amount > 0 && dollars > 0 ? dollars : nil))
+        }
+        return out
+    }
+
+    /// What Hyperliquid itself says each spot token held cost (its `entryNtl`), by the token's name; nil when it
+    /// couldn't be read.
+    public static func hyperliquidEntries(user: String) async -> [String: CostBasis]? {
+        guard let state = await retrying({ try await HTTP.post("https://api.hyperliquid.xyz/info", json: ["type": "spotClearinghouseState", "user": user]) }) else { return nil }
+        var out: [String: CostBasis] = [:]
+        for b in (json(state) as? [String: Any])?["balances"] as? [[String: Any]] ?? [] {
+            guard let coin = b["coin"] as? String, let total = number(b["total"]), let entry = number(b["entryNtl"]) else { continue }
+            var basis = CostBasis()
+            basis.bought(total, for: entry)
+            basis.since = nil   // Hyperliquid doesn't say when
+            out[coin] = basis
+        }
+        return out
+    }
+
+    /// DefiLlama's name for a coin, for its past prices: a network's own coin by its CoinGecko id, a token by
+    /// «network:address»; nil where it has none (Robinhood Chain, Tempo, Hyperliquid's spot book).
+    public static func llamaID(chain: String, contract: String) -> String? {
+        switch (chain, contract) {
+        case ("solana", CostBasis.wsol): "coingecko:solana"
+        case ("solana", _): "solana:" + contract
+        case ("near", "native"): "coingecko:near"
+        case ("near", _): "near:" + contract
+        case ("polygon", "native"): "coingecko:polygon-ecosystem-token"
+        case ("bnb", "native"): "coingecko:binancecoin"
+        case ("hyperevm", "native"): "coingecko:hyperliquid"
+        case ("tempo", _), ("hyperliquid", _): nil
+        case (_, "native"): "coingecko:ethereum"
+        default: llamaChain[chain].map { "\($0):\(contract.lowercased())" }
+        }
+    }
+
+    /// What DefiLlama says `coin` was worth on each of `days`: the nearest price within four hours; a day it has none
+    /// for is left out. nil when it didn't answer.
+    public static func pastPrices(_ coin: String, at days: [Date]) async -> [Date: Decimal]? {
+        guard !days.isEmpty, let asked = try? JSONSerialization.data(withJSONObject: [coin: days.map { Int($0.timeIntervalSince1970) }]),
+              var url = URLComponents(string: "https://coins.llama.fi/batchHistorical") else { return [:] }
+        url.queryItems = [URLQueryItem(name: "coins", value: String(decoding: asked, as: UTF8.self)), URLQueryItem(name: "searchWidth", value: "4h")]
+        guard let link = url.url?.absoluteString,
+              let coins = (json(await retrying { try await HTTP.get(link, timeout: 20) }) as? [String: Any])?["coins"] as? [String: [String: Any]] else { return nil }
+        let prices: [(t: Double, px: Decimal)] = (coins[coin]?["prices"] as? [[String: Any]] ?? []).compactMap { p in
+            guard let px = number(p["price"]), let t = (p["timestamp"] as? NSNumber)?.doubleValue else { return nil }
+            return (t, px)
+        }
+        var out: [Date: Decimal] = [:]
+        for d in days {
+            let t = d.timeIntervalSince1970
+            if let near = prices.min(by: { abs($0.t - t) < abs($1.t - t) }), abs(near.t - t) <= 4 * 3600 { out[d] = near.px }
+        }
+        return out
     }
 
     /// Tempo's dollars, read from its node (it has no Blockscout): USDC — what Relay brings and services charge — and

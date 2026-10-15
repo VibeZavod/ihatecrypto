@@ -48,6 +48,19 @@ public struct SolanaRPC: Sendable {
         return (r?["value"] as? NSNumber)?.uint64Value ?? 0
     }
 
+    /// What `owner`'s own token account for `mint` holds, in whole tokens; 0 without one. Two light reads (the mint's
+    /// program, the account's balance), never getTokenAccountsByOwner, which the public node throttles right after a swap.
+    public func ownedAmount(owner: String, mint: String) async throws -> Decimal {
+        let info = try await call("getAccountInfo", [mint, ["encoding": "base64", "commitment": "confirmed"]]) as? [String: Any]
+        guard let program = (info?["value"] as? [String: Any])?["owner"] as? String, [SPL.tokenProgram, SPL.token2022Program].contains(program) else {
+            throw WalletError("\(mint) isn't a token mint on Solana.")
+        }
+        let account = try SPL.associatedAccount(owner: owner, mint: mint, program: program)
+        guard let value = (try? await call("getTokenAccountBalance", [account, ["commitment": "confirmed"]]) as? [String: Any])?["value"] as? [String: Any],
+              let units = (value["amount"] as? String).flatMap({ Decimal(string: $0) }), let decimals = (value["decimals"] as? NSNumber)?.intValue else { return 0 }
+        return units / pow(Decimal(10), decimals)
+    }
+
     /// Raw units of an SPL token held by `owner` across its accounts.
     public func tokenBalance(owner: String, mint: String) async throws -> UInt64 {
         let r = try await call("getTokenAccountsByOwner", [owner, ["mint": mint], ["encoding": "jsonParsed", "commitment": "confirmed"]]) as? [String: Any]

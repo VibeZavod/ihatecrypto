@@ -8,19 +8,21 @@ import SwiftUI
 import TradeExecution
 import TxGuard
 
-/// The ways to go on the model offered with an answer: cards on the canvas it was given on. A card runs its English
-/// command through the same parsers, checks and confirmations as a typed one.
+/// The ways to go on offered with a reply: cards under it in the chat (`Workspace.offerCards`). A card runs its English
+/// command through the same parsers, checks and confirmations as a typed one; an answer to the model's question (no
+/// command) goes back to it as the user's reply.
 struct NextSteps {
     let options: [ChatRouter.Option]
     /// The message they answer: an address in a card must be in it, unless the card only shows something.
     let userText: String
     /// Addresses the lookups returned (a token found by name, a repaired mint).
     let found: [String]
-    let canvas: UUID?
+    /// The reply they're drawn under.
+    let message: UUID
 
     static func icon(_ command: String) -> String {
         let c = command.lowercased()
-        return c.hasPrefix("jupiter dca") || c.contains(" every ") ? "calendar.badge.clock" : c.hasPrefix("chart") ? "chart.xyaxis.line" : c.hasPrefix("watch") ? "star" : c.hasPrefix("alert") ? "bell"
+        return c.isEmpty ? "text.bubble" : c.hasPrefix("jupiter dca") || c.contains(" every ") ? "calendar.badge.clock" : c.hasPrefix("chart") ? "chart.xyaxis.line" : c.hasPrefix("watch") ? "star" : c.hasPrefix("alert") ? "bell"
             : c.hasPrefix("buy") ? "cart" : c.hasPrefix("sell") ? "arrow.down.circle" : c.hasPrefix("long") ? "arrow.up.right"
             : c.hasPrefix("short") ? "arrow.down.right" : c.hasPrefix("withdraw") || c.hasPrefix("unstake") ? "arrow.uturn.backward"
             : c.hasPrefix("move") || c.hasPrefix("send") ? "arrow.left.arrow.right" : c.hasPrefix("where") ? "percent"
@@ -390,24 +392,37 @@ extension Workspace {
         return info
     }
 
-    /// Puts the model's cards on the canvas: only commands ihatecrypto parses, with addresses it may use.
+    /// Puts the model's cards under its reply: only commands ihatecrypto parses, with addresses it may use, and the
+    /// answers to its question (ChatRouter lets through only those with no address).
     func offer(_ reading: ChatRouter.Reading, userText: String) {
         let markets = Set(markets.keys)
         let options = reading.options.filter { o in
-            o.command != reading.show && ChatRouter.parses(o.command, markets: markets)
+            o.command.isEmpty || o.command != reading.show && ChatRouter.parses(o.command, markets: markets)
                 && ChatRouter.addressesAllowed(o.command, userText: userText, known: knownContracts, found: reading.found,
                                                displays: Self.foundAllowed, markets: markets)
         }
-        guard !options.isEmpty else { return }
-        withAnimation(StudioView.spring) { nextSteps = NextSteps(options: options, userText: userText, found: reading.found, canvas: canvasID) }
+        offerCards(options, userText: userText, found: reading.found)
     }
 
-    /// A card picked on the canvas: said in the chat by its title and carried out like a typed command. Like any new
-    /// message it drops a card that waited for Confirm.
+    /// Cards to go on, under the reply that offered them (the chat's last line): that reply keeps them, and while they're
+    /// the live ones a pick carries one out. The user (2026-10-15): the ways on belong in the chat, not on the canvas.
+    func offerCards(_ options: [ChatRouter.Option], userText: String = "", found: [String] = []) {
+        guard !options.isEmpty else { return }
+        if messages.last?.fromUser != false { messages.append(Message(fromUser: false, text: "")) }
+        messages[messages.count - 1].options = options
+        nextSteps = NextSteps(options: options, userText: userText, found: found, message: messages[messages.count - 1].id)
+        saveCanvas()
+    }
+
+    /// A card picked in the chat: its reply keeps the pick, and it's said by its title and carried out like a typed
+    /// command; an answer to the model's question goes back to the model as if typed. Like any new message it drops a
+    /// card that waited for Confirm.
     func pick(_ option: ChatRouter.Option) async {
         guard !busy, let steps = nextSteps else { return }
+        if let i = messages.firstIndex(where: { $0.id == steps.message }) { messages[i].picked = steps.options.firstIndex(of: option) }
+        if option.command.isEmpty { await send(option.title); return }
         agentGoal = nil
-        heldAnswer = (nextSteps, yieldOptions, takeChoices)
+        heldAnswer = (yieldOptions, takeChoices)
         defer { heldAnswer = nil }
         nextSteps = nil
         pendingAction = nil
@@ -445,28 +460,19 @@ extension Workspace {
     }
 }
 
-/// The ways to go on, as cards, one list per canvas: under a plan the rules stop, first what the code found that
-/// fits, then the model's ideas, then raising the limit when the limit is what stops it; one of them Recommended.
+/// A plan the rules stop, its ways on: what the code checked fits (the risk that passes every rule and the money,
+/// recommended), and raising the limit when the limit is what stops it. The model's ideas are in the chat, under its reply.
 struct NextStepsBoard: View {
     @Environment(Workspace.self) private var ws
-    let steps: NextSteps?
-    /// A plan the rules stop: what the code checked fits (the risk that passes every rule and the money).
-    var fit: ChatRouter.Option?
+    let fit: ChatRouter.Option?
     /// The risk limit is what stops the plan: Settings can raise it, at the user's own risk.
     var overLimit = false
 
     var body: some View {
-        // The code's fix is checked against the rules, so it's the one recommended when there is one.
-        let ideas = (steps?.options ?? []).filter { $0.command != fit?.command }.map { o in
-            fit == nil ? o : ChatRouter.Option(title: o.title, comment: o.comment, command: o.command)
-        }
         VStack(alignment: .leading, spacing: 8) {
             Text("WHAT NEXT").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
             if let fit {
                 button(fit, help: fit.command) { Task { await ws.send(fit.command) } }
-            }
-            ForEach(Array(ideas.enumerated()), id: \.offset) { _, option in
-                button(option, help: option.command) { Task { await ws.pick(option) } }
             }
             if overLimit {
                 button(ChatRouter.Option(title: ws.say("Raise the limit", "Поднять лимит"),
@@ -481,39 +487,57 @@ struct NextStepsBoard: View {
     }
 
     private func button(_ o: ChatRouter.Option, icon: String? = nil, help: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) { card(o, icon: icon) }
+        Button(action: action) { OptionCard(option: o, icon: icon) }
             .buttonStyle(.plain)
             .pointerStyle(.link)
             .modifier(HoverLift(radius: 18))
             .disabled(ws.busy)
             .help(help)
     }
+}
 
-    private func card(_ o: ChatRouter.Option, icon: String? = nil) -> some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: icon ?? NextSteps.icon(o.command))
-                .font(.system(size: 14, weight: .semibold)).foregroundStyle(Brand.accentInk)
-                .frame(width: 32, height: 32)
+/// A way to go on as a card, the same on the canvas and in the chat (`compact`): its icon in an accent circle, the title
+/// with «Recommended», the comment. Once one is picked (`answered`) only the pick keeps the accent edge, with a check;
+/// while ↑↓ walk them (`keyed` not nil) only the one the keys are on has it, with a tint.
+struct OptionCard: View {
+    let option: ChatRouter.Option
+    var icon: String?
+    var compact = false
+    var answered = false
+    var picked = false
+    var keyed: Bool?
+
+    var body: some View {
+        let radius: CGFloat = compact ? 12 : 18, edge = answered ? picked : keyed ?? option.recommended
+        HStack(alignment: .top, spacing: compact ? 10 : 12) {
+            Image(systemName: icon ?? NextSteps.icon(option.command))
+                .font(.system(size: compact ? 12 : 14, weight: .semibold)).foregroundStyle(Brand.accentInk)
+                .frame(width: compact ? 28 : 32, height: compact ? 28 : 32)
                 .background(Circle().fill(Brand.accent.opacity(0.12)))
             VStack(alignment: .leading, spacing: 3) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(o.title).font(.ui(14, .heavy)).fixedSize(horizontal: false, vertical: true)
-                    if o.recommended {
+                    Text(option.title).font(.ui(compact ? 13 : 14, .heavy)).fixedSize(horizontal: false, vertical: true)
+                    if option.recommended {
                         Text("Recommended").font(.ui(10, .bold)).foregroundStyle(Brand.onAccent).lineLimit(1).fixedSize()
                             .padding(.horizontal, 7).padding(.vertical, 2)
                             .background(Capsule().fill(Brand.accent))
                     }
                 }
-                if !o.comment.isEmpty {
-                    Text(o.comment).font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                if !option.comment.isEmpty {
+                    Text(option.comment).font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
             Spacer(minLength: 0)
+            if picked {
+                Image(systemName: "checkmark.circle.fill").font(.system(size: 15, weight: .semibold)).foregroundStyle(Brand.accent)
+                    .accessibilityLabel("Picked")
+            }
         }
-        .padding(12)
+        .padding(compact ? 10 : 12)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 18).fill(Brand.card))
-        .overlay(RoundedRectangle(cornerRadius: 18).strokeBorder(o.recommended ? Brand.accent : Brand.cardBorder, lineWidth: o.recommended ? 2 : 1))
+        .background(RoundedRectangle(cornerRadius: radius).fill(Brand.card))
+        .background(RoundedRectangle(cornerRadius: radius).fill(Brand.accent.opacity(keyed == true ? 0.08 : 0)))
+        .overlay(RoundedRectangle(cornerRadius: radius).strokeBorder(edge ? Brand.accent : Brand.cardBorder, lineWidth: edge ? 2 : 1))
         .contentShape(Rectangle())
     }
 }

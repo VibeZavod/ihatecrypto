@@ -96,8 +96,67 @@ private let funding = [PnL.Funding(time: ago(10.2), coin: "xyz:CL", usdc: Decima
     let txs = [[t(spcx, "SPCX", "3000000", from: pool, to: me), t("0xusdg", "USDG", "20000000", from: me, to: pool)],
                [t(spcx, "SPCX", "1000000", from: me, to: pool), t("0xusdg", "USDG", "8000000", from: pool, to: me)],
                [t(spcx, "SPCX", "1000000", from: "0xfriend", to: me)]]
-    let basis = CostBasis.replay(wallet: me.lowercased(), contract: spcx.lowercased(), transactions: txs)
-    #expect(basis.amount == 2)                                         // the gift has no cost
-    #expect(basis.usd == Decimal(20) * 2 / 3)                          // the sale took a third of the cost
-    #expect(basis.pnl(held: 3, price: 10)?.usd == 20 - Decimal(20) * 2 / 3)   // P/L only on the 2 with a cost
+    let changes = CostBasis.replay(wallet: me.lowercased(), contract: spcx.lowercased(), transactions: txs)
+    #expect(changes.map(\.tokens) == [3, -1, 1] && changes.map(\.paid) == [20, nil, nil])
+    let unpriced = CostBasis.fold(changes, held: 3) { _ in nil }
+    #expect(unpriced.amount == 2)                                      // the gift has no price: no cost
+    #expect(unpriced.usd == Decimal(20) * 2 / 3)                       // the sale took a third of the cost
+    #expect(unpriced.pnl(held: 3, price: 10)?.usd == 20 - Decimal(20) * 2 / 3)   // P/L only on the 2 with a cost
+    // Priced at $9 the day it came: counted at that, and marked as come in unpaid.
+    let priced = CostBasis.fold(changes, held: 3) { _ in 9 }
+    #expect(priced.amount == 3 && priced.usd == Decimal(20) * 2 / 3 + 9 && priced.received == 1 && priced.receivedUSD == 9)
+}
+
+// What was held before the oldest change the chain gave counts at the price that day; gas and sends take their share,
+// and a buy for dollars stays a buy.
+@Test func foldCountsWhatWasThereBeforeAndWhatCameUnpaid() {
+    let day = { (d: Double) in Date(timeIntervalSince1970: d) }
+    let changes = [CostBasis.Change(at: day(100), tokens: 1, paid: 3000),     // bought 1 ETH for $3,000
+                   CostBasis.Change(at: day(200), tokens: -1),                // sent half away
+                   CostBasis.Change(at: day(300), tokens: 1)]                 // bridged in, unpaid
+    #expect(CostBasis.unpaid(changes) == [day(100), day(300)])
+    let basis = CostBasis.fold(changes, held: 2) { $0 == day(100) ? 2000 : $0 == day(300) ? 4000 : nil }
+    // 1 there before at $2,000 + 1 bought for $3,000; half out: 1 for $2,500 (0.5 of it unpaid, $1,000); 1 in at $4,000.
+    #expect(basis.amount == 2 && basis.usd == 6500)
+    #expect(basis.received == Decimal(string: "1.5") && basis.receivedUSD == 5000)
+    #expect(basis.since == day(100))
+    var empty = CostBasis.fold([], held: 5) { _ in 1 }
+    #expect(empty.amount == 0)
+    empty.came(2, worth: 10)
+    empty.sold(2)
+    #expect(empty.received == nil && empty.since == nil)
+}
+
+// getTransaction's shape (jsonParsed): the wallet buys BONK for USDC, then for SOL (fee paid by it), gets some sent in,
+// sells part; a failed transaction counts for nothing. The cost is the USDC, then the SOL at its price then.
+@Test func solanaCostFromTheWalletsOwnTransactions() throws {
+    let me = "6nod592sTfEWD3VSVPdQndLMVBCNmMc6ngt7MyGBK21j", bonk = "DezXAZ8z7PnrnRJjz3wXBoRgixCa6xjnB7YaB1pPB263"
+    let usdc = "EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v"
+    func bal(_ mint: String, _ raw: String, _ decimals: Int, owner: String = me) -> [String: Any] {
+        ["mint": mint, "owner": owner, "uiTokenAmount": ["amount": raw, "decimals": decimals]]
+    }
+    func tx(_ time: Int, pre: [[String: Any]], post: [[String: Any]], lamports: (Int, Int) = (5_000_000_000, 5_000_000_000), err: Any = NSNull()) -> [String: Any] {
+        ["blockTime": time,
+         "meta": ["err": err, "fee": 5000, "preBalances": [lamports.0], "postBalances": [lamports.1],
+                  "preTokenBalances": pre, "postTokenBalances": post],
+         "transaction": ["message": ["accountKeys": [["pubkey": me, "signer": true]]]]]
+    }
+    let txs = [
+        tx(1_000, pre: [bal(usdc, "10000000", 6)], post: [bal(usdc, "0", 6), bal(bonk, "100000", 5)], lamports: (5_000_000_000, 4_999_995_000)),
+        tx(2_000, pre: [bal(bonk, "100000", 5)], post: [bal(bonk, "200000", 5)], lamports: (4_999_995_000, 4_899_990_000)),
+        tx(3_000, pre: [bal(bonk, "200000", 5)], post: [bal(bonk, "300000", 5)]),
+        tx(4_000, pre: [bal(bonk, "300000", 5)], post: [bal(bonk, "250000", 5)]),
+        tx(5_000, pre: [bal(usdc, "10000000", 6)], post: [bal(usdc, "0", 6), bal(bonk, "999999999", 5)], err: ["InstructionError": [0, "Custom"]]),
+    ]
+    let moves = txs.compactMap { CostBasis.SolanaMove($0, owner: me) }
+    #expect(moves.count == 4 && moves[1].sol == Decimal(string: "-0.1"))
+    let changes = CostBasis.replaySolana(mint: bonk, moves: moves) { $0 == Date(timeIntervalSince1970: 2_000) ? 150 : nil }
+    #expect(changes.map(\.paid) == [10, 15, nil, nil])
+    let basis = CostBasis.fold(changes, held: Decimal(string: "2.5")!) { _ in nil }
+    // 1 BONK for $10, 1 for 0.1 SOL × $150 = $15; 1 sent in (no price, no cost); 0.5 out takes a quarter of the 2 with a cost.
+    #expect(basis.amount == Decimal(string: "1.5") && basis.usd == Decimal(string: "18.75"))
+    #expect(basis.since == Date(timeIntervalSince1970: 1_000) && basis.price == Decimal(string: "12.5"))
+    #expect(CostBasis.replaySolana(mint: usdc, moves: moves) { _ in 150 }.allSatisfy { $0.tokens < 0 || $0.paid == nil })
+    // SOL itself: the wallet's lamports (the fee given back), here 0.1 out to buy BONK.
+    #expect(CostBasis.replaySolana(mint: CostBasis.wsol, moves: moves) { _ in 150 }.filter { $0.tokens < 0 }.map(\.tokens) == [Decimal(string: "-0.1")!])
 }

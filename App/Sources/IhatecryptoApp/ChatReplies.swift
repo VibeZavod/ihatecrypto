@@ -169,6 +169,7 @@ struct Reply: View {
                 styled(text)
             }
             if let data { DataCard(json: data).padding(.leading, outcome || emoji != nil ? 40 : 0) }
+            if message.options?.isEmpty == false { Answers(message: message) }
         }
         .font(.ui(14))
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -193,6 +194,42 @@ struct Reply: View {
         }
         .font(.ui(10, .semibold))
         .foregroundStyle(note == "incoming" ? AnyShapeStyle(Brand.profit) : AnyShapeStyle(.tertiary))
+    }
+}
+
+/// The cards a reply offered, under its words (the user's reference, 2026-10-15: a chat answer with its cards inside):
+/// a tap carries one out while they're the live ones (`ws.nextSteps`). Answered, the pick keeps its edge and a check
+/// and the rest fade; passed over by a newer message, they all fade.
+struct Answers: View {
+    @Environment(Workspace.self) private var ws
+    let message: Message
+
+    /// The chat scrolls to the card the keys are on.
+    static func cardID(_ message: UUID, _ index: Int) -> String { "\(message)#\(index)" }
+
+    var body: some View {
+        let live = ws.nextSteps?.message == message.id
+        VStack(alignment: .leading, spacing: 6) {
+            ForEach(Array((message.options ?? []).enumerated()), id: \.offset) { i, o in
+                // Not `.disabled`: it would dim the pick too.
+                Button { if live { Task { await ws.pick(o) } } } label: {
+                    // ↑↓ from the field (ChatComposer) move between them; Return picks the one they're on.
+                    OptionCard(option: o, compact: true, answered: message.picked != nil, picked: message.picked == i,
+                               keyed: live ? ws.cardKey.map { $0 == i } : nil)
+                }
+                .buttonStyle(.plain)
+                .modifier(HoverLift(radius: 12, enabled: live && !ws.busy))
+                .allowsHitTesting(live && !ws.busy)
+                .opacity(live || message.picked == i ? 1 : 0.45)
+                .help(o.command.isEmpty ? ws.say("Answer with this", "Ответить этим") : o.command)
+                .accessibilityLabel(o.title)
+                .id(Self.cardID(message.id, i))
+            }
+            if live {
+                Text(ws.say("Or write your own. ↑ ↓ to choose, ⏎ to answer.", "Или напиши свой вариант. ↑ ↓ — выбрать, ⏎ — ответить."))
+                    .font(.ui(10)).foregroundStyle(.secondary)
+            }
+        }
     }
 }
 

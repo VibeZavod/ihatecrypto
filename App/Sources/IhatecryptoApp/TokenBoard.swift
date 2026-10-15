@@ -179,11 +179,11 @@ struct TokenBoard: View {
             if let h = holding {
                 HeldRow(symbol: symbol, amount: h.amount, usd: h.usd,
                         how: isStock ? "valued at Robinhood’s bid \(h.price.map(tokenPrice) ?? "—")" : "valued at the pool price",
-                        pnl: h.price.flatMap { ws.costBasis["robinhood:\(h.address.lowercased())"]?.pnl(held: h.amount, price: $0) },
-                        cost: ws.costBasis["robinhood:\(h.address.lowercased())"])
+                        pnl: h.price.flatMap { ws.cost("robinhood:\(h.address.lowercased())")?.pnl(held: h.amount, price: $0) },
+                        cost: ws.cost("robinhood:\(h.address.lowercased())"))
             } else if let t = heldToken {
                 HeldRow(symbol: symbol, amount: t.amount, usd: t.usd, how: t.price == nil ? "no price yet" : "valued at the pool price",
-                        pnl: ws.purchasePnL(t), cost: ws.costBasis[t.id] ?? ws.costBasis[t.contract], today: Self.today(t))
+                        pnl: ws.purchasePnL(t), cost: ws.cost(t.id) ?? ws.cost(t.contract), today: Self.today(t))
             } else if Self.walletDollar(chain: chain, address: address), let usdc = ws.usdc(on: chain), usdc > 0 {
                 HeldRow(symbol: symbol, amount: usdc, usd: usdc, how: "not earning")
             }
@@ -191,6 +191,7 @@ struct TokenBoard: View {
             actions
         }
         .assetCard()
+        .task { await ws.loadChainCosts() }
         .task(id: address) {
             market = try? await TokenMarket.info(address, chain: chain)
             if market == nil { error = "No pool trades this token on \(chainTitle)." }
@@ -457,8 +458,10 @@ struct AssetStats: View {
     }
 }
 
-/// What's held, and how it went: the P/L since it was bought here (what it cost), or for one that came from
-/// elsewhere — no cost to compare — at least today's move in dollars.
+/// What's held, and how it went: the P/L first (the owner's pick of five, 2026-10-15, «01 · P/L first»): since it was
+/// bought, in dollars and percent, beside what it's worth now; under it what was paid, at what price, and what that is
+/// worth now. Bought anywhere: the cost comes from the app's own buys or the chain (`Workspace.cost`). One with no
+/// cost to count from (it came in by a transfer) shows its worth and today's move.
 struct HeldRow: View {
     let symbol: String
     let amount: Decimal
@@ -469,27 +472,66 @@ struct HeldRow: View {
     var today: Decimal?
 
     var body: some View {
-        HStack(spacing: 10) {
-            Image(systemName: "wallet.pass.fill").foregroundStyle(Brand.accentInk)
-            VStack(alignment: .leading, spacing: 1) {
-                Text("You hold \(Fmt.num(amount, maxFraction: 6)) \(symbol)").font(.ui(13, .semibold))
-                Text(how).font(.ui(10)).foregroundStyle(.secondary)
-                if let pnl {
-                    let sign = pnl.usd < 0 ? "−" : "+"
-                    Text("\(Text("P/L \(sign)\(Fmt.usd(abs(pnl.usd))) (\(sign)\(Fmt.pct(abs(pnl.pct).rounded(1, .plain))))").foregroundStyle(pnl.usd < 0 ? Brand.loss : Brand.profit))\(Text(cost.map { " · bought here for \(Fmt.usd($0.usd))" } ?? "").foregroundStyle(.secondary))")
-                        .font(.ui(11, .semibold)).padding(.top, 2)
-                } else if let today, today != 0 {
-                    let sign = today < 0 ? "−" : "+"
-                    Text("\(Text("Today \(sign)\(Fmt.usd(abs(today)))").foregroundStyle(today < 0 ? Brand.loss : Brand.profit))\(Text(" · not bought here: no cost to compare").foregroundStyle(.secondary))")
-                        .font(.ui(11, .semibold)).padding(.top, 2)
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(spacing: 8) {
+                Text(heading).font(.ui(9.5, .semibold)).tracking(0.5).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
+                Spacer(minLength: 4)
+                if let today, today != 0 {
+                    Text("Today \(masked(signed(today)))").font(.ui(11, .semibold)).foregroundStyle(today < 0 ? Brand.loss : Brand.profit).fixedSize()
                 }
             }
-            Spacer()
-            Text(usd.map(Fmt.usd) ?? "—").font(.ui(15, .bold)).monospacedDigit()
+            HStack(alignment: .center, spacing: 10) {
+                if let pnl {
+                    let tint = pnl.usd < 0 ? Brand.loss : Brand.profit
+                    Text(masked(signed(pnl.usd))).font(.ui(26, .bold)).foregroundStyle(tint).lineLimit(1).minimumScaleFactor(0.6)
+                    Text("\(pnl.pct < 0 ? "−" : "+")\(Fmt.pct(abs(pnl.pct).rounded(1, .plain)))").font(.ui(12, .bold)).foregroundStyle(tint)
+                        .padding(.horizontal, 9).padding(.vertical, 3).background(Capsule().fill(tint.opacity(0.14))).fixedSize()
+                    Spacer(minLength: 4)
+                    VStack(alignment: .trailing, spacing: 1) {
+                        Text(masked(usd.map(Fmt.usd) ?? "—")).font(.ui(15, .bold))
+                        Text("\(masked(Fmt.num(amount, maxFraction: 6))) \(symbol)").font(.ui(10)).foregroundStyle(.secondary)
+                    }
+                    .lineLimit(1).fixedSize()
+                } else {
+                    Text(masked(usd.map(Fmt.usd) ?? "—")).font(.ui(22, .bold)).lineLimit(1).minimumScaleFactor(0.6)
+                    Spacer(minLength: 4)
+                    Text("\(masked(Fmt.num(amount, maxFraction: 6))) \(symbol)").font(.ui(11, .semibold)).foregroundStyle(.secondary).lineLimit(1).fixedSize()
+                }
+            }
+            .monospacedDigit()
+            Text(masked(paid)).font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
         }
-        .padding(10)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Brand.accent.opacity(0.08)))
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Brand.accent.opacity(0.08)))
+        .help(how)
     }
+
+    /// «YOUR NEAR · SINCE YOU BOUGHT ON OCT 10»; «· SINCE OCT 13» when some of it came in unpaid.
+    private var heading: String {
+        let day = pnl == nil ? nil : cost?.since?.formatted(.dateTime.month(.abbreviated).day())
+        let since = day.map { (cost?.received ?? 0) > 0 ? " · since \($0)" : " · since you bought on \($0)" }
+        return ("Your \(symbol)" + (since ?? "")).uppercased()
+    }
+
+    /// «Bought 0.3968 NEAR for $2.00 at $5.04 · 0.0766 more came in from elsewhere, counted at the price then: $5.10 ·
+    /// worth $2.39 now».
+    private var paid: String {
+        guard let pnl, let cost, cost.amount > 0 else { return "No price yet to count its P/L from" }
+        let counted = min(amount, cost.amount), share = counted / cost.amount
+        let came = (cost.received ?? 0) * share, cameUSD = (cost.receivedUSD ?? 0) * share
+        let bought = counted - came, spent = cost.usd * share - cameUSD
+        var parts: [String] = []
+        if bought > 0 { parts.append("Bought \(Fmt.num(bought, maxFraction: 4)) \(symbol) for \(Fmt.usd(spent)) at \(tokenPrice(spent / bought))") }
+        if came > 0 {
+            parts.append("\(Fmt.num(came, maxFraction: 4)) \(bought > 0 ? "more" : symbol) came in from elsewhere, counted at the price then: \(tokenPrice(cameUSD / came))")
+        }
+        parts.append("worth \(Fmt.usd(cost.usd * share + pnl.usd)) now")
+        if amount > counted { parts.append("\(Fmt.num(amount - counted, maxFraction: 4)) more not counted: no price for it") }
+        return parts.joined(separator: " · ")
+    }
+
+    private func signed(_ d: Decimal) -> String { (d < 0 ? "−" : "+") + Fmt.usd(abs(d)) }
 }
 
 /// Ask in the chat with the asset attached, then its buy and sale (or watching it) put into the chat's field; where the

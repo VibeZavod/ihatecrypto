@@ -278,11 +278,10 @@ extension Workspace {
         let names = new.map(Modules.name).joined(separator: ", ")
         reply(say("New in ihatecrypto: \(names). It stays off until you say — turn it on?",
                   "Новое в ihatecrypto: \(names). Пока выключено — включить?"))
-        nextSteps = NextSteps(options: new.prefix(4).map { id in
+        offerCards(new.prefix(4).map { id in
             ChatRouter.Option(title: say("Turn on \(Modules.name(id))", "Включить \(Modules.name(id))"), comment: "Settings › Modules", command: Self.moduleOn + id)
         } + [ChatRouter.Option(title: say("Keep it off", "Оставить выключенным"),
-                               comment: say("Settings › Modules turns it on any time", "Включить можно в Settings › Modules"), command: Self.moduleKeepOff)],
-                              userText: "", found: [], canvas: canvasID)
+                               comment: say("Settings › Modules turns it on any time", "Включить можно в Settings › Modules"), command: Self.moduleKeepOff)])
     }
 
     /// The two answers' cards, carried instead of a chat command.

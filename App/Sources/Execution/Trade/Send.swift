@@ -319,6 +319,9 @@ extension Executor {
         guard owner != wallet.solana else { throw ExecutionError("That is this wallet's own address.") }
         let mint: String, symbol: String
         if q == "USDC" { (mint, symbol) = (Relay.Currency.solanaUSDC, "USDC") }
+        // A dollar coin by its ticker is the real one (USDT is Tether's mint), and needs no read of the whole wallet: that read,
+        // right after a chain's swap, was throttled by the public node (HTTP 429) and the send failed.
+        else if let coin = Stablecoins.byNetwork["solana"]?.first(where: { $0.symbol.uppercased() == q }) { (mint, symbol) = (coin.address, coin.symbol) }
         else if query.wholeMatch(of: /[1-9A-HJ-NP-Za-km-z]{32,44}/) != nil { (mint, symbol) = (query, String(query.prefix(4)) + "…") }
         else {
             let held = try await IhatecryptoCore.Solana.balance(owner: wallet.solana, lendShares: true).tokens

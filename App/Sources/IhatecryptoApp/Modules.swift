@@ -91,7 +91,9 @@ struct ChartBoard: View {
         let points = state.candles.map { TokenMarket.Point(time: $0.time, close: $0.close) }
         let name = IntentParser.pretty(state.coin), network = state.network
         let market = ws.markets[state.coin]
-        let held = network.flatMap { ws.coinHeld(state.coin, chain: $0) }.flatMap { $0 > 0 ? $0 : nil }
+        // Opened from the chat («NEAR chart») it has no network: a coin with one home network is held there all the same.
+        let home = network ?? ["NEAR": "near", "SOL": "solana"][state.coin]
+        let held = home.flatMap { ws.coinHeld(state.coin, chain: $0) }.flatMap { $0 > 0 ? $0 : nil }
         let price = market?.markPx ?? points.last?.close
         let levels = self.levels
         VStack(alignment: .leading, spacing: 14) {
@@ -119,7 +121,9 @@ struct ChartBoard: View {
             }
             if let held {
                 let usd = price.map { held * $0 }
+                let cost = home.flatMap { ws.cost(ws.coinKey(state.coin, chain: $0)) }
                 HeldRow(symbol: name, amount: held, usd: usd, how: price == nil ? "no price yet" : "valued at Hyperliquid’s price",
+                        pnl: price.flatMap { cost?.pnl(held: held, price: $0) }, cost: cost,
                         today: usd.flatMap { usd in market?.change24h.flatMap { $0 > -100 ? usd - usd / (1 + $0 / 100) : nil } })
             }
             AssetActions(symbol: name, ask: { ws.askAbout(symbol: name, chain: network ?? "hyperliquid", address: nil) },
@@ -127,6 +131,7 @@ struct ChartBoard: View {
                          source: "Hyperliquid candles · \(state.range.interval)\(levels.isEmpty ? "" : " · lines: your position, its orders and alerts")")
         }
         .assetCard()
+        .task { await ws.loadChainCosts() }
     }
 
     private func change(_ points: [TokenMarket.Point]) -> Decimal? {
@@ -282,9 +287,9 @@ struct PlaceDetailBoard: View {
             networkRows(.solana)
         case "hyperliquid":
             if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }
-            row("hype", "Account value", ws.hl.map { Fmt.usd($0.accountValue) } ?? "—", "free to withdraw \(ws.hl.map { Fmt.usd($0.withdrawable) } ?? "—")")
+            row("hype", "Account value", ws.hl.map { Fmt.usd($0.accountValue) } ?? "—", masked("free to withdraw \(ws.hl.map { Fmt.usd($0.withdrawable) } ?? "—")"))
             ForEach(ws.dexBalances.keys.sorted(), id: \.self) { dex in
-                row("hype", "\(dex) exchange (stocks, commodities)", Fmt.usd(ws.dexBalances[dex]?.accountValue ?? 0), "free \(Fmt.usd(ws.dexBalances[dex]?.withdrawable ?? 0))")
+                row("hype", "\(dex) exchange (stocks, commodities)", Fmt.usd(ws.dexBalances[dex]?.accountValue ?? 0), masked("free \(Fmt.usd(ws.dexBalances[dex]?.withdrawable ?? 0))"))
             }
             if let spot = ws.hl?.spotUSDC, spot > 0 { row("usdc", "Spot USDC", Fmt.num(spot), "separate from the perp margin") }
             if ws.hlp.equity > 0 {
@@ -306,10 +311,10 @@ struct PlaceDetailBoard: View {
                         StockLogo(symbol: s.symbol, url: s.logo, size: 24)
                         VStack(alignment: .leading, spacing: 1) {
                             Text("\(s.symbol) · \(s.name)").font(.ui(13, .semibold)).lineLimit(1)
-                            Text("\(Fmt.num(s.amount, maxFraction: 6)) tokens · \(s.price.map { Fmt.usd($0) } ?? "—")").font(.ui(10)).foregroundStyle(.secondary)
+                            Text(masked("\(Fmt.num(s.amount, maxFraction: 6)) tokens") + " · \(s.price.map { Fmt.usd($0) } ?? "—")").font(.ui(10)).foregroundStyle(.secondary)
                         }
                         Spacer()
-                        Text(Fmt.usd(s.usd)).font(.ui(13, .bold)).monospacedDigit()
+                        Text(masked(Fmt.usd(s.usd))).font(.ui(13, .bold)).monospacedDigit()
                         Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary)
                     }
                     .padding(9).background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))
@@ -317,12 +322,12 @@ struct PlaceDetailBoard: View {
                 }
                 .buttonStyle(.plain).modifier(HoverLift(radius: 12)).help("\(s.symbol): chart and details")
             }
-            row("usdg", "USDG", "\(ws.robinhood.map { Fmt.num($0.usdg) } ?? "—")", "gas: \(ws.robinhood.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH")
+            row("usdg", "USDG", "\(ws.robinhood.map { Fmt.num($0.usdg) } ?? "—")", masked("gas: \(ws.robinhood.map { Fmt.num($0.eth, maxFraction: 7) } ?? "—") ETH"))
             Text("Stock Tokens aren’t offered to US persons, or in Canada, the UK and Switzerland; they give economic exposure, not the shares.")
                 .font(.ui(10)).foregroundStyle(.secondary)
         case "near":
             if let a = ws.nearAddress { addressRow(a) }
-            row("near", "NEAR", Fmt.num(ws.near, maxFraction: 6), ws.markets["NEAR"].map { "≈ \(Fmt.usd(ws.nearUSD)) at \(Fmt.price($0.markPx))" } ?? "")
+            row("near", "NEAR", Fmt.num(ws.near, maxFraction: 6), ws.markets["NEAR"].map { "≈ \(masked(Fmt.usd(ws.nearUSD))) at \(Fmt.price($0.markPx))" } ?? "")
             Text("The account is yours from the same phrase (m/44'/397'/0'). Selling NEAR back to USDC isn’t in ihatecrypto yet.")
                 .font(.ui(10)).foregroundStyle(.secondary)
         case "morpho":
@@ -388,12 +393,12 @@ struct PlaceDetailBoard: View {
             logo
             VStack(alignment: .leading, spacing: 1) {
                 Text(title).font(.ui(13, .semibold)).lineLimit(1)
-                Text(detail).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
+                Text(masked(detail)).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer()
             VStack(alignment: .trailing, spacing: 1) {
-                Text(value).font(.ui(13, .bold)).monospacedDigit()
-                if let sub { Text(sub).font(.ui(10)).foregroundStyle(.secondary).monospacedDigit() }
+                Text(masked(value)).font(.ui(13, .bold)).monospacedDigit()
+                if let sub { Text(masked(sub)).font(.ui(10)).foregroundStyle(.secondary).monospacedDigit() }
             }
             if open != nil { Image(systemName: "chevron.right").font(.system(size: 10, weight: .bold)).foregroundStyle(.tertiary) }
         }
@@ -455,7 +460,7 @@ struct PlaceDetailBoard: View {
                 if !detail.isEmpty { Text(detail).font(.ui(10)).foregroundStyle(.secondary) }
             }
             Spacer()
-            Text(value).font(.ui(13, .bold)).monospacedDigit()
+            Text(masked(value)).font(.ui(13, .bold)).monospacedDigit()
         }
         .padding(9)
         .background(RoundedRectangle(cornerRadius: 12).fill(Color.primary.opacity(0.04)))

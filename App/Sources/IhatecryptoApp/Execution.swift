@@ -435,6 +435,7 @@ extension Workspace {
                 guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
                 nearAddress = account
                 reply(try await e.buyNear(usdc: usdc ?? 0, account: account), note: "NEAR Intents · 1Click")
+                await loadNearCost()   // what it cost, for the NEAR chart's P/L
             case .sellNear(let amount, let to):
                 guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
                 let net = try to.map { place in
@@ -442,6 +443,7 @@ extension Workspace {
                     return n
                 }
                 reply(try await e.sellNear(amount: amount, account: account, to: net), note: "NEAR Intents · 1Click")
+                await loadNearCost()
             case .sendNear(let name, let amount):
                 guard let entry = savedAddress(name, on: .near) else { throw ExecutionError("There’s no NEAR address “\(name)” in Addresses.") }
                 try requireConfirmed(entry)
@@ -650,15 +652,13 @@ extension Workspace {
                 reply(costly.localizedDescription + say(" Send it anyway?", " Отправить всё равно?"))
                 // Kamino's first-deposit rent: Jupiter Lend takes the same deposit without it, one card away.
                 let lend: WalletCommand? = if case .kamino(deposit: true, symbol: let s, amount: let a?) = command, ["USDC", "SOL"].contains(s) { .lendDeposit(s, a) } else { nil }
-                withAnimation(StudioView.spring) {
-                    nextSteps = NextSteps(options: [
+                offerCards([
                         ChatRouter.Option(title: say("Send anyway · ≈ \(Fmt.usd(costly.lost)) lost", "Отправить всё равно · потеря ≈ \(Fmt.usd(costly.lost))"),
                                           comment: costly.localizedDescription, command: Self.sendAnyway),
                     ] + (lend.map { [ChatRouter.Option(title: say("Jupiter Lend instead · no rent", "Лучше в Jupiter Lend · без аренды"),
                                                        comment: say("The same deposit, no accounts to pay for", "Тот же депозит, без платы за аккаунты"), command: $0.summary)] } ?? []) + [
                         ChatRouter.Option(title: say("Cancel", "Отмена"), comment: say("Nothing was signed", "Ничего не подписано"), command: Self.leaveCostly),
-                    ], userText: "", found: [], canvas: canvasID)
-                }
+                ])
             } else if sent.isEmpty {
                 reply(say("Failed: ", "Не вышло: ") + error.localizedDescription)
             } else {

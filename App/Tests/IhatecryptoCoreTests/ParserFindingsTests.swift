@@ -54,6 +54,42 @@ private let sol = SpotAsset.all[0]
     #expect(IntentParser.apply("short ETH risk $5", to: TradeIntent(), markets: m)?.side == .short)
 }
 
+@Test func hiddenAmountsAreDotsButPercentagesStay() {
+    #expect(Fmt.dots("$1,234.56") == "•••")
+    #expect(Fmt.dots("−$1.20 · +4.2%") == "••• · +4.2%")
+    #expect(Fmt.dots("0.1583 · gas") == "••• · gas")
+    #expect(Fmt.dots("worth $2.39 now · earning 5.97%") == "worth ••• now · earning 5.97%")
+    #expect(Fmt.dots("no price") == "no price")
+}
+
+@Test func aBuyInDollarsIsNeverALong() {
+    let m: Set<String> = ["BTC", "ETH", "SOL"]
+    // The model left out «on solana»: the plan's parser took 750 USDC as a trade's margin and drew a 5× ETH long.
+    #expect(IntentParser.apply("buy USDT for 750 USDC", to: TradeIntent(), markets: m) == nil)
+    #expect(IntentParser.apply("купи USDT на 750 баксов", to: TradeIntent(), markets: m) == nil)
+    #expect(!ChatRouter.parses("buy USDT for 750 USDC then send all USDT on solana to Bybit USDT", markets: m))
+    #expect(ChatRouter.parses("buy USDT on solana for 750 USDC then send 750 USDT on solana to Bybit USDT", markets: m))
+    #expect(WalletCommand.parse("send 750 USDT on solana to Bybit USDT")?.with(amount: 749.8) == .sendToken(name: "Bybit USDT", token: "USDT", amount: 749.8, network: "solana"))
+    // A trade still says so.
+    #expect(IntentParser.apply("long ETH 750 USDC", to: TradeIntent(), markets: m)?.amountUSDC == 750)
+    // The network's own coin bought or sold for USDC is the swap the forms have for it: Uniswap's list has no ETH.
+    #expect(WalletCommand.parse("buy ETH on arbitrum for 10 USDC") == .swapOn("arbitrum", from: "USDC", to: "ETH", amount: 10))
+    #expect(WalletCommand.parse("sell 0.01 ETH on base") == .swapOn("base", from: "ETH", to: "USDC", amount: Decimal(string: "0.01")!))
+    #expect(WalletCommand.parse("buy POL on polygon for 2 USDC") == .swapOn("polygon", from: "USDC", to: "POL", amount: 2))
+    #expect(WalletCommand.parse("buy ETH on bnb for 5 USDC") == .buyOn("bnb", token: "ETH", usdc: 5, from: nil))   // a token there
+    #expect(WalletCommand.parse("buy ETH on base") == .buyOn("base", token: "ETH", usdc: nil, from: nil))          // asks how much
+    // Jupiter Lend takes USDT both ways, as the brief now says.
+    #expect(WalletCommand.parse("lend 100 USDT") == .lendDeposit("USDT", 100))
+    #expect(WalletCommand.parse("withdraw 100 USDT from the vault") == .lendWithdraw("USDT", 100))
+    // Whatever else slips into the plan's parser, the second reader is told what the code makes of it.
+    #expect(ChatRouter.planReading("get USDT with 750 USDC", plan: nil, markets: m).contains("becomes: long ETH 750 USDC"))
+    #expect(ChatRouter.planReading("buy USDT on solana for 750 USDC then send 750 USDT on solana to Bybit", plan: nil, markets: m).isEmpty)
+    // What the app reads before the plan is never described as one: a note naming SOL, a position's order.
+    #expect(ChatRouter.planReading("write to folder UITest: вернуться к SOL в пятницу", plan: nil, markets: m).isEmpty)
+    #expect(ChatRouter.planReading("close ETH", plan: nil, markets: m).isEmpty)
+    #expect(ChatRouter.planReading("long SOL 5 USDC", plan: nil, markets: m).contains("becomes: long SOL 5 USDC"))
+}
+
 @Test func aQuestionOrADontNeverClosesThePosition() {   // C5
     for text in ["не закрывай позицию", "don't close it", "should I close ETH?", "закрыть?", "what if I close half?", "do not move the stop to 2500"] {
         #expect(PositionCommand.parse(text) == nil, "\(text)")

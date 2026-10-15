@@ -384,7 +384,7 @@ public enum WalletCommand: Equatable, Sendable {
             if place == "hyperevm" { return .swapOn(place, from: from, to: to, amount: count) }
             // The network's own coin (ETH, POL) for its USDC or back stays a swap: Uniswap's ETH pools take it as it is,
             // while a buy or a sale looks the token up on Uniswap's list, where ETH isn't.
-            let coin: Set<String> = place == "polygon" ? ["POL", "MATIC"] : place == "hyperevm" ? ["HYPE"] : place == "bnb" ? ["BNB"] : ["ETH"]
+            let coin = Self.ownCoin(place)
             if from.lowercased() == "usdc", !coin.contains(to.uppercased()) { return .buyOn(place, token: to, usdc: count, from: place) }
             if to.lowercased() == "usdc", !coin.contains(from.uppercased()) { return .sellOn(place, token: from, amount: count, keep: true) }
             return .swapOn(place, from: from, to: to, amount: count)
@@ -401,6 +401,11 @@ public enum WalletCommand: Equatable, Sendable {
             if sell, m.2 == nil, amount != nil { return nil }
             if chain == "solana", !token.hasPrefix("0x") {
                 return sell ? .sell(.bySymbol(token), amount: count) : .buy(.bySymbol(token), usdc: amount)
+            }
+            // «buy ETH on arbitrum for 10 USDC», «sell 0.01 ETH on base»: the network's own coin for USDC is the swap above.
+            // With a number only: the swap's «no amount» is all of what it spends, and the gas coin needs one.
+            if chain != "solana", Self.ownCoin(chain).contains(token.uppercased()), let n = sell ? count : amount {
+                return sell ? .swapOn(chain, from: token.uppercased(), to: "USDC", amount: n) : .swapOn(chain, from: "USDC", to: token.uppercased(), amount: n)
             }
             if chain != "solana" {
                 // «… from solana», «… с арбитрума»; «… and keep the USDC there», «… оставь USDC на base».
@@ -789,9 +794,15 @@ extension WalletCommand {
         case .sell(let a, _): .sell(a, amount: amount)
         case .sellOn(let place, let t, _, let keep): .sellOn(place, token: t, amount: amount, keep: keep)
         case .swapOn(let place, let from, let to, _): .swapOn(place, from: from, to: to, amount: amount)
+        case .sendToken(let name, let token, _, let net): .sendToken(name: name, token: token, amount: amount, network: net)
         case .crossSwap(let from, let on, let to, let at, _): .crossSwap(from: from, on: on, to: to, at: at, amount: amount)
         default: self
         }
+    }
+
+    /// A network's own coin, the one its fees are paid in: on its network it is swapped for USDC, never bought from a token list.
+    static func ownCoin(_ place: String) -> Set<String> {
+        place == "polygon" ? ["POL", "MATIC"] : place == "hyperevm" ? ["HYPE"] : place == "bnb" ? ["BNB"] : ["ETH"]
     }
 
     /// The multisig's three forms, as the chat writes them in English.

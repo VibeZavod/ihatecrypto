@@ -195,3 +195,20 @@ func tempoExchangeQuotes() async throws {
     await #expect(throws: ExecutionError.self) { try await landings.wait(for: "solana") }
     #expect(landings.count(at: nil) == 0)
 }
+
+/// A settled 1Click swap as the NEAR chart's cost reads it (the shape of /status for the 1,000 USDC buy on 2026-10-10):
+/// NEAR in for USDC costs the USDC, NEAR in for another coin its dollar value, NEAR out is a sale, someone else's is none.
+@Test func oneClickSettledSwapsMoveNEAR() {
+    func status(_ origin: String, _ destination: String, recipient: String, refundTo: String, state: String = "SUCCESS") -> [String: Any] {
+        ["status": state,
+         "swapDetails": ["amountInFormatted": "1000.0", "amountInUsd": "999.75", "amountOutFormatted": "185.421463672726355985056693"],
+         "quoteResponse": ["quoteRequest": ["originAsset": origin, "destinationAsset": destination, "recipient": recipient, "refundTo": refundTo]]]
+    }
+    let me = "8ec67b662faddd44e7d79875a4cf1e7f8c3f756a4b171ccea95a4149b8dddf2b", near = OneClick.Asset.near
+    let buy = OneClick.Settled(status(OneClick.Asset.solanaUSDC, near, recipient: me, refundTo: "AULW53"))
+    #expect(buy?.near(for: me)?.amount == Decimal(string: "185.421463672726355985056693") && buy?.near(for: me)?.dollars == 1000)
+    #expect(OneClick.Settled(status(OneClick.Asset.solanaSOL, near, recipient: me, refundTo: "AULW53"))?.near(for: me)?.dollars == Decimal(string: "999.75"))
+    #expect(OneClick.Settled(status(near, OneClick.Asset.solanaUSDC, recipient: "AULW53", refundTo: me))?.near(for: me)?.amount == -1000)
+    #expect(buy?.near(for: "d523049b8db090f8b47bdbfc027ba4c42df08782835303be44ea61d9f1955dfb") == nil)
+    #expect(OneClick.Settled(status(OneClick.Asset.solanaUSDC, near, recipient: me, refundTo: "AULW53", state: "REFUNDED")) == nil)
+}

@@ -25,6 +25,9 @@ nonisolated struct Message: Identifiable, Codable, Equatable {
     var note: String?
     /// A message as the user typed it, «$SOL» and «$<mint>» kept: the chat draws them as chips. `text` is what's read.
     var shown: String?
+    /// The cards to go on this reply offered, drawn under it in the chat (ChatReplies' Answers); `picked`, the one chosen.
+    var options: [ChatRouter.Option]?
+    var picked: Int?
 
     /// The guard's notes on its reply to a message it stopped as steering (send()); that message never reaches a model.
     static let guardLocal = "guard: local rules", guardBoth = "guard: rules and the second check"
@@ -298,6 +301,9 @@ final class Workspace {
     var equityHistory: [EquityPoint] = LocalStore.load(Workspace.scoped("equity") + ".json") ?? [] {
         didSet { LocalStore.save(equityHistory, Workspace.scoped("equity", activeWalletID) + ".json") }
     }
+    /// What each held token cost as the chain shows it (`loadChainCosts`), by the same keys, with the amount held when it
+    /// was read: tokens bought outside the app have a P/L too. Read again when that amount changes; not kept.
+    var chainCost: [String: (held: Decimal, cost: CostBasis)] = [:]
     /// What the Solana tokens bought here cost, by mint: the P/L on their portfolio rows. Kept per wallet.
     var costBasis: [String: CostBasis] = LocalStore.load(Workspace.scoped("costbasis") + ".json") ?? [:] {
         didSet { LocalStore.save(costBasis, Workspace.scoped("costbasis", activeWalletID) + ".json") }
@@ -398,13 +404,15 @@ final class Workspace {
     var yieldOptions: [Yields.Option]?
     /// Take-profit styles offered on the canvas after «take profit like the best investors»; nil when none.
     var takeChoices: [TakeStyle]?
-    /// The ways to go on the model offered with its last answer, as cards on the canvas (Agent.swift).
-    var nextSteps: NextSteps?
+    /// The ways to go on offered with the last reply, as cards under it in the chat (Agent.swift `offerCards`).
+    var nextSteps: NextSteps? { didSet { if cardKey != nil { cardKey = nil } } }
+    /// The live card ↑↓ moved to from the empty field (ChatComposer): Return picks it; typing or Esc lets it go.
+    var cardKey: Int?
     /// A move the loss cap stopped (CostlyMove) and what it would lose: «Send anyway» runs it again with that accepted.
     @ObservationIgnored var costlyMove: (command: WalletCommand, lost: Decimal)?
-    /// The last answer's cards while the next message or picked card is handled: drawn as they were, not clickable,
+    /// The last answer's boards while the next message or picked card is handled: drawn as they were, not clickable,
     /// until the answer is on the canvas. Cleared at once for the logic, they'd leave the canvas blank while the model thinks.
-    var heldAnswer: (steps: NextSteps?, yields: [Yields.Option]?, takes: [TakeStyle]?)?
+    var heldAnswer: (yields: [Yields.Option]?, takes: [TakeStyle]?)?
     /// What the model is looking up right now («Looking at the token»), under the chat's thinking dots.
     var agentStep: String?
     /// A request the model carries out over several commands (Agent.swift `continueAgent`).
@@ -886,7 +894,7 @@ final class Workspace {
         thinking = true
         draftReply = nil
         defer { thinking = false; draftReply = nil }
-        heldAnswer = (nextSteps, yieldOptions, takeChoices)
+        heldAnswer = (yieldOptions, takeChoices)
         defer { heldAnswer = nil }
         // Cleared only when set: a tuple and NextSteps aren't Equatable, so even nil over nil redraws what reads them.
         if finishedAction != nil { finishedAction = nil }
@@ -1264,9 +1272,9 @@ final class Workspace {
         // The model's lookups run here, on this canvas's data; the chat shows which one is under way.
         let lookup: @Sendable (ChatRouter.Lookup) async -> String = { [weak self] l in await self?.screenedLookup(l) ?? "" }
         // A second reader of every command: Jev when OpenRouter is connected, else the model reading it again.
-        let key = jevScreening ? openRouterKey : nil, recent = context.recent, model = model
+        let key = jevScreening ? openRouterKey : nil, recent = context.recent, model = model, known = Set(markets.keys)
         @Sendable func modelReading(_ command: String) async -> (answered: Bool, why: String?) {
-            do { return (true, try await ChatRouter.verify(text, command: command, context: context, client: client, model: model)) } catch { return (false, nil) }
+            do { return (true, try await ChatRouter.verify(text, command: command, context: context, client: client, model: model, markets: known)) } catch { return (false, nil) }
         }
         // What a follow-up is about: the plan, the blocks with a card waiting for Confirm among them, the cards offered.
         let seen = (context.plan.map { ["plan on the canvas: " + $0] } ?? []) + context.canvas
@@ -1437,7 +1445,7 @@ final class Workspace {
     private func routerContext(offered: [ChatRouter.Option] = [], messageShown: Bool = true) -> ChatRouter.Context {
         var c = ChatRouter.Context()
         c.recent = Array(recentChat().dropLast(messageShown ? 1 : 0))   // the last line is the message itself
-        c.offered = offered.map { "\($0.title) → \($0.command)\($0.recommended ? " (recommended)" : "")" }
+        c.offered = offered.map { "\($0.title) → \($0.command.isEmpty ? "(an answer to your question)" : $0.command)\($0.recommended ? " (recommended)" : "")" }
         if intent != TradeIntent(), let json = try? JSONEncoder().encode(intent) { c.plan = String(decoding: json, as: UTF8.self) }
         if let ch = chart {
             let points = ch.candles.map { TokenMarket.Point(time: $0.time, close: $0.close) }
@@ -1513,8 +1521,8 @@ final class Workspace {
             c.balances.append("Robinhood Chain \(Fmt.num(r.usdg)) USDG" + r.stocks.map { ", \(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol) stock" }.joined())
         }
         for t in favoriteTokens { if let held = tokenBalances[t.id], held > 0 { c.balances.append("\(t.symbol) token on \(t.chainTitle) \(Fmt.num(held, maxFraction: 4))") } }
-        // Tokens the portfolio shows on the other networks — a vault's shares among them (fUSDC, mUSDC…), read from the chain.
-        for t in shownTokens where t.chain != "solana" && !t.native && t.symbol.uppercased() != "USDC" && (t.usd ?? 0) >= Decimal(string: "0.5")!
+        // Tokens the portfolio shows on every network — a vault's shares among them (fUSDC, mUSDC…), read from the chain.
+        for t in shownTokens where !t.native && t.symbol.uppercased() != "USDC" && (t.usd ?? 0) >= Decimal(string: "0.5")!
             && !favoriteTokens.contains(where: { $0.id == t.id }) {
             c.balances.append("\(Fmt.num(t.amount, maxFraction: 6)) \(t.symbol) (\(t.contract)) on \(WalletCommand.placeName(t.chain)) ≈ \(Fmt.usd(t.usd ?? 0))")
         }
@@ -1975,7 +1983,7 @@ final class Workspace {
         let (relay, near) = q.provider == "Relay" ? (fee, other) : (other, fee)
         reply(say("Your Hyperliquid account opens with this trade. How should the USDC come from Solana?",
                   "Аккаунт Hyperliquid откроется этой сделкой. Как довезти USDC с Solana?"))
-        nextSteps = NextSteps(options: [
+        offerCards([
             ChatRouter.Option(title: say("Open via Relay", "Открыть через Relay"),
                               comment: say("seconds · ≈ \(Fmt.usd(relay)), incl. Hyperliquid's one-time opening fee",
                                            "секунды · ≈ \(Fmt.usd(relay)), включая разовую плату Hyperliquid за открытие"),
@@ -1984,7 +1992,7 @@ final class Workspace {
                               comment: say("2–4 min · ≈ \(Fmt.usd(near)), no opening fee; the entry waits for the price to hold",
                                            "2–4 мин · ≈ \(Fmt.usd(near)), без платы за открытие; вход — если цена устоит"),
                               command: Self.openVia + "oneclick"),
-        ], userText: "", found: [], canvas: canvasID)
+        ])
     }
 
     static let openVia = "open hyperliquid via "

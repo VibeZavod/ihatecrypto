@@ -21,6 +21,13 @@ extension Hyperliquid {
         return try parseCandles(try await HTTP.post(info, json: body))
     }
 
+    /// Candles of any interval («1h», «4h», «1d») between two times, oldest first; Hyperliquid gives at most 5,000.
+    public static func candles(coin: String, interval: String, from: Date, to: Date = Date()) async throws -> [Candle] {
+        let body: [String: Any] = ["type": "candleSnapshot", "req": ["coin": coin, "interval": interval,
+                                                                       "startTime": Int(from.timeIntervalSince1970 * 1000), "endTime": Int(to.timeIntervalSince1970 * 1000)]]
+        return try parseCandles(try await HTTP.post(info, json: body))
+    }
+
     public static func parseCandles(_ data: Data) throws -> [Candle] {
         struct Row: Decodable { let t: Int64; let o: String; let h: String; let l: String; let c: String }
         return try JSONDecoder().decode([Row].self, from: data).map {
