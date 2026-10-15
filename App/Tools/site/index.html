@@ -69,7 +69,10 @@
   html { -webkit-text-size-adjust: 100%; scroll-padding-top: 84px; }
   @media (prefers-reduced-motion: no-preference) { html { scroll-behavior: smooth; } }
   body { background: #FAFAFB radial-gradient(#D9DCE2 1.2px, transparent 1.5px) 0 0 / 22px 22px; color: var(--ink);
-         font: 400 16px/1.5 Onest, system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: clip; }
+         font: 400 16px/1.5 Onest, system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: clip;
+         padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }   /* a phone on its side: the words clear the Dynamic Island */
+  /* The phone's status bar: Safari paints a fixed element's colour under it, so the page scrolling up never runs under the clock. */
+  body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 49; height: max(12px, env(safe-area-inset-top)); background: #FAFAFB; pointer-events: none; }
   a { color: var(--accent-ink); }
   .glass { background: rgba(255,255,255,.74); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6);
            border: 1px solid rgba(17,17,17,.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 16px 48px rgba(17,17,17,.10); }
@@ -103,7 +106,7 @@
   .meta { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; text-wrap: balance; }
 
   /* The header: always there, always with the download. */
-  .top { position: fixed; top: 0; left: 0; right: 0; z-index: 50; padding: 10px 16px 0; pointer-events: none; }
+  .top { position: fixed; top: 0; left: 0; right: 0; z-index: 50; padding: 10px max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); pointer-events: none; }
   .bar { position: relative; pointer-events: auto; max-width: 1120px; height: 58px; margin: 0 auto; padding: 0 9px 0 12px; border-radius: 17px; display: flex; align-items: center; gap: 8px; }
   .logo { display: flex; align-items: center; gap: 9px; margin-right: auto; color: var(--ink); text-decoration: none; border-radius: 10px; min-width: 0; }
   .logo svg { width: 36px; height: 36px; flex: none; }
@@ -454,6 +457,22 @@
     .b0::before { width: 170vw; height: 86%; top: 55%; background: radial-gradient(closest-side, rgba(250,250,251,.97) 66%, rgba(250,250,251,0)); }
   }
   @media (max-width: 380px) { .logo span { font-size: 17px; } }
+  /* A phone on its side (a short, wide screen): the first screen packs into one column, the send buttons in a row; the
+     story's words go left and its route right (layout() reads the same query as `side`). */
+  @media (max-height: 520px) and (orientation: landscape) {
+    .top { padding-top: 6px; } .bar { height: 50px; }
+    .b0 { padding: 58px 16px 52px; }
+    .eyebrow { display: none; }
+    h1 { font-size: 40px; max-width: none; margin-top: 0; }
+    .lead { font-size: 14px; line-height: 1.4; margin-top: 10px; }
+    .b0 .btn { margin-top: 16px; }
+    .b0 .sendbox { flex-direction: row; flex-wrap: wrap; justify-content: center; gap: 0 12px; margin-top: 16px; }
+    .b0 .shares { margin-top: 0; }
+    .b0 .meta { flex-basis: 100%; max-width: none; margin-top: 8px; }
+    .beat:not(.b0) { bottom: 0; right: auto; width: 44%; justify-content: center; align-items: flex-start; text-align: left; padding: 56px 0 44px 16px; }
+    .beat h2 { font-size: 24px; max-width: none; } .beat h2 + p { font-size: 14px; line-height: 1.4; margin-top: 8px; }
+    .cue { bottom: 8px; }
+  }
   @media (hover: none) { .cur { display: none; } }
 </style>
 </head>
@@ -978,7 +997,7 @@ const ASK = [
 
 const $ = (s, el = document) => el.querySelector(s), $$ = (s, el = document) => [...el.querySelectorAll(s)];
 const demo = $('.demo'), stage = $('.stage'), inp = $('.inp'), typed = $('.typed'), cur = $('.cur'), conf = $('.conf'), chart = $('.chart');
-const still = matchMedia('(prefers-reduced-motion: reduce)').matches, small = matchMedia('(max-width: 760px)');
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches, small = matchMedia('(max-width: 760px)'), side = matchMedia('(max-height: 520px) and (orientation: landscape)');
 let lang = 'en', sc = 0, timers = [], seen = false;
 
 const ARROW = '<svg class="arw fx" width="40" height="18" viewBox="0 0 40 18"><path class="sh" d="M7 9 L32 9" fill="none" stroke-width="2.2" stroke-linecap="round"/><path d="M26 3 L32 9 L26 15" fill="none" stroke="#111111" stroke-opacity=".85" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
@@ -1452,19 +1471,21 @@ async function start3d() {
   function layout() {
     const w = pin.clientWidth, h = pin.clientHeight, a = w / h, tall = a < .9;
     R.setPixelRatio(Math.min(devicePixelRatio, 3)); R.setSize(w, h, false);   // an iPhone is 3×: a 2× canvas stretched to it looks soft
-    // The route sits between the beat's words and the «Scroll» cue at the bottom.
-    const top = Math.max(beats[1].offsetHeight, beats[2].offsetHeight) / h + .03, avail = Math.max(.3, 1 - top - ($('.cue').offsetHeight + 30) / h);
+    // The route sits between the beat's words and the «Scroll» cue at the bottom; on a phone on its side, in the right
+    // part of the screen (rw of its width) beside the words, below the header.
+    const rw = side.matches ? .56 : 1;
+    const top = rw < 1 ? 64 / h : Math.max(beats[1].offsetHeight, beats[2].offsetHeight) / h + .03, avail = Math.max(.3, 1 - top - ($('.cue').offsetHeight + 30) / h);
     const cw = tall ? 3.43 : 2.36, ch = tall ? 1.12 : 2.92, gap = tall ? .32 : .64;
     const boxW = tall ? cw : 3 * cw + 2 * gap, boxH = .34 + .14 + (tall ? 3 * ch + 2 * gap : ch) + .28 + .48;
-    const H = Math.max(boxH / avail, boxW / (a * .9), tall ? 0 : ch * h / 330), Z = H / 2 / tanH, cy = H * (.5 - top - avail / 2);
-    const yTop = cy + boxH / 2, yCards = yTop - .48;
+    const H = Math.max(boxH / avail, boxW / (a * .9 * rw), tall ? 0 : ch * h / 330), Z = H / 2 / tanH, cy = H * (.5 - top - avail / 2);
+    const yTop = cy + boxH / 2, yCards = yTop - .48, cx = -(1 - rw) / 2 * H * a;   // the camera steps left, so the route stands right
     cam.aspect = a; cam.updateProjectionMatrix();
     const barK = tall ? 1.25 : 1;
-    L = { tall, Z, cy, barK, tabA: w < 480 ? .8 : 1, bw: Math.round(Math.min(640, H * a * 100 * .9 / barK)), tabK: Math.min(.85, Math.max(.62, a * .7)),
+    L = { tall, Z, cy, cx, barK, tabA: w < 480 ? .8 : 1, bw: Math.round(Math.min(640, H * a * rw * 100 * .9 / barK)), tabK: Math.min(.85, Math.max(.62, a * .7)),
       bubble: [-boxW / 2, yTop - .17], conf: [0, cy - boxH / 2 + .24],
       cards: [0, 1, 2].map((i) => tall ? [0, yCards - ch / 2 - i * (ch + gap)] : [-boxW / 2 + cw / 2 + i * (cw + gap), yCards - ch / 2]),
       arrows: [0, 1].map((i) => tall ? [0, yCards - ch - gap / 2 - i * (ch + gap)] : [-boxW / 2 + cw + gap / 2 + i * (cw + gap), yCards - ch / 2]),
-      spots: SPOTS.map(([nx, ny, z, rx, ry, rz]) => { const hh = (Z - z) * tanH; return [nx * hh * a * .86, ny * hh * .84, z, rx, ry, rz]; }) };
+      spots: SPOTS.map(([nx, ny, z, rx, ry, rz]) => { const hh = (Z - z) * tanH; return [nx * hh * a * .86 + cx, ny * hh * .84, z, rx, ry, rz]; }) };
     // Texture pixels per page pixel: the screen's for the route, a bit less for the tabs (they're scaled by tabK, mostly further back).
     const dots = h / H / 100 * Math.min(devicePixelRatio, 3);
     L.S = Math.min(4, Math.max(1.25, dots * 1.05)); L.tabS = Math.min(3, Math.max(1.25, dots * L.tabK * 1.15));
@@ -1530,7 +1551,7 @@ async function start3d() {
     confirm.position.set(L.conf[0], L.conf[1], 0); fade(confirm, seg(p, .69, .72));
     // The pointer tilts the view a little.
     px = still ? 0 : mix(px, mx, .05); py = still ? 0 : mix(py, my, .05);
-    cam.position.set(px * .35, -py * .22, L.Z); cam.lookAt(0, 0, 0);
+    cam.position.set(L.cx + px * .35, -py * .22, L.Z); cam.lookAt(L.cx, 0, 0);
     R.render(scene, cam);
   }
 
