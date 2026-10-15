@@ -266,8 +266,9 @@ struct MenuBarContent: View {
             ForEach(ws.exitRules.keys.sorted(), id: \.self) { coin in
                 Label("ihatecrypto manages the stop: \(IntentParser.pretty(coin))", systemImage: "shield.lefthalf.filled").font(.ui(10))
             }
-            // The schedule, next first, and how each one's last run went: a click opens it on its own canvas.
-            let scheduled = ws.scheduleEntries.filter { $0.next != nil }
+            // The schedule, next first, and how each one's last run went: a click opens it on its own canvas. A paused
+            // one stays on the Schedule, folded.
+            let scheduled = ws.scheduleEntries.filter { $0.next != nil && !$0.paused }
             if !scheduled.isEmpty {
                 Text("SCHEDULE").font(.ui(9, .semibold)).tracking(1.1).foregroundStyle(.secondary)
                 ForEach(scheduled.prefix(6)) { e in

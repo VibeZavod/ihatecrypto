@@ -25,8 +25,14 @@ nonisolated struct Activity: Codable, Identifiable, Sendable {
     var canvas: UUID?
     /// A run that failed (its notice went out as failed): a red mark on the Schedule's history.
     var failed: Bool?
+    /// A run that had nothing to do or tell (no free USDC to spread, a check with nothing to say): a grey mark on the
+    /// Schedule's history, not a green one, and no notification.
+    var idle: Bool?
     /// A message the guard stopped: it stays in the history, and never reaches a model through the portfolio's facts.
     var stopped: Bool?
+
+    /// `idle`, or a spread from before it that found nowhere to put the money.
+    var didNothing: Bool { idle == true || lines.contains { $0.hasPrefix("Nowhere to put it now") || $0.hasPrefix("Сейчас некуда положить") } }
 }
 
 /// A canvas bubble frozen in time: enough to draw it again the same way in the history.

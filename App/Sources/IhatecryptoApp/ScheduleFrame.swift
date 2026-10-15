@@ -70,6 +70,12 @@ extension ScheduledTask {
             }
         }
     }
+
+    /// «Spread USDC across the best rates»: it spends the USDC free on the wallet it pays from, so with none there its
+    /// runs have nothing to do.
+    var spreadsUSDC: Bool {
+        steps.contains { if case .allocate("USDC", _, _, _, _)? = WalletCommand.parse($0) { true } else { false } }
+    }
 }
 
 /// A run's time as the Schedule says it, in Gregorian dates whatever the Mac's calendar is: «Today 9:00 PM · in 6 h».
@@ -122,12 +128,23 @@ extension Workspace {
         }
     }
 
+    /// A task's moves go from the automation wallet, without Touch ID: there is one, the user typed the task in the
+    /// window, and didn't set it to pay from the wallet that's on.
+    func usesAutomation(_ t: ScheduledTask) -> Bool { t.untrusted != true && t.fromActive != true && automationWallet != nil }
+
+    /// The USDC free to spend where a task pays from: the automation wallet's budget on Solana and the EVM networks, or
+    /// the active wallet's idle USDC on them; nil until read.
+    func freeUSDC(_ t: ScheduledTask) -> Decimal? {
+        if usesAutomation(t) { return automationBudget.map { ($0.solana ?? 0) + $0.evmTotal } }
+        return (solana?.usdc).map { $0 + EVMNetwork.searched.compactMap { n in usdc(on: n.key) }.reduce(0, +) }
+    }
+
     /// A task runs by itself from the automation wallet (or moves nothing); without it its moves wait for Confirm. A
     /// recurring buy is signed by the wallet that's on: Touch ID, its Ledger, or nothing on a test wallet.
     func signer(_ key: String) -> ScheduleSigner {
         if key.hasPrefix("perp:") { return .exchange }
         if let t = tasks.first(where: { "task:\($0.id)" == key }) {
-            if !t.movesMoney || (t.untrusted != true && automationWallet != nil) { return .itself }
+            if !t.movesMoney || usesAutomation(t) { return .itself }
             return ledgerActive ? .ledger : activeWallet?.isTest == true ? .confirm : .touchID
         }
         return ledgerActive ? .ledger : activeWallet?.isTest == true ? .itself : .touchID
@@ -201,6 +218,41 @@ extension Workspace {
         }
     }
 
+    /// Where a task pays from: the wallet that's on (Confirm and Touch ID each run) or the automation wallet.
+    func setFromActive(_ id: String, _ on: Bool) {
+        if let i = tasks.firstIndex(where: { "task:\($0.id)" == id }) { tasks[i].fromActive = on ? true : nil }
+    }
+
+    /// «New schedule»: a start in the chat with what to do selected to type over; the time can be changed the same way.
+    func suggestSchedule() { suggest("every day at 09:00: what to do", select: "what to do") }
+
+    /// «Ask in chat» on an item's page: a chip over the field, and the next message reaches the model with the item as the
+    /// page shows it — when, where it pays from and who signs, on or paused, its last runs and how they went (the owner,
+    /// 2026-10-16: «должен передать контекст блока»).
+    func askAboutScheduled(_ key: String) {
+        guard let e = scheduleEntries.first(where: { $0.id == key }) else { return }
+        var facts = [e.title, e.every ?? e.when]
+        if let next = e.next { facts.append("next run \(NextRun.when(next))") }
+        facts.append(e.paused ? "paused" : schedulePaused ? "the whole schedule is paused" : "on")
+        if let t = tasks.first(where: { "task:\($0.id)" == key }) {
+            facts.append("steps: " + t.steps.joined(separator: " then "))
+            if !t.movesMoney {
+                facts.append("moves no money")
+            } else if usesAutomation(t) {
+                facts.append("pays from the automation wallet «\(automationWallet?.label ?? "")», by itself without Touch ID")
+            } else {
+                facts.append("pays from «\(activeWallet?.label ?? "the wallet that's on")», each move waits for Confirm")
+            }
+            if t.spreadsUSDC, let free = freeUSDC(t) { facts.append("\(Fmt.num(free)) USDC free there now" + (free == 0 ? ", so its runs have nothing to spread" : "")) }
+        }
+        let runs = activities.reversed().lazy.filter { $0.schedule == key }.prefix(5).map { a in
+            let how = a.failed == true || a.bubbles.contains { $0.status == "failed" } ? "failed" : a.didNothing ? "did nothing" : "done"
+            return "\(ScheduleItemBoard.stamp(a.at)) \(how): \(ScheduleItemBoard.said(a))"
+        }
+        facts.append(runs.isEmpty ? "hasn't run yet" : "last runs: " + runs.joined(separator: "; "))
+        stepContext = StepContext(title: e.title, logo: e.logo, about: "About the scheduled task «\(facts.joined(separator: "; "))»")
+    }
+
     func setPaused(_ id: String, _ paused: Bool) {
         if let i = tasks.firstIndex(where: { "task:\($0.id)" == id }) { tasks[i].paused = paused ? true : nil }
         if let i = schedules.firstIndex(where: { "buy:\($0.symbol)" == id }) { schedules[i].paused = paused ? true : nil }
@@ -271,6 +323,9 @@ extension Workspace {
 struct ScheduleFrame: View {
     @Environment(Workspace.self) private var ws
     @State private var tab = Tab.tasks
+    /// The paused items, folded away under their count until opened.
+    @State private var showPaused = false
+    @State private var hovered: String?
     static let width: CGFloat = 320
 
     enum Tab: String, CaseIterable { case tasks = "Tasks", history = "History", wallet = "Wallet" }
@@ -376,8 +431,11 @@ struct ScheduleFrame: View {
 
     // MARK: Tasks
 
+    /// What runs, then a way to say a new one in the chat; the paused ones folded under their count, there to switch on
+    /// again or delete («показывает выключенные уже скедуалы», 2026-10-16).
     @ViewBuilder private var tasks: some View {
-        let entries = ws.scheduleEntries
+        let entries = ws.scheduleEntries.filter { !$0.paused }
+        let paused = ws.scheduleEntries.filter(\.paused)
         VStack(alignment: .leading, spacing: 6) {
             if !entries.isEmpty {
                 Button { ws.schedulePaused.toggle() } label: {
@@ -391,7 +449,25 @@ struct ScheduleFrame: View {
             }
             ForEach(entries) { e in row(e) }
             if entries.isEmpty {
-                Text("Nothing scheduled. Say it in the chat, in any words:").font(.ui(11)).foregroundStyle(.secondary)
+                Text(paused.isEmpty ? "Nothing scheduled. Say it in the chat, in any words:" : "Nothing running now.").font(.ui(11)).foregroundStyle(.secondary)
+            }
+            Button { ws.suggestSchedule() } label: {
+                Label("New schedule", systemImage: "plus").font(.ui(12.5, .bold)).frame(maxWidth: .infinity).frame(height: 32)
+            }
+            .buttonStyle(LitBlock(radius: 12)).background(RoundedRectangle(cornerRadius: 12).strokeBorder(Brand.cardBorder))
+            .help("Puts a start in the chat: say what to do and when, in any words")
+            if !paused.isEmpty {
+                Button { withAnimation(StudioView.spring) { showPaused.toggle() } } label: {
+                    HStack(spacing: 6) {
+                        Text("PAUSED · \(paused.count)").font(.ui(10, .semibold)).tracking(1.2)
+                        Spacer()
+                        Image(systemName: showPaused ? "chevron.up" : "chevron.down").font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundStyle(.secondary).padding(.horizontal, 4).padding(.vertical, 6).contentShape(Rectangle())
+                }
+                .buttonStyle(.plain).pointerStyle(.link).padding(.top, 4)
+                .help(showPaused ? "Hide the paused ones" : "Show the paused ones: switch one on again or delete it")
+                if showPaused { ForEach(paused) { e in row(e) } }
             }
             Flow(spacing: 6) {
                 ForEach(["every week: rebalance USDC", "every day at 09:00: what's moving"], id: \.self) { e in
@@ -413,7 +489,16 @@ struct ScheduleFrame: View {
                 NextLine(entry: e)
             }
             Spacer(minLength: 4)
-            SignerMark(signer: ws.signer(e.id))
+            // Its mark, or under the pointer (always on a paused one) Delete, in the same place: nothing shifts.
+            let delete = !e.id.hasPrefix("perp:") && (e.paused || hovered == e.id)
+            ZStack {
+                SignerMark(signer: ws.signer(e.id)).opacity(delete ? 0 : 1)
+                if !e.id.hasPrefix("perp:") {
+                    Button { ws.removeScheduled(e.id) } label: { Image(systemName: "trash") }
+                        .buttonStyle(.hoverIcon).opacity(delete ? 1 : 0).allowsHitTesting(delete)
+                        .help("Delete it: off the schedule for good; what it ran stays in the history").accessibilityLabel("Delete \(e.title)")
+                }
+            }
             if !e.id.hasPrefix("perp:") {
                 Toggle("", isOn: Binding(get: { !e.paused }, set: { on in ws.setPaused(e.id, !on) }))
                     .toggleStyle(.switch).controlSize(.mini).labelsHidden()
@@ -427,6 +512,7 @@ struct ScheduleFrame: View {
         .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(ws.currentScheduleKey == e.id ? Brand.accent : Brand.cardBorder))
         .opacity(e.paused || ws.schedulePaused ? 0.55 : 1)
         .contentShape(Rectangle())
+        .onHover { inside in if inside { hovered = e.id } else if hovered == e.id { hovered = nil } }
         // Its own canvas: steps, runs, Pause and Delete, and the chat to change it.
         .modifier(HoverLift(radius: 14)).onTapGesture { ws.openScheduleCanvas(e.id) }
         .contextMenu {
@@ -456,7 +542,9 @@ struct ScheduleFrame: View {
         let title = (a.title ?? a.request ?? "ihatecrypto").replacingOccurrences(of: "Scheduled: ", with: "").replacingOccurrences(of: "По расписанию: ", with: "")
         return HStack(spacing: 8) {
             Text(a.at.formatted(date: .omitted, time: .shortened)).font(.ui(10.5)).foregroundStyle(.secondary).frame(width: 52, alignment: .leading)
-            Image(systemName: failed ? "xmark.circle.fill" : "checkmark.circle.fill").foregroundStyle(failed ? Brand.loss : Brand.profit).font(.system(size: 13))
+            Image(systemName: failed ? "xmark.circle.fill" : a.didNothing ? "minus.circle.fill" : "checkmark.circle.fill")
+                .foregroundStyle(failed ? Brand.loss : a.didNothing ? Color.secondary : Brand.profit).font(.system(size: 13))
+                .help(failed ? "Failed" : a.didNothing ? "Nothing to do" : "Done")
             // What it said, on the title only: on the row it covered the button's own tooltip.
             Text(title).font(.ui(12, .medium)).lineLimit(1).help(a.lines.last ?? title)
             Spacer(minLength: 2)
@@ -618,12 +706,15 @@ struct SignerMark: View {
     }
 }
 
-/// On the portfolio: the next three things that run on their own; a click opens the Schedule beside it.
+/// On the portfolio: the next three things that run on their own — a paused one isn't among them, the Schedule keeps it
+/// folded; a click opens the Schedule beside it.
 struct ScheduleTop3: View {
     @Environment(Workspace.self) private var ws
 
     var body: some View {
-        let next = Array(ws.scheduleEntries.prefix(3))
+        let running = ws.scheduleEntries.filter { !$0.paused }
+        let next = Array(running.prefix(3))
+        let paused = ws.scheduleEntries.count - running.count
         // What the marks mean, for the ones shown.
         let marks = next.map { ws.signer($0.id) }.filter { $0 != .exchange }.reduce(into: [ScheduleSigner]()) { if !$0.contains($1) { $0.append($1) } }
         TimelineView(.everyMinute) { clock in
@@ -632,6 +723,8 @@ struct ScheduleTop3: View {
                 Text("SCHEDULE").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
                 if ws.schedulePaused { Text("paused").font(.ui(10)).foregroundStyle(Brand.loss) }
                 Spacer()
+                Button { ws.suggestSchedule() } label: { Image(systemName: "plus").font(.system(size: 10, weight: .semibold)) }
+                    .buttonStyle(.hoverIcon).help("New schedule: puts a start in the chat").accessibilityLabel("New schedule")
                 if !next.isEmpty {
                     Button { ws.schedulePaused.toggle() } label: { Image(systemName: ws.schedulePaused ? "play.fill" : "pause.fill").font(.system(size: 10, weight: .semibold)) }
                         .buttonStyle(.hoverIcon)
@@ -644,7 +737,7 @@ struct ScheduleTop3: View {
                 .buttonStyle(.hoverIcon)
             }
             if next.isEmpty {
-                Text("Nothing scheduled yet").font(.ui(11)).foregroundStyle(.secondary)
+                Text(paused > 0 ? "Nothing running · \(paused) paused" : "Nothing scheduled yet").font(.ui(11)).foregroundStyle(.secondary)
             }
             ForEach(next) { e in
                 HStack(spacing: 10) {
@@ -656,7 +749,7 @@ struct ScheduleTop3: View {
                     Spacer(minLength: 4)
                     SignerMark(signer: ws.signer(e.id))
                 }
-                .opacity(e.paused || ws.schedulePaused ? 0.55 : 1)
+                .opacity(ws.schedulePaused ? 0.55 : 1)
                 // Room inside the row, so its hover edge sits off the text; all of it clicks.
                 .padding(.horizontal, 8).padding(.vertical, 6)
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -664,7 +757,7 @@ struct ScheduleTop3: View {
                 .modifier(HoverLift(radius: 10)).onTapGesture { ws.openScheduleCanvas(e.id) }
                 .contextMenu {
                     if !e.id.hasPrefix("perp:") {
-                        Button(e.paused ? "Resume" : "Pause") { ws.setPaused(e.id, !e.paused) }
+                        Button("Pause") { ws.setPaused(e.id, true) }
                         Button("Delete", role: .destructive) { ws.removeScheduled(e.id) }
                     }
                 }
@@ -756,6 +849,7 @@ struct ScheduleItemBoard: View {
                 header(entry)
                 if let next = entry.next { TimelineView(.everyMinute) { clock in nextRun(entry, next, now: clock.date) } }
                 facts(entry)
+                if let t = task, !entry.paused, t.spreadsUSDC, ws.freeUSDC(t) == 0 { nothingFree(t) }
                 if let t = task, t.steps.count > 1 { steps(t) }
                 if let t = task, t.untrusted != true, ws.automationWallet == nil, t.movesMoney { automationOffer }
             } else {
@@ -772,7 +866,15 @@ struct ScheduleItemBoard: View {
             }
             if entry != nil, !perp {
                 HStack {
-                    Text("Change it in the chat, in any words.").font(.ui(11)).foregroundStyle(.secondary)
+                    // The chat with this task attached: ask about it or change it in any words.
+                    Button { ws.askAboutScheduled(key) } label: {
+                        HStack(spacing: 7) { BrandLogo(size: 20, mood: .waiting); Text("Ask in chat").font(.ui(13, .semibold)) }
+                            .padding(.leading, 6).padding(.trailing, 12).frame(height: 36)
+                            .background(RoundedRectangle(cornerRadius: 10, style: .continuous).strokeBorder(Brand.cardBorder, lineWidth: 1.5))
+                            .contentShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    }
+                    .buttonStyle(.plain).pointerStyle(.link)
+                    .help("Attaches this task to your next message: ask about it or change it in any words")
                     Spacer()
                     Button(role: .destructive) { ws.removeScheduled(key) } label: { Label("Delete", systemImage: "trash").font(.ui(12, .semibold)) }
                         .buttonStyle(.borderless).foregroundStyle(Brand.loss).pointerStyle(.link)
@@ -855,20 +957,40 @@ struct ScheduleItemBoard: View {
         } else if !money {
             facts = [Fact(label: "MONEY", value: "None", detail: "it reads and tells you, moves nothing")]
         } else if signer == .itself, let a = ws.automationWallet {
+            // What a spread spends is the USDC free there, not what's already deposited.
+            let free = task.flatMap { $0.spreadsUSDC ? ws.freeUSDC($0) : nil }
             facts = [Fact(label: "PAYS FROM", value: "Automation budget",
-                          detail: ws.automationBudget.map { "\(Fmt.num($0.total)) USDC on «\(a.label)»" } ?? "the wallet «\(a.label)»"),
+                          detail: free.map { "\(Fmt.num($0)) USDC free on «\(a.label)»" }
+                              ?? ws.automationBudget.map { "\(Fmt.num($0.total)) USDC on «\(a.label)»" } ?? "the wallet «\(a.label)»"),
                      Fact(label: "ENDS UP IN", value: "«\(a.label)»", detail: "the automation wallet; move it over in the chat")]
         } else {
-            facts = [Fact(label: "PAYS FROM", value: wallet, detail: "the wallet that’s on"),
+            let free = task.flatMap { $0.spreadsUSDC ? ws.freeUSDC($0) : nil }
+            facts = [Fact(label: "PAYS FROM", value: wallet, detail: free.map { "\(Fmt.num($0)) USDC free" } ?? "the wallet that’s on"),
                      Fact(label: "ENDS UP IN", value: wallet, detail: "the wallet it pays from")]
         }
+        // With an automation wallet a task picks where it pays from, on the tile itself.
+        let pick = task.map { t in t.movesMoney && t.untrusted != true && ws.automationWallet != nil } ?? false
         return HStack(alignment: .top, spacing: 10) {
             ForEach(facts + [signs]) { f in
                 VStack(alignment: .leading, spacing: 3) {
                     Text(f.label).font(.ui(9.5, .semibold)).tracking(1.1).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
-                    HStack(spacing: 5) {
-                        if let icon = f.icon { Image(systemName: icon).font(.system(size: 12, weight: .semibold)) }
-                        Text(f.value).font(.ui(15, .bold)).lineLimit(2)
+                    if pick, f.label == "PAYS FROM", let t = task, let a = ws.automationWallet {
+                        Menu {
+                            Button("«\(a.label)» · by itself, no Touch ID") { ws.setFromActive(key, false) }
+                            Button("«\(wallet)» · Confirm and Touch ID each run") { ws.setFromActive(key, true) }
+                        } label: {
+                            HStack(spacing: 4) {
+                                Text(f.value).font(.ui(15, .bold)).lineLimit(2).multilineTextAlignment(.leading)
+                                Image(systemName: "chevron.up.chevron.down").font(.system(size: 9, weight: .bold)).foregroundStyle(.secondary)
+                            }
+                        }
+                        .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true).pointerStyle(.link)
+                        .help(ws.usesAutomation(t) ? "Pay from «\(wallet)» instead: each run waits for Confirm and Touch ID" : "Pay from «\(a.label)» instead: runs by itself")
+                    } else {
+                        HStack(spacing: 5) {
+                            if let icon = f.icon { Image(systemName: icon).font(.system(size: 12, weight: .semibold)) }
+                            Text(f.value).font(.ui(15, .bold)).lineLimit(2)
+                        }
                     }
                     if !f.detail.isEmpty { Text(f.detail).font(.ui(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true) }
                 }
@@ -898,6 +1020,46 @@ struct ScheduleItemBoard: View {
                 if i < t.steps.count - 1 { Divider() }
             }
         }
+    }
+
+    /// A spread with no free USDC where it pays from: its runs do nothing, said before they do, with the ways out —
+    /// put money there, or pay from the other wallet when that one has some (the owner's 904 USDC sat idle on Main while
+    /// the task ran on an empty «Automation» every day, 2026-10-16).
+    private func nothingFree(_ t: ScheduledTask) -> some View {
+        let automation = ws.usesAutomation(t)
+        let here = (automation ? ws.automationWallet : ws.activeWallet)?.label ?? "the wallet"
+        var other = t
+        other.fromActive = automation ? true : nil
+        let there = ws.automationWallet != nil && t.untrusted != true ? ws.freeUSDC(other) : nil
+        let otherName = (automation ? ws.activeWallet : ws.automationWallet)?.label ?? ""
+        return HStack(alignment: .top, spacing: 12) {
+            Image(systemName: "tray").font(.system(size: 16, weight: .semibold)).foregroundStyle(Brand.loss)
+                .frame(width: 34, height: 34)
+                .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Brand.loss.opacity(0.12)))
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Its runs have nothing to spread").font(.ui(13.5, .bold))
+                Text("«\(here)» has no free USDC, so each run finds nothing and does nothing. What’s already deposited keeps earning.")
+                    .font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                Flow(spacing: 6) {
+                    if automation {
+                        Button { ws.suggestTopUp() } label: { Label("Top up «\(here)»", systemImage: "plus").font(.ui(12, .semibold)) }
+                            .buttonStyle(.borderedProminent).tint(Brand.accent).controlSize(.small).pointerStyle(.link)
+                            .help("Puts it in the chat with the amount to change; nothing goes until you send it")
+                    }
+                    if let there, there > 0 {
+                        Button { ws.setFromActive(key, automation) } label: {
+                            Label("Pay from «\(otherName)» · \(Fmt.num(there)) USDC free", systemImage: "arrow.left.arrow.right").font(.ui(12, .semibold))
+                        }
+                        .buttonStyle(.bordered).controlSize(.small).pointerStyle(.link)
+                        .help(automation ? "Each run waits for your Confirm and Touch ID" : "Runs by itself, no Touch ID")
+                    }
+                }
+                .padding(.top, 4)
+            }
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Brand.loss.opacity(0.5)))
     }
 
     /// Automation asked for, and nothing yet that runs it without a finger: the way offered right here, as a card.
@@ -937,8 +1099,9 @@ struct ScheduleItemBoard: View {
                     Button { ws.openRunCanvas(c) } label: { Label("Its canvas", systemImage: "arrow.up.right").font(.ui(11, .semibold)) }
                         .buttonStyle(.borderless).pointerStyle(.link).help("Open the canvas it ran on")
                 }
-                Image(systemName: failed ? "xmark" : "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(failed ? Brand.loss : Brand.profit)
-                    .accessibilityLabel(failed ? "Failed" : "Done")
+                Image(systemName: failed ? "xmark" : a.didNothing ? "minus" : "checkmark").font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(failed ? Brand.loss : a.didNothing ? Color.secondary : Brand.profit)
+                    .accessibilityLabel(failed ? "Failed" : a.didNothing ? "Nothing to do" : "Done")
                 Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
             }
             .padding(.horizontal, 8).padding(.vertical, 8)

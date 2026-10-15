@@ -36,6 +36,12 @@ extension Workspace {
         if let same = tasks.first(where: { $0.steps == task.steps && $0.every == task.every && abs($0.next.timeIntervalSince(task.next)) < 60 }) {
             scheduleItem = "task:\(same.id)"
             showSchedule = true
+            // A paused one is out of sight on the Schedule: asked for again, it's switched back on, not made twice.
+            if same.paused == true {
+                setPaused("task:\(same.id)", false)
+                reply(say("That was scheduled and paused: \(what) — \(same.when). It’s on again.", "Это уже было запланировано и стояло на паузе: \(what) — \(same.when). Снова включено."), note: note)
+                return
+            }
             reply(say("That’s already scheduled: \(what) — \(same.when). It’s on the canvas.", "Это уже запланировано: \(what) — \(same.when). Это на канвасе."), note: note)
             return
         }
@@ -48,7 +54,7 @@ extension Workspace {
         let how = task.steps.allSatisfy({ AgentCheck.parse($0) != nil })
             ? say(" I'll look myself each time and write only when it's met; what I suggest waits for your Confirm.",
                   " Я буду смотреть сам и напишу, только когда условие выполнится; что предложу — будет ждать твоего Confirm.")
-            : wallets.contains(where: \.isAutomation) && task.untrusted != true
+            : usesAutomation(task)
             ? say(" Its moves run by themselves from the automation wallet, no Touch ID.", " Движения пойдут сами с кошелька автоматизации, без Touch ID.")
             : say(" Its moves will wait for your Confirm; to run them by themselves, say «create an automation wallet».",
                   " Движения будут ждать твоего Confirm; чтобы шли сами, скажи «создай кошелёк автоматизации».")
@@ -104,7 +110,7 @@ extension Workspace {
         let run = currentActivity
         // With an automation wallet the task's moves go through at once from it, without Touch ID — never one typed
         // through the debug API. Without one, each move waits on its canvas for Confirm.
-        let automation = task.untrusted == true ? nil : wallets.first(where: \.isAutomation)
+        let automation = usesAutomation(task) ? automationWallet : nil
         if let automation { reply(say("From the automation wallet «\(automation.label)», no Touch ID.", "С кошелька автоматизации «\(automation.label)», без Touch ID.")) }
         checkQuiet = false
         await TaskRun.$automation.withValue(automation) { await runSteps(task.steps, confirmed: automation != nil) }
@@ -119,13 +125,17 @@ extension Workspace {
                                   command: "send 0.01 SOL to \(automation.label)", recommended: true),
             ])
         }
-        // The Schedule canvas opens the canvas it ran on (saved by now).
-        if let i = activities.lastIndex(where: { $0.id == run }) { activities[i].canvas = canvasID }
         // A trade plan waits for Execute the way a move waits for Confirm; one a rule stops needs the user just as much.
         let plan = intent != TradeIntent() && !managesPosition
         let waits = pendingAction != nil || pendingAllocation != nil || plan
-        // A check with nothing to tell says so on its canvas and stays quiet; the run is already in the history.
+        // A check with nothing to tell, or a spread with nothing free, says so on its canvas and stays quiet; the run is
+        // already in the history, with a grey mark.
         let quiet = checkQuiet && !waits && !failed
+        // The Schedule canvas opens the canvas it ran on (saved by now).
+        if let i = activities.lastIndex(where: { $0.id == run }) {
+            activities[i].canvas = canvasID
+            if quiet { activities[i].idle = true }
+        }
         if !quiet { notify(waits ? .confirm : .moves, request,
                plan ? (planIsReady ? say("The plan is ready on its canvas — press Execute.", "План готов на своём канвасе — нажми Execute.")
                                    : say("The plan is on its canvas, but a rule stops it — open it to fix.", "План на своём канвасе, но его стопорит правило — открой и поправь."))

@@ -16,6 +16,8 @@ public struct ScheduledTask: Codable, Equatable, Sendable, Identifiable {
     public var untrusted: Bool?
     /// Switched off on the Schedule: it doesn't run until it's switched on again.
     public var paused: Bool?
+    /// Pays from the wallet that's on even when there's an automation wallet: its moves wait for Confirm and Touch ID.
+    public var fromActive: Bool?
 
     public enum Every: Codable, Equatable, Sendable {
         case hours(Int), days(Int), months(Int)

@@ -580,8 +580,17 @@ extension Workspace {
                 // Two steps: the plan first, the deposits only after «do it».
                 let (_, ready, preview) = try await e.allocate(symbol, maxShare: share ?? 50, limit: limit, without: without, from: from, execute: confirmed)
                 pendingAllocation = ready ? command : nil
-                allocationPreview = confirmed ? nil : preview
-                if !confirmed {
+                // Nothing free: said in words, without a «0 USDC → 0 places» plan that read as if it would do something.
+                allocationPreview = confirmed || preview.free == 0 ? nil : preview
+                // A scheduled run that spreads nothing stays quiet (runDueTask), with a grey mark: every day's «see the
+                // canvas» led to a canvas already gone (the owner, 2026-10-16: «было 3 раза и ничего не произошло»).
+                if !confirmed, !ready { checkQuiet = true }
+                if !confirmed, preview.free == 0 {
+                    let wallet = (TaskRun.automation ?? activeWallet).map { "«\($0.label)»" } ?? say("your wallet", "твоём кошельке", "tu billetera")
+                    reply(say("Nothing to spread: no free \(preview.asset) on \(wallet). What’s deposited keeps earning.",
+                              "Нечего раскладывать: на \(wallet) нет свободных \(preview.asset). Что уже в депозитах, продолжает приносить.",
+                              "Nada que repartir: no hay \(preview.asset) libres en \(wallet). Lo depositado sigue rindiendo."), note: "DeFi")
+                } else if !confirmed {
                     let other = share.map { $0 == 70 ? 50 : 70 } ?? 70
                     reply(ready ? say("The plan is on the canvas. Sign it, ask about it, or ask for another limit, e.g. “max \(other)% per protocol”.",
                                       "План на холсте. Подпиши, спроси о нём или попроси другой лимит, например «не больше \(other)% в один протокол».",
