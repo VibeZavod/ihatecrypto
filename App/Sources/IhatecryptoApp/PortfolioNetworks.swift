@@ -48,12 +48,12 @@ extension Workspace {
         let cent = Decimal(string: "0.01")!
         func idle(_ amount: Decimal?, _ symbol: String = "USDC", contract: String) -> [NetworkLine] {
             guard let amount, amount >= cent else { return [] }
-            return [NetworkLine(kind: .idle, logo: symbol.lowercased(), title: symbol, detail: "\(Fmt.num(amount)) · not earning", usd: amount, contract: contract)]
+            return [NetworkLine(kind: .idle, logo: symbol.lowercased(), title: symbol, detail: Fmt.num(amount), usd: amount, contract: contract)]
         }
         func gas(_ coin: Decimal?, _ symbol: String) -> [NetworkLine] {
             guard let coin, coin > 0 else { return [] }
             let price = markets[symbol]?.markPx
-            return [NetworkLine(kind: .gas, logo: symbol.lowercased(), title: symbol, detail: "\(Fmt.num(coin, maxFraction: 6)) · gas", usd: coin * (price ?? 0),
+            return [NetworkLine(kind: .gas, logo: symbol.lowercased(), title: symbol, detail: Fmt.num(coin, maxFraction: 6), usd: coin * (price ?? 0),
                                 amount: price == nil ? "\(Fmt.num(coin, maxFraction: 6)) \(symbol)" : nil, help: "\(symbol) here pays the network fees on \(n.name)")]
         }
         func earning(_ logo: String, _ title: String, apy: Decimal?, usdc: Decimal, place: String? = nil, help: String? = nil) -> NetworkLine {

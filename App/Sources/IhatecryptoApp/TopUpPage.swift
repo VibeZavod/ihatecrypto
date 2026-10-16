@@ -85,8 +85,10 @@ final class TopUpPage {
             return (200, "font/ttf", Bundle.main.url(forResource: "Onest", withExtension: "ttf").flatMap { try? Data(contentsOf: $0) } ?? Data())
         case ("POST", root + "/solana"):
             guard order.network.chainId == nil, let from = body?["from"] as? String, isSolanaAddress(from) else { return text(400, "No Solana account") }
+            // The page's amount («Send more» picks a new one); the recipient is always this order's.
+            guard let units = (body?["units"] as? String).flatMap(UInt64.init), units > 0 else { return text(400, "No amount to send") }
             do {
-                let wire = try await Self.solanaTransfer(order, from: from)
+                let wire = try await Self.solanaTransfer(order, units: units, from: from)
                 return (200, "application/json", (try? JSONSerialization.data(withJSONObject: ["transaction": wire.base64EncodedString()])) ?? Data())
             } catch {
                 return text(502, (error as? WalletError)?.message ?? error.localizedDescription)
@@ -95,6 +97,14 @@ final class TopUpPage {
             guard let id = body?["id"] as? String, id.wholeMatch(of: /0x[0-9a-fA-F]{64}|[1-9A-HJ-NP-Za-km-z]{64,90}/) != nil else { return text(400, "No transfer id") }
             sent = (order, id)
             return (200, "application/json", Data("{}".utf8))
+        case ("POST", root + "/balance"):
+            // The order's coin at the sending account and at this wallet, for «Send more»'s now → after.
+            guard let from = body?["from"] as? String,
+                  order.network.chainId == nil ? isSolanaAddress(from) : from.wholeMatch(of: /0x[0-9a-fA-F]{40}/) != nil else { return text(400, "No account") }
+            async let mine = ReceiveBoard.balances(order)
+            async let theirs = ReceiveBoard.balances(TopUpOrder(network: order.network, coin: order.coin, amount: nil, recipient: from))
+            let out = ["to": await mine[order.symbol], "from": await theirs[order.symbol]].compactMapValues { $0.map { "\($0)" } }
+            return (200, "application/json", (try? JSONSerialization.data(withJSONObject: out)) ?? Data("{}".utf8))
         default:
             return text(404, "Not here")
         }
@@ -102,8 +112,7 @@ final class TopUpPage {
 
     /// The transfer as the connected wallet will sign it: `from` pays the fee, USDC goes by TransferChecked into this
     /// wallet's account (made if missing), SOL by a system transfer.
-    nonisolated static func solanaTransfer(_ order: TopUpOrder, from: String) async throws -> Data {
-        guard let units = order.units.flatMap(UInt64.init) else { throw WalletError("No amount to send") }
+    nonisolated static func solanaTransfer(_ order: TopUpOrder, units: UInt64, from: String) async throws -> Data {
         let blockhash = try await SolanaRPC().latestBlockhash().blockhash
         if order.coin == .native {
             let transfer = SolanaInstruction(program: "11111111111111111111111111111111",
@@ -127,6 +136,8 @@ final class TopUpPage {
             "solana": net.chainId == nil, "chain": chain, "recipient": order.recipient, "units": order.units ?? "0",
             "token": net.chainId != nil && order.coin == .usdc ? net.usdc : "",
             "explorer": order.explorer("").map(\.absoluteString) ?? "",
+            "amount": order.amount.map { "\($0)" } ?? "", "symbol": order.symbol, "decimals": order.decimals,
+            "digits": order.coin == .usdc ? 2 : 6,
         ]
         let json = (try? JSONSerialization.data(withJSONObject: config)).map { String(decoding: $0, as: UTF8.self) } ?? "{}"
         return pageHTML
@@ -161,6 +172,13 @@ final class TopUpPage {
     button span{flex:1}button i{font-style:normal;color:var(--dim)}
     #status{min-height:22px;font-size:14px;margin-top:6px}#status.ok{color:var(--ok)}#status.bad{color:var(--bad)}#status a{color:inherit}
     footer{margin-top:18px;font-size:12px;color:var(--dim)}
+    [hidden]{display:none!important}#more{margin-top:14px}.bal{margin-bottom:12px;padding:10px 14px;border-radius:14px;background:var(--bg);font-size:13px}
+    .bal div{display:flex;justify-content:space-between;gap:12px;padding:2px 0}.bal b{font-weight:600;text-align:right}
+    .field{display:flex;align-items:baseline;gap:8px;margin-bottom:10px;padding-bottom:4px;border-bottom:1.5px solid var(--line);font-size:30px;font-weight:800}
+    .field:focus-within{border-color:var(--accent)}.field input{all:unset;flex:1;min-width:0}
+    #warn{color:var(--bad);font-size:13px;min-height:18px}
+    button.go{justify-content:center;background:var(--accent);border-color:var(--accent);color:#141417}
+    #cancel{display:block;text-align:center;font-size:13px;color:var(--dim);cursor:pointer}
     </style></head><body><main>
     <header><img src="{{root}}/icon.png" alt="">Top up ihatecrypto</header>
     <div class="amount">{{amount}} {{symbol}}</div><div class="dim">on {{network}} · {{cost}}</div>
@@ -168,6 +186,16 @@ final class TopUpPage {
     <h2>Top up from</h2><div id="wallets"></div>
     <div id="none" class="dim" hidden>No wallet found in this browser. Install {{wallets}}, or scan the QR in ihatecrypto with your phone.</div>
     <div id="status"></div>
+    <section id="more" hidden>
+      <div class="bal"><div><span>Your ihatecrypto wallet</span><b id="toBal">…</b></div><div><span id="fromName"></span><b id="fromBal">…</b></div></div>
+      <button id="again"><span>Send more</span><i>+</i></button>
+      <form id="form" hidden>
+        <label class="field"><input id="amount" inputmode="decimal" autocomplete="off" aria-label="Amount"><span>{{symbol}}</span></label>
+        <div id="warn"></div>
+        <button class="go" id="go" type="submit"></button>
+        <a id="cancel">Cancel</a>
+      </form>
+    </section>
     <footer>This page comes from ihatecrypto on your Mac, not from a website: the address above can't be swapped. Your wallet shows the transfer before you approve it.</footer>
     </main><script>
     const C = {{config}};
@@ -186,28 +214,83 @@ final class TopUpPage {
       for (const b of bytes) { if (b) break; s = '1' + s; }
       return s;
     };
+    // «12.5» → the coin's smallest units; 0n for nothing, a typo or more digits than the coin has.
+    const toUnits = s => {
+      const m = /^\s*(\d*)(?:[.,](\d*))?\s*$/.exec(s);
+      if (!m || !(m[1] || m[2]) || (m[2] || '').length > C.decimals) return 0n;
+      return BigInt((m[1] || '0') + (m[2] || '').padEnd(C.decimals, '0'));
+    };
+    const coins = u => Number(u) / 10 ** C.decimals;
+    const fmt = v => v == null || isNaN(v) ? '…' : v.toLocaleString('en-US', { maximumFractionDigits: C.digits }) + ' ' + C.symbol;
+    const $ = id => document.getElementById(id);
+    // The wallet that sent last ({ name, pay, from }), which «Send more» sends from again; balances as last read.
+    let units = BigInt(C.units), last = null, bal = {};
+    function render() {
+      const n = $('form').hidden ? 0 : coins(toUnits($('amount').value));
+      const line = (now, after) => fmt(now) + (n && now != null && after >= 0 ? ' → ' + fmt(after) : '');
+      $('toBal').textContent = line(bal.to, bal.to + n);
+      $('fromBal').textContent = line(bal.from, bal.from - n);
+      const short = n > 0 && bal.from != null && n > bal.from;
+      $('warn').textContent = short ? last.name + ' has only ' + fmt(bal.from) : '';
+      $('go').textContent = n ? 'Confirm · send ' + fmt(n) : 'Type an amount';
+      $('go').disabled = !n || short;
+    }
+    async function balances() {
+      if (!last) return;
+      const b = await post('balance', { from: last.from }).catch(() => null);
+      // A side the network didn't answer keeps its last value.
+      if (b) { bal = { to: b.to == null ? bal.to : Number(b.to), from: b.from == null ? bal.from : Number(b.from) }; render(); }
+    }
+    async function send(name, pay) {
+      for (const x of document.querySelectorAll('button')) x.disabled = true;
+      try {
+        say('Connecting ' + name + '…');
+        const { id, from } = await pay(units, () => say('Approve the transfer in ' + name + '…'));
+        // Sent is sent: a closed page (the card was closed meanwhile) only means ihatecrypto learns it from the balance.
+        await post('sent', { id }).catch(() => {});
+        last = { name, pay, from };
+        say('Sent ' + fmt(coins(units)) + ' ✓ ihatecrypto shows it the moment it lands. You can close this tab. <a target="_blank" rel="noreferrer" href="' + C.explorer + id + '">See it ↗</a>', 'ok');
+        $('fromName').textContent = name;
+        $('more').hidden = false;
+        $('form').hidden = true;
+        $('again').hidden = $('again').disabled = false;
+        render();
+        balances();
+      } catch (e) {
+        const no = e && (e.code === 4001 || /reject|denied|cancel|declined/i.test(e.message || ''));
+        say(no ? 'Cancelled in the wallet. Nothing was sent.' : 'It didn’t go through: ' + ((e && e.message) || e), 'bad');
+        for (const x of document.querySelectorAll('button')) x.disabled = false;
+        render();
+      }
+    }
+    // «Send more»: the amount picked here, its balances now → after, Confirm, then the wallet asks again.
+    $('again').onclick = () => {
+      $('again').hidden = true;
+      $('form').hidden = false;
+      $('amount').value = C.amount;
+      $('amount').focus();
+      $('amount').select();
+      render();
+      balances();
+    };
+    $('cancel').onclick = () => { $('form').hidden = true; $('again').hidden = false; render(); };
+    $('amount').oninput = render;
+    $('form').onsubmit = e => {
+      e.preventDefault();
+      units = toUnits($('amount').value);
+      if (units > 0n && last) send(last.name, last.pay);
+    };
+    // What lands shows here too while the tab is open.
+    setInterval(() => { if (!document.hidden) balances(); }, 5000);
     function wallet(name, icon, pay) {
       if (seen.has(name)) return;
       seen.add(name);
-      document.getElementById('none').hidden = true;
+      $('none').hidden = true;
       const b = document.createElement('button');
       b.innerHTML = (icon ? '<img alt="">' : '') + '<span></span><i>→</i>';
       if (icon) b.querySelector('img').src = icon;
       b.querySelector('span').textContent = name;
-      b.onclick = async () => {
-        for (const x of list.children) x.disabled = true;
-        try {
-          say('Connecting ' + name + '…');
-          const id = await pay(() => say('Approve the transfer in ' + name + '…'));
-          // Sent is sent: a closed page (the card was closed meanwhile) only means ihatecrypto learns it from the balance.
-          await post('sent', { id }).catch(() => {});
-          say('Sent ✓ ihatecrypto shows it the moment it lands. You can close this tab. <a target="_blank" rel="noreferrer" href="' + C.explorer + id + '">See it ↗</a>', 'ok');
-        } catch (e) {
-          const no = e && (e.code === 4001 || /reject|denied|cancel|declined/i.test(e.message || ''));
-          say(no ? 'Cancelled in the wallet. Nothing was sent.' : 'It didn’t go through: ' + ((e && e.message) || e), 'bad');
-          for (const x of list.children) x.disabled = false;
-        }
-      };
+      b.onclick = () => send(name, pay);
       list.append(b);
     }
     if (C.solana) {
@@ -218,14 +301,14 @@ final class TopUpPage {
       function solana(w) {
         const f = w.features || {};
         if (!f['standard:connect'] || !f['solana:signAndSendTransaction'] || !(w.chains || []).includes('solana:mainnet')) return;
-        wallet(w.name, w.icon, async approve => {
+        wallet(w.name, w.icon, async (units, approve) => {
           const { accounts } = await f['standard:connect'].connect();
           const account = accounts[0] || w.accounts[0];
-          const { transaction } = await post('solana', { from: account.address });
+          const { transaction } = await post('solana', { from: account.address, units: units.toString() });
           approve();
           const bytes = Uint8Array.from(atob(transaction), c => c.charCodeAt(0));
           const [out] = await f['solana:signAndSendTransaction'].signAndSendTransaction({ account, chain: 'solana:mainnet', transaction: bytes });
-          return base58(out.signature);
+          return { id: base58(out.signature), from: account.address };
         });
       }
     } else {
@@ -234,7 +317,7 @@ final class TopUpPage {
       window.dispatchEvent(new Event('eip6963:requestProvider'));
       setTimeout(() => { if (!seen.size && window.ethereum) evm('Browser wallet', '', window.ethereum); }, 800);
       function evm(name, icon, p) {
-        wallet(name, icon, async approve => {
+        wallet(name, icon, async (units, approve) => {
           const [from] = await p.request({ method: 'eth_requestAccounts' });
           try { await p.request({ method: 'wallet_switchEthereumChain', params: [{ chainId: C.chain.chainId }] }); }
           catch (e) {
@@ -242,15 +325,15 @@ final class TopUpPage {
             await p.request({ method: 'wallet_addEthereumChain', params: [C.chain] });
           }
           approve();
-          const amount = BigInt(C.units).toString(16);
+          const amount = units.toString(16);
           const tx = C.token
             ? { from, to: C.token, data: '0xa9059cbb' + C.recipient.slice(2).toLowerCase().padStart(64, '0') + amount.padStart(64, '0') }
             : { from, to: C.recipient, value: '0x' + amount };
-          return await p.request({ method: 'eth_sendTransaction', params: [tx] });
+          return { id: await p.request({ method: 'eth_sendTransaction', params: [tx] }), from };
         });
       }
     }
-    setTimeout(() => { if (!seen.size) document.getElementById('none').hidden = false; }, 1500);
+    setTimeout(() => { if (!seen.size) $('none').hidden = false; }, 1500);
     </script></body></html>
     """#
 }

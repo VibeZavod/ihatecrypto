@@ -128,7 +128,7 @@ struct AutomationPortfolioCard: View {
             TokenLogo(name: c.logo, size: 18)
             VStack(alignment: .leading, spacing: 0) {
                 Text(c.symbol).font(.ui(12, .semibold))
-                Text("\(masked(Fmt.num(c.amount, maxFraction: c.symbol == "SOL" ? 4 : 2))) · \(c.place == "gas" ? "gas" : "on \(c.place)")").font(.ui(10)).foregroundStyle(.secondary)
+                Text(masked(Fmt.num(c.amount, maxFraction: c.symbol == "SOL" ? 4 : 2)) + (c.place == "gas" ? "" : " · on \(c.place)")).font(.ui(10)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 4)
             Text(masked(c.usd.map(Fmt.usd) ?? "—")).font(.ui(12, .semibold)).monospacedDigit()

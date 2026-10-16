@@ -1867,9 +1867,9 @@ struct HoldingRow: View {
             }
             .frame(width: 20, height: 20).clipShape(Circle())
             // What it made or lost since bought here, after the amount: in the hint alone it looked as if there was none.
-            // One of the big five stablecoins reads like idle USDC: dollars not earning, no day's move or P/L to show.
+            // One of the big five stablecoins reads like idle USDC: no day's move or P/L to show.
             let dollar = Stablecoins.isGenuine(token.contract, on: token.chain)
-            CoinName(symbol: token.symbol, amount: Fmt.num(token.amount, maxFraction: 4) + (dollar ? " · not earning" : ""), verified: token.verified,
+            CoinName(symbol: token.symbol, amount: Fmt.num(token.amount, maxFraction: 4), verified: token.verified,
                      pnl: dollar ? nil : ws.purchasePnL(token))
             Spacer(minLength: 4)
             // 20 pt, under the row's own height: at the usual 28 the row grew while the pointer was on it, and the card's

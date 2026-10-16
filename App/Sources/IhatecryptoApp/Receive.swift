@@ -339,7 +339,7 @@ struct ReceiveBoard: View {
 
     /// The order's coin at the wallet, by symbol, straight from the network: USDC and the network's coin for «any coin»
     /// (another token landing shows with the next portfolio read). Empty when the network didn't answer.
-    private nonisolated static func balances(_ o: TopUpOrder) async -> [String: Decimal] {
+    nonisolated static func balances(_ o: TopUpOrder) async -> [String: Decimal] {
         let net = o.network, coins: [TopUpOrder.Coin] = o.coin == .any ? [.usdc, .native] : [o.coin]
         var out: [String: Decimal] = [:]
         for coin in coins where coin == .usdc || net.coin != nil {
