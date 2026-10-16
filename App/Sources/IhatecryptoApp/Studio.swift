@@ -514,7 +514,7 @@ struct WindowDragArea: View {
 /// «DEV» by the logo of the development copy (`Flavor`), beside the working one: nobody types into the wrong window.
 struct DevTag: View {
     var body: some View {
-        Text("DEV").font(.ui(10, .bold)).foregroundStyle(Brand.accentInk)
+        Text(Flavor.tag).font(.ui(10, .bold)).foregroundStyle(Brand.accentInk)
             .padding(.horizontal, 6).frame(height: 18)
             .background(Capsule().fill(Brand.accent.opacity(0.16)))
             .help("The development copy: its own wallets, settings and data. The working ihatecrypto is a separate app.")
@@ -566,7 +566,7 @@ struct StudioRail: View {
         // Glass picks its own light or dark look from what's behind it; the rail's text follows the window instead.
         .environment(\.colorScheme, scheme)
         // Liquid Glass: the rail floats over the canvas's ground.
-        .glassEffect(.regular.tint(Brand.glassTint), in: RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
+        .measuredGlass(.regular.tint(Brand.glassTint), in: RoundedRectangle(cornerRadius: Self.radius, style: .continuous))
         .overlay(alignment: .trailing) {
             // The edge: drag to collapse or expand; a spring settles it on the nearer width. It shows under the pointer.
             Capsule().fill(edgeHover || dragWidth != nil ? Brand.accent.opacity(0.8) : .clear)
@@ -771,9 +771,12 @@ struct BreathingBorder: NSViewRepresentable {
     var lineWidth: CGFloat = 1.5
     var low: Float = 0.35
     var high: Float = 1
+    /// How many breaths before it holds still at `high` (a half one ends there); endless by default.
+    var breaths: Float = .infinity
 
     func makeNSView(context: Context) -> Layered { Layered() }
     func updateNSView(_ view: Layered, context: Context) {
+        view.breaths = breaths
         view.color = NSColor(color)
         view.radius = radius
         view.lineWidth = lineWidth
@@ -783,6 +786,7 @@ struct BreathingBorder: NSViewRepresentable {
 
     final class Layered: NSView {
         var color = NSColor.clear, radius: CGFloat = 0, lineWidth: CGFloat = 1, range: (Float, Float) = (0, 1)
+        var breaths: Float = .infinity
         private let edge = CALayer()
         private var animated: (Float, Float)?
 
@@ -814,7 +818,7 @@ struct BreathingBorder: NSViewRepresentable {
             breath.toValue = range.1
             breath.duration = 0.9
             breath.autoreverses = true
-            breath.repeatCount = .infinity
+            breath.repeatCount = breaths
             breath.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             edge.add(breath, forKey: "breath")
             animated = range
@@ -921,6 +925,49 @@ struct BreathingDots: NSViewRepresentable {
     }
 }
 
+/// The mascot's moving face: frames Core Animation plays once (`BrandLogo.film`), with no SwiftUI update a frame.
+struct MascotFilm: NSViewRepresentable {
+    let frames: [CGImage]
+
+    func makeNSView(context: Context) -> Layered { Layered(frames: frames) }
+    func updateNSView(_ view: Layered, context: Context) {}
+
+    final class Layered: NSView {
+        private let film = CALayer()
+        private let frames: [CGImage]
+
+        init(frames: [CGImage]) {
+            self.frames = frames
+            super.init(frame: .zero)
+            wantsLayer = true
+            film.contents = frames.first
+            film.contentsGravity = .resize
+            layer?.addSublayer(film)
+        }
+        required init?(coder: NSCoder) { nil }
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+
+        override func viewDidMoveToWindow() {
+            guard window != nil, film.animation(forKey: "film") == nil, frames.count > 1 else { return }
+            let play = CAKeyframeAnimation(keyPath: "contents")
+            play.values = frames
+            play.calculationMode = .discrete
+            play.duration = Double(frames.count) / BrandLogo.filmFPS
+            play.fillMode = .forwards
+            play.isRemovedOnCompletion = false
+            film.add(play, forKey: "film")
+        }
+
+        override func layout() {
+            super.layout()
+            CATransaction.begin()
+            CATransaction.setDisableActions(true)
+            film.frame = bounds
+            CATransaction.commit()
+        }
+    }
+}
+
 /// «+$0,48» / «−$0,25».
 func signed(_ d: Decimal) -> String { d < 0 ? Fmt.usd(d) : "+" + Fmt.usd(d) }
 
@@ -952,9 +999,9 @@ struct BrandLogo: View {
     /// it builds the route, a hop when it's done, a shake on an error. The rail's logo stays still.
     var animated = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    /// Each of its frames redraws the whole window (≈ 13 ms of main thread, measured): while the window is in the
-    /// background nobody sees it move, so it holds still, and a card waiting there for Confirm costs nothing.
+    /// While the window is in the background nobody sees it move, so it holds still.
     @Environment(\.appearsActive) private var windowActive
+    @Environment(\.displayScale) private var displayScale
     /// Bumped on every change of mood: it plays the hop or the shake.
     @State private var kick = 0
     /// A new mood moves for a few seconds, then the coin rests: a card can wait minutes for Confirm, and a model minutes
@@ -964,10 +1011,20 @@ struct BrandLogo: View {
     private struct Pose { var scale = 1.0, x = 0.0, y = 0.0 }
 
     var body: some View {
-        let live = animated && !reduceMotion && moving
-        TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !(live && windowActive && [.waiting, .thinking, .listening].contains(mood)))) { timeline in
-            let t = live ? timeline.date.timeIntervalSinceReferenceDate : 0
-            Canvas { context, s in draw(&context, s, t: t) }
+        let live = animated && !reduceMotion && moving && windowActive && [.waiting, .thinking, .listening].contains(mood)
+        // The moving face is a film Core Animation plays (`MascotFilm`): through a TimelineView each of its 30 frames a
+        // second redrew the whole window, ≈ 20 % of the main thread while a model answered (measured 2026-10-16).
+        Group {
+            if Render.classic {
+                TimelineView(.animation(minimumInterval: 1.0 / 30, paused: !live)) { timeline in
+                    let t = live ? timeline.date.timeIntervalSinceReferenceDate : 0
+                    Canvas { context, s in draw(&context, s, t: t) }
+                }
+            } else {
+                Canvas { context, s in draw(&context, s, t: 0) }
+                    .opacity(live ? 0 : 1)
+                    .overlay { if live { MascotFilm(frames: Self.film(mood: mood, size: size, scale: displayScale)).id(mood) } }
+            }
         }
         .frame(width: size, height: size)
         .keyframeAnimator(initialValue: Pose(), trigger: kick) { content, pose in
@@ -994,6 +1051,34 @@ struct BrandLogo: View {
             if !Task.isCancelled { moving = false }
         }
         .accessibilityLabel("ihatecrypto")
+    }
+
+    /// The few seconds a mood moves, 30 frames a second, drawn once (one sheet, cut into frames) and kept.
+    private static var films: [String: [CGImage]] = [:]
+    static let filmFPS = 30.0
+
+    static func film(mood: Mood, size: CGFloat, scale: CGFloat) -> [CGImage] {
+        let key = "\(mood) \(size) \(scale)"
+        if let film = films[key] { return film }
+        let count = 120, columns = 12
+        let logo = BrandLogo(size: size, mood: mood)
+        let sheet = Canvas { context, _ in
+            for i in 0..<count {
+                var cell = context
+                cell.translateBy(x: CGFloat(i % columns) * size, y: CGFloat(i / columns) * size)
+                logo.draw(&cell, CGSize(width: size, height: size), t: Double(i) / filmFPS)
+            }
+        }
+        .frame(width: size * CGFloat(columns), height: size * CGFloat((count + columns - 1) / columns))
+        let renderer = ImageRenderer(content: sheet)
+        renderer.scale = scale
+        guard let image = renderer.cgImage else { return [] }
+        let px = size * scale
+        let film = (0..<count).compactMap { i in
+            image.cropping(to: CGRect(x: CGFloat(i % columns) * px, y: CGFloat(i / columns) * px, width: px, height: px))
+        }
+        films[key] = film
+        return film
     }
 
     /// Drawn on a 140-point grid, the same as the brand boards; `t` (seconds) moves the eyes, mouth and ridge.
@@ -1607,7 +1692,7 @@ struct CanvasViewport<Content: View>: View {
         .buttonStyle(.borderless)
         .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 4)
         .environment(\.colorScheme, scheme)
-        .glassEffect(.regular, in: Capsule())
+        .measuredGlass(in: Capsule())
     }
 }
 
@@ -2375,7 +2460,7 @@ struct FloatingChat: View {
         .frame(maxHeight: .infinity)
         .environment(\.colorScheme, scheme)
         // Liquid Glass, floating over the canvas like the rail.
-        .glassEffect(.regular.tint(Brand.glassTint), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
+        .measuredGlass(.regular.tint(Brand.glassTint), in: RoundedRectangle(cornerRadius: 26, style: .continuous))
     }
 
     private func headerIcon(_ name: String) -> some View {

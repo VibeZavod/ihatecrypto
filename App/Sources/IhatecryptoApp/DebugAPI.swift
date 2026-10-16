@@ -41,7 +41,7 @@ struct DebugBadge: View {
 final class DebugAPI {
     static let shared = DebugAPI()
     /// The development copy answers on the next port, so both copies' APIs can be on at once.
-    static let port: UInt16 = Flavor.dev ? 51790 : 51789
+    static let port: UInt16 = Flavor.metal ? 51791 : Flavor.dev ? 51790 : 51789
     private var listener: NWListener?
     private var token = ""
     private weak var ws: Workspace?
@@ -182,7 +182,10 @@ final class DebugAPI {
             // Zooms the canvas like ⌘-scroll (factor 2 = twice as close), or back to 100 % with {"fit":true}.
             let body = (try? JSONSerialization.jsonObject(with: r.body)) as? [String: Any]
             if body?["fit"] as? Bool == true { NotificationCenter.default.post(name: .canvasFit, object: nil) }
-            else { NotificationCenter.default.post(name: .canvasZoom, object: nil, userInfo: ["factor": CGFloat(body?["factor"] as? Double ?? 1)]) }
+            else {
+                NotificationCenter.default.post(name: .canvasZoom, object: nil,
+                                                userInfo: ["factor": CGFloat(body?["factor"] as? Double ?? 1), "hold": body?["hold"] as? Bool ?? false])
+            }
             return (200, "text/plain", Data("ok\n".utf8))
         case ("POST", "/pan"):
             // A drag without a hand for measuring: `seconds` of panning at 120 steps a second, back and forth by `dx`.
@@ -195,6 +198,80 @@ final class DebugAPI {
                 try? await Task.sleep(for: .milliseconds(8))
             }
             return (200, "text/plain", Data("ok\n".utf8))
+        case ("GET", "/layers"):
+            // The window's layer tree by class: how many, and the megabytes their bitmaps take at their contentsScale.
+            guard let root = NSApp.windows.first(where: { $0.isVisible && $0.title == AppMain.mainTitle })?.contentView?.layer else {
+                return (409, "text/plain", Data("no window\n".utf8))
+            }
+            var byClass: [String: (count: Int, mb: Double, scale: Double)] = [:]
+            func walk(_ layer: CALayer) {
+                let name = NSStringFromClass(type(of: layer))
+                let s = layer.contentsScale, mb = layer.contents == nil ? 0 : layer.bounds.width * s * layer.bounds.height * s * 4 / 1_048_576
+                let old = byClass[name] ?? (0, 0, 0)
+                byClass[name] = (old.count + 1, old.mb + mb, max(old.scale, s))
+                layer.sublayers?.forEach(walk)
+            }
+            walk(root)
+            let rows = byClass.sorted { $0.value.mb > $1.value.mb }.map { ["class": $0.key, "count": $0.value.count, "mb": ($0.value.mb * 10).rounded() / 10, "maxScale": $0.value.scale] as [String: Any] }
+            return (200, "application/json", (try? JSONSerialization.data(withJSONObject: rows, options: [.sortedKeys])) ?? Data())
+        case ("POST", "/measure"):
+            // Frames while a hand-free scenario runs (FrameMeter; Tools/perf.py runs the set): {"what": "pan"|"pinch"|"zoom"|
+            // "idle"|"thinking"|"chat"|"switch"|"newcanvas", "seconds": 3}, plus «classic», «noGlass», «noMeter» and «stay»
+            // (the window left in front) below. A pinch goes in and out (≈ 1× → 2× → 1×) in steps of 1.2 %, 120 a second,
+            // like a trackpad's magnify events.
+            let body = (try? JSONSerialization.jsonObject(with: r.body)) as? [String: Any]
+            let what = body?["what"] as? String ?? "pan", seconds = min(max(body?["seconds"] as? Double ?? 3, 0.5), 30)
+            guard let window = NSApp.windows.first(where: { $0.isVisible && $0.title == AppMain.mainTitle }), let view = window.contentView else {
+                return (409, "text/plain", Data("no window\n".utf8))
+            }
+            // A covered window isn't drawn, and its numbers would be nothing's: in front for the run, without taking the
+            // keyboard, and back behind after (another copy on the same spot covered it).
+            window.orderFrontRegardless()
+            try? await Task.sleep(for: .milliseconds(300))
+            let visible = window.occlusionState.contains(.visible)
+            defer { if body?["stay"] as? Bool != true { window.orderBack(nil) } }
+            // «noMeter»: the scenario without the display link, which itself keeps the display at 120 Hz.
+            let metered = body?["noMeter"] as? Bool != true
+            let meter = FrameMeter()
+            if metered { meter.start(in: view) }
+            // «classic»: the run on the rendering as it was before the metal branch (`Render.classic`), for an A/B in one build.
+            Render.classic = body?["classic"] as? Bool ?? false
+            Render.shared.noGlass = body?["noGlass"] as? Bool ?? false
+            if Render.shared.noGlass { try? await Task.sleep(for: .milliseconds(300)) }
+            defer { Render.classic = false; Render.shared.noGlass = false }
+            // «thinking»: the chat's face and dots as while a model answers (nothing is asked of a model).
+            let wasThinking = ws.thinking
+            if what == "thinking" { ws.thinking = true }
+            defer { if what == "thinking" { ws.thinking = wasThinking } }
+            // «switch»: two canvases (ids in «canvases») open in turn every half second. «chat»: a reply lands every
+            // half second (taken out again after). «zoom»: 2× in at once, back out after 1.5 s, sharpening included.
+            let pair = ((body?["canvases"] as? [String]) ?? []).compactMap(UUID.init(uuidString:)).compactMap { id in ws.canvases.first { $0.id == id } }
+            // «newcanvas»: an empty new canvas open, its row breathing, then the canvas that was open again.
+            let before = ws.canvases.first { $0.id == ws.canvasID }
+            defer { if what == "newcanvas", let before { ws.openCanvas(before) } }
+            var said = 0
+            defer { if said > 0 { ws.messages.removeLast(min(said, ws.messages.count)) } }
+            let steps = Int(seconds * 120)
+            for i in 0..<steps {
+                let dir: CGFloat = (i / 60) % 2 == 0 ? 1 : -1
+                switch what {
+                case "pan": NotificationCenter.default.post(name: .canvasPan, object: nil, userInfo: ["dx": dir * 5, "dy": dir * 2.5])
+                case "pinch": NotificationCenter.default.post(name: .canvasZoom, object: nil, userInfo: ["factor": CGFloat(dir > 0 ? 1.012 : 1 / 1.012)])
+                case "zoom" where i % 180 == 0: NotificationCenter.default.post(name: .canvasZoom, object: nil, userInfo: ["factor": CGFloat(i % 360 == 0 ? 2 : 0.5)])
+                case "switch" where i % 60 == 0 && pair.count == 2: ws.openCanvas(pair[(i / 60) % 2])
+                case "newcanvas" where i == 0: ws.newCanvas()
+                case "chat" where i % 60 == 30:
+                    ws.messages.append(Message(fromUser: false, text: "Measured reply \(i / 60): the plan is on the canvas. Sign it, ask about it, or ask for another limit, e.g. “max 70% per protocol”."))
+                    said += 1
+                default: break
+                }
+                try? await Task.sleep(for: .milliseconds(8))
+            }
+            // The scenario's end lands too (a pan's commit, a pinch's sharp redraw).
+            try? await Task.sleep(for: .milliseconds(400))
+            var result: [String: Any] = metered ? meter.stop() : [:]
+            result["visible"] = visible
+            return (200, "application/json", (try? JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])) ?? Data())
         case ("GET", let path) where path.hasPrefix("/render/approval"):
             // The browser's signing sheet for a sample Kamino deposit, drawn off screen («?dark» for the dark look):
             // to see a design change without a site asking for a real signature. Nothing can be approved from it.

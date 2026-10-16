@@ -153,7 +153,7 @@ struct AppMain: App {
         let item = NSStatusBar.system.statusItem(withLength: Flavor.dev ? NSStatusItem.variableLength : NSStatusItem.squareLength)
         item.button?.image = Self.coinTemplate()
         // Two coins in the menu bar while both copies run: the development one says which it is.
-        if Flavor.dev { item.button?.title = "DEV"; item.button?.imagePosition = .imageLeading }
+        if Flavor.dev { item.button?.title = Flavor.tag; item.button?.imagePosition = .imageLeading }
         item.button?.target = self
         item.button?.action = #selector(toggle(_:))
         let hosting = NSHostingController(rootView: MenuBarContent().environment(ws).font(.ui(13)).tint(Brand.accent))
@@ -347,7 +347,7 @@ struct ContentView: View {
             StatusItem.shared.install(ws)
             if UserDefaults.standard.bool(forKey: "debugAPI") { DebugAPI.shared.start(ws) }
             // The development copy says so in the Dock, beside the working one's same icon.
-            if Flavor.dev { NSApp.dockTile.badgeLabel = "DEV" }
+            if Flavor.dev { NSApp.dockTile.badgeLabel = Flavor.tag }
             // Started hidden by Keep running (`open -g -j`, at login or after a crash): it stays in the menu bar, its
             // window closed, instead of coming to the front. Otherwise a regular app (from `swift run` too).
             if NSApp.isHidden { StatusItem.shared.toMenuBar() } else {

@@ -4,14 +4,17 @@ import SwiftUI
 
 // The canvas in its own NSHostingView (switch `canvasHost`, on by default), and a pan slides its layers. Through
 // `.offset` (CanvasViewport) every step of a pan placed each view on the canvas again — ≈ 19 ms a step, 50 frames a
-// second at best (measured 2026-10-06), whatever was on it. Zoom stays SwiftUI's scaleEffect inside: zooming is rare
-// and redraws anyway. Nothing on the canvas is dragged, so any drag over it pans.
+// second at best (measured 2026-10-06), whatever was on it. A pinch scales the same layers the same way and SwiftUI's
+// scaleEffect gets the zoom once it stops: a step at a time it took 45–58 % of the main thread, 92–106 frames a second
+// (measured 2026-10-16). Nothing on the canvas is dragged, so any drag over it pans.
 
 /// Where the canvas is looked at: the window's fit times the user's zoom; read by the zoom bar and the hosted canvas.
 @MainActor @Observable
 final class CanvasPlace {
     /// The user's zoom on top of the window's fit.
     var zoom: CGFloat = 1
+    /// A pinch's zoom shown by the layers and not given to SwiftUI yet (`CanvasPanView`), for the zoom bar's number.
+    var preview: CGFloat = 1
     /// What fits left of the chat at 100 %, from the window's width.
     var fit: CGFloat = 1
     var scale: CGFloat { fit * zoom }
@@ -68,7 +71,7 @@ struct CanvasScroller<Content: View>: View {
         HStack(spacing: 4) {
             // A step, not animated: an animated zoom re-renders the whole canvas on every frame.
             Button { place.zoom = CanvasPlace.zoomRange.clamped(place.zoom - 0.1) } label: { zoomGlyph("minus") }.help("Zoom out · or pinch")
-            Text("\(Int((place.scale * 100).rounded()))%").font(.ui(12, .semibold)).monospacedDigit().frame(width: 44)
+            ZoomPercent(place: place)
             Button { place.zoom = CanvasPlace.zoomRange.clamped(place.zoom + 0.1) } label: { zoomGlyph("plus") }.help("Zoom in · or pinch")
             Button("Fit") { place.scroller?.fit() }
             DebugBadge()
@@ -76,7 +79,15 @@ struct CanvasScroller<Content: View>: View {
         .buttonStyle(.borderless)
         .padding(.leading, 6).padding(.trailing, 12).padding(.vertical, 4)
         .environment(\.colorScheme, scheme)
-        .glassEffect(.regular, in: Capsule())
+        .measuredGlass(in: Capsule())
+    }
+}
+
+/// The zoom bar's number, following a pinch while it lasts (`CanvasPlace.preview`): only this redraws on each step.
+private struct ZoomPercent: View {
+    let place: CanvasPlace
+    var body: some View {
+        Text("\(Int((place.scale * place.preview * 100).rounded()))%").font(.ui(12, .semibold)).monospacedDigit().frame(width: 44)
     }
 }
 
@@ -146,6 +157,12 @@ final class CanvasPanView: NSView {
     private var origin = CGPoint.zero
     /// The slide shown by the layers and not given to AppKit yet.
     private var pending = CGSize.zero
+    /// The zoom shown by the layers and not given to SwiftUI yet: what's seen is `pendingZoom · v + pending` of where
+    /// AppKit has it (v in this view), about this view's top left.
+    private var pendingZoom: CGFloat = 1
+    /// When the zoom bar's number last followed the pinch: any SwiftUI update runs the window's update pass, so ten a
+    /// second, not one a step.
+    private var previewShownAt: CFTimeInterval = 0
     private var commitAt: DispatchWorkItem?
     private var shownScale: CGFloat = 0
     private var placed = false
@@ -167,8 +184,13 @@ final class CanvasPanView: NSView {
         let center = NotificationCenter.default
         observers = [
             center.addObserver(forName: .canvasZoom, object: nil, queue: .main) { [weak self] note in
-                let factor = note.userInfo?["factor"] as? CGFloat
-                MainActor.assumeIsolated { if let self, let factor { self.zoom(by: factor, about: self.pointer()) } }
+                let factor = note.userInfo?["factor"] as? CGFloat, hold = note.userInfo?["hold"] as? Bool == true
+                MainActor.assumeIsolated {
+                    guard let self, let factor else { return }
+                    self.zoom(by: factor, about: self.pointer())
+                    // The debug API's {"hold": true}: the layers' zoom left uncommitted, to compare it with SwiftUI's.
+                    if hold { self.commitAt?.cancel() }
+                }
             },
             center.addObserver(forName: .canvasPan, object: nil, queue: .main) { [weak self] note in
                 let dx = note.userInfo?["dx"] as? CGFloat ?? 0, dy = note.userInfo?["dy"] as? CGFloat ?? 0
@@ -211,7 +233,7 @@ final class CanvasPanView: NSView {
     // MARK: Place
 
     /// Where the canvas's top left is seen, the slide included.
-    private var seen: CGPoint { CGPoint(x: origin.x + pending.width, y: origin.y + pending.height) }
+    private var seen: CGPoint { CGPoint(x: origin.x * pendingZoom + pending.width, y: origin.y * pendingZoom + pending.height) }
     private var atHome: Bool { abs(seen.x - leading) < 0.5 && abs(seen.y) < 0.5 }
 
     /// Puts the canvas's top left at `p` for AppKit and SwiftUI as well (a click, a zoom, the end of a pan).
@@ -221,6 +243,8 @@ final class CanvasPanView: NSView {
         CATransaction.begin()
         CATransaction.setDisableActions(true)
         pending = .zero
+        pendingZoom = 1
+        if place.preview != 1 { place.preview = 1 }
         layer?.sublayerTransform = CATransform3DIdentity
         origin = p
         resizeHosting()
@@ -230,8 +254,14 @@ final class CanvasPanView: NSView {
     }
 
     func commit() {
-        guard pending != .zero else { return }
-        setOrigin(seen)
+        guard pending != .zero || pendingZoom != 1 else { return }
+        let at = seen
+        // A pinch's zoom goes to SwiftUI now, the content scaled about its top left, placed where it was seen.
+        if pendingZoom != 1 {
+            place.zoom = CanvasPlace.zoomRange.clamped(place.zoom * pendingZoom)
+            shownScale = place.scale
+        }
+        setOrigin(at)
     }
 
     func home() { setOrigin(CGPoint(x: leading, y: 0)) }
@@ -247,11 +277,23 @@ final class CanvasPanView: NSView {
         guard d != .zero else { return }
         pending.width += d.width
         pending.height += d.height
+        showSlide()
+    }
+
+    /// The layers show `pendingZoom` and `pending`; AppKit and SwiftUI hear of them 0.15 s after the last step.
+    private func showSlide() {
         // On whole pixels: a fractional slide under a zoom made the boards wobble against each other.
         let s = window?.backingScaleFactor ?? 2
+        var m = CATransform3DMakeTranslation((pending.width * s).rounded() / s, (pending.height * s).rounded() / s, 0)
+        if pendingZoom != 1 {
+            // Scaled first, then slid; about the layer's anchor, so taken there and back.
+            let a = layer.map { CGPoint(x: $0.anchorPoint.x * $0.bounds.width, y: $0.anchorPoint.y * $0.bounds.height) } ?? .zero
+            m = CATransform3DConcat(CATransform3DMakeScale(pendingZoom, pendingZoom, 1), m)
+            m = CATransform3DConcat(CATransform3DConcat(CATransform3DMakeTranslation(a.x, a.y, 0), m), CATransform3DMakeTranslation(-a.x, -a.y, 0))
+        }
         CATransaction.begin()
         CATransaction.setDisableActions(true)
-        layer?.sublayerTransform = CATransform3DMakeTranslation((pending.width * s).rounded() / s, (pending.height * s).rounded() / s, 0)
+        layer?.sublayerTransform = m
         CATransaction.commit()
         commitAt?.cancel()
         let work = DispatchWorkItem { [weak self] in MainActor.assumeIsolated { self?.commit() } }
@@ -296,8 +338,23 @@ final class CanvasPanView: NSView {
         return bounds.contains(p) ? p : CGPoint(x: bounds.midX, y: bounds.midY)
     }
 
-    /// Changes the zoom by `factor`, keeping `point` (in this view) where it is.
+    /// Changes the zoom by `factor`, keeping `point` (in this view) where it is. The layers show it at once; SwiftUI
+    /// gets it when the steps stop (`commit`), so a pinch costs the main thread nothing while it lasts.
     func zoom(by factor: CGFloat, about point: CGPoint) {
+        if Render.classic { return zoomNow(by: factor, about: point) }
+        let shown = place.zoom * pendingZoom
+        let f = CanvasPlace.zoomRange.clamped(shown * factor) / shown
+        guard f != 1 else { return }
+        // v → f · (v − point) + point, over what's already seen.
+        pendingZoom *= f
+        pending = CGSize(width: f * pending.width + (1 - f) * point.x, height: f * pending.height + (1 - f) * point.y)
+        let now = CACurrentMediaTime()
+        if now - previewShownAt > 0.1 { previewShownAt = now; place.preview = pendingZoom }
+        showSlide()
+    }
+
+    /// The zoom as it was before the metal branch: SwiftUI rescales on every step (`Render.classic`, for an A/B).
+    private func zoomNow(by factor: CGFloat, about point: CGPoint) {
         let next = CanvasPlace.zoomRange.clamped(place.zoom * factor)
         let k = next / place.zoom
         guard k != 1 else { return }
@@ -310,6 +367,8 @@ final class CanvasPanView: NSView {
 
     override func magnify(with event: NSEvent) {
         zoom(by: 1 + event.magnification, about: convert(event.locationInWindow, from: nil))
+        // The fingers lifted: sharp at once rather than 0.15 s later.
+        if event.phase == .ended || event.phase == .cancelled { commit() }
     }
 
     override func scrollWheel(with event: NSEvent) {

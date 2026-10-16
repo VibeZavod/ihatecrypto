@@ -12,7 +12,7 @@ struct AddBlockButton: View {
         }
         .buttonStyle(.plain)
         .pointerStyle(.link)
-        .glassEffect(.regular, in: Capsule())
+        .measuredGlass(in: Capsule())
         .help(open ? "Close the blocks" : "The blocks the agent builds a request from")
     }
 }

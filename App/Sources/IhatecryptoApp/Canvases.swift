@@ -14,8 +14,12 @@ import WalletCore
 enum Flavor {
     nonisolated static let id = Bundle.main.bundleIdentifier ?? "app.ihatecrypto.mac.dev"
     nonisolated static let dev = id != "app.ihatecrypto.mac"
-    /// Application Support/ihatecrypto, or ihatecrypto-dev.
-    nonisolated static let folder = dev ? "ihatecrypto-dev" : "ihatecrypto"
+    /// The Metal experiment (`build-app.sh` with IHATECRYPTO_COPY=Metal): a third copy beside Dev and the working one.
+    nonisolated static let metal = id == "app.ihatecrypto.mac.metal"
+    /// Application Support/ihatecrypto, ihatecrypto-dev or ihatecrypto-metal.
+    nonisolated static let folder = metal ? "ihatecrypto-metal" : dev ? "ihatecrypto-dev" : "ihatecrypto"
+    /// What the rail, Dock and menu bar call a copy that isn't the working one.
+    nonisolated static let tag = metal ? "METAL" : "DEV"
 }
 
 /// Owner-only JSON files in Application Support/ihatecrypto (`Flavor.folder`).
@@ -580,7 +584,8 @@ private struct NewCanvasRow: View {
     }
 }
 
-/// A row's edge breathing in the accent while `active` (a canvas being written). Only the border changes, the row stays put.
+/// A row's edge breathing in the accent while `active` (a canvas being written), then lit and still. Only the border
+/// changes, the row stays put.
 struct PulsingEdge: ViewModifier {
     let active: Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -589,10 +594,16 @@ struct PulsingEdge: ViewModifier {
         // Core Animation breathes it (BreathingBorder): a SwiftUI repeatForever here redrew the whole window 120 times a
         // second for as long as a new canvas stayed empty, the window in the background too. It also took along whatever
         // else changed in the update it started in («опять видно два канваса»).
+        // Two and a half breaths (≈ 4.5 s, as long as the chat's face moves), then it holds lit. Breathing on, it kept the
+        // rail's glass drawing every frame: ≈ 500 ms of WindowServer's GPU a second, for the whole of a model's answer and
+        // for as long as a new canvas stayed empty (measured 2026-10-16, metal branch).
         content.overlay {
             if active {
                 if reduceMotion { RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Brand.accent.opacity(0.8), lineWidth: 1.5) }
-                else { BreathingBorder(color: Brand.accent, radius: 12, lineWidth: 1.5, low: 0.2, high: 0.8).allowsHitTesting(false) }
+                else {
+                    BreathingBorder(color: Brand.accent, radius: 12, lineWidth: 1.5, low: 0.2, high: 0.8, breaths: Render.classic ? .infinity : 2.5)
+                        .allowsHitTesting(false)
+                }
             }
         }
     }
