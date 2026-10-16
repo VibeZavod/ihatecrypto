@@ -2375,6 +2375,8 @@ struct FloatingChat: View {
     @Binding var drag: CGSize
     var endDrag: (CGSize) -> Void = { _ in }
     var dock: () -> Void = {}
+    /// The first of the four starting points shown: a different four each launch.
+    @State private var ideasStart = Int.random(in: 0..<TemplatesPanel.templates.count)
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2409,16 +2411,28 @@ struct FloatingChat: View {
                             Text("Your portfolio is on the canvas. Tell me what to do with your money — in any language — and I’ll build the plan next to it. Nothing moves without your signature.")
                                 .font(.ui(14)).foregroundStyle(.secondary)
                             // Full-width cards with an icon, not capsules: the model and network chips under them are capsules.
-                            Text("Try saying").font(.ui(11, .semibold)).foregroundStyle(.secondary).padding(.top, 4)
+                            // Four of the plan templates at a time; the arrows bring the next four.
+                            HStack {
+                                Spacer()
+                                Button { withAnimation(.snappy) { ideasStart += 4 } } label: { headerIcon("arrow.clockwise") }
+                                    .buttonStyle(.hoverIcon).help("Other starting points")
+                            }
+                            .padding(.top, 4)
                             VStack(spacing: 6) {
-                                ForEach([("chart.line.uptrend.xyaxis", "long ETH risk $0.25 by the book"), ("building.columns", "where to keep USDC"),
-                                         ("calendar.badge.clock", "buy SOL for 2 USDC every week"), ("arrow.down.to.line", "withdraw 1 USDC to Solana")], id: \.1) { icon, phrase in
-                                    Button { ws.suggest(phrase) } label: {
+                                let all = TemplatesPanel.templates
+                                ForEach((0..<4).map { all[(ideasStart + $0) % all.count] }, id: \.title) { t in
+                                    Button { ws.suggest(t.phrase) } label: {
                                         HStack(spacing: 10) {
-                                            Image(systemName: icon).font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.accentInk)
+                                            Image(systemName: TemplatesPanel.looks[t.title]?.icon ?? "square.grid.2x2")
+                                                .font(.system(size: 13, weight: .semibold)).foregroundStyle(Brand.accentInk)
                                                 .frame(width: 28, height: 28)
                                                 .background(RoundedRectangle(cornerRadius: 8, style: .continuous).fill(Brand.accent.opacity(0.12)))
-                                            Text(phrase).font(.ui(13, .medium)).foregroundStyle(.primary).lineLimit(1).truncationMode(.tail)
+                                            // What it does in plain words; the phrase itself types out in the field on a click.
+                                            VStack(alignment: .leading, spacing: 1) {
+                                                Text(t.title).font(.ui(13, .semibold)).foregroundStyle(.primary)
+                                                Text(TemplatesPanel.looks[t.title]?.line ?? t.phrase).font(.ui(11)).foregroundStyle(.secondary)
+                                            }
+                                            .lineLimit(1).truncationMode(.tail)
                                             Spacer(minLength: 6)
                                             Image(systemName: "arrow.up.left").font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary)
                                         }
@@ -2428,7 +2442,9 @@ struct FloatingChat: View {
                                         .contentShape(Rectangle())
                                     }
                                     .buttonStyle(.plain).modifier(HoverLift(radius: 12))
-                                    .help("Puts it in the field to edit and send")
+                                    // The scheme it builds, step by step, before anything is typed.
+                                    .help("Puts “\(t.phrase)” in the field to edit and send\n\n"
+                                          + (TemplatesPanel.steps[t.title] ?? []).map { "\($0.0): \($0.1)" }.joined(separator: "\n"))
                                 }
                             }
                         }
@@ -3544,17 +3560,44 @@ struct TemplatesPanel: View {
         ("Stake SOL", "stake 0.01 SOL", [0x9945FF, 0x1F9D6A]),
         ("Aave on Base", "lend 2 USDC on Aave", [0x2775CA, 0x0052FF, 0xB6509E]),
         ("Price alert", "alert me when ETH is below 2,500", [0x627EEA, 0xF59E0B]),
-        ("Buy a stock token", "buy SpaceX stock for 2 USDC", [0x2775CA, 0x4615C8, 0xCCFF00])
+        ("Buy a stock token", "buy SpaceX stock for 2 USDC", [0x2775CA, 0x4615C8, 0xCCFF00]),
+        ("Profit and loss", "profit and loss week", [0x0B7A55, 0xB42318]),
+        ("What's moving", "what's moving", [0xF59E0B, 0x072723]),
+        ("Chart a coin", "chart SOL week", [0x9945FF, 0x072723]),
+        ("Buy a memecoin", "buy BONK on solana for 1 USDC", [0x2775CA, 0xF7931A]),
+        ("Swap on Base", "swap 2 USDC for ETH on base", [0x2775CA, 0x0052FF, 0x627EEA]),
+        ("Move to Base", "move 2 USDC from Solana to Base", [0x9945FF, 0x2775CA, 0x0052FF]),
+        ("Sweep dust", "sweep dust", [0xF59E0B, 0x2775CA]),
+        ("Claim rewards", "claim rewards", [0x1F9D6A, 0x0052FF]),
+        ("Hyperliquid spot", "buy HYPE on hyperliquid spot for 10 USDC", [0x072723, 0x97FCE4]),
+        ("Trade gold", "long gold by the book", [0xD4AF37, 0x072723]),
+        ("Make a multisig", "make a multisig", [0x0052FF, 0x072723])
     ]
 
     /// The start screen's block cards: a picture, its colour and one line on what the block does.
     static let looks: [String: (icon: String, light: UInt32, dark: UInt32, line: String)] = [
-        "Trade by the book": ("chart.line.uptrend.xyaxis", 0x0B7A55, 0x6FF0B4, "stop and risk rules on"),
+        "Trade by the book": ("chart.line.uptrend.xyaxis", 0x0B7A55, 0x6FF0B4, "long ETH with a stop"),
         "Short on a pullback": ("arrow.down.right", 0xB42318, 0xFF9C8F, "short oil on a bounce"),
         "Best rates": ("percent", 0x1D4ED8, 0x7FB2FF, "free USDC where it earns most"),
-        "Where to keep it": ("building.columns", 0x4D7C0F, 0xC7F284, "the rates side by side"),
-        "Every week": ("calendar", 0x6D28D9, 0xC9A4FF, "buy SOL for 2 USDC every week"),
-        "Back to Solana": ("arrow.uturn.left", 0xB45309, 0xF2C14E, "1 USDC from Hyperliquid"),
+        "Where to keep it": ("building.columns", 0x4D7C0F, 0xC7F284, "compare where USDC earns"),
+        "Every week": ("calendar", 0x6D28D9, 0xC9A4FF, "a small SOL buy every week"),
+        "Back to Solana": ("arrow.uturn.left", 0xB45309, 0xF2C14E, "1 USDC home from Hyperliquid"),
+        "Protect a position": ("shield.lefthalf.filled", 0xB45309, 0xF2C14E, "move your stop to the entry"),
+        "Stake SOL": ("leaf", 0x0B7A55, 0x6FF0B4, "earn the staking yield on SOL"),
+        "Aave on Base": ("banknote", 0x1D4ED8, 0x7FB2FF, "lend 2 USDC on Aave"),
+        "Price alert": ("bell", 0xB45309, 0xF2C14E, "a ping when ETH drops below 2,500"),
+        "Buy a stock token": ("building.2", 0x6D28D9, 0xC9A4FF, "SpaceX stock for 2 USDC"),
+        "Profit and loss": ("chart.bar.xaxis", 0x0B7A55, 0x6FF0B4, "what you made or lost this week"),
+        "What's moving": ("flame", 0xB45309, 0xF2C14E, "the biggest movers right now"),
+        "Chart a coin": ("chart.xyaxis.line", 0x6D28D9, 0xC9A4FF, "SOL's last week on a chart"),
+        "Buy a memecoin": ("pawprint", 0xB45309, 0xF2C14E, "BONK for 1 USDC on Solana"),
+        "Swap on Base": ("arrow.left.arrow.right", 0x1D4ED8, 0x7FB2FF, "USDC for ETH on Uniswap"),
+        "Move to Base": ("arrow.right.circle", 0x1D4ED8, 0x7FB2FF, "2 USDC over Relay in seconds"),
+        "Sweep dust": ("sparkles", 0xB45309, 0xF2C14E, "small leftovers back to USDC"),
+        "Claim rewards": ("gift", 0x0B7A55, 0x6FF0B4, "what Merkl owes your wallet"),
+        "Hyperliquid spot": ("drop", 0x0B7A55, 0x6FF0B4, "HYPE itself, no leverage"),
+        "Trade gold": ("medal", 0xB45309, 0xF2C14E, "gold with stop and take set"),
+        "Make a multisig": ("key", 0x1D4ED8, 0x7FB2FF, "a vault that needs several keys"),
     ]
 
     /// What each template's scheme looks like, for the preview beside the list (S15).
@@ -3572,6 +3615,17 @@ struct TemplatesPanel: View {
         "Aave on Base": [("From", "USDC on Solana"), ("Bridge", "Relay to Base + a little gas"), ("Approve", "exactly the amount"), ("Supply", "Aave v3 · ≈ 4% a year")],
         "Price alert": [("Watch", "the mark price every 10–30 s"), ("Fire", "one notification at the level"), ("Then", "the alert is done")],
         "Buy a stock token": [("From", "USDC on Solana"), ("Bridge", "Relay → USDG on Robinhood Chain"), ("Swap", "Uniswap · Robinhood's registered token"), ("Hold", "SPCX, TSLA… in your wallet")],
+        "Profit and loss": [("Trading", "Hyperliquid fills and funding"), ("Holdings", "every coin, cost from its buys"), ("Result", "dollars made or lost this week")],
+        "What's moving": [("Markets", "Hyperliquid's coins and stocks"), ("Sorted", "by today's change"), ("Then", "pick one to chart or trade")],
+        "Chart a coin": [("Price", "a week of SOL"), ("Facts", "high, low, change"), ("Then", "trade it or set an alert")],
+        "Buy a memecoin": [("From", "USDC on Solana"), ("Swap", "Jupiter · a verified token"), ("Hold", "BONK in your wallet")],
+        "Swap on Base": [("From", "USDC on Base"), ("Swap", "Uniswap · the best of v2, v3, v4"), ("Get", "ETH itself, not WETH")],
+        "Move to Base": [("From", "USDC on Solana"), ("Bridge", "Relay · a few seconds"), ("To", "your own address on Base")],
+        "Sweep dust": [("Find", "tokens under $5 on Base, Arbitrum, Polygon"), ("Sell", "each for USDC on its own network"), ("Result", "USDC instead of crumbs")],
+        "Claim rewards": [("Check", "Merkl on Base, Arbitrum, Ethereum, Polygon"), ("Claim", "Morpho's, Aave's and others' rewards"), ("Keep", "they land in your wallet")],
+        "Hyperliquid spot": [("Pay", "10 USDC — the book's minimum"), ("Buy", "HYPE on Hyperliquid's spot book"), ("Hold", "the coin itself, no leverage")],
+        "Trade gold": [("Market", "gold · Hyperliquid's xyz exchange"), ("Position", "long, up to 5×"), ("Stop and take", "by the book")],
+        "Make a multisig": [("Keys", "this Mac + a Ledger, a phone or a partner"), ("Rule", "a majority must sign each move"), ("Network", "Base unless you name others")],
     ]
     @State private var hovered: String?
 
@@ -3610,28 +3664,31 @@ struct TemplatesPanel: View {
     private var list: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Plan templates").font(.ui(13, .bold))
-            LazyVGrid(columns: [GridItem(.fixed(150)), GridItem(.fixed(150))], spacing: 8) {
-                ForEach(Self.templates, id: \.title) { t in
-                    Button { pick(t.phrase) } label: {
-                        VStack(alignment: .leading, spacing: 8) {
-                            HStack(spacing: 3) {
-                                ForEach(t.colors.indices, id: \.self) { i in
-                                    if i > 0 { Rectangle().fill(.tertiary).frame(width: 6, height: 2) }
-                                    RoundedRectangle(cornerRadius: 3).fill(Color(hex: t.colors[i])).frame(width: 16, height: 11)
+            ScrollView {
+                LazyVGrid(columns: [GridItem(.fixed(150)), GridItem(.fixed(150))], spacing: 8) {
+                    ForEach(Self.templates, id: \.title) { t in
+                        Button { pick(t.phrase) } label: {
+                            VStack(alignment: .leading, spacing: 8) {
+                                HStack(spacing: 3) {
+                                    ForEach(t.colors.indices, id: \.self) { i in
+                                        if i > 0 { Rectangle().fill(.tertiary).frame(width: 6, height: 2) }
+                                        RoundedRectangle(cornerRadius: 3).fill(Color(hex: t.colors[i])).frame(width: 16, height: 11)
+                                    }
                                 }
+                                Text(t.title).font(.ui(13, .semibold))
+                                Text("«\(t.phrase)»").font(.ui(10)).foregroundStyle(.secondary).lineLimit(2)
                             }
-                            Text(t.title).font(.ui(13, .semibold))
-                            Text("«\(t.phrase)»").font(.ui(10)).foregroundStyle(.secondary).lineLimit(2)
+                            .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
+                            .padding(10)
+                            .background(RoundedRectangle(cornerRadius: 14).fill(.fill.quaternary))
+                            .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(hovered == t.title ? Brand.accent : .clear, lineWidth: 1.5))
                         }
-                        .frame(maxWidth: .infinity, minHeight: 92, alignment: .topLeading)
-                        .padding(10)
-                        .background(RoundedRectangle(cornerRadius: 14).fill(.fill.quaternary))
-                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(hovered == t.title ? Brand.accent : .clear, lineWidth: 1.5))
+                        .buttonStyle(.plain)
+                        .onHover { if $0 { hovered = t.title } }
                     }
-                    .buttonStyle(.plain)
-                    .onHover { if $0 { hovered = t.title } }
                 }
             }
+            .frame(maxHeight: 440)
         }
     }
 }
