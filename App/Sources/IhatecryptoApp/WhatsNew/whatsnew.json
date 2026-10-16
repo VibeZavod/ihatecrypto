@@ -1,5 +1,41 @@
 [
   {
+    "version": "0.6.4",
+    "date": "2026-10-16",
+    "stories": [
+      {
+        "title": "Scheduled buys land on your main wallet",
+        "text": "What a task buys with the automation wallet is sent on to your main wallet after each run. A sale always waits for your Confirm and Touch ID. When the week's buys need more than Automation holds, the Schedule says how much to top up, a day ahead.",
+        "symbol": "arrow.down.to.line.circle.fill",
+        "color": "9945FF"
+      },
+      {
+        "title": "A clearer Schedule",
+        "text": "Paused tasks fold away under «Paused», each with Delete. «New schedule» starts one in the chat. A run with nothing to do now says so instead of looking done, and each task shows which wallet it pays from — you can switch it. «Ask in chat» on a task gives the chat its details and last runs.",
+        "symbol": "calendar.badge.clock",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Skills and a trading study",
+        "text": "Settings › Skills lists what the chat can follow, with a switch each, and takes your own .md or .txt. The built-in «Trading study» measures any Hyperliquid account's closed trades after fees and funding, keeps a journal of why you entered, and writes down what works for you. No money moves.",
+        "symbol": "graduationcap.fill",
+        "color": "26A17B"
+      },
+      {
+        "title": "Smoother canvas",
+        "text": "Pinch and ⌘-scroll zoom stay at full frame rate. The glowing edge of a busy canvas breathes a few times and then stays lit, and the coin's face is played as a film, so the Mac does far less work while the chat thinks.",
+        "symbol": "gauge.with.dots.needle.67percent",
+        "color": "5856D6"
+      },
+      {
+        "title": "Smaller things",
+        "text": "Schedule › Wallet shows what's on each network in dollars, with the whole address and Copy.",
+        "symbol": "wrench.and.screwdriver.fill",
+        "color": "8E8E93"
+      }
+    ]
+  },
+  {
     "version": "0.6.3",
     "date": "2026-10-16",
     "stories": [
