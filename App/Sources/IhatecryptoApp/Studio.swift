@@ -1374,10 +1374,15 @@ struct StudioCanvas: View {
     private var nodes: [StudioNode] { hasRoute && !ws.managesPosition ? StudioNode.build(ws) : [] }
 
     private func plan(_ nodes: [StudioNode]) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        // A watched token opened from Favorites sits to the right of the list, not above it (the owner, 2026-10-16:
+        // «открывай справа сбоку, а не снизу»).
+        let beside = ws.showFavorites ? ws.detail.flatMap { place in
+            TokenBoard.parse(place).flatMap { p in ws.favoriteTokens.contains { $0.chain == p.chain && $0.address.lowercased() == p.address.lowercased() } ? place : nil }
+        } : nil
+        return VStack(alignment: .leading, spacing: 14) {
             // A place opened from the rail is its own block above the plan or the position: outside their frame,
             // covering nothing.
-            if let place = ws.detail {
+            if let place = ws.detail, place != beside {
                 PlaceDetailBoard(place: place)
                     .padding(.bottom, 10)
                     .transition(.opacity)
@@ -1388,7 +1393,13 @@ struct StudioCanvas: View {
             // The rail's buttons put their boards here too.
             if ws.showReceive { ReceiveBoard() }
             LedgerBoard()
-            if ws.showFavorites { FavoritesBoard().transition(.opacity) }
+            if ws.showFavorites {
+                HStack(alignment: .top, spacing: 36) {
+                    FavoritesBoard()
+                    if let beside { PlaceDetailBoard(place: beside).transition(.opacity) }
+                }
+                .transition(.opacity)
+            }
             if ws.showHistory { HistoryBoard().transition(.opacity) }
             // A move waiting for its signature or running has its own title and status: no «Plan · waiting» over it.
             if hasRoute || ws.allocationPreview != nil || (ws.pendingAction == nil && !ws.moveRunning && ws.currentScheduleKey == nil) {

@@ -46,6 +46,13 @@ extension Workspace {
             reply(favoriteTokens.count < before ? "\(symbol) is no longer in your favorite tokens." : "There’s no \(symbol) among your favorite tokens.", note: note)
         case .favorite(let address, let chain):
             guard let infos = try? await TokenLookup.lookup(address), let info = infos.first(where: { chain == nil || $0.chain == chain }) ?? infos.first else {
+                // No pool and not a token the wallet holds: most likely a wallet, so its save goes into the field to be named.
+                if !isOwnWallet(address), !holdings.contains(where: { $0.contract.lowercased() == address.lowercased() }) {
+                    reply(say("No pool trades \(address), so it isn’t a token to watch. If it’s a wallet, give it a name — the line is in the field.",
+                              "Ни один пул не торгует \(address), так что это не токен. Если это кошелёк, дай ему имя — строка уже в поле."), note: note)
+                    suggest("save \(address) as Name" + (address.hasPrefix("0x") ? " on Base" : ""), select: "Name")
+                    return
+                }
                 reply("DexScreener doesn’t know this contract\(chain.map { " on \($0)" } ?? ""): no pool trades it, so there’s no price to watch.", note: note)
                 return
             }
@@ -155,85 +162,396 @@ struct TokenIcon: View {
     }
 }
 
-struct FavoriteTokenCard: View {
+/// The watched tokens as one table (the owner's pick, 2026-10-16, «A04 · Таблица»): a row per token — its price, 24 h,
+/// liquidity and what you hold — sorted by any column. A click opens the token's board above (chart, Buy, Sell, Ask in
+/// chat); the right-click menu has the same, plus Copy contract and Remove.
+struct FavoriteTokensTable: View {
     @Environment(Workspace.self) private var ws
-    let token: FavoriteToken
+    let tokens: [FavoriteToken]
+    @AppStorage("tokenSort") private var sort = "change"
+    @AppStorage("tokenSortUp") private var up = false
+
+    static let price: CGFloat = 84, change: CGFloat = 62, liquidity: CGFloat = 58, held: CGFloat = 72
+
+    /// A held token is valued as the wallet values it (Jupiter on Solana, the portfolio's price elsewhere): DexScreener's
+    /// deepest pair can carry a broken price — SPX (Wormhole) at $390 and +111,356 % on 2026-10-16. Only a token the
+    /// wallet doesn't hold takes DexScreener's numbers.
+    struct Row: Identifiable {
+        let token: FavoriteToken
+        let info: TokenLookup.Info?
+        let holding: Holding?
+        let balance: Decimal?
+        var id: String { token.id }
+        var held: Decimal? { holding?.amount ?? balance }
+        var price: Decimal? { holding?.price ?? info?.priceUSD }
+        var change: Decimal? { holding.map { $0.change24h } ?? info?.change24h }
+        var usd: Decimal? { held.flatMap { h in price.map { $0 * h } } }
+    }
+
+    private var rows: [Row] {
+        let list = tokens.map { t in
+            Row(token: t, info: ws.tokenInfo[t.id],
+                holding: ws.holdings.first { $0.chain == t.chain && $0.contract.lowercased() == t.address.lowercased() && $0.price != nil },
+                balance: ws.tokenBalances[t.id])
+        }
+        if sort == "name" {
+            return list.sorted { ($0.token.symbol.localizedCaseInsensitiveCompare($1.token.symbol) == .orderedAscending) == up }
+        }
+        func key(_ r: Row) -> Decimal? {
+            switch sort {
+            case "price": r.price
+            case "liquidity": r.info?.liquidityUSD
+            case "held": r.usd
+            default: r.change
+            }
+        }
+        // A token with nothing to sort by goes last, either way.
+        return list.sorted { a, b in
+            switch (key(a), key(b)) {
+            case let (x?, y?): up ? x < y : x > y
+            case (_?, nil): true
+            default: false
+            }
+        }
+    }
 
     var body: some View {
-        let info = ws.tokenInfo[token.id]
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                TokenIcon(token: token, size: 38)
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("\(token.name)").font(.ui(14, .bold)).lineLimit(1)
-                    Text("\(token.symbol) · \(token.chainTitle)").font(.ui(10)).foregroundStyle(.secondary)
+        let list = rows
+        let held = list.compactMap(\.usd).filter { $0 > 0 }
+        VStack(spacing: 0) {
+            HStack(spacing: 8) {
+                column("TOKEN", "name").frame(maxWidth: .infinity, alignment: .leading)
+                column("PRICE", "price").frame(width: Self.price, alignment: .trailing)
+                column("24 H", "change").frame(width: Self.change, alignment: .trailing)
+                column("LIQUIDITY", "liquidity").frame(width: Self.liquidity, alignment: .trailing)
+                column("YOU HOLD", "held").frame(width: Self.held, alignment: .trailing)
+            }
+            .padding(.horizontal, 14).frame(height: 32)
+            .background(Color.primary.opacity(0.04))
+            ForEach(list) { r in
+                Divider()
+                FavoriteTokenRow(row: r)
+            }
+            if !held.isEmpty {
+                Divider()
+                HStack {
+                    Text("Held in \(held.count) of \(list.count)").font(.ui(11)).foregroundStyle(.secondary)
+                    Spacer()
+                    Text(masked(Fmt.usd(held.reduce(0, +)))).font(.ui(13, .bold)).monospacedDigit()
                 }
-                Spacer()
-                Button { withAnimation(.snappy) { ws.favoriteTokens.removeAll { $0.id == token.id } } } label: { Image(systemName: "star.fill") }
-                    .buttonStyle(.hoverIcon).foregroundStyle(Color(hex: 0xF5B301)).help("Remove from favorites")
+                .padding(.horizontal, 14).frame(height: 40)
+                .background(Color.primary.opacity(0.04))
             }
-            HStack(alignment: .firstTextBaseline) {
-                Text(info?.priceUSD.map(tokenPrice) ?? "—").font(.ui(20, .heavy)).monospacedDigit()
-                if let c = info?.change24h {
-                    Text(signedPct(c)).font(.ui(10, .bold)).foregroundStyle(c < 0 ? Brand.loss : Brand.profit)
-                }
-                Spacer()
-                if let l = info?.liquidityUSD { Text("liquidity \(Fmt.usd((l / 1_000_000).rounded(1, .plain)))M").font(.ui(10)).foregroundStyle(.secondary) }
-            }
-            if let held = ws.tokenBalances[token.id], held > 0 {
-                Label("You hold \(Fmt.num(held, maxFraction: 4)) \(token.symbol)\(info?.priceUSD.map { " ≈ \(Fmt.usd($0 * held))" } ?? "")", systemImage: "wallet.pass")
-                    .font(.ui(10, .semibold))
-            }
-            HStack(spacing: 14) {
-                CopyButton(title: "Contract", text: token.address, help: "Copy the contract address")
-                if let pair = info?.pairURL { Link(destination: pair) { Label("Chart", systemImage: "chart.xyaxis.line") } }
-                if let e = token.explorer { Link(destination: e) { Label("Explorer", systemImage: "arrow.up.right.square") } }
-            }
-            .buttonStyle(.borderless).font(.ui(10))
         }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 20).fill(Brand.card))
-        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(Color(hex: 0xF5B301).opacity(0.6), lineWidth: 1.5))
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .background(RoundedRectangle(cornerRadius: 14).fill(Brand.card))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Brand.cardBorder))
+    }
+
+    /// A column's title sorts by it; again turns the order around.
+    private func column(_ title: String, _ key: String) -> some View {
+        Button {
+            if sort == key { up.toggle() } else { sort = key; up = key == "name" }
+        } label: {
+            HStack(spacing: 3) {
+                Text(title)
+                if sort == key { Image(systemName: up ? "arrow.up" : "arrow.down").font(.system(size: 8, weight: .bold)) }
+            }
+            .font(.ui(9.5, .semibold)).tracking(0.8)
+            .foregroundStyle(sort == key ? Brand.accentInk : .secondary)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).pointerStyle(.link)
+        .accessibilityLabel("Sort by \(title.lowercased())")
     }
 }
 
-/// «+ Token»: paste a contract, ihatecrypto finds its chain, name, price and icon.
-struct AddTokenButton: View {
+/// One watched token in the table. The edge lights on hover and stays while its board is open.
+private struct FavoriteTokenRow: View {
     @Environment(Workspace.self) private var ws
-    @State private var open = false
-    @State private var address = ""
-    @State private var busy = false
+    let row: FavoriteTokensTable.Row
+    @State private var hover = false
 
     var body: some View {
-        Button { open = true } label: { Label("Token", systemImage: "plus") }
-            .buttonStyle(.bordered)
-            .popover(isPresented: $open, arrowEdge: .bottom) {
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("Watch a token").font(.ui(13, .bold))
-                    HStack {
-                        TextField("contract address (0x… or Solana mint)", text: $address).font(.system(.body, design: .monospaced)).frame(width: 320)
-                        Button("Paste") { address = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
-                    }
-                    Text("ihatecrypto looks it up on DexScreener: the chain it trades on, price, icon.").font(.ui(10)).foregroundStyle(.secondary)
-                    HStack {
-                        Spacer()
-                        if busy { ProgressView().controlSize(.small) }
-                        Button("Add to favorites") {
-                            guard let a = AddressBookCommand.address(in: address) else { return }
-                            busy = true
-                            Task {
-                                await ws.tokenCommand(.favorite(address: a, chain: a.hasPrefix("0x") ? nil : "solana"))
-                                busy = false
-                                open = false
-                                address = ""
-                            }
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .disabled(AddressBookCommand.address(in: address) == nil || busy)
+        let t = row.token, info = row.info
+        let place = TokenBoard.place(chain: t.chain, address: t.address)
+        let open = ws.detail == place
+        Button { ws.toggleDetail(place) } label: {
+            HStack(spacing: 8) {
+                HStack(spacing: 10) {
+                    TokenIcon(token: t, size: 26)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(t.symbol).font(.ui(13, .bold))
+                        Text(t.chainTitle).font(.ui(10)).foregroundStyle(.secondary)
                     }
                 }
-                .padding(16)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                Text(row.price.map(tokenPrice) ?? "—").font(.ui(12.5, .semibold))
+                    .frame(width: FavoriteTokensTable.price, alignment: .trailing)
+                Text(row.change.map(signedPct) ?? "—").font(.ui(12, .bold))
+                    .foregroundStyle(row.change.map { $0 < 0 ? Brand.loss : Brand.profit } ?? .secondary)
+                    .frame(width: FavoriteTokensTable.change, alignment: .trailing)
+                Text(info?.liquidityUSD.map(AssetStats.compact) ?? "—").font(.ui(12)).foregroundStyle(.secondary)
+                    .frame(width: FavoriteTokensTable.liquidity, alignment: .trailing)
+                Text(row.usd.map { $0 > 0 ? masked(Fmt.usd($0)) : "—" } ?? row.held.map { $0 > 0 ? masked(Fmt.num($0, maxFraction: 2)) : "—" } ?? "—")
+                    .font(.ui(12, .semibold)).foregroundStyle(row.held ?? 0 > 0 ? .primary : .tertiary)
+                    .frame(width: FavoriteTokensTable.held, alignment: .trailing)
             }
+            .lineLimit(1).minimumScaleFactor(0.7).monospacedDigit()
+            .padding(.horizontal, 14).frame(height: 50)
+            .contentShape(Rectangle())
+            .background(Color.primary.opacity(open ? 0.06 : hover ? 0.035 : 0))
+            .overlay {
+                RoundedRectangle(cornerRadius: 8).strokeBorder(Brand.accent, lineWidth: 1.5).padding(2)
+                    .opacity(open ? 1 : hover ? 0.6 : 0)
+            }
+        }
+        .buttonStyle(.plain)
+        .onHover { hover = $0 }
+        .pointerStyle(.link)
+        .help("\(t.name) on \(t.chainTitle): chart, buy, sell")
+        .accessibilityLabel("\(t.symbol) on \(t.chainTitle)")
+        .contextMenu {
+            Group {
+                Button { ws.toggleDetail(place) } label: { Label(open ? "Close details" : "Details", systemImage: "info.circle") }
+                Button { ws.askAbout(symbol: t.symbol, chain: t.chain, address: t.address) } label: { Label("Ask in chat", systemImage: "bubble.left") }
+                let verified = ws.holdings.first { $0.chain == t.chain && $0.contract.lowercased() == t.address.lowercased() }?.verified ?? false
+                ForEach(ws.tokenPhrases(chain: t.chain, address: t.address, symbol: t.symbol, stock: TokenBoard.isStock(t.symbol), verified: verified), id: \.phrase) { p in
+                    Button { ws.suggest(p.phrase) } label: { Label(p.title, systemImage: p.icon) }
+                }
+                Divider()
+                Button {
+                    NSPasteboard.general.clearContents()
+                    NSPasteboard.general.setString(t.address, forType: .string)
+                } label: { Label("Copy contract", systemImage: "doc.on.doc") }
+                if let e = t.explorer { Link(destination: e) { Label("Explorer", systemImage: "arrow.up.right.square") } }
+                Button(role: .destructive) {
+                    withAnimation(.snappy) { ws.favoriteTokens.removeAll { $0.id == t.id } }
+                } label: { Label("Remove from favorites", systemImage: "star.slash") }
+            }
+            .labelStyle(.titleAndIcon)
+        }
+    }
+}
+
+/// The board's one «+» (the owner, 2026-10-16: «+ Token и + Address — это же практически то же самое»): paste anything
+/// and ihatecrypto says what it is — a token DexScreener prices (added to Tokens at once) or a wallet address (named and
+/// saved under Touch ID in the editor). Under the field, the tokens the wallet holds and doesn't watch yet, a click each.
+struct AddFavoriteButton: View {
+    @Environment(Workspace.self) private var ws
+    /// Opens the address editor with this address in it.
+    let saveAddress: (String) -> Void
+    @State private var open = false
+    @State private var text = ""
+    @State private var found: Found?
+    @State private var adding = false
+    @State private var retry = 0
+
+    enum Found: Equatable {
+        case token(TokenLookup.Info), address(String)
+        /// DexScreener didn't answer: whether it's a token isn't known.
+        case unknown(String)
+    }
+
+    private var address: String? { AddressBookCommand.address(in: text) }
+
+    /// The network an address is saved on by default: Base for a 0x one (one save counts on every EVM network), else
+    /// the first whose shape it has. The editor lets it be changed.
+    static func network(for address: String) -> AddressCheck.Network {
+        if address.wholeMatch(of: /0x[0-9a-fA-F]{40}/) != nil { return .base }
+        return AddressCheck.Network.allCases.first { AddressCheck.problem(address, network: $0) == nil } ?? .solana
+    }
+
+    var body: some View {
+        Button { open = true } label: { Image(systemName: "plus").font(.system(size: 13, weight: .bold)).frame(width: 18, height: 18) }
+            .buttonStyle(.borderedProminent)
+            .help("Add a token or a wallet")
+            .accessibilityLabel("Add to favorites")
+            .popover(isPresented: $open, arrowEdge: .bottom) {
+                panel.frame(width: 380, alignment: .leading).padding(16)
+            }
+    }
+
+    private var panel: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Add to favorites").font(.ui(14, .bold))
+            HStack {
+                TextField("A token’s contract or a wallet address", text: $text)
+                    .font(.system(size: 11.5, design: .monospaced)).textFieldStyle(.roundedBorder)
+                Button("Paste") { text = NSPasteboard.general.string(forType: .string)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? "" }
+            }
+            result
+            held
+            Label("Or in the chat: «add 0x… to favorites», «save 0x… as Masha on Base».", systemImage: "bubble.left")
+                .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        }
+        .task(id: "\(address ?? "")·\(retry)") { await look() }
+    }
+
+    /// A token if a pool trades it, else an address. Waits a moment while it's being typed.
+    private func look() async {
+        found = nil
+        guard let a = address else { return }
+        guard a.wholeMatch(of: /0x[0-9a-fA-F]{40}/) != nil || AddressCheck.problem(a, network: .solana) == nil else {
+            found = .address(a)   // Bitcoin, TRON, NEAR… are never a DexScreener token.
+            return
+        }
+        try? await Task.sleep(for: .milliseconds(250))
+        guard !Task.isCancelled else { return }
+        do {
+            let infos = try await TokenLookup.lookup(a)
+            guard !Task.isCancelled else { return }
+            found = infos.first.map(Found.token) ?? .address(a)
+        } catch {
+            if !Task.isCancelled { found = .unknown(a) }
+        }
+    }
+
+    @ViewBuilder private var result: some View {
+        if !text.isEmpty, address == nil {
+            Label("That isn’t an address: paste a 0x…, a Solana key, bc1…, T… or a .near name.", systemImage: "questionmark.circle")
+                .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+        } else if address != nil, found == nil {
+            HStack(spacing: 8) {
+                ProgressView().controlSize(.small)
+                Text("Looking it up on DexScreener…").font(.ui(10)).foregroundStyle(.secondary)
+            }
+        } else if case .token(let info)? = found {
+            token(info)
+        } else if case .address(let a)? = found {
+            wallet(a)
+        } else if case .unknown(let a)? = found {
+            Label("DexScreener didn’t answer, so it isn’t known yet whether this is a token.", systemImage: "wifi.exclamationmark")
+                .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            HStack {
+                Button("Try again") { retry += 1 }
+                Spacer()
+                Button("Save it as an address…") { close(); saveAddress(a) }
+            }
+        }
+    }
+
+    private func token(_ info: TokenLookup.Info) -> some View {
+        let t = FavoriteToken(chain: info.chain, address: info.address, name: info.name, symbol: info.symbol, image: info.imageURL)
+        let have = ws.favoriteTokens.contains { $0.id == t.id }
+        return VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
+                kind("TOKEN", "found on DexScreener", Brand.accentInk)
+                HStack(spacing: 10) {
+                    TokenIcon(token: t, size: 32)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(info.name).font(.ui(13, .bold)).lineLimit(1)
+                        Text("\(info.symbol) · \(t.chainTitle)").font(.ui(10)).foregroundStyle(.secondary)
+                    }
+                    Spacer()
+                    VStack(alignment: .trailing, spacing: 2) {
+                        Text(info.priceUSD.map(tokenPrice) ?? "no price").font(.ui(13, .bold)).monospacedDigit()
+                        if let c = info.change24h { Text(signedPct(c)).font(.ui(10, .semibold)).foregroundStyle(c < 0 ? Brand.loss : Brand.profit) }
+                    }
+                }
+                Text("A contract to watch, not an address to send money to.").font(.ui(10)).foregroundStyle(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.05)))
+            HStack {
+                Button("Save it as an address instead") { close(); saveAddress(info.address) }
+                    .buttonStyle(.link).font(.ui(10))
+                Spacer()
+                if adding { ProgressView().controlSize(.small) }
+                Button {
+                    adding = true
+                    Task {
+                        await ws.tokenCommand(.favorite(address: info.address, chain: info.chain))
+                        adding = false
+                        close()
+                    }
+                } label: { Label(have ? "In your tokens" : "Add token", systemImage: "star.fill") }
+                    .buttonStyle(.borderedProminent).disabled(have || adding)
+            }
+        }
+    }
+
+    private func wallet(_ a: String) -> some View {
+        let network = Self.network(for: a)
+        let own = ws.isOwnWallet(a)
+        let same = ws.addressBook.first { $0.address.lowercased() == a.lowercased() }
+        return VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 10) {
+                kind("WALLET ADDRESS", network.title + (a.hasPrefix("0x") || network == .solana ? " · no token trades at it" : ""), .primary)
+                AddressLines(address: a)
+                if own {
+                    Label("This is your own wallet: it’s under Wallets already.", systemImage: "person.crop.circle.badge.checkmark")
+                        .font(.ui(10)).foregroundStyle(.secondary)
+                } else if let same {
+                    Label("Already saved as “\(same.name)”.", systemImage: "checkmark.circle").font(.ui(10)).foregroundStyle(.secondary)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.05)))
+            HStack {
+                Spacer()
+                Button { close(); saveAddress(a) } label: { Label("Name it and save…", systemImage: "touchid") }
+                    .buttonStyle(.borderedProminent).disabled(own || same != nil)
+                    .help("A name, its network; Touch ID shows the whole address before it's saved")
+            }
+        }
+    }
+
+    /// The tokens the wallet holds that aren't watched: one click puts each in Tokens. Dollars and gas coins aren't offered.
+    @ViewBuilder private var held: some View {
+        let watched = Set(ws.favoriteTokens.map(\.id))
+        let list = ws.holdings.filter { h in
+            !h.native && h.contract != "native" && !["hyperliquid", "near"].contains(h.chain) && h.looksReal
+                && !Stablecoins.dollars.contains(h.symbol.uppercased()) && !watched.contains(h.chain + ":" + h.contract.lowercased())
+        }
+        .sorted { ($0.usd ?? 0) > ($1.usd ?? 0) }.prefix(5)
+        if address == nil, !list.isEmpty {
+            Divider()
+            Text("TOKENS YOU HOLD").font(.ui(9.5, .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            VStack(spacing: 2) {
+                ForEach(Array(list)) { h in
+                    let t = FavoriteToken(chain: h.chain, address: h.contract, name: h.symbol, symbol: h.symbol, image: h.icon)
+                    Button {
+                        adding = true
+                        Task {
+                            await ws.tokenCommand(.favorite(address: h.contract, chain: h.chain))
+                            adding = false
+                        }
+                    } label: {
+                        HStack(spacing: 10) {
+                            TokenIcon(token: t, size: 24)
+                            VStack(alignment: .leading, spacing: 1) {
+                                Text(h.symbol).font(.ui(12, .semibold))
+                                Text(t.chainTitle).font(.ui(10)).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            Text(h.usd.map { masked(Fmt.usd($0)) } ?? "").font(.ui(11)).foregroundStyle(.secondary).monospacedDigit()
+                            Image(systemName: "star").font(.system(size: 13)).foregroundStyle(Color(hex: 0xF5B301))
+                        }
+                        .padding(.horizontal, 8).frame(height: 38).contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain).modifier(HoverLift(radius: 8)).disabled(adding)
+                    .help("Watch \(h.symbol)").accessibilityLabel("Watch \(h.symbol)")
+                }
+            }
+        }
+    }
+
+    private func kind(_ title: String, _ note: String, _ color: Color) -> some View {
+        HStack(spacing: 8) {
+            Text(title).font(.ui(9.5, .bold)).tracking(1).foregroundStyle(color)
+                .padding(.horizontal, 7).padding(.vertical, 3)
+                .background(RoundedRectangle(cornerRadius: 5).fill(color.opacity(0.12)))
+            Text(note).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
+        }
+    }
+
+    private func close() {
+        open = false
+        text = ""
+        found = nil
     }
 }
 

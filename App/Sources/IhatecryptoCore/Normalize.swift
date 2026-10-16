@@ -223,6 +223,8 @@ public enum ChatRouter {
       x-search reads X itself (priced by use, up to ≈ $0.18); a web search with site:x.com sees only the pages a search engine indexed.
     ADDRESSES AND WATCHLIST: save <ADDRESS> as <NAME> [on solana|base|arbitrum|ethereum|tempo|hyperliquid|near] | add <NAME> to favorites | remove <NAME> from favorites   (NAME from the address book, not a ticker; an ENS or SNS name — vitalik.eth, toly.sol — goes in place of ADDRESS as written: ihatecrypto reads the address it points at on-chain and shows it on the card)
       watch token <CONTRACT or MINT> [on robinhood|base|arbitrum|ethereum|solana] | remove token <SYMBOL> from favorites
+      (Favorites has two tabs: Tokens, the watched contracts, and Wallets, the saved addresses. An address they want in favorites that no
+      pool trades is a wallet, not a token: offer «save <ADDRESS> as <NAME>» — ask the name — never watch token for it)
     MARKET: chart <ASSET> [week|month] | what's moving | alert me when <ASSET> is above|below|at <PRICE> | cancel alerts
       (at: no side said, «алерт на 2600» — ihatecrypto picks it from the price)
       chart token <CONTRACT or MINT> on <solana|robinhood|base|arbitrum|ethereum>   (any token's card: price chart, market cap, liquidity, volume, links)

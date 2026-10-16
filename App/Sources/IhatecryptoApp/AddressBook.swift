@@ -194,97 +194,133 @@ extension AddressCheck.Network {
 
 // MARK: Favorites
 
-/// Favorites on the canvas: watched tokens, saved addresses (starred first, «All» for the rest) and, under All, your
-/// own wallets. Tokens and addresses are added and edited right here; there is no separate address book.
+/// Favorites on the canvas, in two tabs (the owner, 2026-10-16: «переделать таб … на токены и wallets, чтобы было
+/// понятное разделение»): Tokens — the watched tokens as a table, a row opening the token's board with its chart, Buy
+/// and Sell; Wallets — your own wallets and the saved addresses, a row opening in place with Send and Ask in chat.
+/// One «+» adds either: it tells which the pasted thing is. There is no separate address book.
 struct FavoritesBoard: View {
+    struct NewAddress: Identifiable {
+        let id = UUID()
+        let address: String
+    }
+
     @Environment(Workspace.self) private var ws
-    @AppStorage("bookTab") private var tab = "favorites"
+    @AppStorage("favoritesTab") private var tab = "tokens"
     @State private var search = ""
-    @State private var adding = false
+    /// A new address to name and save, as the «+» found it: the editor opens with it.
+    @State private var adding: NewAddress?
     @State private var editing: SavedAddress?
     @State private var confirmingAll = false
     @State private var confirmAllError: String?
 
     var body: some View {
-        let items = filtered
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 Image(systemName: "star.fill").foregroundStyle(Color(hex: 0xF5B301)).font(.system(size: 16, weight: .semibold))
                 Text("Favorites").font(.ui(16, .bold))
                 Spacer()
+                AddFavoriteButton { address in
+                    tab = "wallets"
+                    adding = NewAddress(address: address)
+                }
                 Button { withAnimation(StudioView.spring) { ws.showFavorites = false } } label: { Image(systemName: "xmark") }
-                    .buttonStyle(.hoverIcon).help("Close")
+                    .buttonStyle(.hoverIcon).help("Close").accessibilityLabel("Close favorites")
             }
             HStack(spacing: 8) {
                 Picker("", selection: $tab) {
-                    Label("Favorites", systemImage: "star.fill").tag("favorites")
-                    Text("All").tag("all")
+                    Label("Tokens", systemImage: "bitcoinsign.circle").tag("tokens")
+                    Label("Wallets", systemImage: "wallet.pass").tag("wallets")
                 }
                 .pickerStyle(.segmented).labelsHidden().fixedSize()
-                Spacer()
-                AddTokenButton()
-                Button { adding = true } label: { Label("Address", systemImage: "plus") }.buttonStyle(.borderedProminent)
+                TextField(tab == "wallets" ? "Search wallets" : "Search tokens", text: $search).textFieldStyle(.roundedBorder)
             }
-            TextField("Search addresses", text: $search).textFieldStyle(.roundedBorder)
-            // Watched tokens: contracts to follow, never addresses to send to.
-            if !ws.favoriteTokens.isEmpty, search.isEmpty {
-                section("TOKENS")
-                ForEach(ws.favoriteTokens) { FavoriteTokenCard(token: $0) }
-            }
-            // Ours: this is where money into ihatecrypto goes.
-            let own = ownWallets
-            if tab == "all", !own.isEmpty, search.isEmpty {
-                HStack {
-                    section("YOUR WALLETS · SEND MONEY HERE TO TOP UP")
-                    Spacer()
-                    Button { withAnimation(StudioView.spring) { ws.showReceive = true } } label: { Label("QR", systemImage: "qrcode") }
-                        .buttonStyle(.borderless).font(.ui(10))
-                }
-                ForEach(own) { AddressCard(entry: $0, readOnly: true) }
-            }
-            section("ADDRESSES")
-            let unconfirmed = ws.addressBook.filter { !ws.isConfirmed($0) }
-            if !unconfirmed.isEmpty {
-                HStack(spacing: 8) {
-                    Label("\(unconfirmed.count) not confirmed with Touch ID: nothing is sent to them until you confirm. Delete the ones you don’t know.",
-                          systemImage: "exclamationmark.shield")
-                        .font(.ui(10, .semibold)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true)
-                    Spacer()
-                    Button(confirmingAll ? "Confirming…" : "Confirm all…") {
-                        confirmingAll = true
-                        confirmAllError = nil
-                        Task {
-                            do { try await ws.confirmAddresses(unconfirmed) } catch { confirmAllError = "Not confirmed: " + error.localizedDescription }
-                            confirmingAll = false
-                        }
-                    }
-                    .buttonStyle(.bordered).disabled(confirmingAll)
-                }
-                if let confirmAllError { Text(confirmAllError).font(.ui(10)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true) }
-            }
-            if items.isEmpty { empty }
-            ForEach(items) { entry in
-                AddressCard(entry: entry, edit: { editing = $0 })
-                    .transition(.opacity)
-            }
-            Label("Every saved address is confirmed with Touch ID, the whole address on the prompt, and money goes to a name only at that address — never to an address from a chat, a site or a model.",
-                  systemImage: "lock.shield")
+            if tab == "wallets" { wallets } else { tokens }
+        }
+        .animation(.snappy, value: filtered)
+        .animation(.snappy, value: ws.favoriteTokens)
+        .frame(width: 470, alignment: .leading)
+        .sheet(item: $adding) { AddressEditor(entry: nil, prefill: $0.address).environment(ws) }
+        .sheet(item: $editing) { AddressEditor(entry: $0).environment(ws) }
+    }
+
+    @ViewBuilder private var tokens: some View {
+        let q = search.lowercased().trimmingCharacters(in: .whitespaces)
+        let list = ws.favoriteTokens.filter { t in q.isEmpty || [t.name, t.symbol, t.address, t.chainTitle].contains { $0.lowercased().contains(q) } }
+        if list.isEmpty {
+            note(!q.isEmpty ? "Nothing matches “\(search)”."
+                 : "No tokens yet. Press + and paste a contract, or tell the chat «add 0x… to favorites»: each opens with its chart, Buy and Sell.")
+        } else {
+            FavoriteTokensTable(tokens: list)
+            Label("A row opens the token: its chart, Buy, Sell, Ask in chat. Right-click for the same.", systemImage: "cursorarrow.click")
                 .font(.ui(10)).foregroundStyle(.secondary)
         }
-        .animation(.snappy, value: items)
-        .frame(width: 470, alignment: .leading)
-        .sheet(isPresented: $adding) { AddressEditor(entry: nil).environment(ws) }
-        .sheet(item: $editing) { AddressEditor(entry: $0).environment(ws) }
+    }
+
+    @ViewBuilder private var wallets: some View {
+        let items = filtered
+        // Ours: this is where money into ihatecrypto goes.
+        let own = ownWallets
+        if !own.isEmpty, search.isEmpty {
+            HStack {
+                section("YOUR WALLETS · SEND MONEY HERE TO TOP UP")
+                Spacer()
+                Button { withAnimation(StudioView.spring) { ws.showReceive = true } } label: { Label("QR", systemImage: "qrcode") }
+                    .buttonStyle(.borderless).font(.ui(10))
+            }
+            list(own) { AddressCard(entry: $0, readOnly: true) }
+        }
+        section("SAVED ADDRESSES")
+        let unconfirmed = ws.addressBook.filter { !ws.isConfirmed($0) }
+        if !unconfirmed.isEmpty {
+            HStack(spacing: 8) {
+                Label("\(unconfirmed.count) not confirmed with Touch ID: nothing is sent to them until you confirm. Delete the ones you don’t know.",
+                      systemImage: "exclamationmark.shield")
+                    .font(.ui(10, .semibold)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true)
+                Spacer()
+                Button(confirmingAll ? "Confirming…" : "Confirm all…") {
+                    confirmingAll = true
+                    confirmAllError = nil
+                    Task {
+                        do { try await ws.confirmAddresses(unconfirmed) } catch { confirmAllError = "Not confirmed: " + error.localizedDescription }
+                        confirmingAll = false
+                    }
+                }
+                .buttonStyle(.bordered).disabled(confirmingAll)
+            }
+            if let confirmAllError { Text(confirmAllError).font(.ui(10)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true) }
+        }
+        if items.isEmpty {
+            note(!search.isEmpty ? "Nothing matches “\(search)”."
+                 : "Save an exchange’s deposit address, another wallet or a friend’s — with a name, so you never paste a wrong one. Press + and paste it.")
+        } else {
+            list(items) { AddressCard(entry: $0, edit: { editing = $0 }) }
+        }
+        Label("Every saved address is confirmed with Touch ID, the whole address on the prompt, and money goes to a name only at that address — never to an address from a chat, a site or a model.",
+              systemImage: "lock.shield")
+            .font(.ui(10)).foregroundStyle(.secondary)
+    }
+
+    /// Rows in one frame, a line between them.
+    private func list(_ entries: [SavedAddress], row: @escaping (SavedAddress) -> AddressCard) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(entries.enumerated()), id: \.element.id) { i, e in
+                if i > 0 { Divider() }
+                row(e).transition(.opacity)
+            }
+        }
+        .clipShape(RoundedRectangle(cornerRadius: 14))
+        .background(RoundedRectangle(cornerRadius: 14).fill(Brand.card))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Brand.cardBorder))
     }
 
     private func section(_ title: String) -> some View {
         Text(title).font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary).padding(.top, 4)
     }
 
+    /// Starred first, then by name.
     private var filtered: [SavedAddress] {
         let q = search.lowercased().trimmingCharacters(in: .whitespaces)
         return ws.addressBook
-            .filter { tab == "all" || $0.favorite || !q.isEmpty }
             .filter { q.isEmpty || [$0.name, $0.address, $0.note, $0.network.title, $0.label ?? ""].contains { $0.lowercased().contains(q) } }
             .sorted { ($0.favorite ? 0 : 1, $0.name.lowercased()) < ($1.favorite ? 0 : 1, $1.name.lowercased()) }
     }
@@ -297,26 +333,23 @@ struct FavoritesBoard: View {
         return out
     }
 
-    private var empty: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(!search.isEmpty ? "Nothing matches “\(search)”."
-                 : tab == "favorites" && !ws.addressBook.isEmpty ? "No favorites yet — star an address in All to keep it here."
-                 : "Save an exchange’s deposit address, another wallet or a friend’s — with a name, so you never paste a wrong one.")
-                .font(.ui(12)).foregroundStyle(.secondary)
-            if ws.addressBook.isEmpty {
-                Button { adding = true } label: { Label("Add the first address", systemImage: "plus") }.buttonStyle(.borderless)
-            }
-        }
-        .padding(20).frame(maxWidth: .infinity, alignment: .leading)
-        .background(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.dots, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
+    private func note(_ text: String) -> some View {
+        Text(text).font(.ui(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            .padding(20).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 18).strokeBorder(Brand.dots, style: StrokeStyle(lineWidth: 1.5, dash: [5, 4])))
     }
 }
 
+/// A saved address (or one of your own wallets) as a row: its name, network and Touch ID state. A click opens it in
+/// place: the whole address with Copy, and what to do with it in the chat — Send (the line in the field, its amount
+/// selected), Ask in chat; Edit and Delete.
 struct AddressCard: View {
     @Environment(Workspace.self) private var ws
     let entry: SavedAddress
     var readOnly = false
     var edit: (SavedAddress) -> Void = { _ in }
+    @State private var open = false
+    @State private var hover = false
     @State private var confirmDelete = false
     @State private var confirming = false
     @State private var confirmError: String?
@@ -324,46 +357,92 @@ struct AddressCard: View {
     private static let gold = Color(hex: 0xF5B301)
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 10) {
-                ZStack(alignment: .bottomTrailing) {
-                    AddressIconView(entry: entry, size: 38)
-                    TokenLogo(name: entry.network.logo, size: 17).offset(x: 3, y: 3)
+        let confirmed = readOnly || ws.isConfirmed(entry)
+        VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 8) {
+                Button { withAnimation(.snappy) { open.toggle() } } label: {
+                    HStack(spacing: 10) {
+                        ZStack(alignment: .bottomTrailing) {
+                            AddressIconView(entry: entry, size: 30)
+                            TokenLogo(name: entry.network.logo, size: 14).offset(x: 3, y: 3)
+                        }
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(entry.name).font(.ui(13, .semibold)).lineLimit(1)
+                            Text([entry.label, entry.network.title, entry.source == "chat" ? "from chat" : nil].compactMap { $0 }.joined(separator: " · "))
+                                .font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
+                        }
+                        Spacer(minLength: 4)
+                        if !readOnly {
+                            Image(systemName: confirmed ? "checkmark.shield.fill" : "exclamationmark.shield")
+                                .font(.system(size: 12)).foregroundStyle(confirmed ? Brand.profit : Brand.loss)
+                                .help(confirmed ? "Confirmed with Touch ID" : "Not confirmed with Touch ID: nothing is sent to it")
+                        }
+                        Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+                    }
+                    .contentShape(Rectangle())
                 }
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(entry.name).font(.ui(14, .bold)).lineLimit(1)
-                    Text([entry.label, entry.network.title, entry.source == "chat" ? "from chat" : nil].compactMap { $0 }.joined(separator: " · "))
-                        .font(.ui(10)).foregroundStyle(.secondary)
-                }
-                Spacer()
+                .buttonStyle(.plain)
+                .pointerStyle(.link)
+                .onHover { hover = $0 }
+                .accessibilityLabel("\(entry.name), \(open ? "close" : "open")")
                 if !readOnly {
                     Button {
                         withAnimation(.snappy) { ws.toggleFavorite(entry.id) }
                     } label: {
-                        Image(systemName: entry.favorite ? "star.fill" : "star").font(.system(size: 15))
+                        Image(systemName: entry.favorite ? "star.fill" : "star").font(.system(size: 14))
                             .foregroundStyle(entry.favorite ? Self.gold : .secondary)
-                            .symbolEffect(.bounce, value: entry.favorite)
                     }
                     .buttonStyle(.borderless)
-                    .help(entry.favorite ? "Remove from favorites" : "Add to favorites")
+                    .help(entry.favorite ? "Unpin from the top" : "Pin to the top")
+                    .accessibilityLabel(entry.favorite ? "Unpin \(entry.name)" : "Pin \(entry.name)")
                 }
             }
-            // The start and the end stand out: that's what to compare with the source.
-            let ends = AddressCheck.ends(entry.address)
-            HStack(spacing: 0) {
-                Text(ends.start).fontWeight(.bold)
-                Text("  …  ").foregroundStyle(.tertiary)
-                Text(ends.end).fontWeight(.bold)
+            .padding(.horizontal, 14).frame(height: 52)
+            .overlay {
+                RoundedRectangle(cornerRadius: 8).strokeBorder(Brand.accent, lineWidth: 1.5).padding(2)
+                    .opacity(hover && !open ? 0.6 : 0)
             }
-            .font(.system(size: 13.5, design: .monospaced))
-            Text(entry.address).font(.system(size: 10.5, design: .monospaced)).foregroundStyle(.secondary)
-                .textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
+            if open {
+                details(confirmed: confirmed)
+                    .padding(.horizontal, 14).padding(.bottom, 14)
+                    .transition(.opacity)
+            }
+        }
+        .background(Color.primary.opacity(open ? 0.04 : 0))
+        .contextMenu {
+            Group {
+                if !readOnly { Button { send() } label: { Label("Send…", systemImage: "paperplane") } }
+                Button { ask() } label: { Label("Ask in chat", systemImage: "bubble.left") }
+                Button(action: copy) { Label("Copy address", systemImage: "doc.on.doc") }
+                if !readOnly {
+                    Divider()
+                    Button(entry.favorite ? "Unpin from the top" : "Pin to the top") { ws.toggleFavorite(entry.id) }
+                    Button("Edit…") { edit(entry) }
+                    Button("Delete…", role: .destructive) { confirmDelete = true }
+                }
+            }
+            .labelStyle(.titleAndIcon)
+        }
+        .confirmationDialog("Delete “\(entry.name)”?", isPresented: $confirmDelete) {
+            Button("Delete", role: .destructive) {
+                AddressIcons.remove(entry.icon)
+                withAnimation(.snappy) { ws.addressBook.removeAll { $0.id == entry.id } }
+                Task { await ws.forgetAddress(entry) }
+            }
+        } message: {
+            Text("Only the saved entry is removed.")
+        }
+    }
+
+    private func details(confirmed: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            AddressLines(address: entry.address)
             if !entry.memo.isEmpty {
                 Label("Memo / tag: \(entry.memo)", systemImage: "number").font(.ui(10, .semibold)).foregroundStyle(Brand.jevInk)
             }
             if !entry.note.isEmpty { Text(entry.note).font(.ui(10)).foregroundStyle(.secondary) }
-            // Its state in the signer's book, always on the card: confirmed (green), or not yet, with Confirm….
-            if !readOnly, ws.isConfirmed(entry) {
+            // Its state in the signer's book: confirmed (green), or not yet, with Confirm….
+            if !readOnly, confirmed {
                 Label("Confirmed with Touch ID: money goes only to this address", systemImage: "checkmark.shield.fill")
                     .font(.ui(10, .semibold)).foregroundStyle(Brand.profit)
             } else if !readOnly {
@@ -383,38 +462,38 @@ struct AddressCard: View {
                 }
                 if let confirmError { Text(confirmError).font(.ui(10)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true) }
             }
-            HStack(spacing: 14) {
-                CopyButton(title: "Copy", text: entry.address, help: "Copy the address")
-                Spacer()
+            Flow(spacing: 8) {
                 if readOnly {
-                    Text("read from Settings").foregroundStyle(.tertiary)
+                    Button { withAnimation(StudioView.spring) { ws.showReceive = true } } label: { Label("Top up", systemImage: "qrcode") }
+                        .buttonStyle(.borderedProminent)
                 } else {
-                    Button("Edit") { edit(entry) }
-                    Button("Delete", role: .destructive) { confirmDelete = true }.foregroundStyle(Brand.loss)
+                    Button(action: send) { Label("Send", systemImage: "paperplane") }.buttonStyle(.borderedProminent)
+                        .help("Puts «\(Self.sendPhrase(entry))» in the chat, the amount selected")
+                }
+                Button(action: ask) { Label("Ask in chat", systemImage: "bubble.left") }.buttonStyle(.bordered)
+                if !readOnly {
+                    Button { edit(entry) } label: { Label("Edit", systemImage: "pencil") }.buttonStyle(.bordered)
+                    Button(role: .destructive) { confirmDelete = true } label: { Label("Delete", systemImage: "trash") }.buttonStyle(.bordered)
                 }
             }
-            .buttonStyle(.borderless).font(.ui(10))
+            .font(.ui(11))
         }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 20).fill(Brand.card))
-        .overlay(RoundedRectangle(cornerRadius: 20).strokeBorder(entry.favorite ? Self.gold.opacity(0.7) : Brand.cardBorder, lineWidth: entry.favorite ? 1.5 : 1))
-        .contextMenu {
-            Button("Copy address", action: copy)
-            if !readOnly {
-                Button(entry.favorite ? "Remove from favorites" : "Add to favorites") { ws.toggleFavorite(entry.id) }
-                Button("Edit…") { edit(entry) }
-                Button("Delete…", role: .destructive) { confirmDelete = true }
-            }
-        }
-        .confirmationDialog("Delete “\(entry.name)”?", isPresented: $confirmDelete) {
-            Button("Delete", role: .destructive) {
-                AddressIcons.remove(entry.icon)
-                withAnimation(.snappy) { ws.addressBook.removeAll { $0.id == entry.id } }
-                Task { await ws.forgetAddress(entry) }
-            }
-        } message: {
-            Text("Only the saved entry is removed.")
-        }
+    }
+
+    /// How the chat takes a send to this name: USDC by default, the network named for a 0x address.
+    static func sendPhrase(_ e: SavedAddress) -> String {
+        "send 10 USDC to \(e.name)" + (e.address.hasPrefix("0x") && e.network != .sui ? " on \(e.network.rawValue)" : "")
+    }
+
+    /// The send goes into the chat's field with its amount selected, to type over; the user sends it.
+    private func send() { ws.suggest(Self.sendPhrase(entry), select: "10") }
+
+    /// The next message is about this address (a chip over the field).
+    private func ask() {
+        let what = readOnly ? "your own wallet" : "the saved address"
+        ws.stepContext = StepContext(title: entry.name, logo: entry.network.logo,
+                                     about: "About \(what) «\(entry.name)»: \(entry.address) on \(entry.network.title)"
+                                         + (entry.label.map { ", \($0)" } ?? "") + (entry.note.isEmpty ? "" : ", note: \(entry.note)"))
     }
 
     private func copy() {
@@ -430,6 +509,8 @@ struct AddressEditor: View {
     @Environment(Workspace.self) private var ws
     @Environment(\.dismiss) private var dismiss
     let entry: SavedAddress?
+    /// A new entry's address, as the board's «+» found it.
+    var prefill = ""
     @State private var name = ""
     @State private var address = ""
     @State private var network: AddressCheck.Network = .solana
@@ -517,7 +598,10 @@ struct AddressEditor: View {
         .padding(20)
         .frame(width: 580)
         .onAppear {
-            guard let e = entry else { return }
+            guard let e = entry else {
+                if !prefill.isEmpty { address = prefill; network = AddFavoriteButton.network(for: prefill) }
+                return
+            }
             name = e.name; address = e.address; network = e.network; category = e.label ?? ""; icon = e.icon
             memo = e.memo; note = e.note; favorite = e.favorite
         }
@@ -690,8 +774,11 @@ extension Workspace {
     func addressBookCommand(_ command: AddressBookCommand, note: String? = nil) async {
         switch command {
         case .favorite(let name, let on):
-            let key = name.lowercased()
-            guard let i = addressBook.firstIndex(where: { $0.name.lowercased() == key }) ?? addressBook.firstIndex(where: { $0.name.lowercased().contains(key) }) else {
+            let key = name.lowercased(), written = AddressBookCommand.address(in: name)
+            guard let i = addressBook.firstIndex(where: { $0.name.lowercased() == key }) ?? addressBook.firstIndex(where: { $0.name.lowercased().contains(key) })
+                    ?? written.flatMap({ a in addressBook.firstIndex { $0.address.lowercased() == a.lowercased() } }) else {
+                // «add 0x… to favorites» for an address not saved: a token if a pool trades it, else a wallet to name.
+                if on, let written { await tokenCommand(.favorite(address: written, chain: nil), note: note); return }
                 reply("There’s no “\(name)” in Addresses. Save it first, e.g. “save <address> as \(name) on Base”.", note: note)
                 return
             }
