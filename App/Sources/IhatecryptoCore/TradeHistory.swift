@@ -49,7 +49,12 @@ public enum TradeHistory {
         public let fills: [Fill]
         public var opened: Date { fills.first?.time ?? .distantPast }
         public var closed: Date? { isOpen ? nil : fills.last?.time }
-        public var isOpen: Bool { fills.last?.endPosition != 0 }
+        /// A flip's fill (long straight to short) closes it: what's left of that fill opens the next story.
+        public var isOpen: Bool {
+            guard let last = fills.last else { return false }
+            let end = last.endPosition
+            return end != 0 && !(last.startPosition != 0 && (last.startPosition > 0) != (end > 0))
+        }
         /// Realized result after fees.
         public var realized: Decimal { fills.reduce(0) { $0 + $1.closedPnl } - fees }
         public var fees: Decimal { fills.reduce(0) { $0 + $1.fee } }
@@ -125,6 +130,30 @@ public enum TradeHistory {
 
     public static func fills(user: String) async throws -> [Fill] {
         try JSONDecoder().decode([Fill].self, from: try await info(["type": "userFills", "user": user, "aggregateByTime": true]))
+    }
+
+    /// Every fill Hyperliquid still serves (its last 10,000), oldest first, page by page: `userFills` alone gives 2,000.
+    public static func allFills(user: String) async throws -> [Fill] {
+        var out: [Fill] = [], start: Int64 = 0
+        for _ in 0..<6 {
+            let page = try JSONDecoder().decode([Fill].self, from: try await info(["type": "userFillsByTime", "user": user, "startTime": start, "aggregateByTime": true]))
+            out += page
+            guard page.count >= 2000, let last = page.last else { break }
+            start = Int64(last.time.timeIntervalSince1970 * 1000) + 1
+        }
+        return out
+    }
+
+    /// All funding payments, 500 a page (`funding(user:)` reads the first page only).
+    public static func allFunding(user: String) async throws -> [PnL.Funding] {
+        var out: [PnL.Funding] = [], start: Int64 = 0
+        for _ in 0..<40 {
+            let page = funding(try await info(["type": "userFunding", "user": user, "startTime": start]))
+            out += page
+            guard page.count >= 500, let last = page.last else { break }
+            start = Int64(last.time.timeIntervalSince1970 * 1000) + 1
+        }
+        return out
     }
 
     /// Funding paid (−) or received (+) on positions, HIP-3 markets included (userFunding).

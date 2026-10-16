@@ -36,3 +36,32 @@ public struct AgentCheck: Equatable, Sendable {
         text.wholeMatch(of: /(?is)\s*check:\s*(.+?)\s*/).map { AgentCheck(what: String($0.1)) }
     }
 }
+
+/// «journal HYPE: long here, funding isn't bad, keeps getting bought on dips»: the trader's own words about a trade, kept
+/// with what the market was doing then (JournalEntry), so the trading study can later set the reasoning against what
+/// happened. Only their own words, as for memory.
+public struct JournalCommand: Equatable, Sendable {
+    public let asset: String
+    public let words: String
+    public static func parse(_ text: String) -> JournalCommand? {
+        // A HIP-3 market keeps its exchange's prefix: «journal xyz:GOLD: …».
+        text.wholeMatch(of: /(?is)\s*journal\s+((?:[a-z0-9]+:)?[^\s:]+)\s*:\s*(.+?)\s*/).map { JournalCommand(asset: String($0.1), words: String($0.2)) }
+    }
+}
+
+/// «study hypotheses: …»: the trading study's research memory, one file each as the skill names them. Each write adds a
+/// dated entry; the `study` lookup reads them back.
+public struct StudyNote: Equatable, Sendable {
+    /// The command's word → the file the study calls it.
+    public static let files: KeyValuePairs = ["profile": "TRADER_PROFILE", "playbook": "TRADING_PLAYBOOK", "sources": "DATA_SOURCES",
+                                              "reconstruction": "TRADE_RECONSTRUCTION", "hypotheses": "HYPOTHESES",
+                                              "experiments": "EXPERIMENT_LOG", "questions": "OPEN_QUESTIONS", "progress": "PROGRESS"]
+    public let file: String
+    public let text: String
+    public static func parse(_ text: String) -> StudyNote? {
+        guard let m = text.wholeMatch(of: /(?is)\s*study\s+([a-z_]+)\s*:\s*(.+?)\s*/) else { return nil }
+        let word = m.1.lowercased()
+        guard let file = files.first(where: { $0.key == word || $0.value.lowercased() == word })?.value else { return nil }
+        return StudyNote(file: file, text: String(m.2))
+    }
+}

@@ -347,6 +347,8 @@ final class Workspace {
     var canvasID: UUID? {
         didSet { UserDefaults.standard.set(canvasID?.uuidString, forKey: "openCanvas") }
     }
+    /// The skills the model loaded on this canvas (the `skill` lookup): their text comes with every message here.
+    var activeSkills: [String] = []
     /// A reopened canvas whose board isn't a live plan: drawn as it was.
     var savedBoard: CanvasSession?
     /// A note's card: on its own canvas, or where it was just written until the next message.
@@ -1491,6 +1493,9 @@ final class Workspace {
         c.addressBook = addressBook.map { "\($0.name) (\($0.network.title))" }
         c.replyLanguage = replyLanguage
         c.memory = agentMemory
+        let skills = SkillStore.shared.on
+        c.skills = skills.map { "\($0.id) — \($0.name): \($0.about)" }
+        c.loadedSkills = skills.filter { activeSkills.contains($0.id) }
         c.off = Modules.current.offSummary
         c.safeSearch = safeSearch
         c.capital = equity.map { Fmt.usd($0) }
@@ -1563,6 +1568,8 @@ final class Workspace {
         // the question, not to another command (Grok's X search about MOO opened MOO's token card instead).
         if case .pay? = WalletCommand.parse(canonical), let command = WalletCommand.parse(canonical) { await handleWallet(command, note: note); return true }
         if let command = MemoryCommand.parse(canonical) { memoryCommand(command, note: note); return true }
+        if let entry = JournalCommand.parse(canonical) { await journalCommand(entry, note: note); return true }
+        if let study = StudyNote.parse(canonical) { studyNote(study, note: note); return true }
         if let check = AgentCheck.parse(canonical) { await runCheck(check, note: note); return true }
         // Any contract's function: its addresses are checked against the user's own words and the explorer there.
         if case .contractCall? = WalletCommand.parse(canonical), let command = WalletCommand.parse(canonical) {

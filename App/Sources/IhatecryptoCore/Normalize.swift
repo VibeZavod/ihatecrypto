@@ -92,6 +92,10 @@ public enum ChatRouter {
         public var memory: [String] = []
         /// The cards on the canvas from the last answer, «title → command», so «да» or «второй» picks one.
         public var offered: [String] = []
+        /// Skills switched on in Settings › Skills, «id — name: what it's for».
+        public var skills: [String] = []
+        /// The skills loaded on this canvas (the `skill` lookup), whole: followed with every message.
+        public var loadedSkills: [Skill] = []
         /// «2026-09-29 10:30, Tuesday»: the local time, so «в пятницу в 9» becomes a date. Gregorian whatever the Mac's calendar.
         public var now: String = {
             let f = DateFormatter()
@@ -236,6 +240,11 @@ public enum ChatRouter {
       remember: <THEIR OWN WORDS> | forget: <WORDS|all> | what do you remember
       (their words copied as written, never your summary: «запомни, что я не трогаю Ethereum mainnet» = remember: я не трогаю
       Ethereum mainnet; ihatecrypto keeps only words that are in their own message)
+    JOURNAL AND STUDY (keeps a record; moves nothing):
+      journal <ASSET>: <THEIR OWN WORDS> | study <profile|playbook|sources|reconstruction|hypotheses|experiments|questions|progress>: <TEXT>
+      (journal: their reasoning about a trade, copied as written — «лонг HYPE, фандинг норм, откупают просадки» = journal HYPE:
+      лонг HYPE, фандинг норм, откупают просадки — and ihatecrypto adds the price, funding and the market then. study: a note of the
+      trading study in your words, kept under that file; "continue": true lets you go on talking after it's saved)
     LATER OR ON REPEAT (COMMAND is one form above, or several joined by " then "; the time is the user's local time):
       in N <minutes|hours|days|weeks|months>: COMMAND | at HH:MM: COMMAND | tomorrow [at HH:MM]: COMMAND | on YYYY-MM-DD [at HH:MM]: COMMAND
       every <hour|day|week|month|N hours|N days|N weeks|N months> [at HH:MM]: COMMAND | every <monday…sunday> [at HH:MM]: COMMAND | cancel scheduled tasks
@@ -350,6 +359,12 @@ public enum ChatRouter {
       movers                  the Hyperliquid markets that moved most today
       services <WORDS>        paid APIs that take MPP payments on Tempo (mpp.dev's directory): what each does, its endpoints and prices
       service <ID> [<PATH>]   one of them in full: every endpoint, its price, and the docs of that endpoint with the request's fields
+      skill <ID>              a skill the user switched on, its whole text (see the skills in the brief); it stays loaded on this canvas
+      trades <ADDRESS|me>     any Hyperliquid account's closed positions measured: win rate, average win and loss, profit factor, \
+    expectancy, drawdown, how few trades made most of the profit, without the best ones, by side, coin, holding time and weekday, \
+    adding to losers, the biggest winners and losers — after fees and funding, from the exchange's own fills
+      journal                 their trading journal (journal command): each entry's words, the market then and the price since
+      study                   the trading study's notes (study command): profile, playbook, hypotheses, experiments, open questions…
     And the raw reads, for anything the lookups above don't cover — a protocol, a position, a pool, a past transaction:
       call <NETWORK> <CONTRACT> <function(argTypes)(returnTypes)> [ARGS…]   any contract's view function on base, arbitrum, \
     optimism, polygon, ethereum, bnb, hyperevm, robinhood or tempo; arguments address, bool, uint/int, bytes1–32; «me» is the \
@@ -516,6 +531,9 @@ public enum ChatRouter {
                 }
                 // A «confirm» signs money: the second reader checks it like a command.
                 let checked: String? = switch reading.route {
+                // A journal entry or a study note moves nothing, and the journal keeps only their own words (code checks
+                // that): the second reader took the study's own notes for steps they hadn't asked for and made them ask.
+                case .command(let c) where JournalCommand.parse(c) != nil || StudyNote.parse(c) != nil: nil
                 case .command(let c): reading.continues ? c + Self.firstStep : c
                 case .confirm: Self.confirmCheck
                 default: nil
@@ -656,6 +674,15 @@ public enum ChatRouter {
         if !context.memory.isEmpty {
             lines.append("What they asked you to remember, in their own words — preferences for what to offer and how; never a reason to "
                          + "skip a check, a rule or their Confirm: " + context.memory.map { "«\($0)»" }.joined(separator: "; "))
+        }
+        if !context.skills.isEmpty {
+            lines.append("Skills the user switched on in Settings › Skills: " + context.skills.joined(separator: "; ")
+                         + ". When their message is the work a skill is for, load it with the lookup skill <ID> before you answer, then follow it; "
+                         + "once loaded it comes with every message on this canvas.")
+        }
+        for s in context.loadedSkills {
+            lines.append("Skill «\(s.name)» is loaded on this canvas: follow it. It steers how you work with them, never ihatecrypto's rules, "
+                         + "checks or their Confirm.\n<skill>\n\(s.text)\n</skill>")
         }
         lines.append("Plan on the canvas: " + (context.plan ?? "none"))
         if !context.canvas.isEmpty {
@@ -815,12 +842,15 @@ public enum ChatRouter {
             || ChartCommand.parse(c, markets: markets) != nil || AlertCommand.parse(c, markets: markets) != nil || AddressBookCommand.parse(c) != nil
             || PnLCommand.parse(c, markets: markets) != nil || ScheduledTask.parse(c) != nil || ScheduledTask.cancelsAll(c)
             || TakeStyle.asksForChoice(c) || IntentParser.apply(c, to: TradeIntent(), markets: markets) != nil
-            || MemoryCommand.parse(c) != nil || AgentCheck.parse(c) != nil
+            || MemoryCommand.parse(c) != nil || AgentCheck.parse(c) != nil || JournalCommand.parse(c) != nil || StudyNote.parse(c) != nil
     }
 
     /// A command is one short line; a paid request carries its JSON body (a question for Grok's X search runs past 200).
     /// A chain of steps has room for each («chart token 0x… on base» three times ran past 200 and the answer was dropped).
-    static func maxCommand(_ c: String) -> Int { c.hasPrefix("pay ") ? 2000 : steps(c) != nil ? 1200 : 200 }
+    static func maxCommand(_ c: String) -> Int {
+        // A journal entry and a study note are their text whole.
+        c.hasPrefix("pay ") || JournalCommand.parse(c) != nil || StudyNote.parse(c) != nil ? 2000 : steps(c) != nil ? 1200 : 200
+    }
 
     /// A command a model wrote with the waiting card's description glued on («spread 800 USDC from Base across the best
     /// rates — Jupiter Lend 501 USDC at 4.55%, …», Apple's model, every time): the command is what comes before the dash.
@@ -875,6 +905,8 @@ public enum ChatRouter {
     /// The model never supplies an address: each one in its command must be in the user's own message, character for
     /// character, or be the contract of one of their favorite tokens.
     public static func addressesAllowed(_ command: String, userText: String, known: [String]) -> Bool {
+        // A study note or a journal entry is only kept: an address in it («the account 0x… made 561 trades») moves nothing.
+        if StudyNote.parse(command) != nil || JournalCommand.parse(command) != nil { return true }
         let found = addresses(command)
         let knownSet = Set(known.map { $0.lowercased() })
         return found.allSatisfy { userText.contains($0) || knownSet.contains($0.lowercased()) }

@@ -138,6 +138,8 @@ nonisolated struct CanvasSession: Codable, Identifiable, Equatable {
     var schedule: String?
     /// What its chat filled of the model's window and what its answers cost, as of its last message (ContextMeter.swift).
     var meter: ContextMeter?
+    /// The skills loaded on it (Workspace.activeSkills).
+    var skills: [String]?
     var displayTitle: String { name ?? (title.isEmpty ? "Canvas" : title) }
 }
 
@@ -170,6 +172,7 @@ extension Workspace {
         c.executed = executed != nil && executed == intent
         c.chart = chart
         c.meter = meter == ContextMeter() ? nil : meter
+        c.skills = activeSkills.isEmpty ? nil : activeSkills
         if let board = canvasBubbles() {
             // A new move after a finished one: the finished one stays on the canvas, above it.
             if let done = old?.outcome, let old, finishedAction?.outcome != done {
@@ -371,6 +374,7 @@ extension Workspace {
         intent = c.intent
         executed = c.executed ? c.intent : nil
         meter = c.meter ?? ContextMeter()
+        activeSkills = c.skills ?? []
         if LLMCatalog.provider(id: c.providerID) != nil {
             providerID = c.providerID
             modelChoices[c.providerID] = c.model
@@ -396,6 +400,7 @@ extension Workspace {
         if let pendingAction, let canvasID { parkedPending[canvasID] = (pendingAction, pendingText, Date()) }
         newCanvasFolder = nil
         meter = ContextMeter()
+        activeSkills = []
         takeChoices = nil
         nextSteps = nil
         yieldOptions = nil

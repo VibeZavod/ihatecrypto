@@ -23,7 +23,7 @@ struct SettingsView: View {
 
     /// Raw values also serve links from the chat and the networks menu.
     enum Tab: String, CaseIterable {
-        case general, agent, signIns = "signins", wallet, modules, debugging
+        case general, agent, signIns = "signins", wallet, modules, skills, debugging
 
         var title: String {
             switch self {
@@ -32,6 +32,7 @@ struct SettingsView: View {
             case .signIns: "AI model"
             case .wallet: "Wallet"
             case .modules: "Modules"
+            case .skills: "Skills"
             case .debugging: "Debugging"
             }
         }
@@ -43,6 +44,7 @@ struct SettingsView: View {
             case .signIns: "sparkles"
             case .wallet: "creditcard"
             case .modules: "square.grid.2x2"
+            case .skills: "wand.and.stars"
             case .debugging: "terminal"
             }
         }
@@ -120,6 +122,7 @@ struct SettingsView: View {
         case .agent: SettingsPage(title: "Trading agent", line: "How the assistant trades for you. Code checks every plan against these rules.") { agent }
         case .signIns: SettingsPage(title: "AI model", line: "What reads your chat: a subscription, an API key, or a free model on this Mac.") { ModelSection() }
         case .wallet: SettingsPage(title: "Wallet", line: "Your wallets, the key that signs and Touch ID.") { wallet }
+        case .skills: SettingsPage(title: "Skills", line: "Instructions the assistant follows for one kind of work. Switch them on and off, or add your own from a file.") { SkillsSettings() }
         case .debugging: SettingsPage(title: "Debugging", line: "Developer tools on this Mac.") { debugging }
         }
     }

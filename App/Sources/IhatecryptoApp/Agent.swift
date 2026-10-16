@@ -155,6 +155,8 @@ extension Workspace {
         }
         if ChartCommand.parse(command) != nil || PnLCommand.parse(command) != nil { return true }
         if case .yields? = WalletCommand.parse(command) { return true }
+        // Kept, not done: a card waiting for Confirm stays.
+        if JournalCommand.parse(command) != nil || StudyNote.parse(command) != nil { return true }
         return false
     }
 
@@ -176,6 +178,8 @@ extension Workspace {
     /// model is told so instead.
     func screenedLookup(_ l: ChatRouter.Lookup) async -> String {
         let found = await agentLookup(l)
+        // A skill is instructions the user added themselves, and its text goes with every later message unscreened anyway.
+        if l.tool == "skill" { return found }
         let outside = ["token", "services", "service"].contains(l.tool) || AgentReads.tools.contains(l.tool)
         let classifier: (any TextClassifier)? = jevScreening && outside ? openRouterKey.map { JevClassifier(apiKey: $0) } : nil
         // The model is given at most this much of one lookup.
@@ -258,12 +262,14 @@ extension Workspace {
         case "service":
             agentStep = say("Reading the service's docs", "Читаю документацию сервиса")
             return await MPP.service(l.arg)
+        case "skill", "trades", "journal", "study":
+            return await skillLookup(l)
         case let tool where AgentReads.tools.contains(tool):
             let host = tool == "fetch" ? URL(string: l.arg.components(separatedBy: " ")[0])?.host() : nil
             agentStep = host.map { say("Reading \($0)", "Читаю \($0)") } ?? say("Reading the chain", "Читаю блокчейн")
             return await AgentReads.answer(tool, l.arg, me: .init(evm: isEVMAddress(hlAddress) ? hlAddress : nil, solana: solanaAddress.isEmpty ? nil : solanaAddress))
         default:
-            return "There is no «\(l.tool)» lookup. Lookups: portfolio, market <ASSET>, token <ADDRESS or NAME>, rates <USDC|SOL>, gas [<NETWORK>], movers, services <WORDS>, service <ID>, call, rpc, hl, fetch."
+            return "There is no «\(l.tool)» lookup. Lookups: portfolio, market <ASSET>, token <ADDRESS or NAME>, rates <USDC|SOL>, gas [<NETWORK>], movers, services <WORDS>, service <ID>, skill <ID>, trades <ADDRESS|me>, journal, study, call, rpc, hl, fetch."
         }
     }
 
