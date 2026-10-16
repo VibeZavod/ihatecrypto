@@ -184,7 +184,9 @@ enum SeedStore {
 
     /// The user in person — Touch ID or the login password — with `reason` on the system prompt, always a fresh
     /// prompt. The authenticated context then serves the signature that follows, so there is one prompt, not two.
-    static func confirm(_ reason: String) throws {
+    /// `within`: seconds before the prompt closes by itself — for the automation wallet, which signs with no one at
+    /// the Mac: a prompt left up would hold its task, and the app's watch loop with it, until someone came back.
+    static func confirm(_ reason: String, within: TimeInterval? = nil) throws {
         let context = LAContext()
         context.localizedReason = reason
         let done = DispatchSemaphore(value: 0)
@@ -193,7 +195,12 @@ enum SeedStore {
             if !ok { outcome = error ?? WalletError("Not confirmed.") }
             done.signal()
         }
-        done.wait()
+        if let within, done.wait(timeout: .now() + within) == .timedOut {
+            context.invalidate()
+            _ = done.wait(timeout: .now() + 5)
+            throw WalletError("No one confirmed it within \(Int(within)) seconds: nothing was signed.")
+        }
+        if within == nil { done.wait() }
         if let outcome { throw WalletError("Not confirmed (\(outcome.localizedDescription)): nothing was changed.") }
         lock.withLock { session = (context, Date()) }
     }
@@ -252,6 +259,47 @@ enum RecipientStore {
     static func key(_ address: String) -> String { address.hasPrefix("0x") ? address.lowercased() : address }
 
     static func delete(id: String) { SecItemDelete(query(id) as CFDictionary) }
+}
+
+/// The addresses of the wallets whose keys this signer holds, each written when its key was derived here: money between
+/// them stays the user's, so none is a new address for another (what a task bought goes from Automation to Main by
+/// itself). Not the wallet list in defaults: anything on the Mac can write that.
+enum OwnStore {
+    static let service = "app.ihatecrypto.own"
+    static var query: [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "own",
+         kSecUseDataProtectionKeychain as String: true]
+    }
+
+    static func all() -> Set<String> {
+        var q = query
+        q[kSecReturnData as String] = true
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let data = out as? Data,
+              let list = try? JSONDecoder().decode([String].self, from: data) else { return [] }
+        return Set(list)
+    }
+
+    /// Best effort: an address left out is asked about in person, like any other.
+    static func add(_ addresses: [String]) {
+        let have = all(), new = Set(addresses.map(RecipientStore.key)).subtracting(have)
+        if !new.isEmpty { save(have.union(new)) }
+    }
+
+    /// A removed wallet is no longer ours: money to it asks again.
+    static func remove(_ addresses: [String]) {
+        let have = all(), gone = Set(addresses.map(RecipientStore.key)).intersection(have)
+        if !gone.isEmpty { save(have.subtracting(gone)) }
+    }
+
+    private static func save(_ list: Set<String>) {
+        guard let data = try? JSONEncoder().encode(list.sorted()) else { return }
+        SecItemDelete(query as CFDictionary)
+        var q = query
+        q[kSecValueData as String] = data
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        SecItemAdd(q as CFDictionary, nil)
+    }
 }
 
 /// The address book's names and addresses (SignerAddress), in the signer's own Keychain group: the app's file keeps

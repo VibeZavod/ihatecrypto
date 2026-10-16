@@ -166,6 +166,7 @@ extension Workspace {
         let wallet = automation.map { TradeWallet(solana: $0.solana ?? wallet.solana, evm: $0.evm ?? wallet.evm) } ?? wallet
         let signer: any TradeSigner = if let automation { XPCTradeSigner(asWallet: automation.id) }
             else if ledgerActive { ledgerSigner(wallet) } else { XPCTradeSigner() }
+        let owes = automation != nil
         return Executor(wallet: wallet, signer: signer, journal: Journal(url: journalURL)) { [weak self] text in
             Task { @MainActor in
                 self?.reply(text, note: "execution")
@@ -176,11 +177,17 @@ extension Workspace {
             Task { @MainActor in
                 if from == .usdc { self?.costBasis[to.mint, default: CostBasis()].bought(received, for: spent) }
                 if to == .usdc { self?.costBasis[from.mint]?.sold(spent) }
+                // A task's buy on the automation wallet goes on to the wallet that's on after the run (sendBoughtToMain).
+                if owes {
+                    self?.owe("solana:\(to.mint == CostBasis.wsol ? "SOL" : to.mint)", received)
+                    self?.owe("solana:\(from.mint == CostBasis.wsol ? "SOL" : from.mint)", -spent)
+                }
             }
         } traded: { [weak self] key, tokens, dollars in
             // A buy through ihatecrypto on an EVM network: its cost, kept like the Solana swaps'.
             Task { @MainActor in
                 if tokens > 0 { self?.costBasis[key, default: CostBasis()].bought(tokens, for: dollars) } else { self?.costBasis[key]?.sold(-tokens) }
+                if owes { self?.owe(key, tokens) }
             }
         }
     }
@@ -929,6 +936,7 @@ extension Workspace {
             await guardPositions()
             await runSchedules()
             await runDueTask()
+            remindTopUp()
         }
     }
 

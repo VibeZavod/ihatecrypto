@@ -135,6 +135,15 @@ public struct ScheduledTask: Codable, Equatable, Sendable, Identifiable {
         return true
     }
 
+    /// How many times it runs from its next run until `date`: what its buys take from a budget by then.
+    public func runs(until date: Date) -> Int {
+        guard next <= date else { return 0 }
+        guard let every else { return 1 }
+        var n = 0, d = next
+        while d <= date, n < 10_000 { n += 1; d = every.after(d, Self.calendar) }
+        return n
+    }
+
     /// «every week · next Oct 6, 9:00 AM» / «once · Oct 6, 9:00 AM»
     public var when: String { (every.map { "every \($0.words) · next " } ?? "once · ") + Fmt.date(next) }
 }

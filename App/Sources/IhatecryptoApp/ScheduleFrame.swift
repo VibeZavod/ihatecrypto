@@ -71,6 +71,36 @@ extension ScheduledTask {
         }
     }
 
+    /// It sells a coin: from the wallet that's on, with Touch ID, never by itself from the automation wallet.
+    var sells: Bool {
+        steps.contains { step in
+            switch WalletCommand.parse(step) {
+            case .sell?, .sellOn?, .sellNear?, .sellStock?, .hlSpotSell?: true
+            default: false
+            }
+        }
+    }
+
+    /// It buys a coin: on the automation wallet, what it gets goes on to the wallet that's on.
+    var buysCoins: Bool {
+        steps.contains { step in
+            switch WalletCommand.parse(step) {
+            case .buy?, .buyStock?, .buyOn?: true
+            default: false
+            }
+        }
+    }
+
+    /// The USDC its buys spend in one run.
+    var buysUSDC: Decimal {
+        steps.reduce(0) { sum, step in
+            switch WalletCommand.parse(step) {
+            case .buy(_, let u?)?, .buyNear(let u?)?, .buyStock(_, let u?)?, .buyOn(_, _, let u?, _)?: sum + u
+            default: sum
+            }
+        }
+    }
+
     /// «Spread USDC across the best rates»: it spends the USDC free on the wallet it pays from, so with none there its
     /// runs have nothing to do.
     var spreadsUSDC: Bool {
@@ -129,8 +159,9 @@ extension Workspace {
     }
 
     /// A task's moves go from the automation wallet, without Touch ID: there is one, the user typed the task in the
-    /// window, and didn't set it to pay from the wallet that's on.
-    func usesAutomation(_ t: ScheduledTask) -> Bool { t.untrusted != true && t.fromActive != true && automationWallet != nil }
+    /// window, didn't set it to pay from the wallet that's on, and it sells nothing — what tasks buy goes to the wallet
+    /// that's on, so a sale is that wallet's, with Touch ID («алерты на продажу только по тач айди»).
+    func usesAutomation(_ t: ScheduledTask) -> Bool { t.untrusted != true && t.fromActive != true && !t.sells && automationWallet != nil }
 
     /// The USDC free to spend where a task pays from: the automation wallet's budget on Solana and the EVM networks, or
     /// the active wallet's idle USDC on them; nil until read.
@@ -150,10 +181,19 @@ extension Workspace {
         return ledgerActive ? .ledger : activeWallet?.isTest == true ? .itself : .touchID
     }
 
-    /// What the recurring buys take from the budget in a week.
-    // ponytail: buys only; a task's own money moves aren't priced, add them when tasks carry amounts.
-    var weeklyBudgetSpend: Decimal {
-        schedules.filter { $0.paused != true }.reduce(0) { $0 + $1.usdc * 7 / Decimal(max(1, $1.days)) }
+    /// What the tasks on the automation wallet take from its budget by `date`: each one's buys times its runs until
+    /// then. (Recurring buys pay from the wallet that's on, not from here.)
+    // ponytail: buys with an amount only; a spread or a deposit spends what's there, unpriced.
+    func automationSpend(until date: Date) -> Decimal {
+        guard automationWallet != nil, !schedulePaused else { return 0 }
+        return tasks.filter { $0.paused != true && usesAutomation($0) }.reduce(0) { $0 + $1.buysUSDC * Decimal($1.runs(until: date)) }
+    }
+
+    /// What a week of them needs on top of what the budget holds, in whole USDC; nil when it's enough or not read yet.
+    var automationShortForWeek: Decimal? {
+        guard let total = automationBudget?.total else { return nil }
+        let need = automationSpend(until: Date().addingTimeInterval(7 * 86_400))
+        return need > total ? (need - total).rounded(0, .up) : nil
     }
 
     /// The scheduled item the open canvas shows, when it's one's own canvas.
@@ -386,9 +426,10 @@ struct ScheduleFrame: View {
             .padding(12).background(RoundedRectangle(cornerRadius: 16).fill(Brand.accent.opacity(0.1)))
         } else {
             let total = ws.automationBudget?.total
-            let spend = ws.weeklyBudgetSpend
+            let spend = ws.automationSpend(until: Date().addingTimeInterval(7 * 86_400))
             // Whole weeks: 20 / 3 unrounded read as 0 («not enough for the next run»).
             let weeks = total.flatMap { t in spend > 0 ? NSDecimalNumber(decimal: (t / spend).rounded(0, .down)).intValue : nil }
+            let short = ws.automationShortForWeek
             VStack(alignment: .leading, spacing: 6) {
                 // All the money on it, in dollars: «0 USDC» read as empty while 25 USDT lay there (the owner, 2026-10-15).
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -400,7 +441,7 @@ struct ScheduleFrame: View {
                         .font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 }
                 if let weeks {
-                    Text(weeks >= 4 ? "covers the next 4 weeks" : weeks == 0 ? "not enough for the next run" : "covers \(weeks) week\(weeks == 1 ? "" : "s")")
+                    Text(weeks >= 4 ? "covers the next 4 weeks" : weeks == 0 ? "\(Fmt.num(short ?? 0)) USDC short for the week’s buys" : "covers \(weeks) week\(weeks == 1 ? "" : "s")")
                         .font(.ui(11, .semibold)).foregroundStyle(weeks == 0 ? Brand.loss : Brand.profit)
                     HStack(spacing: 3) {
                         ForEach(0..<4, id: \.self) { i in Capsule().fill(i < weeks ? Brand.profit : Color.primary.opacity(0.1)).frame(height: 5) }
@@ -417,10 +458,13 @@ struct ScheduleFrame: View {
                             .help("From your main wallet: the card waits for Confirm and Touch ID")
                     }
                 }
-                // Nothing on it: the way to put the budget there — the button puts it in the chat.
-                if total == 0 {
-                    Button { ws.suggestTopUp() } label: {
-                        Label("Top up 20 USDC", systemImage: "plus").font(.ui(13, .bold)).frame(maxWidth: .infinity).frame(height: 34)
+                // Short for the week ahead, or nothing on it: the way to put the budget there — the button puts it in the
+                // chat. Main signs only with Touch ID, so this is as far as a top-up goes by itself: asked ahead, the
+                // buys then run a week without anyone at the Mac.
+                if short != nil || total == 0 {
+                    Button { ws.suggestTopUp(short ?? 20) } label: {
+                        Label(short.map { "Top up \(Fmt.num($0)) USDC for the week" } ?? "Top up 20 USDC", systemImage: "plus")
+                            .font(.ui(13, .bold)).frame(maxWidth: .infinity).frame(height: 34)
                     }
                     .buttonStyle(LitBlock(radius: 12)).foregroundStyle(Brand.onAccent)
                     .background(RoundedRectangle(cornerRadius: 12).fill(Brand.accent))
@@ -860,7 +904,7 @@ struct ScheduleItemBoard: View {
                 facts(entry)
                 if let t = task, !entry.paused, t.spreadsUSDC, ws.freeUSDC(t) == 0 { nothingFree(t) }
                 if let t = task, t.steps.count > 1 { steps(t) }
-                if let t = task, t.untrusted != true, ws.automationWallet == nil, t.movesMoney { automationOffer }
+                if let t = task, t.untrusted != true, ws.automationWallet == nil, t.movesMoney, !t.sells { automationOffer }
             } else {
                 // Done or cancelled: what it did is all that's left.
                 Text("No longer scheduled — what it did is below.").font(.ui(13, .semibold)).foregroundStyle(.secondary)
@@ -971,14 +1015,16 @@ struct ScheduleItemBoard: View {
             facts = [Fact(label: "PAYS FROM", value: "Automation budget",
                           detail: free.map { "\(Fmt.num($0)) USDC free on «\(a.label)»" }
                               ?? ws.automationBudget.map { "\(Fmt.num($0.total)) USDC on «\(a.label)»" } ?? "the wallet «\(a.label)»"),
-                     Fact(label: "ENDS UP IN", value: "«\(a.label)»", detail: "the automation wallet; move it over in the chat")]
+                     // What it buys goes on to the wallet that's on after each run (sendBoughtToMain); deposits stay.
+                     task?.buysCoins == true ? Fact(label: "ENDS UP IN", value: wallet, detail: "sent from «\(a.label)» after each run")
+                        : Fact(label: "ENDS UP IN", value: "«\(a.label)»", detail: "the automation wallet")]
         } else {
             let free = task.flatMap { $0.spreadsUSDC ? ws.freeUSDC($0) : nil }
-            facts = [Fact(label: "PAYS FROM", value: wallet, detail: free.map { "\(Fmt.num($0)) USDC free" } ?? "the wallet that’s on"),
+            facts = [Fact(label: "PAYS FROM", value: wallet, detail: task?.sells == true ? "a sale asks Touch ID" : free.map { "\(Fmt.num($0)) USDC free" } ?? "the wallet that’s on"),
                      Fact(label: "ENDS UP IN", value: wallet, detail: "the wallet it pays from")]
         }
         // With an automation wallet a task picks where it pays from, on the tile itself.
-        let pick = task.map { t in t.movesMoney && t.untrusted != true && ws.automationWallet != nil } ?? false
+        let pick = task.map { t in t.movesMoney && t.untrusted != true && !t.sells && ws.automationWallet != nil } ?? false
         return HStack(alignment: .top, spacing: 10) {
             ForEach(facts + [signs]) { f in
                 VStack(alignment: .leading, spacing: 3) {

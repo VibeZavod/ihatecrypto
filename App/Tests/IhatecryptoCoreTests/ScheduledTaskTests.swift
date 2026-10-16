@@ -61,3 +61,14 @@ private func date(_ d: Int, _ h: Int, _ m: Int = 0, month: Int = 9) -> Date { ca
     let task = try #require(ScheduledTask.parse("every hour: sweep rewards over $10 into USDC"))
     #expect(task.every == .hours(1) && task.steps == ["sweep rewards over $10 into USDC"])
 }
+
+/// The runs a budget has to cover: a daily buy seven times in the next week from an hour from now, a weekly one once,
+/// a one-off once inside the window and never after it.
+@Test func runsUntilADate() {
+    let now = Date(), week = now.addingTimeInterval(7 * 86_400 - 1)
+    #expect(ScheduledTask(steps: ["buy SOL for 5 USDC"], next: now.addingTimeInterval(3600), every: .days(1)).runs(until: week) == 7)
+    #expect(ScheduledTask(steps: ["buy SOL for 5 USDC"], next: now.addingTimeInterval(3600), every: .days(7)).runs(until: week) == 1)
+    #expect(ScheduledTask(steps: ["buy SOL for 5 USDC"], next: now.addingTimeInterval(3600), every: nil).runs(until: week) == 1)
+    #expect(ScheduledTask(steps: ["buy SOL for 5 USDC"], next: now.addingTimeInterval(8 * 86_400), every: nil).runs(until: week) == 0)
+    #expect(ScheduledTask(steps: ["buy SOL for 5 USDC"], next: now, every: .hours(1)).runs(until: now.addingTimeInterval(86_400)) == 25)
+}

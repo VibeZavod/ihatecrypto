@@ -54,8 +54,14 @@ extension Workspace {
         let how = task.steps.allSatisfy({ AgentCheck.parse($0) != nil })
             ? say(" I'll look myself each time and write only when it's met; what I suggest waits for your Confirm.",
                   " Я буду смотреть сам и напишу, только когда условие выполнится; что предложу — будет ждать твоего Confirm.")
+            : task.sells && automationWallet != nil
+            ? say(" A sale waits for your Confirm and Touch ID: what tasks buy lands on this wallet, and it sells from here.",
+                  " Продажа будет ждать твоего Confirm и Touch ID: купленное задачами лежит на этом кошельке, и продаётся оно отсюда.")
             : usesAutomation(task)
-            ? say(" Its moves run by themselves from the automation wallet, no Touch ID.", " Движения пойдут сами с кошелька автоматизации, без Touch ID.")
+            ? say(" Its moves run by themselves from the automation wallet, no Touch ID", " Движения пойдут сами с кошелька автоматизации, без Touch ID")
+                + (task.buysCoins ? say("; what it buys goes on to «\(activeWallet?.label ?? "your wallet")».", "; купленное придёт на «\(activeWallet?.label ?? "твой кошелёк")».") : ".")
+                + (automationShortForWeek.map { say(" With it, a week of the Schedule’s buys is \(Fmt.num($0)) USDC short: the Schedule has the top-up.",
+                                                    " С ней на неделю покупок не хватает \(Fmt.num($0)) USDC: пополнить можно в Schedule.") } ?? "")
             : say(" Its moves will wait for your Confirm; to run them by themselves, say «create an automation wallet».",
                   " Движения будут ждать твоего Confirm; чтобы шли сами, скажи «создай кошелёк автоматизации».")
         reply(say("Scheduled: \(what) — \(task.when). It’s on the canvas.", "Запланировано: \(what) — \(task.when). Это на канвасе.") + how, note: note)
@@ -128,6 +134,11 @@ extension Workspace {
         // A trade plan waits for Execute the way a move waits for Confirm; one a rule stops needs the user just as much.
         let plan = intent != TradeIntent() && !managesPosition
         let waits = pendingAction != nil || pendingAllocation != nil || plan
+        var told = messages.last.map(\.text) ?? ""
+        if let automation, !waits {
+            if await sendBoughtToMain(from: automation), let main = activeWallet { told += say(" It’s on «\(main.label)» now.", " Уже на «\(main.label)».") }
+            await loadAutomationBudget()
+        }
         // A check with nothing to tell, or a spread with nothing free, says so on its canvas and stays quiet; the run is
         // already in the history, with a grey mark.
         let quiet = checkQuiet && !waits && !failed
@@ -140,7 +151,7 @@ extension Workspace {
                plan ? (planIsReady ? say("The plan is ready on its canvas — press Execute.", "План готов на своём канвасе — нажми Execute.")
                                    : say("The plan is on its canvas, but a rule stops it — open it to fix.", "План на своём канвасе, но его стопорит правило — открой и поправь."))
                     : waits ? say("Ready on its canvas — press Confirm.", "Готово на своём канвасе — нажми Confirm.")
-                            : messages.last.map(\.text) ?? "", record: false) }
+                            : told, record: false) }
         // Nothing here for the user: back where they were, as it was. «Run now» and an alert's task stay to be seen.
         guard !asked, !waits, !failed, draft.isEmpty, messages.filter(\.fromUser).count <= 1,
               let back, let c = canvases.first(where: { $0.id == back }) else { return }
@@ -149,6 +160,78 @@ extension Workspace {
         showSchedule = frame
         detail = place
         keepViewport = false
+    }
+
+    /// What tasks on the automation wallet bought and haven't sent on to the wallet that's on yet: «solana:<mint>» (SOL
+    /// as «solana:SOL») or «<network>:<contract>» → amount. Saved, so a send that failed goes with the next run.
+    var forMain: [String: Decimal] {
+        get { ((UserDefaults.standard.dictionary(forKey: Workspace.scoped("forMain", activeWalletID)) as? [String: String]) ?? [:]).compactMapValues { Decimal(string: $0) } }
+        set { UserDefaults.standard.set(newValue.mapValues { "\($0)" }, forKey: Workspace.scoped("forMain", activeWalletID)) }
+    }
+
+    /// A swap on the automation wallet during a task (Executor's `swapped` / `traded`): what it got is owed to the
+    /// wallet that's on; spending a coin owed before (staked, sold) owes that much less. Dollars stay: they're the budget.
+    func owe(_ key: String, _ amount: Decimal) {
+        let parts = key.split(separator: ":", maxSplits: 1).map(String.init)
+        guard parts.count == 2, !(Stablecoins.byNetwork[parts[0]] ?? []).contains(where: { $0.address.lowercased() == parts[1].lowercased() }) else { return }
+        let left = (forMain[key] ?? 0) + amount
+        forMain[key] = left > 0 ? left : nil
+    }
+
+    /// What tasks bought on the automation wallet goes on to the wallet that's on, as it is, signed by Automation without
+    /// Touch ID: Automation keeps only the budget, the coins are the user's, and selling them takes Touch ID
+    /// (usesAutomation). The signer counts the user's own wallets as known (OwnStore), so nothing waits on a prompt
+    /// with no one at the Mac. True when something went.
+    func sendBoughtToMain(from automation: SignerWallet) async -> Bool {
+        await Task.yield() // the swaps' `owe` hops to the main actor after the move returns
+        let owed = forMain
+        guard !owed.isEmpty, let main = activeWallet, let wallet = signerWallet else { return false }
+        var held: Solana.Balance?
+        if let a = automation.solana { held = try? await Solana.balance(owner: a) }
+        executing = true
+        defer { executing = false }
+        var moved = false
+        for (key, amount) in owed.sorted(by: { $0.key < $1.key }) {
+            let parts = key.split(separator: ":", maxSplits: 1).map(String.init)
+            guard parts.count == 2 else { forMain[key] = nil; continue }
+            let (network, token) = (parts[0], parts[1])
+            var send = amount
+            // What's there now: a later step may have spent some; SOL keeps the floor its fees need.
+            if network == "solana", let held {
+                send = min(amount, token == "SOL" ? held.sol - TaskRun.solFloor : held.tokens.first { $0.contract == token }?.amount ?? 0)
+            }
+            guard send > 0 else { forMain[key] = nil; continue }
+            guard let to = network == "solana" ? main.solana : main.evm else { continue }
+            do {
+                let line = try await TaskRun.$automation.withValue(automation) {
+                    try await executor(wallet).sendToken(token, amount: send, on: network, to: to, label: main.label)
+                }
+                forMain[key] = nil
+                reply(line)
+                moved = true
+            } catch {
+                reply(say("It stays on «\(automation.label)» for now: \(error.localizedDescription) The next run sends it on to «\(main.label)».",
+                          "Пока остаётся на «\(automation.label)»: \(error.localizedDescription) Следующий запуск отправит это на «\(main.label)»."))
+            }
+        }
+        return moved
+    }
+
+    /// The day before the automation wallet runs short for its buys, once a day: a notification, and with no one at the
+    /// window the Schedule opens on its top-up. Main signs only with Touch ID, so a top-up can't go by itself; asked
+    /// ahead, a week of buys then runs while the Mac is left alone.
+    func remindTopUp() {
+        guard let w = automationWallet, let total = automationBudget?.total, let short = automationShortForWeek else { return }
+        let need = automationSpend(until: Date().addingTimeInterval(86_400))
+        let today = Date().formatted(.iso8601.year().month().day())
+        guard need > total, UserDefaults.standard.string(forKey: "topUpAsked") != today else { return }
+        UserDefaults.standard.set(today, forKey: "topUpAsked")
+        let main = activeWallet?.label ?? "Main"
+        notify(.confirm, say("«\(w.label)» is short for the next buys", "На «\(w.label)» не хватит на ближайшие покупки"),
+               say("The buys in the next 24 hours need \(Fmt.num(need)) USDC; it has \(Fmt.num(total)). Top it up with \(Fmt.num(short)) USDC for the week from «\(main)»: Confirm and Touch ID once, then they run by themselves.",
+                   "Покупкам в ближайшие сутки нужно \(Fmt.num(need)) USDC, на нём \(Fmt.num(total)). Пополни его на \(Fmt.num(short)) USDC на неделю с «\(main)»: один раз Confirm и Touch ID, дальше покупки пойдут сами."),
+               record: false)
+        if Self.userAway { showSchedule = true }
     }
 
     /// Nobody at the window: another app in front, or no key or mouse for five minutes.

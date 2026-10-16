@@ -507,6 +507,7 @@ enum Signer {
         let same = list.first { $0.kind == kind && $0.solana == solana && $0.evm?.lowercased() == evm?.lowercased() }
         let id = same?.id ?? (list.isEmpty ? SignerWallet.firstID : String(UUID().uuidString.prefix(8)).lowercased())
         try SeedStore.save(secret, requirePresence: requirePresence, id: id, test: test)
+        if solana != publicTestSolana { OwnStore.add([solana, evm].compactMap { $0 }) }
         let tests = list.filter(\.isTest).count
         let wallet = SignerWallet(id: id, label: same?.label ?? (automation ? "Automation" : test ? (tests == 0 ? "Test" : "Test \(tests + 1)") : list.isEmpty ? "Main" : "Wallet \(list.count + 1)"),
                                   kind: kind, solana: solana, evm: evm, near: near, test: test && !automation ? true : nil, automation: automation ? true : nil)
@@ -536,6 +537,7 @@ enum Signer {
         SeedStore.delete(id: wallet.id)
         AgentStore.delete(id: wallet.id)
         RecipientStore.delete(id: wallet.id)
+        OwnStore.remove([wallet.solana, wallet.evm].compactMap { $0 })
         defaults.removeObject(forKey: Wallets.scoped("agentActive", wallet.id))
         let rest = Wallets.all.filter { $0.id != wallet.id }
         Wallets.save(rest)
@@ -563,18 +565,33 @@ enum Signer {
         if let missing = wallet.missing(chain) { throw WalletError(missing) }
         var secret = try SeedStore.load(reason: reason, id: wallet.id, session: Wallets.signing == nil)
         defer { SeedStore.wipe(&secret) }
-        guard wallet.kind == "phrase" else { return try body(secret) } // a key wallet holds that chain's key itself
+        guard wallet.kind == "phrase" else { // a key wallet holds that chain's key itself
+            remember(chain, secret, of: wallet)
+            return try body(secret)
+        }
         var key = switch chain {
         case "solana": try Derivation.ed25519(seed: secret, path: WalletPath.solana(0))
         case "evm": try Derivation.secp256k1(seed: secret, path: WalletPath.evm(0))
         default: try Derivation.ed25519(seed: secret, path: WalletPath.near(0))
         }
         defer { SeedStore.wipe(&key) }
+        remember(chain, key, of: wallet)
         return try body(key)
     }
 
+    /// The address `key` signs for, kept among ours (OwnStore): read from the key, so a wallet already here before
+    /// OwnStore joins it with its next signature. The public test wallet stays out: anyone holds its key.
+    private static func remember(_ chain: String, _ key: Data, of wallet: SignerWallet) {
+        guard wallet.solana != publicTestSolana,
+              let a = chain == "solana" ? try? SolanaAccount.address(privateKey: key) : chain == "evm" ? try? EVMAccount.address(privateKey: key) : nil
+        else { return }
+        OwnStore.add([a])
+    }
+
+    static let publicTestSolana = "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk"
+
     /// The public BIP-39 test phrase («abandon … about»): anyone can sign for it, so the self-test runs without prompts.
-    static var holdsPublicTestWallet: Bool { (try? address("solana")) == "HAgk14JpMQLgt6rVgv7cBQFJWFto5Dqxi472uT3DKpqk" }
+    static var holdsPublicTestWallet: Bool { (try? address("solana")) == publicTestSolana }
 
     /// Adding, switching or removing a wallet once there is one is the user's act, in person: Touch ID or the password.
     /// A program that talks to the signer as ihatecrypto can't slip in its own wallet and wait for the user's deposits.
@@ -590,11 +607,13 @@ enum Signer {
         // only stops the check. Its approvals are its own (RecipientStore is per wallet), so no other wallet skips one.
         guard !holdsPublicTestWallet, Wallets.active?.isTest != true else { return }
         let own = Set([try? address("solana"), (try? address("evm"))?.lowercased()].compactMap { $0 })
-        // An address saved in the book was confirmed in person, whole, when it was saved.
-        let known = RecipientStore.all().union(AddressBookStore.all().map { RecipientStore.key($0.address) })
+        // An address saved in the book was confirmed in person, whole, when it was saved; another wallet of this Mac's
+        // is the user's own.
+        let known = RecipientStore.all().union(AddressBookStore.all().map { RecipientStore.key($0.address) }).union(OwnStore.all())
         let new = Array(Set(recipients.map(RecipientStore.key).filter { !known.contains($0) && !own.contains($0) })).sorted()
         guard !new.isEmpty else { return }
-        try SeedStore.confirm("allow ihatecrypto to send money to a new address:\n" + new.joined(separator: "\n"))
+        // The automation wallet signs with no one at the Mac: its prompt closes by itself after a minute.
+        try SeedStore.confirm("allow ihatecrypto to send money to a new address:\n" + new.joined(separator: "\n"), within: Wallets.signing == nil ? nil : 60)
         try RecipientStore.add(new)
     }
 
