@@ -72,3 +72,20 @@ private func date(_ d: Int, _ h: Int, _ m: Int = 0, month: Int = 9) -> Date { ca
     #expect(ScheduledTask(steps: ["buy SOL for 5 USDC"], next: now.addingTimeInterval(8 * 86_400), every: nil).runs(until: week) == 0)
     #expect(ScheduledTask(steps: ["buy SOL for 5 USDC"], next: now, every: .hours(1)).runs(until: now.addingTimeInterval(86_400)) == 25)
 }
+
+/// The Schedule reads its steps on every redraw: a text read once is answered from memory, the same answer, a «no
+/// command» included, and far faster than the ~150 regexes of the first reading.
+@Test func parsedTextIsKept() {
+    let step = "swap 5 USDC on base for WETH on base \(UUID())"
+    let clock = ContinuousClock()
+    var first: WalletCommand??
+    let cold = clock.measure { first = WalletCommand.parse(step) }
+    var again: WalletCommand??
+    let warm = clock.measure { again = WalletCommand.parse(step) }
+    #expect(first == again)
+    #expect(warm * 10 < cold)
+    let nothing = "just a note \(UUID())"
+    #expect(WalletCommand.parse(nothing) == nil)
+    #expect(WalletCommand.parse(nothing) == nil)
+    #expect(WalletCommand.parse("buy SOL for 5 USDC") == WalletCommand.parse("buy SOL for 5 USDC"))
+}

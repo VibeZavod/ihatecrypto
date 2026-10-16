@@ -1,4 +1,5 @@
 import Foundation
+import Synchronization
 import WalletCore
 
 /// What the user can say about a position that is already open («стоп в безубыток», «закрой половину»).
@@ -240,7 +241,18 @@ public enum WalletCommand: Equatable, Sendable {
     /// «show the multisig»: its card on the canvas.
     case multisigShow
 
+    /// Reading a text compiles up to ~150 regexes; the Schedule reads its tasks' steps on every redraw of the window,
+    /// and with six tasks that was a third of the main thread (2026-10-16). The answer depends on the text alone: kept.
     public static func parse(_ text: String) -> WalletCommand? {
+        if let known = parsed.withLock({ $0[text] }) { return known }
+        let command = read(text)
+        parsed.withLock { if $0.count >= 1000 { $0.removeAll() }; $0[text] = command }
+        return command
+    }
+
+    private static let parsed = Mutex<[String: WalletCommand?]>([:])
+
+    private static func read(_ text: String) -> WalletCommand? {
         if let call = ContractCall.parse(text) { return .contractCall(call) }
         if let multisig = multisig(text) { return multisig }
         // «pay POST https://… {"q": 1}»: the URL and the body kept as written.
