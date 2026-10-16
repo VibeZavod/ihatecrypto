@@ -23,7 +23,7 @@
       },
       {
         "title": "Smaller things",
-        "text": "Portfolio rows no longer say «gas» or «not earning».",
+        "text": "The Schedule stays smooth with many tasks open: it no longer re-reads every step on each redraw. Portfolio rows no longer say «gas» or «not earning».",
         "symbol": "wrench.and.screwdriver.fill",
         "color": "8E8E93"
       }
