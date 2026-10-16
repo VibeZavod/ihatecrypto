@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.6.5",
+    "date": "2026-10-16",
+    "stories": [
+      {
+        "title": "Send more from the top-up page",
+        "text": "After a top-up arrives, «Send more» lets you pick another amount. The page shows both wallets' balances now → after, and your wallet asks to confirm again.",
+        "symbol": "arrow.up.circle.fill",
+        "color": "2775CA"
+      },
+      {
+        "title": "Favorites: tokens and wallets",
+        "text": "Favorites has two tabs. Tokens is a table with price, 24h, liquidity and what you hold; a token's board opens beside the list. Wallets lists your wallets and saved addresses. Paste anything into «+» and it tells a token from a wallet.",
+        "symbol": "star.fill",
+        "color": "FFB800"
+      },
+      {
+        "title": "Ideas to start a chat",
+        "text": "The chat offers 22 starting points, four at a time, and ↻ brings four more. Each one says what it does in plain words.",
+        "symbol": "lightbulb.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Smaller things",
+        "text": "Portfolio rows no longer say «gas» or «not earning».",
+        "symbol": "wrench.and.screwdriver.fill",
+        "color": "8E8E93"
+      }
+    ]
+  },
+  {
     "version": "0.6.4",
     "date": "2026-10-16",
     "stories": [
