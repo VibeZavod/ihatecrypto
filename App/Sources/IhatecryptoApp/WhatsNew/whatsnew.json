@@ -1,5 +1,29 @@
 [
   {
+    "version": "0.6.6",
+    "date": "2026-10-18",
+    "stories": [
+      {
+        "title": "Your accounts in the profile menu",
+        "text": "The profile menu lists the AI accounts you've connected, such as a subscription, an API key or a model on this Mac, each with its logo. Click one to switch the chat to it. «…» signs out of just that account. Settings, Browser and What's new sit right below.",
+        "symbol": "person.crop.circle.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Modules at a glance",
+        "text": "Settings › Modules is a list on the left that shows how many of each kind are on. The chosen kind's protocols or networks are on the right, each with its own switch.",
+        "symbol": "switch.2",
+        "color": "5856D6"
+      },
+      {
+        "title": "Smaller things",
+        "text": "Addresses show as an even block of equal lines, never with half of one wrapped on its own. A trading key paused by «lock» resumes from Settings › Wallet › Hyperliquid. The rail's ticker reads right in the light look.",
+        "symbol": "wrench.and.screwdriver.fill",
+        "color": "8E8E93"
+      }
+    ]
+  },
+  {
     "version": "0.6.5",
     "date": "2026-10-16",
     "stories": [
