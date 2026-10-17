@@ -402,22 +402,36 @@ struct ReceiveCard: View {
     }
 }
 
-/// An address as it's checked by eye: the whole of it in two lines, its ends in bold (the ends a confirm card shows),
-/// and Copy for all of it.
+/// An address as it's checked by eye: the whole of it as an even block — as few lines as the width holds, lines of the
+/// same length first (64 hex → 2 or 4, 42 → 2, 3 or 6), never a half that wraps on its own (the owner, 2026-10-16) —
+/// its ends in bold (the ends a confirm card shows), and Copy for all of it.
 struct AddressLines: View {
     let address: String
 
     var body: some View {
-        let half = (address.count + 1) / 2
-        let first = address.prefix(half), second = address.dropFirst(half)
+        let counts = (2...6).sorted { (address.count % $0 == 0 ? 0 : 1, $0) < (address.count % $1 == 0 ? 0 : 1, $1) }
         VStack(alignment: .leading, spacing: 8) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 0) { Text(first.prefix(8)).fontWeight(.bold); Text(first.dropFirst(8)).foregroundStyle(.secondary) }
-                HStack(spacing: 0) { Text(second.dropLast(8)).foregroundStyle(.secondary); Text(second.suffix(8)).fontWeight(.bold) }
-            }
-            .font(.system(size: 13, design: .monospaced))
-            .accessibilityElement(children: .ignore).accessibilityLabel(address)
+            ViewThatFits(in: .horizontal) { ForEach(counts, id: \.self) { block($0) } }
+                .font(.system(size: 13, design: .monospaced))
+                .accessibilityElement(children: .ignore).accessibilityLabel(address)
             CopyButton(title: "Copy address", text: address, help: "Copy the whole address")
+        }
+    }
+
+    /// `n` lines, the first `count % n` of them one character longer.
+    private func block(_ n: Int) -> some View {
+        let s = Array(address), head = min(8, s.count / 2), tail = s.count - head
+        let starts = (0...n).map { $0 * (s.count / n) + min($0, s.count % n) }
+        func part(_ a: Int, _ b: Int) -> String { a < b ? String(s[a..<b]) : "" }
+        return VStack(alignment: .leading, spacing: 2) {
+            ForEach(0..<n, id: \.self) { i in
+                let a = starts[i], b = starts[i + 1]
+                HStack(spacing: 0) {
+                    Text(part(a, min(b, head))).fontWeight(.bold)
+                    Text(part(max(a, head), min(b, tail))).foregroundStyle(.secondary)
+                    Text(part(max(a, tail), b)).fontWeight(.bold)
+                }
+            }
         }
     }
 }

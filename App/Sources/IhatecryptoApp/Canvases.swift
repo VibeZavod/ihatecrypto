@@ -742,8 +742,11 @@ struct Ticker: NSViewRepresentable {
             CATransaction.setDisableActions(true)
             strip.frame = CGRect(x: 0, y: 0, width: step + w, height: bounds.height)
             effectiveAppearance.performAsCurrentDrawingAppearance {
+                // labelColor is dynamic: CATextLayer resolves it later, outside this block, in the light look (black
+                // text on the dark rail). Taken as a fixed colour here, it stays the row's.
+                let ink = NSColor(cgColor: NSColor.labelColor.cgColor) ?? .labelColor
                 for (i, copy) in copies.enumerated() {
-                    copy.string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: NSColor.labelColor])
+                    copy.string = NSAttributedString(string: text, attributes: [.font: font, .foregroundColor: ink])
                     copy.contentsScale = window?.backingScaleFactor ?? 2
                     copy.frame = CGRect(x: CGFloat(i) * step, y: 0, width: w, height: bounds.height)
                 }

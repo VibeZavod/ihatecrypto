@@ -4,7 +4,7 @@ import SwiftUI
 /// versions by date on the left, the chosen one's changes on the right as a plain list; a click on a change opens the
 /// version as stories from it, switched with ← → (StoriesView). From WhatsNew/whatsnew.json, the same file release.sh turns
 /// into the update window's notes. Nothing opens by itself: after an update an orange ring goes around the rail's logo
-/// and the Profile menu's row says «new» until the panel is seen.
+/// and the Profile menu's What's new button has a dot until the panel is seen.
 @Observable
 final class WhatsNew {
     static let shared = WhatsNew()

@@ -667,6 +667,25 @@ final class Workspace {
         credentialVersion += 1
     }
 
+    /// Signs out of one account, in use or not: its login leaves the Keychain. A chat that used it asks for a model
+    /// again (ConnectModelBar), as with no login at all.
+    func signOut(_ id: String) {
+        Keychain.save(nil, for: id)
+        signedInCache.remove(id)
+        credentialVersion += 1
+    }
+
+    /// The chat accounts connected now, in the catalog's order (the profile menu): a subscription or key with a saved
+    /// login, or a server on this Mac with a model downloaded that isn't known to be down (as `hasModel` reads it).
+    var accounts: [ProviderInfo] {
+        _ = credentialVersion
+        return LLMCatalog.all.map(\.info).filter { info in
+            guard info.unavailable == nil else { return false }
+            guard info.kind == .local else { return Keychain.load(info.id) != nil }
+            return localServers[info.id] != false && liveModels[info.id]?.isEmpty == false
+        }
+    }
+
     /// nil until the chosen provider is connected.
     func llmClient() -> (any LLMClient)? {
         let p = provider, id = p.info.id

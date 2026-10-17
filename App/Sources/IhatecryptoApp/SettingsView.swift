@@ -468,6 +468,12 @@ struct SettingsView: View {
                         Button(ws.ledgerActive ? "Approve on Ledger…" : "Approve…") { Task { await ws.enableAgent() } }.disabled(ws.executing)
                     }
                 }
+                // Paused by the chat's «lock»: the key is still approved, it only waits for a Touch ID to go on.
+                if ws.agentAddress != nil, !ws.agentActive {
+                    SettingsRow("Paused by «lock»", icon: "pause.circle", info: "Orders ask for \(ws.ledgerActive ? "the Ledger's buttons" : "Touch ID") until it resumes. Resuming asks for Touch ID once.") {
+                        Button("Resume…") { Task { await ws.resumeTradingKey() } }.disabled(ws.executing)
+                    }
+                }
             }
         }
     }

@@ -880,12 +880,12 @@ extension Workspace {
         Array(markets.values.filter { $0.group == group }.sorted { $0.volume24h > $1.volume24h }.prefix(limit))
     }
 
-    /// «Lock — Touch ID again»: the next signature asks for Touch ID, and orders stop going through the trading key.
+    /// The chat's «lock»: the next signature asks for Touch ID, and orders stop going through the trading key.
     func lockSigner() async {
         guard SignerClient.isAvailable else { return }
         let ok = (try? await SignerClient().send(.lock))?.ok ?? false
         await loadSigner()
-        reply(ok ? "🔒 Locked. The next signature asks for Touch ID, and the trading key is paused — resume it from the profile menu."
+        reply(ok ? "🔒 Locked. The next signature asks for Touch ID, and the trading key is paused — resume it in Settings › Wallet, or say «resume the trading key»."
                  : "Couldn’t reach the signing process to lock it.")
     }
 

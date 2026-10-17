@@ -131,121 +131,166 @@ struct AccentSwitch: ToggleStyle {
     }
 }
 
-/// Settings › Modules: networks, kinds of moves and their protocols. A protocol works only while it, its kind and its
-/// networks are on; new modules arrive switched off.
+/// Settings › Modules: the networks and every kind of move listed on the left, the switches of the one picked on the
+/// right. A protocol works only while it, its kind and its networks are on.
 struct ModulesSettings: View {
     @AppStorage(Modules.key) private var stored = ""
-    private let columns = [GridItem(.flexible(), spacing: 14, alignment: .top), GridItem(.flexible(), spacing: 14, alignment: .top),
-                           GridItem(.flexible(), spacing: 14, alignment: .top)]
+    /// The row picked on the left: "networks" or a ModuleKind's raw value.
+    @AppStorage("modulesPick") private var pick = "networks"
 
     var body: some View {
         let m = Modules(stored: stored)
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                HStack(alignment: .lastTextBaseline) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Modules").font(.ui(24, .bold))
-                        Text("What the assistant may use. Off means it never plans a move there. Money already there still shows on the canvas.")
-                            .font(.ui(13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-                    }
-                    Spacer(minLength: 16)
-                    let live = ModuleProtocol.allCases.filter(m.allows).count
-                    Text("\(live) of \(ModuleProtocol.allCases.count) protocols on").font(.ui(12, .semibold)).foregroundStyle(.secondary)
-                        .padding(.horizontal, 12).padding(.vertical, 6).background(Capsule().fill(Brand.glassFill))
-                        .overlay(Capsule().strokeBorder(Brand.glassRim))
-                }
-                VStack(alignment: .leading, spacing: 10) {
-                    caption("NETWORKS")
-                    HStack(spacing: 8) {
-                        ForEach(ModuleNetwork.allCases, id: \.self) { n in networkChip(n, on: m.isOn(n)) }
-                    }
-                }
-                VStack(alignment: .leading, spacing: 10) {
-                    caption("WHAT IT CAN DO")
-                    LazyVGrid(columns: columns, alignment: .leading, spacing: 14) {
-                        ForEach(ModuleKind.allCases, id: \.self) { kindCard($0, m) }
-                        soonCard
-                    }
-                    Text("New modules always arrive switched off. Turn one on when you want the assistant to use it.")
-                        .font(.ui(10)).foregroundStyle(.secondary)
-                }
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("Modules").font(.ui(24, .bold))
+                Text("What the assistant may use. Off means it never plans a move there. Money already there still shows on the canvas.")
+                    .font(.ui(13)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
-            .padding(28)
-        }
-    }
-
-    private func caption(_ text: String) -> some View {
-        Text(text).font(.ui(11, .bold)).tracking(1.3).foregroundStyle(.secondary)
-    }
-
-    private func networkChip(_ n: ModuleNetwork, on: Bool) -> some View {
-        Button { update { $0.set(n, !on) } } label: {
-            HStack(spacing: 7) {
-                TokenLogo(name: n.logo, size: 22).clipShape(Circle()).saturation(on ? 1 : 0).opacity(on ? 1 : 0.5)
-                Text(n.name).font(.ui(13, .semibold)).foregroundStyle(on ? .primary : .secondary)
+            HStack(alignment: .top, spacing: 20) {
+                sidebar(m)
+                detail(ModuleKind(rawValue: pick), m).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
             }
-            .padding(.leading, 5).padding(.trailing, 12).frame(height: 34)
-            .background(Capsule().fill(on ? Brand.glassFill : .clear))
-            .overlay(Capsule().strokeBorder(on ? Brand.glassRim : Color.primary.opacity(0.18)))
-            .contentShape(Capsule())
         }
-        .buttonStyle(.plain)
-        .accessibilityValue(on ? "on" : "off")
-        .help(on ? "\(n.name) is on — click to switch it off" : "\(n.name) is off — click to switch it on")
+        .frame(maxWidth: 980, maxHeight: .infinity, alignment: .topLeading)
+        .padding(28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
     }
 
-    private func kindCard(_ k: ModuleKind, _ m: Modules) -> some View {
-        let on = m.isOn(k)
-        return VStack(alignment: .leading, spacing: 0) {
+    private func sidebar(_ m: Modules) -> some View {
+        VStack(spacing: 2) {
+            sideRow("networks", "Networks", icon: "globe", on: ModuleNetwork.allCases.filter(m.isOn).count, of: ModuleNetwork.allCases.count)
+            Divider().padding(.horizontal, 10).padding(.vertical, 5)
+            ForEach(ModuleKind.allCases, id: \.self) { k in
+                let c = count(k, m)
+                sideRow(k.rawValue, k.name, icon: Self.icon(k), on: c.on, of: c.of)
+            }
             HStack(spacing: 10) {
-                SettingsIcon(icon: Self.icon(k), size: 34, active: on)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(k.name).font(.ui(15, .semibold))
-                    Text(k.line).font(.ui(10)).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 4)
-                Toggle(k.name, isOn: Binding(get: { on }, set: { v in update { $0.set(k, v) } }))
-                    .toggleStyle(AccentSwitch())
+                Image(systemName: "questionmark.circle").font(.system(size: 15, weight: .medium)).frame(width: 20)
+                Text("Predictions").font(.ui(13))
+                Spacer(minLength: 6)
+                Text("Soon").font(.ui(11.5))
             }
-            Divider().padding(.vertical, 10)
-            ForEach(ModuleProtocol.allCases.filter { $0.kind == k }, id: \.self) { p in
-                let offNetwork = p.networks.first { !m.isOn($0) }
-                HStack(spacing: 10) {
-                    TokenLogo(name: p.logo, size: 26).clipShape(Circle())
-                    VStack(alignment: .leading, spacing: 1) {
-                        Text(p.name).font(.ui(13, .semibold))
-                        Text(offNetwork.map { "\($0.name) is off" } ?? p.place).font(.ui(10))
-                            .foregroundStyle(offNetwork == nil ? Color.secondary : Brand.accentInk).lineLimit(2)
-                    }
-                    Spacer(minLength: 4)
-                    Toggle(p.name, isOn: Binding(get: { m.isOn(p) }, set: { v in update { $0.set(p, v) } }))
-                        .toggleStyle(AccentSwitch()).disabled(!on)
-                }
-                .padding(.vertical, 5)
-                .opacity(m.allows(p) ? 1 : 0.5)
-            }
+            .foregroundStyle(.tertiary)
+            .padding(.horizontal, 12).frame(height: 40)
         }
-        .padding(14)
-        .background(RoundedRectangle(cornerRadius: 18, style: .continuous).fill(Brand.glassFill))
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Brand.glassRim))
+        .padding(6)
+        .frame(width: 250)
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Brand.glassFill))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Brand.glassRim))
     }
 
-    private var soonCard: some View {
-        VStack(alignment: .leading, spacing: 12) {
+    private func sideRow(_ id: String, _ name: String, icon: String, on: Int, of total: Int) -> some View {
+        let picked = pick == id, all = on == total
+        return Button { pick = id } label: {
             HStack(spacing: 10) {
-                SettingsIcon(icon: "questionmark.circle", size: 34, active: false)
-                VStack(alignment: .leading, spacing: 1) {
-                    Text("Predictions").font(.ui(15, .semibold))
-                    Text("Yes / no markets on real events").font(.ui(10)).foregroundStyle(.secondary)
-                }
-                Spacer(minLength: 4)
-                Text("Soon").font(.ui(12, .semibold)).foregroundStyle(.secondary)
-                    .padding(.horizontal, 10).padding(.vertical, 4).background(Capsule().fill(Color.primary.opacity(0.06)))
+                Image(systemName: icon).font(.system(size: 15, weight: .medium)).frame(width: 20)
+                    .foregroundStyle(picked ? Brand.accentInk : Color.secondary)
+                Text(name).font(.ui(13.5, .semibold)).foregroundStyle(picked ? .primary : .secondary).lineLimit(1)
+                Spacer(minLength: 6)
+                Text("\(on)/\(total)").font(.ui(11.5, .semibold))
+                    .foregroundStyle(all ? Color.secondary : Brand.accentInk)
+                    .padding(.horizontal, 8).padding(.vertical, 2)
+                    .background(Capsule().fill(all ? Color.primary.opacity(0.06) : Brand.accent.opacity(0.12)))
             }
-            Text("Comes in a later update. It will appear here switched off.").font(.ui(10)).foregroundStyle(.secondary)
+            .padding(.horizontal, 12).frame(height: 44)
+            .background(RoundedRectangle(cornerRadius: 11, style: .continuous).fill(picked ? Color.primary.opacity(0.09) : .clear))
+            .contentShape(Rectangle())
         }
-        .padding(14)
-        .overlay(RoundedRectangle(cornerRadius: 18, style: .continuous).strokeBorder(Color.primary.opacity(0.18), style: StrokeStyle(lineWidth: 1.5, dash: [6, 5])))
+        .buttonStyle(.plain).pointerStyle(.link)
+        .accessibilityAddTraits(picked ? .isSelected : [])
+    }
+
+    /// A kind's protocols switched on, of all of them; none while the kind itself is off.
+    private func count(_ k: ModuleKind, _ m: Modules) -> (on: Int, of: Int) {
+        let ps = ModuleProtocol.allCases.filter { $0.kind == k }
+        return (m.isOn(k) ? ps.filter(m.isOn).count : 0, ps.count)
+    }
+
+    @ViewBuilder private func detail(_ k: ModuleKind?, _ m: Modules) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let k {
+                let c = count(k, m)
+                header(k.name, k.line, icon: Self.icon(k), on: c.on, of: c.of, master: k, m)
+                box(ModuleProtocol.allCases.filter { $0.kind == k }) { protocolRow($0, m) }
+            } else {
+                header("Networks", "Where the assistant may move money", icon: "globe",
+                       on: ModuleNetwork.allCases.filter(m.isOn).count, of: ModuleNetwork.allCases.count, master: nil, m)
+                box(ModuleNetwork.allCases) { networkRow($0, m) }
+            }
+        }
+    }
+
+    private func header(_ title: String, _ line: String, icon: String, on: Int, of total: Int, master k: ModuleKind?, _ m: Modules) -> some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon).font(.system(size: 19, weight: .medium)).foregroundStyle(Brand.accentInk)
+                .frame(width: 44, height: 44)
+                .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(Brand.glassFill))
+                .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).strokeBorder(Brand.glassRim))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.ui(19, .bold))
+                Text(line).font(.ui(13)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 12)
+            Text("\(on) of \(total) on").font(.ui(12.5)).foregroundStyle(.secondary)
+            if let k {
+                Toggle(k.name, isOn: Binding(get: { m.isOn(k) }, set: { v in update { $0.set(k, v) } })).toggleStyle(AccentSwitch())
+            }
+        }
+    }
+
+    /// One framed list, rows between thin lines; it scrolls by itself once it's taller than the window.
+    private func box<Item: Hashable, Row: View>(_ items: [Item], @ViewBuilder row: @escaping (Item) -> Row) -> some View {
+        let list = VStack(spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.element) { i, item in
+                if i > 0 { Divider() }
+                row(item).padding(.horizontal, 16).padding(.vertical, 12)
+            }
+        }
+        return ViewThatFits(in: .vertical) {
+            list
+            ScrollView { list }
+        }
+        .background(RoundedRectangle(cornerRadius: 16, style: .continuous).fill(Brand.glassFill))
+        .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Brand.glassRim))
+    }
+
+    private func protocolRow(_ p: ModuleProtocol, _ m: Modules) -> some View {
+        let used = ModuleNetwork.allCases.filter { p.runs(on: $0) }
+        let off = used.filter { !m.isOn($0) }
+        let names = off.map(\.name).joined(separator: ", "), verb = off.count == 1 ? "is" : "are"
+        // A network it can't work without, or every one it has, being off stops it; one of several leaves the rest.
+        let sub = off.isEmpty ? p.place
+            : off.contains(where: p.networks.contains) || off.count == used.count ? "\(names) \(verb) off"
+            : "\(p.place) · \(names) \(verb) off, the rest work"
+        return row(TokenLogo(name: p.logo, size: 34).clipShape(Circle()), p.name, sub,
+                   subInk: !off.isEmpty && m.isOn(p) ? Brand.accentInk : .secondary) {
+            Toggle(p.name, isOn: Binding(get: { m.isOn(p) }, set: { v in update { $0.set(p, v) } }))
+                .toggleStyle(AccentSwitch()).disabled(!m.isOn(p.kind))
+        }
+        .opacity(m.allows(p) ? 1 : 0.45)
+    }
+
+    private func networkRow(_ n: ModuleNetwork, _ m: Modules) -> some View {
+        let on = m.isOn(n)
+        let users = ModuleProtocol.allCases.filter { $0.runs(on: n) }.map(\.name)
+        return row(TokenLogo(name: n.logo, size: 34).clipShape(Circle()).saturation(on ? 1 : 0).opacity(on ? 1 : 0.45),
+                   n.name, users.isEmpty ? "Balances only" : "Used by " + users.joined(separator: ", "), subInk: .secondary, dim: !on) {
+            Toggle(n.name, isOn: Binding(get: { on }, set: { v in update { $0.set(n, v) } })).toggleStyle(AccentSwitch())
+        }
+    }
+
+    private func row<Switch: View>(_ logo: some View, _ name: String, _ sub: String, subInk: Color, dim: Bool = false,
+                                   @ViewBuilder toggle: () -> Switch) -> some View {
+        HStack(spacing: 14) {
+            logo
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name).font(.ui(14, .semibold)).foregroundStyle(dim ? .secondary : .primary)
+                Text(sub).font(.ui(12)).foregroundStyle(subInk).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 12)
+            toggle()
+        }
     }
 
     private func update(_ change: (inout Modules) -> Void) {
@@ -264,6 +309,12 @@ struct ModulesSettings: View {
         case .payments: "creditcard"
         }
     }
+}
+
+private extension ModuleProtocol {
+    /// Whether it works on `n`. Uniswap, Aave and Morpho check the network per move (their `networks` is empty), so
+    /// the networks their place names count too.
+    func runs(on n: ModuleNetwork) -> Bool { networks.contains(n) || place.contains(n.name) }
 }
 
 extension Workspace {
