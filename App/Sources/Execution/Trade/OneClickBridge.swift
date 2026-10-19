@@ -62,7 +62,7 @@ extension Executor {
         guard let q = await oneClickQuote(from: from, to: to, units: units), let out = Decimal(string: q.amountOutFormatted) else { return nil }
         let edge = Self.oneClickEdge(Decimal(units) / 1_000_000), better = out - relayOut >= edge
         report("Relay lands ≈ \(Fmt.num(relayOut, maxFraction: 4)) USDC, NEAR Intents' 1Click ≈ \(Fmt.num(out, maxFraction: 4))\(q.timeEstimate.map { " in ≈ \($0) s" } ?? ""): taking "
-               + (better ? "1Click — it allows its fresh deposit address by Touch ID first." : "Relay\(out > relayOut ? " (1Click's \(Fmt.usd(out - relayOut)) more isn't worth another Touch ID and the wait)" : "")."))
+               + (better ? "1Click — its fresh deposit address needs \(Presence.name) first." : "Relay\(out > relayOut ? " (1Click's \(Fmt.usd(out - relayOut)) more isn't worth another \(Presence.short) and the wait)" : "")."))
         return better ? q : nil
     }
 

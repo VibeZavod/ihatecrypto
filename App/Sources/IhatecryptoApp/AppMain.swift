@@ -106,6 +106,9 @@ struct AppMain: App {
         .defaultSize(width: 1320, height: 860)
         .windowStyle(.hiddenTitleBar)
         .commands {
+            CommandGroup(after: .appSettings) {
+                Button("Lock ihatecrypto") { AppLock.shared.lock() }.keyboardShortcut("l").disabled(!AppLock.shared.codeSet)
+            }
             // Settings open in the main window, in place of the canvas: no separate Settings window.
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { workspace.openSettings(); StatusItem.shared.openMain() }.keyboardShortcut(",")
@@ -245,6 +248,10 @@ struct MenuBarContent: View {
     @Environment(Workspace.self) private var ws
 
     var body: some View {
+        if AppLock.shared.locked { MenuBarLocked() } else { unlocked }
+    }
+
+    private var unlocked: some View {
         VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 10) {
                 BrandLogo(size: 28)
@@ -340,8 +347,19 @@ struct ContentView: View {
             else { StudioView() }
         }
             .frame(minWidth: 960, minHeight: 650)
+            // A signature waiting for the passcode while Settings or the onboarding fill the window: no chat field there.
+            .overlay(alignment: .bottom) {
+                if let ask = CodePrompt.shared.pending, ws.settingsOpen || !onboardingStep.isEmpty || showWelcome {
+                    CodePromptCard(ask: ask).padding(.bottom, 28)
+                }
+            }
+            .accessibilityHidden(AppLock.shared.locked)
+            .disabled(AppLock.shared.locked)
+            // The lock covers everything, the rail and the chat too (Passcode.swift).
+            .overlay { if AppLock.shared.locked { LockScreen() } }
             .toolbar(removing: .title)
             .task {
+            AppLock.shared.start(ws)
             AppTheme.apply()
             StatusItem.shared.openWindow = openWindow
             StatusItem.shared.install(ws)

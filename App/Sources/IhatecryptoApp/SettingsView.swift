@@ -6,6 +6,7 @@ import ServiceManagement
 import SignerAPI
 import SwiftUI
 import TradeExecution
+import WalletCore
 
 /// Settings occupy the window; the coin and Esc return to the canvas.
 struct SettingsView: View {
@@ -121,7 +122,7 @@ struct SettingsView: View {
         case .general: SettingsPage(title: "General", line: "How the app talks to you and keeps running.") { general }
         case .agent: SettingsPage(title: "Trading agent", line: "How the assistant trades for you. Code checks every plan against these rules.") { agent }
         case .signIns: SettingsPage(title: "AI model", line: "What reads your chat: a subscription, an API key, or a free model on this Mac.") { ModelSection() }
-        case .wallet: SettingsPage(title: "Wallet", line: "Your wallets, the key that signs and Touch ID.") { wallet }
+        case .wallet: SettingsPage(title: "Wallet", line: "Your wallets, the key that signs and \(Presence.name).") { wallet }
         case .skills: SettingsPage(title: "Skills", line: "Instructions the assistant follows for one kind of work. Switch them on and off, or add your own from a file.") { SkillsSettings() }
         case .debugging: SettingsPage(title: "Debugging", line: "Developer tools on this Mac.") { debugging }
         }
@@ -330,7 +331,7 @@ struct SettingsView: View {
     private var debugging: some View {
         SettingsSection(icon: "terminal", title: "Local debug API", line: "For Claude Code and local developer tools.") {
             SettingsGroup {
-                SettingsRow("Allow local debug access", icon: "terminal", info: "Reads state, types into the chat and captures the window. It never signs: money moves still need Confirm and Touch ID in the app. Access requires a token that changes each time the API starts.") {
+                SettingsRow("Allow local debug access", icon: "terminal", info: "Reads state, types into the chat and captures the window. It never signs: money moves still need Confirm and \(Presence.name) in the app. Access requires a token that changes each time the API starts.") {
                     Toggle("Local debug API", isOn: Binding(
                         get: { UserDefaults.standard.bool(forKey: "debugAPI") },
                         set: { on in
@@ -351,6 +352,7 @@ struct SettingsView: View {
         signer
         WalletManagement()
         touchID
+        PasscodeSettings()
         tradingKey
         addresses
         if ws.signerWallet != nil { forget }
@@ -384,7 +386,7 @@ struct SettingsView: View {
                 }
                 // The signer keeps only the seed made from the words (one-way), so there is nothing to show again.
                 if ws.activeWallet?.kind == "phrase" {
-                    SettingsRow("Recovery phrase", icon: "text.word.spacing", info: "ihatecrypto keeps only the key made from your words, sealed with Touch ID in a separate process — never the words themselves, so they can't be shown again. Lost them? Create a new wallet below, write its words down and move the money there.") {
+                    SettingsRow("Recovery phrase", icon: "text.word.spacing", info: "ihatecrypto keeps only the key made from your words, sealed with \(Presence.name) in a separate process — never the words themselves, so they can't be shown again. Lost them? Create a new wallet below, write its words down and move the money there.") {
                         Text("Not kept on this Mac").foregroundStyle(.secondary)
                     }
                 }
@@ -415,9 +417,10 @@ struct SettingsView: View {
     }
 
     private var touchID: some View {
-        SettingsSection(icon: "touchid", title: "Touch ID", line: "One touch covers one move, or a few minutes.") {
+        SettingsSection(icon: Presence.signIcon, title: AppLock.shared.codeSigns ? "Signing" : Presence.short,
+                        line: "One \(Presence.touchID ? "touch" : AppLock.shared.codeSigns ? "code" : "password") covers one move, or a few minutes.") {
             SettingsGroup {
-                SettingsRow("Stays valid for", icon: "timer", info: "One move covers that move's signatures for at most a minute and ends when it is done. With 5–30 minutes, signatures need no new touch during that time. Each still passes the guard and second check. Locking the screen or sleep ends the session. A longer duration asks for Touch ID.") {
+                SettingsRow("Stays valid for", icon: "timer", info: "One move covers that move's signatures for at most a minute and ends when it is done. With 5–30 minutes, signatures need no new \(Presence.touchID ? "touch" : "password") during that time. Each still passes the guard and second check. Locking the screen or sleep ends the session. A longer duration asks for \(Presence.name).") {
                     // Drawn segments keep the brand accent instead of macOS's system blue.
                     HStack(spacing: 2) {
                         ForEach(SignerSession.choices, id: \.self) { choice in
@@ -442,7 +445,7 @@ struct SettingsView: View {
                     .disabled(ws.signerWallet == nil)
                 }
                 SettingsRow("One transaction for approve and swap", icon: "square.stack.3d.up",
-                            info: "On Base, Arbitrum, Ethereum, Polygon and Robinhood, an approve and the swap, deposit or bridge that spends it go out as one transaction under one Touch ID (EIP-7702). For that, from the first such move on a network your wallet there runs the code of an audited account contract (eth-infinitism's Simple7702Account): it takes coins and tokens as before, only you can make it act, and every call in it is checked like a single one. Off: two transactions, two Touch IDs, as before; a network already switched stays so.") {
+                            info: "On Base, Arbitrum, Ethereum, Polygon and Robinhood, an approve and the swap, deposit or bridge that spends it go out as one transaction under one \(Presence.short) (EIP-7702). For that, from the first such move on a network your wallet there runs the code of an audited account contract (eth-infinitism's Simple7702Account): it takes coins and tokens as before, only you can make it act, and every call in it is checked like a single one. Off: two transactions, two \(Presence.touchID ? "Touch IDs" : "passwords"), as before; a network already switched stays so.") {
                     Toggle("One transaction for approve and swap", isOn: $batches).toggleStyle(AccentSwitch()).labelsHidden()
                 }
                 SettingsRow("Cap for unknown protocols", icon: "shield.lefthalf.filled",
@@ -462,7 +465,7 @@ struct SettingsView: View {
                 SettingsRow("Trading key", icon: "key", logo: "hype", info: ws.agentActive
                             ? "Approved once for Hyperliquid orders. The key cannot withdraw money."
                             : ws.ledgerActive ? "Without a trading key, every order asks for the Ledger's buttons. Hyperliquid accepts the key after the account has had a deposit."
-                            : "Without a trading key, every order asks for Touch ID. Hyperliquid accepts the key after the account has had a deposit.") {
+                            : "Without a trading key, every order asks for \(Presence.name). Hyperliquid accepts the key after the account has had a deposit.") {
                     SettingsPill(text: ws.agentActive ? "On" : "Off", good: ws.agentActive)
                     if !ws.agentActive, ws.activeWallet?.evm != nil {
                         Button(ws.ledgerActive ? "Approve on Ledger…" : "Approve…") { Task { await ws.enableAgent() } }.disabled(ws.executing)
@@ -470,7 +473,7 @@ struct SettingsView: View {
                 }
                 // Paused by the chat's «lock»: the key is still approved, it only waits for a Touch ID to go on.
                 if ws.agentAddress != nil, !ws.agentActive {
-                    SettingsRow("Paused by «lock»", icon: "pause.circle", info: "Orders ask for \(ws.ledgerActive ? "the Ledger's buttons" : "Touch ID") until it resumes. Resuming asks for Touch ID once.") {
+                    SettingsRow("Paused by «lock»", icon: "pause.circle", info: "Orders ask for \(ws.ledgerActive ? "the Ledger's buttons" : Presence.name) until it resumes. Resuming asks for \(Presence.name) once.") {
                         Button("Resume…") { Task { await ws.resumeTradingKey() } }.disabled(ws.executing)
                     }
                 }
@@ -792,7 +795,7 @@ struct ModelSection: View {
             }
             SettingsSection(icon: "lock.shield", title: "Safety", line: "A model reads your words. It cannot approve a move.") {
                 SettingsGroup {
-                    SettingsRow("Money moves only after Confirm + Touch ID", icon: "touchid", info: "You approve money moves in the app. Touch ID can cover one move or a session, as set in Wallet. A separately approved Hyperliquid trading key can place orders without a new touch; it cannot withdraw money.") { EmptyView() }
+                    SettingsRow("Money moves only after Confirm + \(Presence.short)", icon: Presence.icon, info: "You approve money moves in the app. One \(Presence.short) can cover one move or a session, as set in Wallet. A separately approved Hyperliquid trading key can place orders without a new \(Presence.touchID ? "touch" : "password"); it cannot withdraw money.") { EmptyView() }
                     SettingsRow("Keys, addresses and balances stay private", icon: "eye.slash", info: "The chat model receives your message text and the plan's parameters. The app does not attach wallet keys, addresses or balances to the model's request.") { EmptyView() }
                 }
             }

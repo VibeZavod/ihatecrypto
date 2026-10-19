@@ -1,5 +1,8 @@
 # Build output
 .build/
+# Wrangler's local cache (Cloudflare account id) and Python bytecode from Tools/
+.wrangler/
+__pycache__/
 .swiftpm/
 DerivedData/
 *.xcodeproj/

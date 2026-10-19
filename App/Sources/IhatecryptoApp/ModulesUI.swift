@@ -255,16 +255,22 @@ struct ModulesSettings: View {
         .overlay(RoundedRectangle(cornerRadius: 16, style: .continuous).strokeBorder(Brand.glassRim))
     }
 
-    private func protocolRow(_ p: ModuleProtocol, _ m: Modules) -> some View {
+    /// The line under a protocol: where it works, or which of its networks are off; `networksOff` when any is.
+    static func line(_ p: ModuleProtocol, _ m: Modules) -> (text: String, networksOff: Bool) {
         let used = ModuleNetwork.allCases.filter { p.runs(on: $0) }
         let off = used.filter { !m.isOn($0) }
         let names = off.map(\.name).joined(separator: ", "), verb = off.count == 1 ? "is" : "are"
         // A network it can't work without, or every one it has, being off stops it; one of several leaves the rest.
-        let sub = off.isEmpty ? p.place
+        let text = off.isEmpty ? p.place
             : off.contains(where: p.networks.contains) || off.count == used.count ? "\(names) \(verb) off"
             : "\(p.place) · \(names) \(verb) off, the rest work"
-        return row(TokenLogo(name: p.logo, size: 34).clipShape(Circle()), p.name, sub,
-                   subInk: !off.isEmpty && m.isOn(p) ? Brand.accentInk : .secondary) {
+        return (text, !off.isEmpty)
+    }
+
+    private func protocolRow(_ p: ModuleProtocol, _ m: Modules) -> some View {
+        let sub = Self.line(p, m)
+        return row(TokenLogo(name: p.logo, size: 34).clipShape(Circle()), p.name, sub.text,
+                   subInk: sub.networksOff && m.isOn(p) ? Brand.accentInk : .secondary) {
             Toggle(p.name, isOn: Binding(get: { m.isOn(p) }, set: { v in update { $0.set(p, v) } }))
                 .toggleStyle(AccentSwitch()).disabled(!m.isOn(p.kind))
         }
@@ -311,7 +317,7 @@ struct ModulesSettings: View {
     }
 }
 
-private extension ModuleProtocol {
+extension ModuleProtocol {
     /// Whether it works on `n`. Uniswap, Aave and Morpho check the network per move (their `networks` is empty), so
     /// the networks their place names count too.
     func runs(on n: ModuleNetwork) -> Bool { networks.contains(n) || place.contains(n.name) }
@@ -342,6 +348,11 @@ extension Workspace {
         var m = Modules.current
         if command.hasPrefix(Self.moduleOn) {
             let id = String(command.dropFirst(Self.moduleOn.count))
+            // Only a module this Mac is asking about: a card the model wrote can't turn on what the user switched off.
+            guard m.newIDs.contains(id) else {
+                reply(say("That one is switched in Settings › Modules.", "Это включается в Settings › Modules."))
+                return
+            }
             m.choices[id] = true
             reply(say("\(Modules.name(id)) is on.", "\(Modules.name(id)) включено."))
         } else {

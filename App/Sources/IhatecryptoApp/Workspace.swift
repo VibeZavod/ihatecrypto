@@ -17,6 +17,7 @@ import Security
 import SignerAPI
 import TradeExecution
 import TxGuard
+import WalletCore
 
 nonisolated struct Message: Identifiable, Codable, Equatable {
     var id = UUID()
@@ -28,6 +29,10 @@ nonisolated struct Message: Identifiable, Codable, Equatable {
     /// The cards to go on this reply offered, drawn under it in the chat (ChatReplies' Answers); `picked`, the one chosen.
     var options: [ChatRouter.Option]?
     var picked: Int?
+    /// When it was said, for the reply's header; nil on messages saved before it was kept.
+    var at: Date? = Date()
+    /// What went to the model with the user's message (blocks, steps, tokens, addresses), drawn over it as context chips.
+    var context: [StepContext]?
 
     /// The guard's notes on its reply to a message it stopped as steering (send()); that message never reaches a model.
     static let guardLocal = "guard: local rules", guardBoth = "guard: rules and the second check"
@@ -362,8 +367,9 @@ final class Workspace {
     var draft = ""
     /// A part of the draft to select in the field, to type over (UTF-16 in `draft`); cleared once it's selected.
     var draftSelection: NSRange?
-    /// A route step handed to the chat from its card («Send to chat»): the next message is about it.
-    var stepContext: StepContext?
+    /// What the next message is about: canvas blocks, route steps, tokens, addresses handed to the chat — a chip each over
+    /// the field, an attached block's edge lit. Several at once; the message takes them all.
+    var attached: [StepContext] = []
     /// The way a Base or Arbitrum trade takes, picked in its route step's details (Workspace.wayKey → "relay" or
     /// "uniswap"); none = whichever leaves more. Used once, by the move it was picked for.
     var routeWays: [String: String] = [:]
@@ -408,6 +414,14 @@ final class Workspace {
     var takeChoices: [TakeStyle]?
     /// The ways to go on offered with the last reply, as cards under it in the chat (Agent.swift `offerCards`).
     var nextSteps: NextSteps? { didSet { if cardKey != nil { cardKey = nil } } }
+    /// The cards under the last reply while they may still be picked: 30 minutes from the reply, then their numbers are
+    /// old and they fold away (the owner, 2026-10-19: «не хранить долго»). A reply saved before times were kept: never.
+    var liveSteps: NextSteps? {
+        guard let s = nextSteps, let at = messages.last(where: { $0.id == s.message })?.at, Date().timeIntervalSince(at) < 30 * 60 else { return nil }
+        return s
+    }
+    /// Cards folded or opened by hand, by their reply: true folded. Otherwise live ones are open and old ones folded.
+    var cardFold: [UUID: Bool] = [:]
     /// The live card ↑↓ moved to from the empty field (ChatComposer): Return picks it; typing or Esc lets it go.
     var cardKey: Int?
     /// A move the loss cap stopped (CostlyMove) and what it would lose: «Send anyway» runs it again with that accepted.
@@ -679,9 +693,14 @@ final class Workspace {
     /// login, or a server on this Mac with a model downloaded that isn't known to be down (as `hasModel` reads it).
     var accounts: [ProviderInfo] {
         _ = credentialVersion
-        return LLMCatalog.all.map(\.info).filter { info in
+        return Self.accounts(LLMCatalog.all.map(\.info), hasLogin: { Keychain.load($0) != nil }, localServers: localServers, liveModels: liveModels)
+    }
+
+    /// `accounts` without the Keychain, for tests.
+    static func accounts(_ infos: [ProviderInfo], hasLogin: (String) -> Bool, localServers: [String: Bool], liveModels: [String: [String]]) -> [ProviderInfo] {
+        infos.filter { info in
             guard info.unavailable == nil else { return false }
-            guard info.kind == .local else { return Keychain.load(info.id) != nil }
+            guard info.kind == .local else { return hasLogin(info.id) }
             return localServers[info.id] != false && liveModels[info.id]?.isEmpty == false
         }
     }
@@ -897,7 +916,9 @@ final class Workspace {
     }
 
     /// `shown`: the message as typed, when its «$» mentions became plain text (ChatComposer.send).
-    func send(_ raw: String, shown: String? = nil) async {
+    /// `about`: what this message alone is about («What's going on here?» from a block's menu); the attached chips then
+    /// stay for the next one.
+    func send(_ raw: String, shown: String? = nil, about: [StepContext]? = nil) async {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !busy else { return }
         // Anything they write takes over from what the model was carrying out; the Confirm button carries it on.
@@ -908,10 +929,11 @@ final class Workspace {
             return
         }
         // A step handed over from its card: the message is about it, and a move waiting for Confirm keeps waiting.
-        let step = stepContext
-        stepContext = nil
-        messages.append(Message(fromUser: true, text: step.map { "«\($0.title)»\n" + text } ?? text,
-                                shown: shown.map { typed in step.map { "«\($0.title)»\n" + typed } ?? typed }))
+        // A block goes with what it shows right now; the chat keeps it over the message, the model's history its name.
+        let step = (about ?? attached).map { c in c.about == nil ? StepContext(title: c.title, logo: c.logo, about: StepContext.block(c.title, shows: blockFacts(c.title))) : c }
+        if about == nil, !attached.isEmpty { attached = [] }
+        let heading = step.isEmpty ? "" : step.map { "«\($0.title)»" }.joined(separator: " ") + "\n"
+        messages.append(Message(fromUser: true, text: heading + text, shown: step.isEmpty ? shown : shown ?? text, context: step.isEmpty ? nil : step))
         thinking = true
         draftReply = nil
         defer { thinking = false; draftReply = nil }
@@ -920,7 +942,7 @@ final class Workspace {
         // Cleared only when set: a tuple and NextSteps aren't Equatable, so even nil over nil redraws what reads them.
         if finishedAction != nil { finishedAction = nil }
         // The cards of the last answer go with any new message; the model still knows them («да», «второй»).
-        let offered = nextSteps?.options ?? []
+        let offered = liveSteps?.options ?? []
         if nextSteps != nil { nextSteps = nil }
         if noteCard?.canvas != canvasID { noteCard = nil }
         // Every message starts an activity; whatever is on the canvas when it's handled is frozen into it.
@@ -1006,7 +1028,7 @@ final class Workspace {
                 return
             }
         }
-        if let pending = pendingAction, step == nil || confirms || declines, !asksModel {
+        if let pending = pendingAction, step.isEmpty || confirms || declines, !asksModel {
             pendingAction = nil
             pendingText = nil
             if declines {
@@ -1130,8 +1152,8 @@ final class Workspace {
         // the same parsers, checks, Jev and confirmations as a typed command. The local parsers below read the message
         // as typed when no model is connected or it can't be reached.
         if let client {
-            await routeWithModel(step.map { "\($0.about ?? "About the step «\($0.title)» of the route on the canvas"): \(text)" } ?? text,
-                                 client: client, before: before, offered: offered, aboutStep: step != nil)
+            await routeWithModel(step.isEmpty ? text : step.compactMap(\.about).joined(separator: "; ") + ": " + text,
+                                 client: client, before: before, offered: offered, typed: step.isEmpty ? nil : text)
             return
         }
         // No model connected: the local parsers read the message as typed.
@@ -1210,8 +1232,8 @@ final class Workspace {
             await editPlanWithModel(text, client: client, before: before)
             return
         } else {
-            reply(say("I didn’t get that. No model is connected, so I read commands, not free talk: “long ETH risk $5”, “stop 3%”, “take 6%”, “leverage 2x”, “send 5 USDC to Bybit”, “deposit 1 USDC into Jupiter” — in English or Russian. With or without a model, nothing moves until you press Confirm and touch Touch ID. For free wording in any language, connect a model in Settings › Sign-ins (⌘,): a ChatGPT or Claude subscription, OpenRouter or an API key.",
-                      "Не понял. Модель не подключена, поэтому я понимаю команды, а не свободный разговор: «лонг ETH риск $5», «стоп 3%», «тейк 6%», «плечо 2x», «отправь 5 USDC на Bybit», «положи 1 USDC в Jupiter» — по-русски и по-английски. С моделью или без, ничего не выполняется, пока ты не нажмёшь Confirm и не приложишь Touch ID. Чтобы писать свободно на любом языке, подключи модель в Settings › Sign-ins (⌘,): подписку ChatGPT или Claude, OpenRouter или API-ключ."))
+            reply(say("I didn’t get that. No model is connected, so I read commands, not free talk: “long ETH risk $5”, “stop 3%”, “take 6%”, “leverage 2x”, “send 5 USDC to Bybit”, “deposit 1 USDC into Jupiter” — in English or Russian. With or without a model, nothing moves until you press Confirm and \(Presence.touchID ? "touch Touch ID" : "type your Mac password"). For free wording in any language, connect a model in Settings › Sign-ins (⌘,): a ChatGPT or Claude subscription, OpenRouter or an API key.",
+                      "Не понял. Модель не подключена, поэтому я понимаю команды, а не свободный разговор: «лонг ETH риск $5», «стоп 3%», «тейк 6%», «плечо 2x», «отправь 5 USDC на Bybit», «положи 1 USDC в Jupiter» — по-русски и по-английски. С моделью или без, ничего не выполняется, пока ты не нажмёшь Confirm и \(Presence.touchID ? "не приложишь Touch ID" : "не введёшь пароль от Mac"). Чтобы писать свободно на любом языке, подключи модель в Settings › Sign-ins (⌘,): подписку ChatGPT или Claude, OpenRouter или API-ключ."))
         }
         await refreshQuote()
         startPlanReview()
@@ -1231,8 +1253,8 @@ final class Workspace {
                 addressBook.append(entry)
                 // Its card stays on the canvas, as Done.
                 finishedAction = ("Save “\(entry.name)” to Addresses", CanvasOutcome(at: Date(), ok: true), [bubble])
-                reply(say("Saved “\(entry.name)” in Addresses (\(entry.network.title)), confirmed with Touch ID. Star it there or say “add \(entry.name) to favorites”.",
-                          "«\(entry.name)» сохранён в адресной книге (\(entry.network.title)), подтверждено Touch ID. Отметь его звёздочкой там или скажи «добавь \(entry.name) в избранное»."))
+                reply(say("Saved “\(entry.name)” in Addresses (\(entry.network.title)), confirmed with \(Presence.name). Star it there or say “add \(entry.name) to favorites”.",
+                          "«\(entry.name)» сохранён в адресной книге (\(entry.network.title)), подтверждено \(Presence.ruIns). Отметь его звёздочкой там или скажи «добавь \(entry.name) в избранное»."))
             } catch {
                 finishedAction = ("Save “\(entry.name)” to Addresses", CanvasOutcome(at: Date(), ok: false), [bubble])
                 reply(say("Not saved: ", "Не сохранено: ") + error.localizedDescription)
@@ -1283,7 +1305,8 @@ final class Workspace {
     /// nothing is done and the chat says so.
     /// `said`: the user's own words when `text` is ihatecrypto telling the model how its last step went (`continueAgent`);
     /// addresses still count only from them. `round`: how many steps of their request the model has taken.
-    func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent, offered: [ChatRouter.Option] = [], aboutStep: Bool = false,
+    /// `typed`: the user's words alone, when what they attached goes before them in `text`.
+    func routeWithModel(_ text: String, client: any LLMClient, before: TradeIntent, offered: [ChatRouter.Option] = [], typed: String? = nil,
                         said: String? = nil, round: Int = 0) async {
         busy = true
         stopRequested = false
@@ -1373,7 +1396,7 @@ final class Workspace {
         case .confirm?:
             // The model read an approval: only the button carries out a move, so the card keeps waiting for it. A number or
             // a change in the message («add another 300», which Apple's model once read as a yes) is said to be one.
-            let said = aboutStep ? String(text[(text.range(of: "»: ")?.upperBound ?? text.startIndex)...]) : text
+            let said = typed ?? text
             if ChatWords.mayChange(said) {
                 reply(say("That reads like a yes, but it has a number or a change in it, so nothing was signed and the card keeps waiting. If it's a change, say it as one («make it 800»); if not, press Confirm on the card.",
                           "Похоже на «да», но в сообщении есть число или изменение — я ничего не подписывал, карточка ждёт. Если это изменение, скажи его так («сделай 800»); если нет — нажми Confirm на карточке."), note: note)
@@ -1402,7 +1425,7 @@ final class Workspace {
                                                  : say("it isn't downloaded in \(provider.info.name)", "она не скачана в \(provider.info.name)"))
                 : String(failure.prefix(140))
             // What reads the same without a model — a chart, a token, P/L — still shows; nothing that could move money.
-            if !aboutStep, said == nil, await readWithoutModel(text) {
+            if typed == nil, said == nil, await readWithoutModel(text) {
                 reply(say("\(model) isn't answering (\(why)), so I read this one myself. Pick another model above for the rest.",
                           "\(model) не отвечает (\(why)), поэтому это я прочитал сам. Для остального выбери другую модель сверху."), note: model)
             } else {
@@ -1427,7 +1450,7 @@ final class Workspace {
         case .chat(let r)?, .clarify(let r)?: reply(r, note: note)
         case .command(let canonical)?:
             // A new command takes the place of the card that waited; a chart or the rates beside it don't.
-            if !Self.displays(canonical) { dropWaiting(keepAction: aboutStep) }
+            if !Self.displays(canonical) { dropWaiting(keepAction: typed != nil) }
             guard ChatRouter.addressesAllowed(canonical, userText: said ?? text, known: knownContracts, found: reading?.found ?? [],
                                               displays: Self.foundAllowed, markets: Set(markets.keys)) else {
                 reply(say("I read that as “\(canonical)”, but its address is neither in your message nor among your favorites, so I won’t use it. Paste the address itself.",
@@ -1463,6 +1486,53 @@ final class Workspace {
     /// What the model is given besides the message, for the debug API's /context.
     var debugContext: ChatRouter.Context { routerContext(messageShown: false) }
 
+    /// A block's own lines of what the model reads about the canvas (routerContext), found by its BlockMenu name; nil when
+    /// that has nothing of it, and only its name goes.
+    func blockFacts(_ title: String) -> String? {
+        let c = routerContext()
+        let parts = title.components(separatedBy: " · "), name = parts.count > 1 ? parts[1] : ""
+        func lines(_ prefix: String) -> String? {
+            let found = c.canvas.filter { $0.hasPrefix(prefix) }
+            return found.isEmpty ? nil : found.joined(separator: "; ")
+        }
+        switch parts[0] {
+        case "Portfolio": return ([c.capital.map { "total \($0)" }].compactMap { $0 } + c.balances).joined(separator: "; ")
+        case "Chart": return lines("chart ")
+        case "Position": return c.positions.first { $0.contains(" \(name) ") }
+        case "Token": return lines("token card: ")
+        case "Profit and loss": return lines("P/L board")
+        case "Movers": return lines("movers board")
+        case "History": return lines("history board")
+        case "Schedule": return lines("schedule: ")
+        case "Price alerts": return lines("price alert")
+        case "Rates": return lines("rates board")
+        case "Top up": return lines("top-up board")
+        case "Take-profit choices": return lines("take-profit choices")
+        case "Move under way": return lines("running now")
+        case "Jupiter DCA": return lines("Jupiter DCA board")
+        case "Spread plan", "Rebalance", "Withdrawal", "Position move", "New address": return lines("waiting for Confirm")
+        case "Plan": return c.plan.map { "the trade plan \($0)" }
+        case "Notes": return c.canvas.first { $0.contains(" in folder «") }
+        case "Favorites": return c.favorites.isEmpty ? nil : "favorite tokens: " + c.favorites.joined(separator: "; ")
+        case "Recurring buy":
+            return schedules.first { $0.symbol == name }.map { "buys \(Fmt.num($0.usdc)) USDC of \($0.symbol) every \($0.days) days, next \(Fmt.date($0.next))" + ($0.paused == true ? ", paused" : "") }
+        case "Ledger": return ledgerActive ? "a Ledger signs for the active wallet" : ledgerConnect != nil ? "a Ledger is being connected" : "no Ledger connected"
+        default: break
+        }
+        if let key = currentScheduleKey, scheduleEntries.first(where: { $0.id == key })?.title == title { return scheduledFacts(key) }
+        if let a = serviceAnswer, title == "\(a.service)'s answer" { return lines("\(a.service)'s answer") }
+        if let b = savedBoard ?? finishedCanvas, readable(b.title) == title {
+            return ([readable(b.title)] + b.bubbles.map { "\($0.label) \(readable($0.title))" + ($0.lines.isEmpty ? "" : " (\($0.lines.joined(separator: ", ")))") })
+                .joined(separator: " → ") + (b.outcome.map { $0.ok ? " — done" : " — failed" } ?? "")
+        }
+        if let place = detail, placeTitle(place) == title {
+            let held = c.balances.filter { $0.localizedCaseInsensitiveContains(title) }
+            let facts = [lines("details of")].compactMap { $0 } + held
+            return facts.isEmpty ? nil : facts.joined(separator: "; ")
+        }
+        return nil
+    }
+
     private func routerContext(offered: [ChatRouter.Option] = [], messageShown: Bool = true) -> ChatRouter.Context {
         var c = ChatRouter.Context()
         c.recent = Array(recentChat().dropLast(messageShown ? 1 : 0))   // the last line is the message itself
@@ -1470,7 +1540,10 @@ final class Workspace {
         if intent != TradeIntent(), let json = try? JSONEncoder().encode(intent) { c.plan = String(decoding: json, as: UTF8.self) }
         if let ch = chart {
             let points = ch.candles.map { TokenMarket.Point(time: $0.time, close: $0.close) }
-            c.canvas.append(TokenResearch.chartFacts(points, range: ch.range, of: "chart \(ch.coin)") ?? "chart \(ch.coin) (\(ch.range.title))")
+            // Old candles say so, with the live price beside them: the model took a 4-day-old chart for today's.
+            let live = markets[ch.coin].map { ", live price now \(Fmt.price($0.markPx))" } ?? ""
+            let label = "chart \(ch.coin)" + (ch.stale && !ch.candles.isEmpty ? " (candles as of \(ch.at.map(Fmt.date) ?? "an earlier load")\(live))" : "")
+            c.canvas.append(TokenResearch.chartFacts(points, range: ch.range, of: label) ?? "chart \(ch.coin) (\(ch.range.title))")
         }
         // Notes: «добавь заметку …» there goes to their folder without asking which.
         if let n = noteCard, let folder = n.folder {
@@ -2046,6 +2119,7 @@ final class Workspace {
 
     func loadSigner() async {
         guard SignerClient.isAvailable, let status = try? await SignerClient().send(.status) else { return }
+        AppLock.shared.update(codeSet: status.codeSet == true)
         // The switch first, before anything can wait: the old wallet's card, rules and positions go at once.
         // A connected Ledger is one more wallet in the list; while it is the active one, its addresses are «ours» and
         // every move is signed on it (Ledger.swift). The signer's own choice stays as it was underneath.

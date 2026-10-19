@@ -19,6 +19,9 @@ nonisolated struct ChartState: Equatable, Codable {
     /// The network whose coin row opened the chart: its Buy and Sell trade the coin there (Workspace.coinTrades), what
     /// the wallet holds there shows on it.
     var network: String?
+
+    /// Loaded more than 5 minutes ago (or never): its prices aren't today's.
+    var stale: Bool { at.map { Date().timeIntervalSince($0) > 5 * 60 } ?? true }
 }
 
 extension Workspace {
@@ -97,7 +100,8 @@ struct ChartBoard: View {
         let price = market?.markPx ?? points.last?.close
         let levels = self.levels
         VStack(alignment: .leading, spacing: 14) {
-            AssetHeader(name: name, subtitle: [network.flatMap { ModuleNetwork(rawValue: $0)?.name }, "Hyperliquid chart",
+            // The candles' size under the name, not in a line at the card's foot (the owner, 2026-10-19).
+            AssetHeader(name: name, subtitle: [network.flatMap { ModuleNetwork(rawValue: $0)?.name }, "Hyperliquid chart", state.range.interval,
                                                state.at.map { "as of \(Fmt.date($0))" }].compactMap { $0 }.joined(separator: " · "),
                         close: { withAnimation(StudioView.spring) { ws.chart = nil } }) {
                 AssetBadge(coin: state.coin, size: 38, dark: true)
@@ -127,8 +131,7 @@ struct ChartBoard: View {
                         today: usd.flatMap { usd in market?.change24h.flatMap { $0 > -100 ? usd - usd / (1 + $0 / 100) : nil } })
             }
             AssetActions(symbol: name, ask: { ws.askAbout(symbol: name, chain: network ?? "hyperliquid", address: nil) },
-                         trades: ws.coinTrades(state.coin, chain: network),
-                         source: "Hyperliquid candles · \(state.range.interval)\(levels.isEmpty ? "" : " · lines: your position, its orders and alerts")")
+                         trades: ws.coinTrades(state.coin, chain: network))
         }
         .assetCard()
         .task { await ws.loadChainCosts() }
@@ -300,8 +303,8 @@ struct PlaceDetailBoard: View {
                     .buttonStyle(.plain).modifier(HoverLift(radius: 12)).help("Open the \(IntentParser.pretty(p.coin)) chart")
             }
             if ws.positions.isEmpty { Text("No open positions.").font(.ui(10)).foregroundStyle(.secondary) }
-            Label(ws.agentActive ? (ws.ledgerActive ? "Trading key on: orders skip the Ledger, withdrawals still need it" : "Trading key on: orders skip Touch ID, withdrawals still need it")
-                  : ws.ledgerActive ? "Trading key off: every order asks for the Ledger's buttons" : "Trading key paused: every order asks for Touch ID",
+            Label(ws.agentActive ? (ws.ledgerActive ? "Trading key on: orders skip the Ledger, withdrawals still need it" : "Trading key on: orders skip \(Presence.name), withdrawals still need it")
+                  : ws.ledgerActive ? "Trading key off: every order asks for the Ledger's buttons" : "Trading key paused: every order asks for \(Presence.name)",
                   systemImage: ws.agentActive ? "key.horizontal.fill" : "lock").font(.ui(10)).foregroundStyle(.secondary)
         case "robinhood":
             if isEVMAddress(ws.hlAddress) { addressRow(ws.hlAddress) }

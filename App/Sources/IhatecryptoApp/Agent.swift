@@ -424,7 +424,7 @@ extension Workspace {
     /// command; an answer to the model's question goes back to the model as if typed. Like any new message it drops a
     /// card that waited for Confirm.
     func pick(_ option: ChatRouter.Option) async {
-        guard !busy, let steps = nextSteps else { return }
+        guard !busy, let steps = liveSteps else { return }
         if let i = messages.firstIndex(where: { $0.id == steps.message }) { messages[i].picked = steps.options.firstIndex(of: option) }
         if option.command.isEmpty { await send(option.title); return }
         agentGoal = nil

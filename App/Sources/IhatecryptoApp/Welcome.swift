@@ -1,4 +1,5 @@
 import SwiftUI
+import WalletCore
 
 /// The first screen, on a Mac with no wallet and no watched address yet (design: «C01 · First screen · final» on the
 /// onboarding canvas). The logo, the slogan, and a demo on the dotted canvas: the coin cursor types a request, its
@@ -163,9 +164,9 @@ struct WelcomeView: View {
     /// The route's Confirm as the cursor presses it: orange, then Touch ID, then what was done.
     private func confirmFace(_ s: Scenario) -> some View {
         let (text, icon, fill, ink): (String, String, Color, Color) = switch play.confirm {
-        case .touch: ("Touch ID", "touchid", Color(light: 0x111111, dark: 0xF2F3F5), Color(light: 0xFFFFFF, dark: 0x111111))
+        case .touch: (Presence.short, Presence.icon, Color(light: 0x111111, dark: 0xF2F3F5), Color(light: 0xFFFFFF, dark: 0x111111))
         case .done: (s.done, "checkmark", Brand.profit.opacity(0.12), Brand.profit)
-        default: ("Confirm", "touchid", Brand.accent, Brand.onAccent)
+        default: ("Confirm", Presence.icon, Brand.accent, Brand.onAccent)
         }
         return Label(text, systemImage: icon).font(.ui(13.5, .bold)).foregroundStyle(ink)
             .frame(width: 224, height: 38).background(RoundedRectangle(cornerRadius: 10).fill(fill))

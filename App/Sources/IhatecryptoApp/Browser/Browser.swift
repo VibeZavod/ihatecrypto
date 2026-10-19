@@ -664,7 +664,7 @@ struct ApprovalSheet: View {
                     refused(r.problems)
                 } else if !r.recipients.isEmpty {
                     ask("Money, or the right to spend it, goes to an address that isn't yours",
-                        r.recipients.map { "\($0.prefix(10))…\($0.suffix(6))" }.joined(separator: ", ") + " — check it on the site. The signer asks for Touch ID for a new one.",
+                        r.recipients.map { "\($0.prefix(10))…\($0.suffix(6))" }.joined(separator: ", ") + " — check it on the site. The signer asks for \(Presence.name) for a new one.",
                         toggle: "Send to this address", isOn: $allowUnknown)
                 }
                 note("Simulated on the latest block, before the network fee. A token names itself — check its address. The signer decodes the call again.")

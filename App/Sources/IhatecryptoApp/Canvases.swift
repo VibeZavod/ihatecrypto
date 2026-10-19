@@ -379,6 +379,12 @@ extension Workspace {
         executed = c.executed ? c.intent : nil
         meter = c.meter ?? ContextMeter()
         activeSkills = c.skills ?? []
+        // The last reply's cards, nothing said after them and none picked, are live again: after a relaunch they stayed
+        // drawn but faded and dead (the owner: «почему эти пункты блеклые»). Addresses the lookups had found aren't kept,
+        // so a card naming one is checked against the user's own words only — refused rather than trusted.
+        if let last = messages.last, !last.fromUser, last.picked == nil, let options = last.options, !options.isEmpty {
+            nextSteps = NextSteps(options: options, userText: messages.last(where: \.fromUser)?.text ?? "", found: [], message: last.id)
+        }
         if LLMCatalog.provider(id: c.providerID) != nil {
             providerID = c.providerID
             modelChoices[c.providerID] = c.model
@@ -390,7 +396,9 @@ extension Workspace {
         savedBoard = c.bubbles.isEmpty || chart != nil ? nil : c
         // A coin's chart opened from its row comes back where it opened, in the token cards' place.
         if chart?.network != nil { detail = "chart" }
-        if let ch = chart, ch.candles.isEmpty { Task { await openChart(ch.coin, range: ch.range) } }
+        // A snapshot older than a few minutes is loaded again, its old candles shown until the new ones land: a canvas from
+        // Oct 15 reopened on Oct 19 showed NEAR at $5.24 «today», and the model read it so, at $4.94 live.
+        if let ch = chart, ch.candles.isEmpty || ch.stale { Task { await openChart(ch.coin, range: ch.range) } }
         // Back on a canvas whose move was waiting for Confirm: it waits again (its numbers are live on the card).
         if let parked = parkedPending.removeValue(forKey: c.id), Date().timeIntervalSince(parked.at) < 15 * 60 {
             pendingAction = parked.action
@@ -1242,12 +1250,12 @@ struct PendingButtons: View {
                 .foregroundStyle(.secondary).frame(height: 28)
         case .fresh(let left):
             Button { Task { await ws.pressConfirm() } } label: {
-                Label("\(confirm) · \(left)", systemImage: "touchid").font(.ui(13, .semibold)).monospacedDigit().padding(.horizontal, 6)
+                Label("\(confirm) · \(left)", systemImage: Presence.signIcon).font(.ui(13, .semibold)).monospacedDigit().padding(.horizontal, 6)
             }
             .buttonStyle(.borderedProminent).controlSize(.large).accessibilityLabel(confirm)
         case .none:
             Button { Task { await ws.pressConfirm() } } label: {
-                Label(confirm, systemImage: "touchid").font(.ui(13, .semibold)).padding(.horizontal, 6)
+                Label(confirm, systemImage: Presence.signIcon).font(.ui(13, .semibold)).padding(.horizontal, 6)
             }
             .buttonStyle(.borderedProminent).controlSize(.large)
         }
@@ -1267,7 +1275,7 @@ struct MoveRoute {
     init(title: String, footer: String, steps: [ActivityBubble], warning: String? = nil) {
         self.title = title
         self.footer = Executor.batchesOn && footer.contains("approve")
-            ? footer + " With «One transaction for approve and swap» on, Touch ID signs the approve and what spends it as one transaction."
+            ? footer + " With «One transaction for approve and swap» on, the approve and what spends it go out as one transaction under one \(Presence.short)."
             : footer
         self.steps = steps
         self.warning = warning
@@ -1528,7 +1536,7 @@ extension Workspace {
         let ends = AddressCheck.ends(entry.address)
         return MoveRoute(title: close ? "Close the NEAR account into \(entry.name)" : "Send \(Fmt.num(amount, maxFraction: 4)) NEAR to \(entry.name)",
                          footer: (close
-                            ? "One NEAR transaction: your NEAR account is deleted and NEAR sends everything on it to \(entry.name). Touch ID asks in plain words first; buying NEAR later opens the account again. "
+                            ? "One NEAR transaction: your NEAR account is deleted and NEAR sends everything on it to \(entry.name). the \(Presence.short) prompt says it in plain words first; buying NEAR later opens the account again. "
                             : "One NEAR transfer, built and signed by the signer; only this saved address may receive it. ")
                             + "Press Confirm.",
                          steps: [
@@ -2190,7 +2198,7 @@ extension Workspace {
         // NEAR on a side, or a pair only 1Click quotes: one deposit to the address NEAR Intents binds to the quote.
         if from == "near" || to == "near" || quote?.first?.way.hasPrefix("NEAR Intents") == true {
             return MoveRoute(title: "Swap \(moving) on \(fromName) → \(label(b)) on \(toName)",
-                             footer: "One deposit on \(fromName) to the 1Click address NEAR Intents binds to this quote — checked with 1Click before signing; Touch ID allows that address the first time — and \(label(b)) comes to your own address on \(toName); a refund comes back to \(fromName). Press Confirm.",
+                             footer: "One deposit on \(fromName) to the 1Click address NEAR Intents binds to this quote — checked with 1Click before signing; that address needs \(Presence.name) the first time — and \(label(b)) comes to your own address on \(toName); a refund comes back to \(fromName). Press Confirm.",
                              steps: [step(logo(from), "FROM · \(fromName.uppercased())", moving, "your own address there", fill(from), money: crossOut),
                                      step("near", "SWAP ACROSS · NEAR INTENTS", label(b),
                                           quote.map { $0.first.map { "≈ \($0.gets) · \($0.way)" } ?? "no quote now · asked again every 30 s" } ?? "quoting…", .near),
@@ -2203,7 +2211,7 @@ extension Workspace {
         steps.append(step(logo(to), "TO · \(toName.uppercased())", label(b), "your own address there", fill(to), money: crossIn))
         let footer = "One signature on \(fromName): Relay's solver swaps on the way and pays \(label(b)) to your own address on \(toName), usually within seconds. "
             + "If more than 3% (or 15 cents) of the value would be lost, nothing is signed."
-            + (from != "solana" && coinIn ? " The \(label(a)) goes to Relay's depository: Touch ID allows that address the first time." : "")
+            + (from != "solana" && coinIn ? " The \(label(a)) goes to Relay's depository: that address needs \(Presence.name) the first time." : "")
             + (from != "solana" && !coinIn ? " An exact approve to Relay comes first, in the same transaction where the network allows." : "")
             + " Press Confirm."
         return MoveRoute(title: "Swap \(moving) on \(fromName) → \(label(b)) on \(toName)", footer: footer, steps: steps)
@@ -2228,7 +2236,7 @@ extension Workspace {
             : firstSendWarning(r.entry)
         return MoveRoute(title: "Send \(what) to \(r.entry.name)",
                          footer: "NEAR Intents' 1Click turns USDC into \(r.symbol) on \(title) and pays this saved address exactly \(what); what's left of the USDC comes back. "
-                            + "Its deposit address is fresh: Touch ID allows it before anything is sent. Press Confirm.",
+                            + "Its deposit address is fresh: it needs \(Presence.name) before anything is sent. Press Confirm.",
                          steps: steps, warning: warning)
     }
 
@@ -2896,13 +2904,17 @@ struct RunningBoard: View {
                     HStack(spacing: 10) {
                         BrandLogo(size: 30, mood: .waiting)
                         VStack(alignment: .leading, spacing: 1) {
-                            Text(ws.say("Sign with Touch ID: \(run.title)", "Подпиши Touch ID: \(run.title)")).font(.ui(13, .semibold)).lineLimit(1)
-                            Text(ws.say("Touch the sensor, or type your Mac password if it asks. It covers this move only.",
-                                        "Приложи палец к датчику или введи пароль Mac, если спросит. Подпись — только на это действие."))
+                            Text(ws.say("Sign with \(Presence.signName): \(run.title)", "Подпиши \(Presence.signRuIns): \(run.title)")).font(.ui(13, .semibold)).lineLimit(1)
+                            Text(AppLock.shared.codeSigns ? ws.say("Type your 6-digit code in the chat field. It covers this move only.",
+                                                                   "Введи 6-значный код в поле чата. Подпись — только на это действие.")
+                                 : Presence.touchID ? ws.say("Touch the sensor, or type your Mac password if it asks. It covers this move only.",
+                                                         "Приложи палец к датчику или введи пароль Mac, если спросит. Подпись — только на это действие.")
+                                 : ws.say("Type your Mac password when macOS asks. It covers this move only.",
+                                          "Введи пароль от Mac, когда macOS спросит. Подпись — только на это действие."))
                                 .font(.ui(10.5)).opacity(0.85).lineLimit(2)
                         }
                         Spacer(minLength: 0)
-                        Image(systemName: "touchid").font(.system(size: 22, weight: .medium))
+                        Image(systemName: Presence.signIcon).font(.system(size: 22, weight: .medium))
                     }
                     .foregroundStyle(Brand.onAccent)
                     .padding(.horizontal, 12).padding(.vertical, 9)
@@ -3159,8 +3171,8 @@ extension Workspace {
                                                "На блокчейне: \(Fmt.num(total)) USDC вносятся сразу, Jupiter покупает раз в \(periodRU), даже при закрытом приложении. От 100 USDC, по 50 за раз; комиссия 0.1%; отмена вернёт остаток."),
                                   command: jupiter.summary, recommended: usdc >= WalletCommand.jupiterDCAMinimum / 2),
                 ChatRouter.Option(title: say("In the app: \(Fmt.num(usdc)) USDC → \(asset.symbol) every \(period)", "В приложении: \(Fmt.num(usdc)) USDC → \(asset.symbol) раз в \(periodRU)"),
-                                  comment: say("The money stays in your wallet until each buy; no minimum. Buys while ihatecrypto runs (Keep running), each signed with Touch ID or the automation wallet.",
-                                               "Деньги лежат у тебя до каждой покупки; минимума нет. Покупает, пока ihatecrypto работает (Keep running), каждую покупку подписывает Touch ID или кошелёк автоматизации."),
+                                  comment: say("The money stays in your wallet until each buy; no minimum. Buys while ihatecrypto runs (Keep running), each signed with \(Presence.name) or by the automation wallet.",
+                                               "Деньги лежат у тебя до каждой покупки; минимума нет. Покупает, пока ihatecrypto работает (Keep running); каждая покупка — с \(Presence.ruIns) или с кошелька автоматизации."),
                                   command: app.summary, recommended: usdc < WalletCommand.jupiterDCAMinimum / 2),
         ])
     }

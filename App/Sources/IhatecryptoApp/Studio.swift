@@ -6,6 +6,7 @@ import LLMCatalog
 import LLMCore
 import SwiftUI
 import TradeExecution
+import WalletCore
 
 // «Студия» (R4 on the design canvas), ihatecrypto's only layout: the wallet rail on the left, the portfolio and the plan on
 // one canvas, the chat floating on top of it.
@@ -991,8 +992,9 @@ func masked(_ text: String) -> String {
 /// coin is the assistant's face in the chat, and its expression says what it's doing.
 struct BrandLogo: View {
     /// idle: the brand's eye-roll, still. The rest are the assistant's states from the brand board: waiting for Confirm,
-    /// building the route, done, error; and tuning (brows up, looking down at an open menu or Settings), listening.
-    enum Mood { case idle, waiting, thinking, done, error, tuning, listening }
+    /// building the route, done, error; and tuning (brows up, looking down at an open menu or Settings), listening;
+    /// asleep, eyes shut, on the lock screen.
+    enum Mood { case idle, waiting, thinking, done, error, tuning, listening, asleep }
     var size: CGFloat = 34
     var mood: Mood = .idle
     /// The chat's avatar moves: the eyes roll while it waits for Confirm, the ridge turns and the eyes look around while
@@ -1136,6 +1138,10 @@ struct BrandLogo: View {
             face.move(to: p(36, 64)); face.addQuadCurve(to: p(64, 64), control: p(50, 48))
             face.move(to: p(76, 64)); face.addQuadCurve(to: p(104, 64), control: p(90, 48))
             face.move(to: p(50, 86)); face.addQuadCurve(to: p(90, 86), control: p(70, 106))
+        case .asleep:
+            face.move(to: p(37, 62)); face.addQuadCurve(to: p(63, 62), control: p(50, 75))
+            face.move(to: p(77, 62)); face.addQuadCurve(to: p(103, 62), control: p(90, 75))
+            face.move(to: p(60, 98)); face.addLine(to: p(80, 98))
         case .error:
             for (a, b) in [(p(38, 50), p(60, 72)), (p(60, 50), p(38, 72)), (p(80, 50), p(102, 72)), (p(102, 50), p(80, 72))] {
                 face.move(to: a); face.addLine(to: b)
@@ -1258,9 +1264,10 @@ struct StudioCanvas: View {
         // The plan once per pass: the blocks, the status and the lines all read it.
         let nodes = nodes
         HStack(alignment: .top, spacing: 36) {
-            StudioPortfolio()
+            // Right-click on any block: the chat with it attached (BlockMenu); several blocks can go into one message.
+            StudioPortfolio().blockMenu("Portfolio", radius: 26)
             // The rail's Schedule button puts it here, beside the portfolio; a row opens its page.
-            if ws.showSchedule { ScheduleFrame().transition(.opacity) }
+            if ws.showSchedule { ScheduleFrame().blockMenu("Schedule", radius: 26).transition(.opacity) }
             plan(nodes).frame(width: max(470, routeWidth), alignment: .topLeading)
                 .onPreferenceChange(RouteWidth.self) { width in MainActor.assumeIsolated { routeWidth = width } }
         }
@@ -1290,23 +1297,26 @@ struct StudioCanvas: View {
             // covering nothing.
             if let place = ws.detail, place != beside {
                 PlaceDetailBoard(place: place)
+                    .blockMenu(ws.placeTitle(place))
                     .padding(.bottom, 10)
                     .transition(.opacity)
             }
             // A scheduled item's own canvas: its card first; the chat on it changes it.
-            if let key = ws.currentScheduleKey { ScheduleItemBoard(key: key).padding(.bottom, 10) }
-            if let note = ws.noteCard { NoteBoard(note: note).padding(.bottom, 10) }
+            if let key = ws.currentScheduleKey {
+                ScheduleItemBoard(key: key).blockMenu(ws.scheduleEntries.first { $0.id == key }?.title ?? "Scheduled task").padding(.bottom, 10)
+            }
+            if let note = ws.noteCard { NoteBoard(note: note).blockMenu(note.folder.map { "Notes · \($0)" } ?? "Notes", radius: 26).padding(.bottom, 10) }
             // The rail's buttons put their boards here too.
-            if ws.showReceive { ReceiveBoard() }
-            LedgerBoard()
+            if ws.showReceive { ReceiveBoard().blockMenu("Top up", radius: 26) }
+            LedgerBoard().blockMenu("Ledger", radius: 26)
             if ws.showFavorites {
                 HStack(alignment: .top, spacing: 36) {
-                    FavoritesBoard()
-                    if let beside { PlaceDetailBoard(place: beside).transition(.opacity) }
+                    FavoritesBoard().blockMenu("Favorites", radius: nil)
+                    if let beside { PlaceDetailBoard(place: beside).blockMenu(ws.placeTitle(beside)).transition(.opacity) }
                 }
                 .transition(.opacity)
             }
-            if ws.showHistory { HistoryBoard().transition(.opacity) }
+            if ws.showHistory { HistoryBoard().blockMenu("History", radius: 22).transition(.opacity) }
             // A move waiting for its signature or running has its own title and status: no «Plan · waiting» over it.
             if hasRoute || ws.allocationPreview != nil || (ws.pendingAction == nil && !ws.moveRunning && ws.currentScheduleKey == nil) {
                 HStack(spacing: 8) {
@@ -1337,36 +1347,36 @@ struct StudioCanvas: View {
             // Only this canvas's own position, or one the user tapped (a tap opens its chart), not every open one:
             // its board with the controls first, the chart under it.
             let positions = nodes.isEmpty ? ws.positions.filter { $0.coin == ws.chart?.coin || (ws.managesPosition && $0.coin == ws.intent.asset) } : []
-            ForEach(positions, id: \.coin) { PositionBoard(position: $0) }
-            if let chart = ws.chart, ws.detail != "chart" { ChartBoard(state: chart) }
-            PnLBoard()
-            if ws.showMovers { MoversBoard() }
-            if ws.showAlerts, !ws.alerts.isEmpty { AlertsBoard() }
+            ForEach(positions, id: \.coin) { PositionBoard(position: $0).blockMenu("Position · \(IntentParser.pretty($0.coin))", radius: 22) }
+            if let chart = ws.chart, ws.detail != "chart" { ChartBoard(state: chart).blockMenu("Chart · \(IntentParser.pretty(chart.coin))") }
+            PnLBoard().blockMenu("Profit and loss", radius: 20)
+            if ws.showMovers { MoversBoard().blockMenu("Movers") }
+            if ws.showAlerts, !ws.alerts.isEmpty { AlertsBoard().blockMenu("Price alerts") }
             if let yields = ws.yieldOptions ?? ws.heldAnswer?.yields, !yields.isEmpty {
-                YieldBubbles(options: yields).allowsHitTesting(ws.yieldOptions != nil)
+                YieldBubbles(options: yields).allowsHitTesting(ws.yieldOptions != nil).blockMenu("Rates", radius: nil)
             }
             if let allocation = ws.allocationPreview {
-                AllocationBoard(preview: allocation)
+                AllocationBoard(preview: allocation).blockMenu("Spread plan", radius: nil)
             }
-            RebalanceBoard()
-            WithdrawBoard()
-            PositionMoveBoard()
-            RunningBoard()
-            PendingAddressBoard()
-            if let answer = ws.serviceAnswer { ServiceAnswerBoard(answer: answer) }
+            RebalanceBoard().blockMenu("Rebalance", radius: nil)
+            WithdrawBoard().blockMenu("Withdrawal", radius: nil)
+            PositionMoveBoard().blockMenu("Position move", radius: nil)
+            RunningBoard().blockMenu("Move under way", radius: nil)
+            PendingAddressBoard().blockMenu("New address", radius: nil)
+            if let answer = ws.serviceAnswer { ServiceAnswerBoard(answer: answer).blockMenu("\(answer.service)'s answer") }
             if nodes.isEmpty {
                 if (ws.yieldOptions ?? ws.heldAnswer?.yields) == nil, ws.allocationPreview == nil, ws.rebalancePlan == nil {
-                    ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0) }
-                    if let dca = ws.jupiterDCAs, !dca.isEmpty { JupiterDCABoard(orders: dca) }
+                    ForEach(ws.schedules, id: \.symbol) { ScheduleBoard(schedule: $0).blockMenu("Recurring buy · \($0.symbol)") }
+                    if let dca = ws.jupiterDCAs, !dca.isEmpty { JupiterDCABoard(orders: dca).blockMenu("Jupiter DCA") }
                     // Under a running board (a chain's move done, its next step coming) the saved one would draw it twice.
-                    if let board, !ws.moveRunning { SavedBoard(canvas: board) } else if board == nil, positions.isEmpty, ws.schedules.isEmpty, ws.jupiterDCAs?.isEmpty ?? true, ws.pendingAction == nil, !ws.moveRunning, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
+                    if let board, !ws.moveRunning { SavedBoard(canvas: board).blockMenu(ws.readable(board.title), radius: nil) } else if board == nil, positions.isEmpty, ws.schedules.isEmpty, ws.jupiterDCAs?.isEmpty ?? true, ws.pendingAction == nil, !ws.moveRunning, ws.chart == nil, ws.serviceAnswer == nil, ws.ledgerConnect == nil,
                               (ws.canvases.first { $0.id == ws.canvasID }?.earlier ?? []).isEmpty {
                         // Never blank while something is under way: whatever path left nothing live, the canvas's last
                         // board stays until the answer or the outcome takes its place. The empty canvas is for when nothing runs.
                         // A traded plan whose position isn't there (a limit entry still waiting, or closed since) keeps it too.
                         if ws.thinking || ws.busy || ws.executing || ws.preparing || ws.managesPosition,
                            let last = ws.canvases.first(where: { $0.id == ws.canvasID }), !last.bubbles.isEmpty {
-                            SavedBoard(canvas: last)
+                            SavedBoard(canvas: last).blockMenu(ws.readable(last.title), radius: nil)
                         } else if ws.currentScheduleKey == nil {
                             placeholder
                         }
@@ -1376,6 +1386,7 @@ struct StudioCanvas: View {
                 let route = ws.planRoute(nodes)
                 RouteCards(steps: route.steps, footer: route.footer, build: true,
                            buildKey: String(describing: ws.intent) + route.steps.map(\.label).joined())
+                    .blockMenu("Plan · \(ws.intent.side == .long ? "long" : "short") \(IntentParser.pretty(ws.intent.asset))", radius: nil)
                 Label(route.footer, systemImage: "signature").font(.ui(12)).foregroundStyle(.primary.opacity(0.78)).lineSpacing(2)
                     .frame(maxWidth: 560, alignment: .leading)
                 // A plan the rules stop: what fits (checked by the code), raising the limit. The model's ideas are in the chat.
@@ -1387,6 +1398,7 @@ struct StudioCanvas: View {
                 if let choices = ws.takeChoices ?? ws.heldAnswer?.takes, !ws.assembling {
                     TakeChoices(choices: choices, risk: ws.evaluation.sizing?.lossAtStopUSD)
                         .allowsHitTesting(ws.takeChoices != nil)
+                        .blockMenu("Take-profit choices", radius: 20)
                         .transition(.opacity)
                 }
             }
@@ -1990,12 +2002,12 @@ struct PlanButtons: View {
                 .help((ws.planBlocker?.sentence ?? "") + " " + fix.detail)
             } else {
             Button { Task { await ws.prepareExecution() } } label: {
-                Label(ws.signerWallet == nil ? "Preview" : "Confirm", systemImage: ready ? "touchid" : "lock.fill").font(.ui(13, .semibold)).padding(.horizontal, 6)
+                Label(ws.signerWallet == nil ? "Preview" : "Confirm", systemImage: ready ? Presence.icon : "lock.fill").font(.ui(13, .semibold)).padding(.horizontal, 6)
             }
             // A disabled prominent button still reads blue on macOS 26: grey and locked says it can't go yet.
             .buttonStyle(.borderedProminent).controlSize(.large).tint(ready ? nil : .gray)
             .disabled(!ready || ws.previewWallet == nil || ws.executing || ws.preparing)
-            .help(ready ? "Shows the simulation, then Touch ID signs" : ws.missingDetails.map { "Needs \($0) first" } ?? ws.planBlocker?.sentence ?? "A rule on the canvas stops this plan")
+            .help(ready ? "Shows the simulation, then signs after \(Presence.name)" : ws.missingDetails.map { "Needs \($0) first" } ?? ws.planBlocker?.sentence ?? "A rule on the canvas stops this plan")
             }
         }
         .disabled(ws.busy)
@@ -2117,8 +2129,8 @@ extension Workspace {
             steps.append(card(prepared == nil ? "SIMULATION · ON CONFIRM" : "SIMULATION · PASSED", prepared == nil ? "Shows first" : "As planned",
                               prepared.map { Array($0.changes.prefix(3)) } ?? ["every balance, before and after", "nothing is signed before it"],
                               prepared == nil ? "info" : "passed", .check))
-            steps.append(card(ledgerActive ? "SIGN · LEDGER" : "SIGN · TOUCH ID", "\(signing) signature\(signing == 1 ? "" : "s")",
-                              prepared?.steps ?? [ledgerActive ? "each one approved on the device" : "one Touch ID covers them all"], "info", .check))
+            steps.append(card(ledgerActive ? "SIGN · LEDGER" : "SIGN · \(Presence.signShort.uppercased())", "\(signing) signature\(signing == 1 ? "" : "s")",
+                              prepared?.steps ?? [ledgerActive ? "each one approved on the device" : "one \(Presence.signShort) covers them all"], "info", .check))
         }
         if let s = sizing {
             var lines = [row("at the stop", "−\(Fmt.usd(s.lossAtStopUSD))")]
@@ -2128,7 +2140,7 @@ extension Workspace {
         }
         let signatures = nodes.filter { $0.signature != nil }.count
         let footer = "Execute shows the simulation first, then \(signatures) signature\(signatures == 1 ? "" : "s") — nothing is signed before "
-            + (ledgerActive ? "you approve it on your Ledger." : "your Touch ID.")
+            + (ledgerActive ? "you approve it on your Ledger." : "\(Presence.signName).")
         return (steps, footer)
     }
 }
@@ -2281,6 +2293,13 @@ struct StudioNodeView: View {
 
 // MARK: Floating chat
 
+/// Where the chat is scrolled, for following its end.
+private struct ChatScroll: Equatable {
+    var y: CGFloat
+    var height: CGFloat
+    var atEnd: Bool
+}
+
 struct FloatingChat: View {
     @Environment(Workspace.self) private var ws
     @Environment(\.colorScheme) private var scheme
@@ -2294,6 +2313,9 @@ struct FloatingChat: View {
     var dock: () -> Void = {}
     /// The first of the four starting points shown: a different four each launch.
     @State private var ideasStart = Int.random(in: 0..<TemplatesPanel.templates.count)
+    /// The chat follows what's written to its end, the answer as it streams too — unless the person scrolled up to read:
+    /// then it stays where they are until they're back at the end or send something (the owner, 2026-10-19).
+    @State private var follow = true
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2369,12 +2391,25 @@ struct FloatingChat: View {
                     .padding(.horizontal, 14).padding(.bottom, 8)
                 }
                 .defaultScrollAnchor(.bottom)
+                // Up by the person (the content the same height): stop following; at the end again: follow. The chat
+                // growing or shrinking under a follower (a streamed answer, cards, a step line) keeps the end in view.
+                .onScrollGeometryChange(for: ChatScroll.self) { g in
+                    ChatScroll(y: g.contentOffset.y, height: g.contentSize.height, atEnd: g.visibleRect.maxY >= g.contentSize.height - 24)
+                } action: { old, new in
+                    if new.atEnd { follow = true }
+                    else if new.height == old.height, new.y < old.y - 1 { follow = false }
+                    else if follow, new.height != old.height { proxy.scrollTo(ChatHistory.end, anchor: .bottom) }
+                }
                 // Not animated: a scroll animation redraws the whole window every frame, and execution adds a line at a time.
-                .onChange(of: ws.messages.count) { proxy.scrollTo(ChatHistory.end, anchor: .bottom) }
+                // Their own message always brings the end back.
+                .onChange(of: ws.messages.count) {
+                    if ws.messages.last?.fromUser == true { follow = true }
+                    if follow { proxy.scrollTo(ChatHistory.end, anchor: .bottom) }
+                }
                 // Cards come under a reply already shown: in view with it, and when they don't all fit, the question
                 // they answer stays in view from its top (a reply grouped into steps has no id here: the end it is).
                 .onChange(of: ws.nextSteps?.message) {
-                    guard let id = ws.nextSteps?.message else { return }
+                    guard follow, let id = ws.nextSteps?.message else { return }
                     proxy.scrollTo(ChatHistory.end, anchor: .bottom)
                     // After the cards are laid out: in this turn the bottom anchor pulled it back to the end as they grew.
                     DispatchQueue.main.async { proxy.scrollTo(id, anchor: .top) }
@@ -2421,7 +2456,7 @@ struct FloatingChat: View {
         case .tuning: ws.tuning ?? ""
         case .waiting: "Waiting for your Confirm"
         case .done: "Done"
-        case .idle: "Waiting for you"
+        case .idle, .asleep: "Waiting for you"
         }
     }
 }
@@ -2693,10 +2728,12 @@ private struct ChatComposer: View {
         // and out to an empty field (SentHistory).
         case .up:
             if !suggestions.isEmpty { keyed(max(0, pick - 1)); return true }
+            if nudge(up: true) { return true }
             if let options = liveCards { ws.cardKey = max(0, (ws.cardKey ?? options.count) - 1); return true }
             return walk(up: true)
         case .down:
             if !suggestions.isEmpty { keyed(min(suggestions.count - 1, pick + 1)); return true }
+            if nudge(up: false) { return true }
             if let options = liveCards, let k = ws.cardKey { ws.cardKey = k + 1 < options.count ? k + 1 : nil; return true }
             return walk(up: false)
         case .tab:
@@ -2728,8 +2765,29 @@ private struct ChatComposer: View {
 
     /// The cards under the last reply while the keys may walk them: the field empty and nothing under way.
     private var liveCards: [ChatRouter.Option]? {
-        guard ws.draft.isEmpty, !ws.busy, let options = ws.nextSteps?.options, !options.isEmpty else { return nil }
+        guard ws.draft.isEmpty, !ws.busy, let steps = ws.liveSteps, ws.cardFold[steps.message] != true, !steps.options.isEmpty else { return nil }
+        let options = steps.options
         return options
+    }
+
+    /// The draft's amount of a token the wallet holds, for the slider over the field and ↑↓ on the number.
+    private var draftAmount: (amount: DraftAmount, held: Decimal, place: String)? {
+        guard !ws.busy, waiting == nil else { return nil }
+        let place = DraftAmount.place(ws.draft)
+        for a in DraftAmount.all(ws.draft) { if let h = ws.draftHeld(a.ticker, place: place) { return (a, h.amount, h.place) } }
+        return nil
+    }
+
+    /// ↑↓ with the caret on the draft's amount: a step up or down, between none and all that's held.
+    private func nudge(up: Bool) -> Bool {
+        guard let a = draftAmount, let caret, caret >= a.amount.range.location, caret <= NSMaxRange(a.amount.range) else { return false }
+        let scale = DraftAmount.scale(a.held), step = pow(Decimal(10), -scale)
+        let value = min(a.held, max(0, (a.amount.value + (up ? step : -step)).rounded(scale, up ? .down : .up)))
+        // All that's held keeps every place: rounded, «max» left dust behind.
+        let places = value == a.held ? 18 : scale
+        ws.draft = a.amount.replacing(in: ws.draft, with: value, scale: places)
+        caretRequest = a.amount.range.location + DraftAmount.written(value, scale: places).utf16.count
+        return true
     }
 
     private var suggestions: [ComposerSuggestion] { ws.draft == dismissed ? [] : ComposerSuggestion.for(ws.draft, caret: caret, ws: ws) }
@@ -2759,9 +2817,10 @@ private struct ChatComposer: View {
             if case .failed(let why) = voice.state {
                 Label(why, systemImage: "mic.slash").font(.ui(10)).foregroundStyle(.orange).lineLimit(3)
             }
-            if let step = ws.stepContext, !voice.listening { StepContextChip(step: step) }
+            if !ws.attached.isEmpty, !voice.listening { Flow(spacing: 6) { ForEach(ws.attached, id: \.title) { StepContextChip(step: $0) } } }
             if !voice.listening, case let rows = suggestions, !rows.isEmpty { suggestionList(rows) }
             if !voice.listening, let amount = ws.topUpDraft { TopUpBalances(amount: amount) }
+            else if !voice.listening, let a = draftAmount { AmountSlider(amount: a.amount, held: a.held, place: a.place) }
             if voice.listening { listening(voice) } else if ws.hasModel { field } else { ConnectModelBar() }
         }
         .padding(12)
@@ -2824,7 +2883,8 @@ private struct ChatComposer: View {
         let waiting = waiting
         return VStack(spacing: 0) {
             if let waiting { waitingBar(waiting) }
-            entry(waiting: waiting != nil)
+            // A signature waiting for the passcode takes the field's place (Passcode.swift).
+            if let ask = CodePrompt.shared.pending { CodeEntryRow(ask: ask) } else { entry(waiting: waiting != nil) }
         }
         .background(RoundedRectangle(cornerRadius: 22, style: .continuous).fill(Brand.glassFill))
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
@@ -2853,7 +2913,7 @@ private struct ChatComposer: View {
         // A swap: what it gets and at what rate, as quoted now; else where its steps are.
         let line: String = {
             if ws.executing { return "Signing…" }
-            guard case .wallet(let c)? = ws.pendingAction, state != .none else { return "Its steps are on the canvas · Touch ID signs" }
+            guard case .wallet(let c)? = ws.pendingAction, state != .none else { return "Its steps are on the canvas · signs after \(Presence.signName)" }
             switch state {
             case .quoting: return "Getting the price…"
             case .stale: return (ws.swapLine(c).map { $0 + " · " } ?? "") + "the price is over 15 s old"
@@ -2886,7 +2946,7 @@ private struct ChatComposer: View {
                     .padding(.horizontal, 14).frame(height: 32).background(Capsule().fill(Color.primary.opacity(0.08)))
             default:
                 Button { Task { await ws.pressConfirm() } } label: {
-                    Label(sign ? "Sign" : "Confirm", systemImage: "touchid").font(.ui(12.5, .bold)).foregroundStyle(Brand.onAccent)
+                    Label(sign ? "Sign" : "Confirm", systemImage: Presence.signIcon).font(.ui(12.5, .bold)).foregroundStyle(Brand.onAccent)
                         .padding(.horizontal, 14).frame(height: 32).background(Capsule().fill(Brand.accent)).contentShape(Capsule())
                 }
                 .buttonStyle(.plain).pointerStyle(.link).help(title)
@@ -2918,8 +2978,8 @@ private struct ChatComposer: View {
             ZStack(alignment: .topLeading) {
                 if ws.draft.isEmpty {
                     Text(waiting ? "Ask about it, change it («make it 0.02»), or something else"
-                         : ws.stepContext == nil ? "What should we do? / blocks, @ names, $ tokens"
-                         : ws.stepContext?.about == nil ? "Ask about this step…" : "Ask about \(ws.stepContext?.title ?? "it")…")
+                         : ws.attached.isEmpty ? "What should we do? / blocks, @ names, $ tokens"
+                         : ws.attached.count == 1 ? "Ask about it, or say what to do with it…" : "Ask about these \(ws.attached.count), or say what to do with them…")
                         .font(.ui(14)).foregroundStyle(.tertiary).lineLimit(1)
                         .padding(.vertical, ComposerField.inset.height).padding(.leading, 5)
                         .allowsHitTesting(false)

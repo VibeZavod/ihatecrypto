@@ -98,8 +98,8 @@ extension Workspace {
             facts.append("the wallet holds \(Fmt.num(amount, maxFraction: 6))" + ((stock?.usd ?? held?.usd).map { " ≈ \(Fmt.usd($0))" } ?? ""))
         }
         if let price = stock?.price ?? held?.price ?? markets[symbol.uppercased()]?.markPx { facts.append("price \(Fmt.price(price))") }
-        stepContext = StepContext(title: "\(symbol) · \(network)", logo: TokenLogo.name(forAsset: symbol) ?? ModuleNetwork(rawValue: chain)?.logo,
-                                  about: "About the token «\(facts.joined(separator: "; "))»")
+        attach(StepContext(title: "\(symbol) · \(network)", logo: TokenLogo.name(forAsset: symbol) ?? ModuleNetwork(rawValue: chain)?.logo,
+                           about: "About the token «\(facts.joined(separator: "; "))»"))
     }
 }
 
@@ -541,7 +541,8 @@ struct AssetActions: View {
     let symbol: String
     let ask: () -> Void
     let trades: [(title: String, icon: String, phrase: String)]
-    let source: String
+    /// Where its numbers come from, small under the buttons; the chart says it in its header instead.
+    var source: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -552,7 +553,7 @@ struct AssetActions: View {
                     pill(p.title, p.icon, sell: p.title == "Sell", help: "Puts “\(p.phrase)” into the chat") { ws.suggest(p.phrase) }
                 }
             }
-            Text(source).font(.ui(10)).foregroundStyle(.tertiary).lineLimit(1)
+            if let source { Text(source).font(.ui(10)).foregroundStyle(.tertiary).lineLimit(1) }
         }
     }
 

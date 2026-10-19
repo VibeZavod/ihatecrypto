@@ -885,7 +885,8 @@ extension Workspace {
         guard SignerClient.isAvailable else { return }
         let ok = (try? await SignerClient().send(.lock))?.ok ?? false
         await loadSigner()
-        reply(ok ? "🔒 Locked. The next signature asks for Touch ID, and the trading key is paused — resume it in Settings › Wallet, or say «resume the trading key»."
+        AppLock.shared.lock()
+        reply(ok ? "🔒 Locked. The next signature asks for \(Presence.name), and the trading key is paused — resume it in Settings › Wallet, or say «resume the trading key»."
                  : "Couldn’t reach the signing process to lock it.")
     }
 
@@ -894,7 +895,7 @@ extension Workspace {
         do {
             let r = try await SignerClient().send(ledgerActive ? .setLedgerAgentActive(owner: hlAddress, active: true) : .setAgentActive(true))
             await loadSigner()
-            reply(r.ok && r.agentActive == true ? "Trading key on again: orders skip Touch ID, withdrawals still need it." : "The trading key stayed off.")
+            reply(r.ok && r.agentActive == true ? "Trading key on again: orders skip \(Presence.name), withdrawals still need it." : "The trading key stayed off.")
         } catch {
             reply("The trading key stayed off: \(error.localizedDescription)")
         }
@@ -905,7 +906,7 @@ extension Workspace {
     func enableAgent() async {
         // Hyperliquid refuses a key for an account that has never had a deposit: say so before Touch ID or the Ledger.
         if let evm = signerWallet?.evm, (try? await Hyperliquid.isNewAccount(evm)) == true {
-            reply("No trading key yet: Hyperliquid takes one once the account has had a deposit. Until then every order asks for \(ledgerActive ? "the Ledger's buttons" : "Touch ID"); after the first deposit, Settings › Wallet › Key and signing has the button.")
+            reply("No trading key yet: Hyperliquid takes one once the account has had a deposit. Until then every order asks for \(ledgerActive ? "the Ledger's buttons" : Presence.name); after the first deposit, Settings › Wallet › Hyperliquid has the button.")
             return
         }
         if ledgerActive { await enableLedgerAgent(); return }
@@ -920,7 +921,7 @@ extension Workspace {
             guard !result.isError else { throw ExecutionError("Hyperliquid rejected the agent: \(result).") }
             _ = try await SignerClient().send(.setAgentActive(true))
             await loadSigner()
-            reply("Trading key on: \(agent.prefix(10))…. Orders, stops and closes now skip Touch ID; this key can't withdraw money — withdrawals still go through the main key.")
+            reply("Trading key on: \(agent.prefix(10))…. Orders, stops and closes now skip \(Presence.name); this key can't withdraw money — withdrawals still go through the main key.")
         } catch {
             reply("Trading key not turned on: \(error.localizedDescription)")
         }
@@ -986,7 +987,9 @@ extension Workspace {
                 guard let self, SignerActivity.shared.atDevice else { return }
                 notify(.signature, say("Scheduled \(asset.symbol) buy", "Регулярная покупка \(asset.symbol)"),
                        ledgerActive ? say("Waiting for your Ledger — approve it on the device.", "Ждёт Ledger — подтверди на устройстве.")
-                                    : say("Waiting for Touch ID — confirm it on the sensor.", "Ждёт Touch ID — подтверди на датчике."), record: false)
+                                    : AppLock.shared.codeSigns ? say("Waiting for your code — type it in ihatecrypto's chat field.", "Ждёт твой код — введи его в поле чата ihatecrypto.")
+                                    : Presence.touchID ? say("Waiting for Touch ID — confirm it on the sensor.", "Ждёт Touch ID — подтверди на датчике.")
+                                    : say("Waiting for your Mac password — type it when macOS asks.", "Ждёт пароль от Mac — введи его, когда macOS спросит."), record: false)
             }
             defer { waiting.cancel() }
             do {
@@ -1200,7 +1203,7 @@ struct ConfirmSheet: View {
                     .controlSize(.large)
                 } else if ws.signerWallet != nil {
                     Button { Task { await ws.confirmExecution() } } label: {
-                        Label(ws.ledgerActive ? "Sign · Ledger" : "Sign · Touch ID", systemImage: ws.ledgerActive ? "hand.point.up.left.fill" : "touchid").font(.ui(14, .bold))
+                        Label(ws.ledgerActive ? "Sign · Ledger" : "Sign · \(Presence.signShort)", systemImage: ws.ledgerActive ? "hand.point.up.left.fill" : Presence.signIcon).font(.ui(14, .bold))
                             .padding(.horizontal, 6)
                     }
                     .keyboardShortcut(.defaultAction)

@@ -87,6 +87,9 @@ let package = Package(
         ),
 
         .testTarget(name: "IhatecryptoCoreTests", dependencies: ["IhatecryptoCore", "LLMCore"]),
+        // The window's own logic that needs no window: the profile menu's accounts, Settings › Modules' rows.
+        .testTarget(name: "IhatecryptoAppTests", dependencies: ["IhatecryptoApp", "IhatecryptoCore", "LLMCore", "LLMCatalog"],
+                    swiftSettings: [.defaultIsolation(MainActor.self)]),
         .testTarget(name: "DeFiTests", dependencies: ["DeFiYields"]),
         .testTarget(name: "WalletTests", dependencies: ["WalletCore", "HyperliquidSigning", "SolanaChain", "ExecutionCore", "TxGuard", "EVMChain", "TradeExecution", "SignerAPI", "Ledger", "OneClickKit", "RelayBridge", "IhatecryptoCore", "GuardJev"]),
         .testTarget(

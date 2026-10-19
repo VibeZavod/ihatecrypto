@@ -202,9 +202,9 @@ struct WalletManagement: View {
             Text("ihatecrypto makes a new 12-word recovery phrase inside the signer, from this Mac's random number generator, and keeps the key sealed by the Secure Enclave. Every signature asks for Touch ID or your password."
                  + (ws.signerWallet == nil ? "" : " It is added next to your other wallets and signs until you switch back."))
                 .font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
-            option("Test wallet: signs without Touch ID", $newTest)
+            option("Test wallet: signs without \(Presence.name)", $newTest)
             if newTest {
-                Text("For trying things out, and for Claude to test ihatecrypto without asking you: keep only a few dollars on it. It can't be made from an imported phrase, and adding it still asks for Touch ID once.")
+                Text("For trying things out, and for Claude to test ihatecrypto without asking you: keep only a few dollars on it. It can't be made from an imported phrase, and adding it still asks for \(Presence.name) once.")
                     .font(.ui(11)).foregroundStyle(Brand.jevInk).fixedSize(horizontal: false, vertical: true)
             }
             HStack {
@@ -216,7 +216,7 @@ struct WalletManagement: View {
 
     /// Every wallet in the signer: which one signs, switching (Touch ID), a name of the user's own, removal.
     private var walletList: some View {
-        SettingsSection(icon: "wallet.pass", title: "Your wallets", line: "One signs at a time. Switching or removing one asks for Touch ID.") {
+        SettingsSection(icon: "wallet.pass", title: "Your wallets", line: "One signs at a time. Switching or removing one asks for \(Presence.name).") {
             SettingsGroup {
                 ForEach(ws.wallets) { w in walletRow(w) }
             }

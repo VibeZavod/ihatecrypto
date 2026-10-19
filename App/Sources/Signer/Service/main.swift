@@ -22,6 +22,11 @@ final class SignerService: NSObject, SignerXPC {
     func handle(_ request: Data, reply: @escaping @Sendable (Data) -> Void) {
         var answer: SignerReply
         do { answer = try Signer.handle(try JSONDecoder().decode(SignerRequest.self, from: request)) }
+        catch let wait as CodeNeeded {
+            // The app asks for the passcode, then sends the same request again (SignerClient.send).
+            answer = SignerReply(ok: false, error: wait.reason)
+            answer.needsCode = true
+        }
         catch { answer = SignerReply(ok: false, error: error.localizedDescription) }
         reply((try? JSONEncoder().encode(answer)) ?? Data())
     }

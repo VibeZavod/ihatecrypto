@@ -1,6 +1,7 @@
 import os
 import AppKit
 import IhatecryptoCore
+import WalletCore
 import SwiftUI
 @preconcurrency import UserNotifications
 
@@ -31,7 +32,7 @@ enum Notice: String, CaseIterable {
         case .alerts: "A price alert fired"
         case .moves: "A confirmed move finished or failed"
         case .hlp: "The HLP deposit unlocked"
-        case .signature: "A scheduled buy waits for Touch ID"
+        case .signature: "A scheduled buy waits for \(Presence.name)"
         case .confirm: "A move or a trade waits for your Confirm"
         case .update: "A new version of ihatecrypto is ready"
         }
@@ -45,7 +46,7 @@ enum Notice: String, CaseIterable {
         case .alerts: "bell.badge"
         case .moves: "arrow.left.arrow.right"
         case .hlp: "lock.open"
-        case .signature: "touchid"
+        case .signature: Presence.icon
         case .confirm: "hand.raised"
         case .update: "arrow.down.app"
         }

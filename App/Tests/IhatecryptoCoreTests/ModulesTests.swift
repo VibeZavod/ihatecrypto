@@ -50,3 +50,69 @@ import Testing
     #expect(Modules().refusal(vault: "Somewhere") != nil)
     #expect(ModuleNetwork(place: "polygon") == .polygon && ModuleNetwork(place: "ethereum") == .ethereum)
 }
+
+@Test func nearMovesFollowTheNetworkTheMoneyIsOn() {
+    var m = Modules()
+    m.set(.solana, false)
+    // A buy pays with Solana USDC, what's received lands there, a sale with no network pays out there.
+    #expect(m.refusal(.buyNear(usdc: 10)) == "Solana is off in Settings › Modules.")
+    #expect(m.refusal(.receiveAcross(network: "sui", token: "USDC", amount: 50)) != nil)
+    #expect(m.refusal(.sellNear(amount: 1, to: nil)) != nil)
+    #expect(m.refusal(.sellNear(amount: 1, to: "base")) == nil)
+    m.set(.solana, true)
+    m.set(.base, false)
+    #expect(m.refusal(.sellNear(amount: 1, to: "base")) == "Base is off in Settings › Modules.")
+    #expect(m.refusal(.buyNear(usdc: 10)) == nil)
+    m.set(.near, false)
+    #expect(m.refusal(.buyNear(usdc: 10)) == "NEAR is off in Settings › Modules.")
+}
+
+@Test func hyperliquidSpotFollowsTheSwapsSwitch() {
+    var m = Modules()
+    #expect(m.refusal(.hlSpotBuy(symbol: "HYPE", usdc: 10)) == nil)
+    m.set(.swaps, false)
+    #expect(m.refusal(.hlSpotBuy(symbol: "HYPE", usdc: 10)) == "Swaps is off in Settings › Modules.")
+    #expect(m.refusal(.hlSpotSell(symbol: "HYPE", amount: nil)) != nil)
+    #expect(m.refusal(.swapOn("hyperliquid", from: "HYPE", to: "PURR", amount: 1)) != nil)
+    m.set(.swaps, true)
+    m.set(.hyperliquid, false)
+    #expect(m.refusal(.hlSpotSell(symbol: "HYPE", amount: nil)) == "Hyperliquid is off in Settings › Modules.")
+}
+
+@Test func aModuleNewToThisMacStaysOffUntilAnswered() {
+    let known = Set(Modules.allIDs.filter { $0 != "network.bnb" })
+    var m = Modules(known: known)
+    #expect(!m.isOn(.bnb) && m.isOn(.base))
+    #expect(m.newIDs == ["network.bnb"])
+    #expect(m.refusal(.swapOn("bnb", from: "BNB", to: "USDC", amount: 1)) == "BNB Chain is off in Settings › Modules.")
+    m.set(.bnb, true)
+    #expect(m.isOn(.bnb) && m.newIDs.isEmpty)
+    // Nothing recorded yet: every module as it was.
+    #expect(Modules(known: nil).newIDs.isEmpty)
+}
+
+@Test func theStoredFormSkipsWhatItCantRead() {
+    let m = Modules(stored: "network.base=0,,junk,kind.perps=1=2,protocol.kamino=1", known: nil)
+    #expect(m.choices == ["network.base": false, "protocol.kamino": true])
+    #expect(m.stored == "network.base=0,protocol.kamino=1")
+    #expect(Modules(stored: "", known: nil) == Modules())
+}
+
+@Test func placesAndIdsNameTheirModules() {
+    for n in ModuleNetwork.allCases { #expect(ModuleNetwork(place: n.rawValue) == n) }
+    #expect(ModuleNetwork(place: "HL") == .hyperliquid && ModuleNetwork(place: "HyperEVM") == .hyperevm)
+    #expect(ModuleNetwork(place: "sui") == nil)
+    #expect(Modules.name("network.bnb") == "BNB Chain" && Modules.name("kind.earn") == "Earn · DeFi" && Modules.name("protocol.mpp") == "MPP · x402")
+    #expect(Modules.name("network.mars") == "mars" && Modules.name("bogus") == "bogus")
+    #expect(Modules.allIDs.count == ModuleNetwork.allCases.count + ModuleKind.allCases.count + ModuleProtocol.allCases.count)
+}
+
+@Test func theBriefNamesWhatIsOff() {
+    var m = Modules()
+    m.set(.tempo, false)
+    m.set(.perps, false)
+    m.set(.kamino, false)
+    #expect(m.offSummary == "Tempo, Perps, Kamino")
+    // A protocol whose kind is off is off for the brief by its kind, not listed again.
+    #expect(!m.offSummary.contains("Hyperliquid"))
+}

@@ -288,7 +288,10 @@ public struct Modules: Equatable, Sendable {
         // One token for another on the network itself: Uniswap there, no bridge.
         case .swapOn("solana", _, _, _):
             return isOn(.swaps) ? r(.jupiter) : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
-        case .swapOn("hyperliquid", _, _, _): return refusal(network: .hyperliquid, ru: ru)
+        // Hyperliquid's spot book is a swap too: the Swaps switch covers it, as it does Tempo's exchange.
+        case .swapOn("hyperliquid", _, _, _), .hlSpotBuy, .hlSpotSell:
+            return isOn(.swaps) ? refusal(network: .hyperliquid, ru: ru)
+                : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
         case .swapOn("near", _, _, _): return r(.oneClick, via: [.near])
         case .crossSwap(_, let from, _, let to, _) where from == "near" || to == "near":
             return isOn(.swaps) ? r(.oneClick, via: [from, to].compactMap(ModuleNetwork.init(place:)))
@@ -302,11 +305,12 @@ public struct Modules: Equatable, Sendable {
         case .crossSwap(_, let from, _, let to, _):
             return isOn(.swaps) ? r(.relay, via: [from, to].compactMap(ModuleNetwork.init(place:)))
                 : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."
-        case .buyNear, .sellNear, .receiveAcross: return r(.oneClick)
+        // 1Click's other end: a buy pays with Solana USDC, what's received lands there, a sale pays out on `to` (nil: Solana).
+        case .buyNear, .receiveAcross: return r(.oneClick, via: [.solana])
+        case .sellNear(_, let to): return r(.oneClick, via: to.map { ModuleNetwork(place: $0).map { [$0] } ?? [] } ?? [.solana])
         case .sendNear, .closeNear: return refusal(network: .near, ru: ru)
         case .sendSol: return refusal(network: .solana, ru: ru)
         case .sendToken(_, _, _, let net): return net.flatMap(ModuleNetwork.init(place:)).flatMap { refusal(network: $0, ru: ru) }
-        case .hlSpotBuy, .hlSpotSell: return refusal(network: .hyperliquid, ru: ru)
         case .showApprovals, .revokeApproval: return nil   // reading them and setting one to zero is always allowed
         case .contractCall(let c): return ModuleNetwork(place: c.network).flatMap { refusal(network: $0, ru: ru) }
         case .sweepDust: return isOn(.swaps) ? r(.uniswap) : ru ? "\(ModuleKind.swaps.name) выключены в Settings › Modules." : "\(ModuleKind.swaps.name) is off in Settings › Modules."

@@ -106,6 +106,15 @@ public enum SignerRequest: Codable, Sendable {
     /// A new automation wallet (one at most, next to a Touch ID one): a phrase made here that signs without Touch ID,
     /// for the budget of scheduled tasks. Asks for Touch ID first; the wallet that signs stays the same.
     case createAutomationWallet
+    /// A 6-digit passcode (`Passcode.problem` must pass): it opens the app's lock screen and, on a Mac without Touch ID,
+    /// signs moves instead of the login password. Always confirmed in person first (Touch ID or the password), even with
+    /// no wallet yet: a code set silently would sign for every wallet sealed under it later. Replaces an earlier code.
+    case setCode(code: String)
+    /// Turns the passcode off (in person first): the app has no lock screen and signatures ask macOS again.
+    case clearCode
+    /// The passcode, typed in the app. `sign`: it also opens a signing session, as Touch ID would; without it, only says
+    /// whether the code is right (the app's lock screen). Five wrong codes in a row turn the code off (`codeOff`).
+    case enterCode(code: String, sign: Bool)
     /// `request` signed by the automation wallet `id` while another wallet stays active: a scheduled task's move.
     /// Only a money move's signature passes (no wallet changes, no site messages), with the same guard, and «our
     /// addresses» and the approved ones are that wallet's own.
@@ -182,7 +191,22 @@ public struct SignerWallet: Codable, Sendable, Equatable, Identifiable {
         }
         guard !has else { return nil }
         let name = ["solana": "Solana", "evm": "EVM (Hyperliquid, Base…)", "near": "NEAR"][chain] ?? chain
-        return "The wallet «\(label)» has no \(name) key: it holds only \(kind == "solana" ? "a Solana" : kind == "evm" ? "an EVM" : "a") key. Switch wallets (Settings → Key and signing) or import one that has it."
+        return "The wallet «\(label)» has no \(name) key: it holds only \(kind == "solana" ? "a Solana" : kind == "evm" ? "an EVM" : "a") key. Switch wallets (Settings › Wallet) or import one that has it."
+    }
+}
+
+/// The app's 6-digit passcode, checked the same way by the app and the signer.
+public enum Passcode {
+    public static let length = 6
+    /// Why `code` can't be one: not six digits, or one guessed first (all the same digit, a straight run up or down) —
+    /// with five tries before the code turns off, those would be the five.
+    public static func problem(_ code: String) -> String? {
+        let digits = code.compactMap(\.wholeNumberValue)
+        guard code.count == length, digits.count == length, code.allSatisfy(\.isASCII) else { return "The code is \(length) digits." }
+        let steps = Set(zip(digits, digits.dropFirst()).map { ($1 - $0 + 10) % 10 })
+        if steps == [0] { return "All the same digit is the first code anyone tries." }
+        if steps == [1] || steps == [9] { return "A straight run like 123456 is guessed first." }
+        return nil
     }
 }
 
@@ -219,6 +243,13 @@ public struct SignerReply: Codable, Sendable {
     public var nonce: UInt64?
     /// The address book as the signer keeps it (`.addressBook`, `.saveAddresses`, `.removeAddress`).
     public var addresses: [SignerAddress]?
+    /// A passcode is set (`.status`, `.setCode`, `.clearCode`, `.enterCode`).
+    public var codeSet: Bool?
+    /// The request waits for the passcode instead of a macOS prompt: `error` says what it signs. SignerClient asks the
+    /// person (`askCode`), sends `.enterCode`, then the same request again.
+    public var needsCode: Bool?
+    /// Five wrong codes: the code is off, and only the login password opens and signs now.
+    public var codeOff: Bool?
     public var checks: [String] = []
     public var problems: [String] = []
 
@@ -252,7 +283,25 @@ public final class SignerClient: @unchecked Sendable {
     /// Adding, switching, renaming or removing wallets never passes.
     @TaskLocal public static var untrusted = false
 
+    /// Asks the person for the passcode when the signer wants it (`needsCode`): what it signs, and why the last code
+    /// failed («Wrong code · 3 tries left»). nil: they cancelled. Set once by the app.
+    nonisolated(unsafe) public static var askCode: (@Sendable (_ reason: String, _ problem: String?) async -> String?)?
+
+    /// A request the signer can answer with `needsCode`: the code is asked here, checked by the signer (`.enterCode`,
+    /// which opens the signing session), and the same request goes again. Five wrong codes turn the code off; the request
+    /// then goes again to the macOS prompt.
     public func send(_ request: SignerRequest) async throws -> SignerReply {
+        var reply = try await deliver(request)
+        var problem: String?
+        while !Self.untrusted, reply.needsCode == true, let ask = Self.askCode {
+            guard let code = await ask(reply.error ?? "", problem) else { return SignerReply(ok: false, error: "Not confirmed: nothing was signed.") }
+            let entered = try await deliver(.enterCode(code: code, sign: true))
+            if entered.ok || entered.codeOff == true { problem = nil; reply = try await deliver(request) } else { problem = entered.error }
+        }
+        return reply
+    }
+
+    private func deliver(_ request: SignerRequest) async throws -> SignerReply {
         if Self.untrusted {
             switch request {
             case .status, .nearAddress, .endSession, .ledgerAgent(_, false), .addressBook: break
@@ -260,7 +309,7 @@ public final class SignerClient: @unchecked Sendable {
                  .signNearIntentDeposit, .signNearTransfer, .signNearDeleteAccount:
                 let status = try await Self.$untrusted.withValue(false) { try await send(.status) }
                 guard status.wallets?.first(where: { $0.id == status.activeWallet })?.isTest == true else {
-                    throw WalletError("Nothing is signed from the debug API while a Touch ID wallet signs: confirm money moves in ihatecrypto’s window, or switch to a test wallet.")
+                    throw WalletError("Nothing is signed from the debug API while a wallet that asks for \(Presence.name) signs: confirm money moves in ihatecrypto’s window, or switch to a test wallet.")
                 }
             default: throw WalletError("Nothing is signed from the debug API: confirm money moves in ihatecrypto’s window.")
             }

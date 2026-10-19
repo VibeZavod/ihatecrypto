@@ -1,6 +1,7 @@
 import AppKit
 import IhatecryptoCore
 import SwiftUI
+import WalletCore
 
 // MARK: What a step is
 
@@ -315,7 +316,10 @@ struct RouteCards: View {
     }
 
     private func sendToChat(_ i: Int) {
-        ws.stepContext = StepContext(title: name(i), logo: steps[i].logo)
+        // With the step's money and rows, as «Copy details» has them: it went by its name alone before.
+        let s = steps[i]
+        let facts = ([ws.readable(s.title)] + (s.money ?? []).map(MoneyLine.text) + s.lines.filter { !$0.isEmpty }.map(\.rowText)).joined(separator: " · ")
+        ws.attach(StepContext(title: name(i), logo: s.logo, about: "About the step «\(name(i))» of the route on the canvas (\(facts))"))
         withAnimation(.snappy(duration: 0.2)) { open = nil }
     }
 
@@ -763,7 +767,7 @@ struct StateChip: View {
         case .ready: ("Ready", Color(hex: 0x7A5B00), Color(hex: 0xFFD23F))
         case .done: ("Done", Color(hex: 0x177A52), Color(hex: 0x7EEBC0))
         case .now: ("Now", fill == .solana ? Color(hex: 0x6A4FD0) : fill.color, Color(hex: 0xB7A6FF))
-        case .touch: (SignerActivity.shared.ledger != nil ? "Ledger" : "Touch ID", .white, Color(hex: 0xFFD23F))
+        case .touch: (SignerActivity.shared.ledger != nil ? "Ledger" : Presence.signShort, .white, Color(hex: 0xFFD23F))
         case .next: ("Next", Color(hex: 0x6A6A72), Color(hex: 0xD9D9DE))
         case .failed: ("Failed", Color(hex: 0xB42A20), Color(hex: 0xFFB3A8))
         case .blocked: ("Stopped", Color(hex: 0xB42A20), Color(hex: 0xFFB3A8))
@@ -1410,11 +1414,20 @@ struct StepDetails: View {
 
 /// A route step handed to the chat: the next message is about it (Workspace.send), and a move waiting for Confirm
 /// keeps waiting while the question is answered.
-struct StepContext: Equatable {
+nonisolated struct StepContext: Equatable, Codable {
     let title: String
     let logo: String?
-    /// What the model is told the message is about: a token's facts (Workspace.askAbout); nil for a route step.
+    /// What the model is told the message is about: a token's, a step's or a block's facts; a block gets its own when the
+    /// message goes (Workspace.blockFacts).
     var about: String? = nil
+
+    /// A canvas block as the model reads it: its name, and what it shows when the canvas brief has its lines.
+    static func block(_ title: String, shows facts: String?) -> String {
+        "About the block on the canvas «\(title)»" + (facts.map { " (it shows: \($0))" } ?? "")
+    }
+
+    /// Only the block's name went: the model has none of its numbers.
+    var bare: Bool { about == nil || about == Self.block(title, shows: nil) }
 }
 
 /// The widest route on the canvas: the plan column widens for three cards in a row and stays 470 otherwise.
@@ -1432,7 +1445,7 @@ struct StepContextChip: View {
         HStack(spacing: 8) {
             if let logo = step.logo { TokenLogo(name: logo, size: 18) }
             Text(step.title).font(.ui(12, .semibold)).lineLimit(1).truncationMode(.middle)
-            Button { withAnimation(.snappy(duration: 0.2)) { ws.stepContext = nil } } label: {
+            Button { withAnimation(.snappy(duration: 0.2)) { ws.attached.removeAll { $0.title == step.title } } } label: {
                 Image(systemName: "xmark").font(.system(size: 9, weight: .bold)).frame(width: 20, height: 20)
             }
             .buttonStyle(.hoverIcon).help(step.about == nil ? "Don't attach this step" : "Don't attach it")
@@ -1446,6 +1459,65 @@ struct StepContextChip: View {
 }
 
 extension Workspace {
+    /// Hands something to the chat: its chip over the field (the same title again replaces it), the field taking the keys.
+    func attach(_ c: StepContext) {
+        if let i = attached.firstIndex(where: { $0.title == c.title }) { attached[i] = c } else { attached.append(c) }
+        draftSelection = NSRange(location: draft.utf16.count, length: 0)
+    }
+}
+
+/// Right-click on a canvas block: ask about it in the chat or say what to do with it (a chip over the field, the block's
+/// edge lit, the field taking the keys), or «What's going on here?» straight away. Each right-click adds a block, so one
+/// message can be about several (the owner, 2026-10-19: «как будем работать, когда множество блоков»). The model already
+/// has every block's numbers (Workspace.canvasBlocks); the chip tells it which ones the message is about.
+/// `radius`: the block's own corners for the lit edge; nil for a block with no frame of its own (route cards).
+struct BlockMenu: ViewModifier {
+    @Environment(Workspace.self) private var ws
+    let title: String
+    var logo: String?
+    var radius: CGFloat?
+
+    func body(content: Content) -> some View {
+        let on = ws.attached.contains { $0.title == title }
+        let block = StepContext(title: title, logo: logo)
+        let question = ws.say("What's going on here?", "Что здесь происходит?", "¿Qué está pasando aquí?")
+        content
+            .overlay {
+                if on, let radius { RoundedRectangle(cornerRadius: radius).strokeBorder(Brand.accent, lineWidth: 2).allowsHitTesting(false) }
+            }
+            .contextMenu {
+                Group {
+                    if on {
+                        Button { ws.attached.removeAll { $0.title == title } } label: {
+                            Label(ws.say("Take out of the chat", "Убрать из чата", "Quitar del chat"), systemImage: "xmark.circle")
+                        }
+                    } else {
+                        Button { ws.attach(block) } label: {
+                            Label(ws.say("Ask or act in chat", "Спросить или поручить в чате", "Preguntar o pedir en el chat"), systemImage: "bubble.left")
+                        }
+                    }
+                    Button { Task { await ws.send(question, about: [block]) } } label: { Label(question, systemImage: "questionmark.bubble") }
+                        .disabled(ws.busy || !ws.hasModel)
+                }
+                .labelStyle(.titleAndIcon)
+            }
+    }
+}
+
+extension View {
+    func blockMenu(_ title: String, logo: String? = nil, radius: CGFloat? = 24) -> some View {
+        modifier(BlockMenu(title: title, logo: logo, radius: radius))
+    }
+}
+
+extension Workspace {
+    /// A place opened on the canvas by name: «Kamino», «Token · AI», «Chart · NEAR».
+    func placeTitle(_ place: String) -> String {
+        if let p = TokenBoard.parse(place) { return "Token · " + (favoriteToken(p.address)?.symbol ?? tokenLabel(p.address)) }
+        if place == "chart" { return "Chart · " + (chart.map { IntentParser.pretty($0.coin) } ?? "") }
+        return WalletCommand.placeName(place)
+    }
+
     /// Which way a trade of `token` on `place` takes, as its route's step picked it: "relay", "uniswap", or none.
     static func wayKey(_ place: String, _ token: String) -> String { "\(place):\(token.lowercased())" }
 }

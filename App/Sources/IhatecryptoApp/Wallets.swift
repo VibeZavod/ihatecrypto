@@ -164,7 +164,7 @@ struct WalletChip: View {
             }
             .buttonStyle(.plain)
             .modifier(HoverLift(radius: 11))
-            .help(w.isTest ? "«\(w.label)» signs without Touch ID — a test wallet. Click to switch or rename." : "«\(w.label)» signs, with Touch ID. Click to switch or rename.")
+            .help(w.isTest ? "«\(w.label)» signs without \(Presence.name) — a test wallet. Click to switch or rename." : "«\(w.label)» signs, with \(Presence.name). Click to switch or rename.")
             .popover(isPresented: $open, arrowEdge: compact ? .trailing : .bottom) { WalletMenu { open = false } }
         }
     }
@@ -191,7 +191,7 @@ private struct WalletMenu: View {
                 }
             }
             if !ws.wallets.contains(where: \.isTest) {
-                MenuRow(title: "New test wallet…", detail: "signs without Touch ID · for a few dollars", icon: "flask") {
+                MenuRow(title: "New test wallet…", detail: "signs without \(Presence.name) · for a few dollars", icon: "flask") {
                     UserDefaults.standard.set(true, forKey: "newWalletTest")
                     close(); ws.openSettings(.wallet)
                 }
@@ -205,7 +205,7 @@ private struct WalletMenu: View {
                 close(); ws.suggest("make a multisig")
             }
             MenuRow(title: "Manage wallets…", detail: "create, import, remove", icon: "key") { close(); ws.openSettings(.wallet) }
-            Text("Switching asks for Touch ID. A test wallet signs its moves without it — Claude can test with it; keep only a few dollars there.")
+            Text("Switching asks for \(Presence.name). A test wallet signs its moves without it — Claude can test with it; keep only a few dollars there.")
                 .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 10).padding(.top, 4)
         }
         .padding(.vertical, 12).padding(.horizontal, 6)
@@ -228,7 +228,7 @@ private struct WalletMenu: View {
                 } else {
                     Text(w.label).font(.ui(13, .semibold))
                 }
-                Text((w.kind == "ledger" ? "On the device · " : w.isTest ? "Test · no Touch ID · " : w.isAutomation ? "Scheduled tasks · no Touch ID · " : "Touch ID · ") + short(w)).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
+                Text((w.kind == "ledger" ? "On the device · " : w.isTest ? "Test · no \(Presence.short) · " : w.isAutomation ? "Scheduled tasks · no \(Presence.short) · " : "\(Presence.short) · ") + short(w)).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 4)
             if active { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Brand.accentInk) }

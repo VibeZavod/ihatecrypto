@@ -104,3 +104,10 @@ private let rfcPublic = Data(hex: "d75a980182b10ab7d54bfed3c964073a0ee172f3daa62
     #expect(!sol.same(name: "Bybit", network: "solana", address: sol.address.lowercased()))
     #expect(!sol.same(name: "Bybit", network: "near", address: sol.address))
 }
+
+/// The passcode: six ASCII digits, and not one of the codes a thief tries first in its five tries.
+@Test func passcodeIsSixDigitsAndNotTheFirstGuesses() {
+    for good in ["480516", "190208", "000001", "135790"] { #expect(Passcode.problem(good) == nil, "\(good)") }
+    for short in ["", "12345", "1234567", "12a456", "１２３４５６", "٤٨٠٥١٦"] { #expect(Passcode.problem(short) != nil, "\(short)") }
+    for guessed in ["000000", "777777", "123456", "345678", "890123", "654321", "210987"] { #expect(Passcode.problem(guessed) != nil, "\(guessed)") }
+}

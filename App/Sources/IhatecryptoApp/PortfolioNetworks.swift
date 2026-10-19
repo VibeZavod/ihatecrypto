@@ -545,7 +545,7 @@ extension Workspace {
             chainCost[w.key] = basis.map { (w.held, $0) }   // didn't answer: read again next time
             // Nothing tells what it cost (no history to read, or none that priced it): from when the app first saw it.
             let noHistory = Holdings.blockscout[w.chain] == nil && !["solana", "near", "hyperliquid"].contains(w.chain)
-            if (basis != nil || noHistory), (basis?.amount ?? 0) == 0, (costBasis[w.key]?.amount ?? 0) == 0, let price = w.price {
+            if basis != nil || noHistory, (basis?.amount ?? 0) == 0, (costBasis[w.key]?.amount ?? 0) == 0, let price = w.price {
                 seen(w.key, held: w.held, price: price)
             }
         }

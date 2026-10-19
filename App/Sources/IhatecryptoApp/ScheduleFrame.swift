@@ -4,6 +4,7 @@ import IhatecryptoCore
 import SignerAPI
 import SwiftUI
 import TradeExecution
+import WalletCore
 
 /// The automation wallet's USDC: the Schedule's budget, wherever it lies — Solana, every EVM network ihatecrypto knows
 /// (one address for all of them; USDG on Robinhood Chain) and NEAR.
@@ -40,7 +41,7 @@ enum ScheduleSigner {
     var icon: String {
         switch self {
         case .itself: "bolt"
-        case .touchID: "touchid"
+        case .touchID: Presence.icon
         case .confirm: "hand.tap"
         case .ledger: "lock.shield"
         case .exchange: "chart.line.uptrend.xyaxis"
@@ -50,7 +51,7 @@ enum ScheduleSigner {
     var words: String {
         switch self {
         case .itself: "runs by itself"
-        case .touchID: "asks Touch ID"
+        case .touchID: "asks \(Presence.name)"
         case .confirm: "waits for Confirm"
         case .ledger: "asks your Ledger"
         case .exchange: "on the exchange"
@@ -270,7 +271,13 @@ extension Workspace {
     /// page shows it — when, where it pays from and who signs, on or paused, its last runs and how they went (the owner,
     /// 2026-10-16: «должен передать контекст блока»).
     func askAboutScheduled(_ key: String) {
-        guard let e = scheduleEntries.first(where: { $0.id == key }) else { return }
+        guard let e = scheduleEntries.first(where: { $0.id == key }), let facts = scheduledFacts(key) else { return }
+        attach(StepContext(title: e.title, logo: e.logo, about: "About the scheduled task «\(facts)»"))
+    }
+
+    /// A scheduled item as its page shows it, for the model.
+    func scheduledFacts(_ key: String) -> String? {
+        guard let e = scheduleEntries.first(where: { $0.id == key }) else { return nil }
         var facts = [e.title, e.every ?? e.when]
         if let next = e.next { facts.append("next run \(NextRun.when(next))") }
         facts.append(e.paused ? "paused" : schedulePaused ? "the whole schedule is paused" : "on")
@@ -279,7 +286,7 @@ extension Workspace {
             if !t.movesMoney {
                 facts.append("moves no money")
             } else if usesAutomation(t) {
-                facts.append("pays from the automation wallet «\(automationWallet?.label ?? "")», by itself without Touch ID")
+                facts.append("pays from the automation wallet «\(automationWallet?.label ?? "")», by itself without \(Presence.name)")
             } else {
                 facts.append("pays from «\(activeWallet?.label ?? "the wallet that's on")», each move waits for Confirm")
             }
@@ -290,7 +297,7 @@ extension Workspace {
             return "\(ScheduleItemBoard.stamp(a.at)) \(how): \(ScheduleItemBoard.said(a))"
         }
         facts.append(runs.isEmpty ? "hasn't run yet" : "last runs: " + runs.joined(separator: "; "))
-        stepContext = StepContext(title: e.title, logo: e.logo, about: "About the scheduled task «\(facts.joined(separator: "; "))»")
+        return facts.joined(separator: "; ")
     }
 
     func setPaused(_ id: String, _ paused: Bool) {
@@ -417,8 +424,8 @@ struct ScheduleFrame: View {
     @ViewBuilder private var budget: some View {
         if ws.automationWallet == nil {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Run tasks by themselves, without Touch ID?").font(.ui(13, .bold))
-                Text("An automation wallet holds the Schedule’s budget and signs its tasks. Your main wallet keeps Touch ID.")
+                Text("Run tasks by themselves, without \(Presence.name)?").font(.ui(13, .bold))
+                Text("An automation wallet holds the Schedule’s budget and signs its tasks. Your main wallet still asks for \(Presence.name).")
                     .font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button { Task { await ws.createAutomationWallet() } } label: { Label("Create an automation wallet", systemImage: "plus") }
                     .buttonStyle(.borderedProminent).tint(Brand.accent).controlSize(.small).pointerStyle(.link)
@@ -455,7 +462,7 @@ struct ScheduleFrame: View {
                         Spacer(minLength: 4)
                         Button { Task { await ws.send("send 0.01 SOL to \(w.label) on Solana") } } label: { Label("Send 0.01 SOL", systemImage: "plus").font(.ui(11.5, .bold)) }
                             .buttonStyle(.bordered).controlSize(.small).pointerStyle(.link)
-                            .help("From your main wallet: the card waits for Confirm and Touch ID")
+                            .help("From your main wallet: the card waits for Confirm and \(Presence.name)")
                     }
                 }
                 // Short for the week ahead, or nothing on it: the way to put the budget there — the button puts it in the
@@ -850,7 +857,7 @@ struct TopUpBalances: View {
                 Text("Solana has \(Fmt.num(solana)) USDC, \(Fmt.num(amount - solana)) short." + (elsewhere.isEmpty ? "" : " There’s USDC on \(elsewhere.joined(separator: ", ")): move it to Solana first."))
                     .font(.ui(11, .semibold)).foregroundStyle(Brand.jevInk).fixedSize(horizontal: false, vertical: true)
             }
-            Text("Type another amount if you like, then Return. Confirm and Touch ID come after.").font(.ui(10.5)).foregroundStyle(.secondary)
+            Text("Type another amount if you like, then Return. Confirm and \(Presence.name) come after.").font(.ui(10.5)).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
         .padding(12)
@@ -994,8 +1001,8 @@ struct ScheduleItemBoard: View {
         let wallet = ws.activeWallet?.label ?? "Your wallet"
         let money = task?.movesMoney ?? true
         let signs = switch signer {
-        case .itself: Fact(label: "SIGNS", value: "By itself", detail: money ? "no Touch ID" : "nothing to sign", icon: signer.icon)
-        case .touchID: Fact(label: "SIGNS", value: "Touch ID", detail: task == nil ? "each buy asks your finger" : "each move waits for Confirm and your finger", icon: signer.icon)
+        case .itself: Fact(label: "SIGNS", value: "By itself", detail: money ? "no \(Presence.short)" : "nothing to sign", icon: signer.icon)
+        case .touchID: Fact(label: "SIGNS", value: Presence.short, detail: task == nil ? "each buy asks for \(Presence.name)" : "each move waits for Confirm and \(Presence.name)", icon: signer.icon)
         case .confirm: Fact(label: "SIGNS", value: "Your Confirm", detail: "each move waits on its canvas", icon: signer.icon)
         case .ledger: Fact(label: "SIGNS", value: "Your Ledger", detail: "approve each run on the device", icon: signer.icon)
         case .exchange: Fact(label: "SIGNS", value: "The exchange", detail: "", icon: signer.icon)
@@ -1020,7 +1027,7 @@ struct ScheduleItemBoard: View {
                         : Fact(label: "ENDS UP IN", value: "«\(a.label)»", detail: "the automation wallet")]
         } else {
             let free = task.flatMap { $0.spreadsUSDC ? ws.freeUSDC($0) : nil }
-            facts = [Fact(label: "PAYS FROM", value: wallet, detail: task?.sells == true ? "a sale asks Touch ID" : free.map { "\(Fmt.num($0)) USDC free" } ?? "the wallet that’s on"),
+            facts = [Fact(label: "PAYS FROM", value: wallet, detail: task?.sells == true ? "a sale asks for \(Presence.name)" : free.map { "\(Fmt.num($0)) USDC free" } ?? "the wallet that’s on"),
                      Fact(label: "ENDS UP IN", value: wallet, detail: "the wallet it pays from")]
         }
         // With an automation wallet a task picks where it pays from, on the tile itself.
@@ -1031,8 +1038,8 @@ struct ScheduleItemBoard: View {
                     Text(f.label).font(.ui(9.5, .semibold)).tracking(1.1).foregroundStyle(.secondary).lineLimit(1).minimumScaleFactor(0.8)
                     if pick, f.label == "PAYS FROM", let t = task, let a = ws.automationWallet {
                         Menu {
-                            Button("«\(a.label)» · by itself, no Touch ID") { ws.setFromActive(key, false) }
-                            Button("«\(wallet)» · Confirm and Touch ID each run") { ws.setFromActive(key, true) }
+                            Button("«\(a.label)» · by itself, no \(Presence.short)") { ws.setFromActive(key, false) }
+                            Button("«\(wallet)» · Confirm and \(Presence.short) each run") { ws.setFromActive(key, true) }
                         } label: {
                             HStack(spacing: 4) {
                                 Text(f.value).font(.ui(15, .bold)).lineLimit(2).multilineTextAlignment(.leading)
@@ -1040,7 +1047,7 @@ struct ScheduleItemBoard: View {
                             }
                         }
                         .menuStyle(.button).buttonStyle(.plain).menuIndicator(.hidden).fixedSize(horizontal: false, vertical: true).pointerStyle(.link)
-                        .help(ws.usesAutomation(t) ? "Pay from «\(wallet)» instead: each run waits for Confirm and Touch ID" : "Pay from «\(a.label)» instead: runs by itself")
+                        .help(ws.usesAutomation(t) ? "Pay from «\(wallet)» instead: each run waits for Confirm and \(Presence.name)" : "Pay from «\(a.label)» instead: runs by itself")
                     } else {
                         HStack(spacing: 5) {
                             if let icon = f.icon { Image(systemName: icon).font(.system(size: 12, weight: .semibold)) }
@@ -1106,7 +1113,7 @@ struct ScheduleItemBoard: View {
                             Label("Pay from «\(otherName)» · \(Fmt.num(there)) USDC free", systemImage: "arrow.left.arrow.right").font(.ui(12, .semibold))
                         }
                         .buttonStyle(.bordered).controlSize(.small).pointerStyle(.link)
-                        .help(automation ? "Each run waits for your Confirm and Touch ID" : "Runs by itself, no Touch ID")
+                        .help(automation ? "Each run waits for your Confirm and \(Presence.name)" : "Runs by itself, no \(Presence.short)")
                     }
                 }
                 .padding(.top, 4)
@@ -1124,8 +1131,8 @@ struct ScheduleItemBoard: View {
                 .frame(width: 34, height: 34)
                 .background(RoundedRectangle(cornerRadius: 10, style: .continuous).fill(Brand.accent.opacity(0.14)))
             VStack(alignment: .leading, spacing: 4) {
-                Text("Run it by itself, without Touch ID?").font(.ui(13.5, .bold))
-                Text("Right now its moves wait for your Confirm and finger. An automation wallet holds the budget for scheduled tasks and signs them on its own; your main wallet keeps Touch ID.")
+                Text("Run it by itself, without \(Presence.name)?").font(.ui(13.5, .bold))
+                Text("Right now its moves wait for your Confirm and \(Presence.name). An automation wallet holds the budget for scheduled tasks and signs them on its own; your main wallet still asks for \(Presence.name).")
                     .font(.ui(11)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                 Button {
                     Task { await ws.createAutomationWallet() }
@@ -1133,7 +1140,7 @@ struct ScheduleItemBoard: View {
                     Label("Create an automation wallet", systemImage: "plus.circle.fill").font(.ui(12, .semibold))
                 }
                 .buttonStyle(.borderedProminent).tint(Brand.accent).controlSize(.small).pointerStyle(.link).padding(.top, 4)
-                .help("Touch ID once; then put the tasks' budget on it")
+                .help("\(Presence.short) once; then put the tasks' budget on it")
             }
         }
         .padding(12)

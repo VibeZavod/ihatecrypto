@@ -29,21 +29,76 @@ enum Signer {
             r.agentAddress = AgentStore.load().flatMap { try? EVMAccount.address(privateKey: $0) }
             r.agentActive = defaults.bool(forKey: agentActiveKey) && r.agentAddress != nil
             r.sessionLength = SeedStore.sessionLength
+            r.codeSet = CodeStore.isSet
             return r
+
+        case .setCode(let code):
+            if let problem = Passcode.problem(code) { throw WalletError(problem) }
+            // In person every time, even with no wallet yet: a code set silently would sign for every wallet sealed under
+            // it later. A Debug signer that holds only the public test wallet (its self-test) is the one exception.
+            #if DEBUG
+            let onlyPublicTest = !Wallets.all.isEmpty && Wallets.all.allSatisfy { $0.solana == publicTestSolana }
+            #else
+            let onlyPublicTest = false
+            #endif
+            if !onlyPublicTest {
+                try SeedStore.confirm("save your new 6-digit passcode: it opens the app" + (Presence.touchID ? "" : " and signs your moves"))
+            }
+            defer { SeedStore.endSession() } // a confirmation, not a move: it leaves no session for an unrelated signature
+            try CodeStore.set(code, presence: SeedStore.confirmed)
+            var r = SignerReply(ok: true)
+            r.codeSet = true
+            return r
+
+        case .clearCode:
+            if CodeStore.isSet {
+                try SeedStore.confirm("turn off your passcode")
+                SeedStore.endSession()
+                CodeStore.clear()
+            }
+            var r = SignerReply(ok: true)
+            r.codeSet = false
+            return r
+
+        case .enterCode(let code, let sign):
+            guard CodeStore.isSet else {
+                var r = SignerReply(ok: false, error: "There is no passcode: your Mac password opens ihatecrypto.")
+                (r.codeSet, r.codeOff) = (false, true)
+                return r
+            }
+            switch CodeStore.enter(code) {
+            case .right(let context):
+                if sign, CodeStore.signs { SeedStore.startCodeSession(context) }
+                var r = SignerReply(ok: true)
+                r.codeSet = true
+                return r
+            case .wrong(let left):
+                var r = SignerReply(ok: false, error: "Wrong code · \(left) \(left == 1 ? "try" : "tries") left")
+                r.codeSet = true
+                return r
+            case .uncounted:
+                var r = SignerReply(ok: false, error: "The signer couldn't count this try, so it didn't check the code: try again.")
+                r.codeSet = true
+                return r
+            case .off:
+                var r = SignerReply(ok: false, error: "\(CodeStore.tries) wrong codes: the code is off. Only your Mac password opens ihatecrypto and signs now.")
+                (r.codeSet, r.codeOff) = (false, true)
+                return r
+            }
 
         case .enableAgent:
             let owner = try address("evm")
             var agentKey = AgentStore.load()
-            if agentKey == nil {
-                agentKey = try AgentStore.make()
-                try AgentStore.save(agentKey!)
-            }
+            let made = agentKey == nil
+            if made { agentKey = try AgentStore.make() }
             let agent = try EVMAccount.address(privateKey: agentKey!)
             guard agent.lowercased() != owner.lowercased() else { throw WalletError("The agent key matches the main key.") }
             let nonce = UInt64(Date().timeIntervalSince1970 * 1000)
-            let (action, signature) = try withKey("evm", reason: "approve a trading key: orders without Touch ID; it can't withdraw money") {
+            let (action, signature) = try withKey("evm", reason: "approve a trading key: orders without \(Presence.name); it can't withdraw money") {
                 try HLSigner.approveAgent(agent: agent, name: "ihatecrypto", nonce: nonce, privateKey: $0, mainnet: true)
             }
+            // Kept only once its approval is signed: a Touch ID turned down leaves no key that Settings would call paused.
+            if made { try AgentStore.save(agentKey!) }
             var r = SignerReply(ok: true)
             r.agentAddress = agent
             r.action = action
@@ -67,7 +122,7 @@ enum Signer {
             // Without Touch ID it can only be a test wallet: a phrase made here and now, never one imported with money on it.
             let phrase = Mnemonic.generate()
             try confirmInPerson(requirePresence ? "add a new wallet to ihatecrypto and sign with it"
-                                                : "add a TEST wallet that signs WITHOUT Touch ID — keep only a few dollars on it")
+                                                : "add a TEST wallet that signs WITHOUT \(Presence.name) — keep only a few dollars on it")
             var r = try store(phrase: phrase, passphrase: "", requirePresence: requirePresence, test: !requirePresence)
             r.phrase = phrase
             return r
@@ -77,7 +132,7 @@ enum Signer {
             guard !Wallets.all.isEmpty, !Wallets.all.contains(where: \.isAutomation) else {
                 throw WalletError(Wallets.all.isEmpty ? "Add your main wallet first." : "There is an automation wallet already.")
             }
-            try confirmInPerson("add an AUTOMATION wallet: scheduled tasks sign with it WITHOUT Touch ID — keep only their budget on it")
+            try confirmInPerson("add an AUTOMATION wallet: scheduled tasks sign with it WITHOUT \(Presence.name) — keep only their budget on it")
             return try store(phrase: Mnemonic.generate(), passphrase: "", requirePresence: false, test: true, automation: true)
 
         case .asWallet(let id, let inner):
@@ -244,13 +299,13 @@ enum Signer {
             }
             var r = SignerReply(ok: true)
             r.agentActive = false
-            r.checks = ["Touch ID session ended; the trading key is paused."]
+            r.checks = ["The \(Presence.short) session ended; the trading key is paused."]
             return r
 
         case .setSessionLength(let seconds):
-            guard SignerSession.choices.contains(seconds) else { throw WalletError("Touch ID can stay valid for 1, 5, 15 or 30 minutes.") }
+            guard SignerSession.choices.contains(seconds) else { throw WalletError("A confirmation can stay valid for 1, 5, 15 or 30 minutes.") }
             if seconds > SeedStore.sessionLength {
-                try SeedStore.confirm("keep Touch ID valid for \(seconds / 60) min after each confirmation")
+                try SeedStore.confirm("skip \(Presence.name) for \(seconds / 60) min after each confirmation")
             }
             defaults.set(seconds, forKey: "sessionLength")
             SeedStore.endSession()

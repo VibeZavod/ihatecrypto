@@ -208,7 +208,7 @@ struct FavoriteTokensTable: View {
         // A token with nothing to sort by goes last, either way.
         return list.sorted { a, b in
             switch (key(a), key(b)) {
-            case let (x?, y?): up ? x < y : x > y
+            case (let x?, let y?): up ? x < y : x > y
             case (_?, nil): true
             default: false
             }
@@ -492,9 +492,9 @@ struct AddFavoriteButton: View {
             .background(RoundedRectangle(cornerRadius: 10).fill(Color.primary.opacity(0.05)))
             HStack {
                 Spacer()
-                Button { close(); saveAddress(a) } label: { Label("Name it and save…", systemImage: "touchid") }
+                Button { close(); saveAddress(a) } label: { Label("Name it and save…", systemImage: Presence.icon) }
                     .buttonStyle(.borderedProminent).disabled(own || same != nil)
-                    .help("A name, its network; Touch ID shows the whole address before it's saved")
+                    .help("A name, its network; the \(Presence.short) prompt shows the whole address before it's saved")
             }
         }
     }

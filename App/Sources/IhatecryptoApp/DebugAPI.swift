@@ -113,6 +113,10 @@ final class DebugAPI {
             return (403, "text/plain", Data("forbidden\n".utf8))
         }
         guard let ws else { return (503, "text/plain", Data("no workspace\n".utf8)) }
+        // Locked: the window shows nothing, and neither does this.
+        if AppLock.shared.locked {
+            return r.path == "/state" ? (200, "application/json", Data(#"{"locked":true}"#.utf8)) : (423, "text/plain", Data("locked\n".utf8))
+        }
         switch (r.method, r.path) {
         case ("GET", "/state"):
             return (200, "application/json", json(state(ws, since: max(0, ws.messages.count - 12))))
@@ -144,7 +148,7 @@ final class DebugAPI {
         case ("POST", "/pick"):
             let index = (((try? JSONSerialization.jsonObject(with: r.body)) as? [String: Any])?["index"] as? Int) ?? 0
             guard !ws.busy else { return (409, "text/plain", Data("busy\n".utf8)) }
-            guard let options = ws.nextSteps?.options, options.indices.contains(index) else { return (404, "text/plain", Data("no such card\n".utf8)) }
+            guard let options = ws.liveSteps?.options, options.indices.contains(index) else { return (404, "text/plain", Data("no such card\n".utf8)) }
             let before = ws.messages.count, knownTasks = Set(ws.tasks.map(\.id))
             await SignerClient.$untrusted.withValue(true) { await ws.pick(options[index]) }
             testTasks.formUnion(ws.tasks.map(\.id).filter { !knownTasks.contains($0) })
@@ -454,7 +458,8 @@ final class DebugAPI {
             }
             let length = Int(headers["content-length"] ?? "0") ?? 0
             let rest = data[end.upperBound...]
-            guard rest.count >= length else { return nil }
+            // A negative length would trap in prefix(_:) below, before any token is checked (the Top up page shares this).
+            guard length >= 0, rest.count >= length else { return nil }
             method = first.first.map(String.init) ?? ""
             path = first.dropFirst().first.map(String.init) ?? ""
             self.headers = headers

@@ -405,7 +405,7 @@ private struct KeyRow: View {
                 .background(RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.05)))
             VStack(alignment: .leading, spacing: 1) {
                 Text(key.name).font(.ui(13, .semibold)).lineLimit(1)
-                Text("\(key.address.prefix(6))…\(key.address.suffix(4)) · " + (key.kind == "mac" ? "Touch ID" : key.kind == "ledger" ? "the Ledger's buttons" : "signs in Safe's app"))
+                Text("\(key.address.prefix(6))…\(key.address.suffix(4)) · " + (key.kind == "mac" ? Presence.short : key.kind == "ledger" ? "the Ledger's buttons" : "signs in Safe's app"))
                     .font(.ui(11)).foregroundStyle(.secondary).lineLimit(1)
             }
             Spacer(minLength: 6)
@@ -460,7 +460,7 @@ struct MultisigSetupCard: View {
                             }
                             .buttonStyle(.plain).foregroundStyle(.secondary).pointerStyle(.link)
                         }
-                        Text("Checked: no two keys from one phrase, one key at most on this Mac, every address a plain wallet saved with Touch ID.")
+                        Text("Checked: no two keys from one phrase, one key at most on this Mac, every address a plain wallet saved with \(Presence.name).")
                             .font(.ui(10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                     VStack(alignment: .leading, spacing: 8) {
@@ -543,7 +543,7 @@ struct MultisigSetupCard: View {
     }
 
     func foot(_ d: MultisigDraft) -> String {
-        func names(_ keys: ArraySlice<Multisig.Key>) -> String { keys.map { $0.kind == "mac" ? "Touch ID on this Mac" : $0.kind == "ledger" ? "the Ledger" : $0.name }.joined(separator: " and ") }
+        func names(_ keys: ArraySlice<Multisig.Key>) -> String { keys.map { $0.kind == "mac" ? "\(Presence.short) on this Mac" : $0.kind == "ledger" ? "the Ledger" : $0.name }.joined(separator: " and ") }
         let spare = d.keys.dropFirst(d.threshold)
         return "Every send: \(names(d.keys.prefix(d.threshold)))." + (spare.isEmpty ? "" : " Spare: \(names(spare)).") + " Making it costs only the network fee; Safe takes nothing."
     }

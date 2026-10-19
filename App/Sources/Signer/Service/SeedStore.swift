@@ -120,13 +120,17 @@ enum SeedStore {
         endSession()
         if let old { SecItemDelete(keyQuery(old) as CFDictionary) }
         if id == SignerWallet.firstID { SecItemDelete(item(legacyAccount) as CFDictionary) }
+        // A wallet that asks in person is sealed under the passcode too, when there is one and it signs here (no Touch
+        // ID): the code was set in person.
+        if presence, !Presence.touchID { CodeStore.seal(seed, id: id) }
     }
 
     /// One Touch ID per move, not per signature: a context that already authenticated opens the key again
     /// without a prompt, for at most `sessionLength` (1 minute unless the user picked 5, 15 or 30). With the standard
     /// minute the app ends it as soon as the move is done (`endSession`). Every signature still passes the guard;
     /// a locked screen or sleep ends the session.
-    nonisolated(unsafe) private static var session: (context: LAContext, since: Date)?
+    /// `byCode`: the passcode opened it (`startCodeSession`), so signatures open the seeds' passcode seals.
+    nonisolated(unsafe) private static var session: (context: LAContext, since: Date, byCode: Bool)?
 
     static var sessionLength: Int {
         let chosen = Signer.defaults.integer(forKey: "sessionLength")
@@ -136,23 +140,42 @@ enum SeedStore {
 
     /// `session: false` — a key sealed without Touch ID (the automation wallet's) opens on a context of its own: it
     /// neither reuses the Touch ID session nor leaves its reason on it for the next prompt.
+    /// On a Mac without Touch ID that has a passcode, a wallet the code seals throws `CodeNeeded` instead of asking macOS:
+    /// the app asks for the code, and `.enterCode` opens the session this then uses.
     static func load(reason: String, id: String, session useSession: Bool = true) throws -> Data {
-        let context: LAContext = lock.withLock {
+        let (opened, byCode): (LAContext, Bool) = try lock.withLock {
             let fresh = LAContext()
             fresh.localizedReason = reason
-            guard useSession else { return fresh }
-            if let s = session, Date().timeIntervalSince(s.since) < TimeInterval(sessionLength) { return s.context }
-            session = (fresh, Date())
-            return fresh
+            guard useSession else { return (fresh, false) }
+            // A code session counts only where the code signs: with Touch ID the sensor signs, whatever was typed.
+            if let s = session, Date().timeIntervalSince(s.since) < TimeInterval(sessionLength), !s.byCode || CodeStore.signs { return (s.context, s.byCode) }
+            if CodeStore.signs, CodeStore.sealed(id) != nil { throw CodeNeeded(reason: reason) }
+            session = (fresh, Date(), false)
+            return (fresh, false)
         }
+        var context = opened
         do {
+            if byCode {
+                if let sealed = CodeStore.sealed(id) { return try open(sealed, context: context) }
+                // A wallet the code doesn't seal (a test wallet, or one added before the code) asks as it always did.
+                context = LAContext()
+                context.localizedReason = reason
+            }
             if let sealed = sealed(account(id)) { return try open(sealed, context: context) }
             guard id == SignerWallet.firstID, let seed = read(legacyAccount, context: context) else { throw WalletError("No wallet imported.") }
             return seed
         } catch {
-            if useSession { lock.withLock { session = nil } } // a cancelled or failed prompt must not be reused
+            // A cancelled or failed prompt must not be reused; a code session stays when only another wallet's prompt failed.
+            if useSession, context === opened { lock.withLock { session = nil } }
             throw error
         }
+    }
+
+    /// A wallet's seed opened with a context that is already confirmed in person (`.setCode` seals it again).
+    static func openSeed(id: String, context: LAContext) throws -> Data {
+        if let sealed = sealed(account(id)) { return try open(sealed, context: context) }
+        guard id == SignerWallet.firstID, let seed = read(legacyAccount, context: context) else { throw WalletError("No wallet imported.") }
+        return seed
     }
 
     /// A sealed secret opened with its Enclave key, wherever that key's group is.
@@ -165,7 +188,7 @@ enum SeedStore {
         var error: Unmanaged<CFError>?
         // The Enclave asks for Touch ID or the password here, unless this context already did.
         guard let opened = SecKeyCreateDecryptedData(ref as! SecKey, algorithm, sealed.data as CFData, &error) else {
-            throw WalletError("Touch ID was cancelled or didn't match: nothing was signed.")
+            throw WalletError("Cancelled, or \(Presence.short) didn't match: nothing was signed.")
         }
         // Our own copy, which the caller wipes; the Security framework's buffer is cleared before it's released.
         let bytes = CFDataGetBytePtr(opened), count = CFDataGetLength(opened)
@@ -202,11 +225,23 @@ enum SeedStore {
         }
         if within == nil { done.wait() }
         if let outcome { throw WalletError("Not confirmed (\(outcome.localizedDescription)): nothing was changed.") }
-        lock.withLock { session = (context, Date()) }
+        lock.withLock { session = (context, Date(), false) }
+    }
+
+    /// The context the last `confirm` opened, while its session lasts.
+    static var confirmed: LAContext? { lock.withLock { session.flatMap { $0.byCode ? nil : $0.context } } }
+
+    /// The right passcode opened `context`: signatures go on with it as after Touch ID, for the same session length.
+    static func startCodeSession(_ context: LAContext) {
+        lock.withLock {
+            session?.context.invalidate()
+            session = (context, Date(), true)
+        }
     }
 
     static func delete(id: String) {
         endSession()
+        CodeStore.removeSeal(id)
         if let tag = sealed(account(id))?.tag { SecItemDelete(keyQuery(tag) as CFDictionary) }
         SecItemDelete(item(account(id)) as CFDictionary)
         if id == SignerWallet.firstID { SecItemDelete(item(legacyAccount) as CFDictionary) }
@@ -218,6 +253,212 @@ enum SeedStore {
             session?.context.invalidate()
             session = nil
         }
+    }
+}
+
+/// A signature that waits for the passcode instead of a macOS prompt: the reply says `needsCode`, with `reason`.
+struct CodeNeeded: Error { let reason: String }
+
+/// The 6-digit passcode. A Secure Enclave key that opens only with the code (`.applicationPassword`: the Enclave mixes it
+/// into the key, nothing here keeps it), made after the person confirmed in person. Sealed to it: a check (is the code
+/// right?) and, for each wallet that asks in person, its seed once more — what a Mac without Touch ID signs with instead
+/// of the login password. Adding an address, or a wallet change, still asks macOS: a code seen by something on the Mac
+/// can't send money anywhere new. Five wrong codes in a row delete it all.
+enum CodeStore {
+    static let service = "app.ihatecrypto.code"
+    static let checkAccount = "check"
+    static let tries = 5
+    static let failuresKey = "failures"
+    static func sealAccount(_ id: String) -> String { "seal-" + SeedStore.account(id) }
+
+    static func item(_ account: String) -> [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: account,
+         kSecUseDataProtectionKeychain as String: true]
+    }
+
+    private static func stored(_ account: String) -> (data: Data, tag: Data)? {
+        var q = item(account)
+        q[kSecReturnData as String] = true
+        q[kSecReturnAttributes as String] = true
+        var out: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &out) == errSecSuccess, let found = out as? [String: Any],
+              let data = found[kSecValueData as String] as? Data, let tag = found[kSecAttrGeneric as String] as? Data else { return nil }
+        return (data, tag)
+    }
+
+    static var isSet: Bool { stored(checkAccount) != nil }
+    /// With Touch ID the sensor stays the way to sign; the code signs only on a Mac without it.
+    static var signs: Bool { !Presence.touchID && isSet }
+    static func sealed(_ id: String) -> (data: Data, tag: Data)? { stored(sealAccount(id)) }
+
+    /// A context that carries the code and never shows a prompt of its own: a wrong code fails, it doesn't ask.
+    static func context(_ code: String) -> LAContext {
+        let context = LAContext()
+        context.setCredential(Data(code.utf8), type: .applicationPassword)
+        context.interactionNotAllowed = true
+        return context
+    }
+
+    private static func publicKey(_ tag: Data) -> SecKey? {
+        var q = SeedStore.keyQuery(tag)
+        q[kSecReturnRef as String] = true
+        var ref: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &ref) == errSecSuccess, let ref else { return nil }
+        return SecKeyCopyPublicKey(ref as! SecKey)
+    }
+
+    private static func write(_ account: String, _ ciphertext: Data, tag: Data) -> Bool {
+        SecItemDelete(item(account) as CFDictionary)
+        var q = item(account)
+        q[kSecValueData as String] = ciphertext
+        q[kSecAttrGeneric as String] = tag
+        q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+        return SecItemAdd(q as CFDictionary, nil) == errSecSuccess
+    }
+
+    /// Whether `context` (carrying a code) opens the check: the stored one, or one about to be.
+    private static func opens(_ context: LAContext, _ check: (data: Data, tag: Data)? = nil) -> Bool {
+        guard let (data, tag) = check ?? stored(checkAccount) else { return false }
+        var q = SeedStore.keyQuery(tag)
+        q[kSecReturnRef as String] = true
+        q[kSecUseAuthenticationContext as String] = context
+        var ref: CFTypeRef?
+        guard SecItemCopyMatching(q as CFDictionary, &ref) == errSecSuccess, let ref,
+              let opened = SecKeyCreateDecryptedData(ref as! SecKey, SeedStore.algorithm, data as CFData, nil) else { return false }
+        _ = memset_s(UnsafeMutableRawPointer(mutating: CFDataGetBytePtr(opened)!), CFDataGetLength(opened), 0, CFDataGetLength(opened))
+        return true
+    }
+
+    /// A new code in place of any earlier one. `presence`: a context confirmed in person, which opens each wallet's seed
+    /// for its second seal. Everything is made and checked before the earlier code goes; only a Keychain failure while
+    /// writing leaves no code at all.
+    static func set(_ code: String, presence: LAContext?) throws {
+        try entering.withLock { try make(code, presence: presence) }
+    }
+
+    private static func make(_ code: String, presence: LAContext?) throws {
+        var error: Unmanaged<CFError>?
+        func fail(_ what: String) -> WalletError { WalletError("\(what): \(error.map { "\($0.takeRetainedValue())" } ?? "?")") }
+        guard let access = SecAccessControlCreateWithFlags(nil, kSecAttrAccessibleWhenUnlockedThisDeviceOnly, [.privateKeyUsage, .applicationPassword], &error) else {
+            throw fail("Couldn't set access to the passcode key")
+        }
+        let tag = Data("app.ihatecrypto.code.key.\(UUID().uuidString)".utf8)
+        let attributes: [String: Any] = [
+            kSecAttrKeyType as String: kSecAttrKeyTypeECSECPrimeRandom,
+            kSecAttrKeySizeInBits as String: 256,
+            kSecAttrTokenID as String: kSecAttrTokenIDSecureEnclave,
+            kSecUseDataProtectionKeychain as String: true,
+            kSecUseAuthenticationContext as String: context(code),
+            kSecPrivateKeyAttrs as String: [
+                kSecAttrIsPermanent as String: true,
+                kSecAttrApplicationTag as String: tag,
+                kSecAttrAccessControl as String: access,
+            ] as [String: Any],
+        ]
+        guard let key = SecKeyCreateRandomKey(attributes as CFDictionary, &error), let pub = SecKeyCopyPublicKey(key) else {
+            throw fail("The Secure Enclave didn't make the passcode key")
+        }
+        func drop() { SecItemDelete(SeedStore.keyQuery(tag) as CFDictionary) }
+        var check = Data(count: 32)
+        _ = check.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, 32, $0.baseAddress!) }
+        guard let checkSealed = SecKeyCreateEncryptedData(pub, SeedStore.algorithm, check as CFData, &error) as Data? else { drop(); throw fail("Couldn't seal the check") }
+        // The Enclave must open what it sealed with this code, and not with another, or the code would lock the user out
+        // or guard nothing. (Checked on the new key: no try is counted.)
+        let other = String(code.dropLast()) + String(((code.last?.wholeNumberValue ?? 0) + 1) % 10)
+        guard opens(context(code), (checkSealed, tag)), !opens(context(other), (checkSealed, tag)) else {
+            drop(); throw WalletError("This Mac's Secure Enclave didn't take the passcode.")
+        }
+        // Each wallet that asks in person, opened with the person's confirmation and sealed to the new key.
+        var seals: [(String, Data)] = []
+        // Only where the code signs (no Touch ID): with Touch ID the code just opens the app, and holds no seed.
+        for wallet in Wallets.all where !wallet.isTest && !wallet.isAutomation && !Presence.touchID {
+            var seed: Data
+            do { seed = try SeedStore.openSeed(id: wallet.id, context: presence ?? LAContext()) } catch { drop(); throw error }
+            defer { SeedStore.wipe(&seed) }
+            guard let sealed = SecKeyCreateEncryptedData(pub, SeedStore.algorithm, seed as CFData, &error) as Data? else { drop(); throw fail("Couldn't seal «\(wallet.label)»") }
+            seals.append((sealAccount(wallet.id), sealed))
+        }
+        let old = stored(checkAccount)?.tag
+        clearItems()
+        guard write(checkAccount, checkSealed, tag: tag), seals.allSatisfy({ write($0.0, $0.1, tag: tag) }) else {
+            clearItems(); drop()
+            if let old { SecItemDelete(SeedStore.keyQuery(old) as CFDictionary) }
+            throw WalletError("Keychain didn't save the passcode: it is off now.")
+        }
+        if let old { SecItemDelete(SeedStore.keyQuery(old) as CFDictionary) }
+    }
+
+    /// A wallet saved while a code is set gets its passcode seal right away (only the code's public key is needed).
+    /// Best effort: without it, that wallet asks macOS as before.
+    static func seal(_ seed: Data, id: String) {
+        entering.lock()
+        defer { entering.unlock() }
+        guard let tag = stored(checkAccount)?.tag, let pub = publicKey(tag),
+              let sealed = SecKeyCreateEncryptedData(pub, SeedStore.algorithm, seed as CFData, nil) as Data? else { return }
+        _ = write(sealAccount(id), sealed, tag: tag)
+    }
+
+    static func removeSeal(_ id: String) { SecItemDelete(item(sealAccount(id)) as CFDictionary) }
+
+    enum Entered { case right(LAContext), wrong(left: Int), off, uncounted }
+
+    /// One code operation at a time — a try, a new code, a seal, turning it off — so none sees another half done.
+    private static let entering = NSRecursiveLock()
+
+    /// Wrong codes in a row, in the signer's own Keychain group: not the app's to read or reset. nil: unreadable, which
+    /// counts as off — never as no tries.
+    private static func failures() -> Int? {
+        var q = item(failuresKey)
+        q[kSecReturnData as String] = true
+        var out: CFTypeRef?
+        let status = SecItemCopyMatching(q as CFDictionary, &out)
+        if status == errSecItemNotFound { return 0 }
+        guard status == errSecSuccess, let count = (out as? Data)?.first else { return nil }
+        return Int(count)
+    }
+
+    /// Written in place (update, or add the first time): there is never a moment with no count to kill the signer in.
+    private static func setFailures(_ count: Int) -> Bool {
+        let data = Data([UInt8(min(count, 255))])
+        var status = SecItemUpdate(item(failuresKey) as CFDictionary, [kSecValueData as String: data] as CFDictionary)
+        if status == errSecItemNotFound {
+            var q = item(failuresKey)
+            q[kSecValueData as String] = data
+            q[kSecAttrAccessible as String] = kSecAttrAccessibleWhenUnlockedThisDeviceOnly
+            status = SecItemAdd(q as CFDictionary, nil)
+        }
+        return status == errSecSuccess
+    }
+
+    /// The code typed in the app. Right: the context that opens the seals. Wrong: tries left; the fifth wrong one in a
+    /// row turns the code off. One at a time, and a try is tested only once it is counted: requests side by side, or a
+    /// signer stopped mid-try, get no extra guesses.
+    static func enter(_ code: String) -> Entered {
+        entering.withLock {
+            guard isSet, let before = failures(), before < tries else { clear(); return .off }
+            guard setFailures(before + 1) else { return .uncounted }
+            let context = context(code)
+            if Passcode.problem(code) == nil, opens(context) {
+                _ = setFailures(0)
+                return .right(context)
+            }
+            guard before + 1 < tries else { clear(); return .off }
+            return .wrong(left: tries - before - 1)
+        }
+    }
+
+    /// The key, the check and every seal gone; signatures ask macOS again.
+    static func clear() {
+        entering.withLock {
+            let tag = stored(checkAccount)?.tag
+            clearItems()
+            if let tag { SecItemDelete(SeedStore.keyQuery(tag) as CFDictionary) }
+        }
+    }
+
+    private static func clearItems() {
+        SecItemDelete([kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service,
+                       kSecUseDataProtectionKeychain as String: true] as CFDictionary)
     }
 }
 

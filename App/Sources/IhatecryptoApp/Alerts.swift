@@ -1,6 +1,7 @@
 import IhatecryptoCore
 import SignerAPI
 import SwiftUI
+import WalletCore
 
 extension Workspace {
     /// «alert me when ETH is above 2,800», «cancel alerts».
@@ -158,7 +159,7 @@ struct AlertsBoard: View {
             + steps
             + [Block(id: "\(a.id)-you", icon: "bell.and.waves.left.and.right", label: "YOU · NOTIFICATION",
                      title: steps.isEmpty ? "A notification" : "A notification, then your Confirm",
-                     line: steps.isEmpty ? nil : "Prepared on its own canvas; nothing moves without Touch ID.")]
+                     line: steps.isEmpty ? nil : "Prepared on its own canvas; nothing moves without \(Presence.name).")]
     }
 
     private func chain(_ blocks: [Block]) -> some View {

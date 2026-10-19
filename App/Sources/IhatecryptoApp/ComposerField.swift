@@ -1,6 +1,7 @@
 import AppKit
 import IhatecryptoCore
 import SwiftUI
+import TradeExecution
 
 /// The chat's field: the draft as plain text, each «$SOL» in it drawn as the token — its logo and ticker on a chip
 /// (TokenMentions). A chip is one character in the field: ← → step over it and ⌫ takes it whole; the draft keeps «$SOL».
@@ -382,5 +383,114 @@ extension Workspace {
             draft = text
             if let select, let r = text.range(of: select) { draftSelection = NSRange(r, in: text) }
         }
+    }
+}
+
+/// «send 0.01 SOL to …», «buy SOL for 1 USDC»: an amount of a token typed in the draft, for the slider over the field.
+struct DraftAmount: Equatable {
+    /// Where the number is in the draft, as UTF-16 (the field's caret is one too).
+    let range: NSRange
+    let value: Decimal
+    let ticker: String
+
+    /// Every «<number> <ticker>» in the text, «$SOL» chips too; the composer takes the first the wallet holds.
+    static func all(_ text: String) -> [DraftAmount] {
+        text.matches(of: /(\d+(?:\.\d+)?)\s*\$?([A-Za-z][A-Za-z0-9₮]{1,9})\b/).compactMap { m in
+            Decimal(string: String(m.1)).map { DraftAmount(range: NSRange(m.1.startIndex..<m.1.endIndex, in: text), value: $0, ticker: String(m.2).uppercased()) }
+        }
+    }
+
+    /// The place the draft names («on Base», «from Solana»), as a key; nil when it names none.
+    static func place(_ text: String) -> String? {
+        let t = text.lowercased()
+        return (["solana", "hyperliquid"] + EVMNetwork.all.map(\.key)).first { k in
+            let name = WalletCommand.placeName(k).lowercased()
+            return t.contains(" on \(name)") || t.contains(" from \(name)") || t.contains(" on \(k)") || t.contains(" from \(k)")
+        }
+    }
+
+    /// One step of ↑↓ and the slider: a tenth of the held amount's order — 0.01 of 0.17 SOL, 1 of 45 USDC.
+    static func scale(_ held: Decimal) -> Int {
+        let digits = held > 0 ? Int(floor(log10(NSDecimalNumber(decimal: held).doubleValue))) : 0
+        return max(0, 1 - digits)
+    }
+
+    /// An amount as the draft takes it: `scale` places, no thousands commas.
+    static func written(_ value: Decimal, scale: Int) -> String { Fmt.num(value, maxFraction: scale).replacingOccurrences(of: ",", with: "") }
+
+    /// The draft with this number swapped for `value`.
+    func replacing(in text: String, with value: Decimal, scale: Int) -> String {
+        guard let r = Range(range, in: text) else { return text }
+        return text.replacingCharacters(in: r, with: Self.written(value, scale: scale))
+    }
+}
+
+/// Over the chat's field while the draft says an amount of a token the wallet holds: how much of it that is, in dollars
+/// too, and a slider and 25 % / 50 % / Max to set it; ↑↓ with the caret on the number step it. Nothing is sent: Return does.
+struct AmountSlider: View {
+    @Environment(Workspace.self) private var ws
+    let amount: DraftAmount
+    let held: Decimal
+    let place: String
+
+    var body: some View {
+        let scale = DraftAmount.scale(held)
+        let price = Stablecoins.isDollar(amount.ticker) ? 1 : ws.markets[amount.ticker]?.markPx
+            ?? (ws.holdings + (ws.solana?.tokens ?? [])).first { $0.symbol.uppercased() == amount.ticker && $0.chain == place }?.price
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 8) {
+                TokenLogo(name: amount.ticker.lowercased(), size: 18, round: true)
+                Text("\(Fmt.num(amount.value, maxFraction: 8)) \(amount.ticker)").font(.ui(13, .bold)).monospacedDigit()
+                    .foregroundStyle(amount.value > held ? AnyShapeStyle(Brand.loss) : AnyShapeStyle(.primary))
+                Text(ws.say("of \(Fmt.num(held, maxFraction: 6)) on \(WalletCommand.placeName(place))",
+                            "из \(Fmt.num(held, maxFraction: 6)) на \(WalletCommand.placeName(place))",
+                            "de \(Fmt.num(held, maxFraction: 6)) en \(WalletCommand.placeName(place))"))
+                    .font(.ui(11.5)).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                Spacer(minLength: 6)
+                if let price { Text("≈ \(Fmt.usd(amount.value * price))").font(.ui(12, .semibold)).monospacedDigit().foregroundStyle(.secondary) }
+            }
+            HStack(spacing: 6) {
+                Slider(value: Binding(get: { held > 0 ? min(1, NSDecimalNumber(decimal: amount.value / held).doubleValue) : 0 },
+                                      set: { set((held * Decimal($0)).rounded(scale, .down), scale: scale) }))
+                    .controlSize(.small).tint(Brand.accent)
+                    .accessibilityLabel(ws.say("Amount", "Сумма", "Cantidad"))
+                ForEach([25, 50, 100], id: \.self) { pct in
+                    Button { set(pct == 100 ? held : (held * Decimal(pct) / 100).rounded(scale, .down), scale: pct == 100 ? 18 : scale) } label: {
+                        Text(pct == 100 ? "Max" : "\(pct)%").font(.ui(11, .semibold)).padding(.horizontal, 8).frame(height: 22)
+                            .background(Capsule().strokeBorder(Brand.cardBorder))
+                    }
+                    .buttonStyle(.plain).pointerStyle(.link)
+                }
+            }
+            Text(ws.say("Cursor on the number: ↑ ↓ change it · Return sends", "Курсор на числе: ↑ ↓ меняют сумму · Return — отправить",
+                        "Cursor en el número: ↑ ↓ lo cambian · Return envía"))
+                .font(.ui(10)).foregroundStyle(.secondary)
+        }
+        .padding(12)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(Brand.glassFill))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous).strokeBorder(Brand.glassRim))
+        .transition(.opacity)
+    }
+
+    private func set(_ value: Decimal, scale: Int) {
+        // The number where it is now: the slider's binding can outlive the text it was drawn for, and a stale range cut
+        // into the words around it.
+        guard let now = DraftAmount.all(ws.draft).first(where: { $0.ticker == amount.ticker }) else { return }
+        ws.draft = now.replacing(in: ws.draft, with: value, scale: scale)
+    }
+}
+
+extension Workspace {
+    /// What the wallet holds of a draft's token, and where: at the place the draft names, else SOL on Solana, USDC where
+    /// there's most, another token where most of it is. nil when none is held.
+    func draftHeld(_ ticker: String, place: String?) -> (amount: Decimal, place: String)? {
+        if let place, let x = held(ticker, on: place) { return x > 0 ? (x, place) : nil }
+        let found: [(Decimal, String)] = switch ticker {
+        case "SOL": [(solana?.sol ?? 0, "solana")]
+        case "USDC": (["solana", "hyperliquid"] + EVMNetwork.all.map(\.key)).compactMap { k in usdc(on: k).map { ($0, k) } }
+        default: (holdings + (solana?.tokens ?? [])).filter { $0.symbol.uppercased() == ticker }.map { ($0.amount, $0.chain) }
+        }
+        return found.max { $0.0 < $1.0 }.flatMap { $0.0 > 0 ? (amount: $0.0, place: $0.1) : nil }
     }
 }

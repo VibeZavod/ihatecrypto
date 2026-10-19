@@ -273,7 +273,7 @@ struct FavoritesBoard: View {
         let unconfirmed = ws.addressBook.filter { !ws.isConfirmed($0) }
         if !unconfirmed.isEmpty {
             HStack(spacing: 8) {
-                Label("\(unconfirmed.count) not confirmed with Touch ID: nothing is sent to them until you confirm. Delete the ones you don’t know.",
+                Label("\(unconfirmed.count) not confirmed with \(Presence.name): nothing is sent to them until you confirm. Delete the ones you don’t know.",
                       systemImage: "exclamationmark.shield")
                     .font(.ui(10, .semibold)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true)
                 Spacer()
@@ -295,7 +295,7 @@ struct FavoritesBoard: View {
         } else {
             list(items) { AddressCard(entry: $0, edit: { editing = $0 }) }
         }
-        Label("Every saved address is confirmed with Touch ID, the whole address on the prompt, and money goes to a name only at that address — never to an address from a chat, a site or a model.",
+        Label("Every saved address is confirmed with \(Presence.name), the whole address on the prompt, and money goes to a name only at that address — never to an address from a chat, a site or a model.",
               systemImage: "lock.shield")
             .font(.ui(10)).foregroundStyle(.secondary)
     }
@@ -375,7 +375,7 @@ struct AddressCard: View {
                         if !readOnly {
                             Image(systemName: confirmed ? "checkmark.shield.fill" : "exclamationmark.shield")
                                 .font(.system(size: 12)).foregroundStyle(confirmed ? Brand.profit : Brand.loss)
-                                .help(confirmed ? "Confirmed with Touch ID" : "Not confirmed with Touch ID: nothing is sent to it")
+                                .help(confirmed ? "Confirmed with \(Presence.name)" : "Not confirmed with \(Presence.name): nothing is sent to it")
                         }
                         Image(systemName: open ? "chevron.up" : "chevron.down").font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
                     }
@@ -443,11 +443,11 @@ struct AddressCard: View {
             if !entry.note.isEmpty { Text(entry.note).font(.ui(10)).foregroundStyle(.secondary) }
             // Its state in the signer's book: confirmed (green), or not yet, with Confirm….
             if !readOnly, confirmed {
-                Label("Confirmed with Touch ID: money goes only to this address", systemImage: "checkmark.shield.fill")
+                Label("Confirmed with \(Presence.name): money goes only to this address", systemImage: "checkmark.shield.fill")
                     .font(.ui(10, .semibold)).foregroundStyle(Brand.profit)
             } else if !readOnly {
                 HStack(spacing: 8) {
-                    Label("Not confirmed with Touch ID: nothing is sent to it", systemImage: "exclamationmark.shield")
+                    Label("Not confirmed with \(Presence.name): nothing is sent to it", systemImage: "exclamationmark.shield")
                         .font(.ui(10, .semibold)).foregroundStyle(Brand.loss)
                     Spacer()
                     Button(confirming ? "Confirming…" : "Confirm…") {
@@ -458,7 +458,7 @@ struct AddressCard: View {
                             confirming = false
                         }
                     }
-                    .buttonStyle(.bordered).disabled(confirming).help("Touch ID, with the whole address on the prompt: check it against its source")
+                    .buttonStyle(.bordered).disabled(confirming).help("\(Presence.short), with the whole address on the prompt: check it against its source")
                 }
                 if let confirmError { Text(confirmError).font(.ui(10)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true) }
             }
@@ -491,9 +491,9 @@ struct AddressCard: View {
     /// The next message is about this address (a chip over the field).
     private func ask() {
         let what = readOnly ? "your own wallet" : "the saved address"
-        ws.stepContext = StepContext(title: entry.name, logo: entry.network.logo,
-                                     about: "About \(what) «\(entry.name)»: \(entry.address) on \(entry.network.title)"
-                                         + (entry.label.map { ", \($0)" } ?? "") + (entry.note.isEmpty ? "" : ", note: \(entry.note)"))
+        ws.attach(StepContext(title: entry.name, logo: entry.network.logo,
+                              about: "About \(what) «\(entry.name)»: \(entry.address) on \(entry.network.title)"
+                                  + (entry.label.map { ", \($0)" } ?? "") + (entry.note.isEmpty ? "" : ", note: \(entry.note)")))
     }
 
     private func copy() {
@@ -825,8 +825,8 @@ extension Workspace {
         pendingText = "save “\(name)”"
         let ends = AddressCheck.ends(address)
         if let domain {
-            reply(say("\(domain) points at \(ends.start)…\(ends.end) on \(network.title), read on-chain just now. Check it on the canvas; Save asks for Touch ID with the whole address.",
-                      "\(domain) ведёт на \(ends.start)…\(ends.end) в \(network.title) — прочитано в сети только что. Сверь на холсте; Save спросит Touch ID с полным адресом."), note: note)
+            reply(say("\(domain) points at \(ends.start)…\(ends.end) on \(network.title), read on-chain just now. Check it on the canvas; Save asks for \(Presence.name) with the whole address.",
+                      "\(domain) ведёт на \(ends.start)…\(ends.end) в \(network.title) — прочитано в сети только что. Сверь на холсте; Save спросит \(Presence.ru) с полным адресом."), note: note)
         } else {
             reply(say("Check it on the canvas: \(network.title), starts \(ends.start), ends \(ends.end) — exactly as in your message. Confirm to save.",
                       "Сверь на холсте: \(network.title), начало \(ends.start), конец \(ends.end) — как в твоём сообщении. Подтверди, чтобы сохранить."), note: note)
@@ -856,8 +856,8 @@ struct PendingAddressBoard: View {
                 }
                 AddressCard(entry: entry, readOnly: true).frame(width: 320)
                 Label(entry.note.isEmpty
-                      ? "Taken from your own message and checked for \(entry.network.title). Compare it with the source: Save asks for Touch ID with the whole address on the prompt."
-                      : "Resolved from \(entry.note.components(separatedBy: " — ").first ?? "") on \(entry.network.title) just now and checked. Save asks for Touch ID with the whole address on the prompt.",
+                      ? "Taken from your own message and checked for \(entry.network.title). Compare it with the source: Save asks for \(Presence.name) with the whole address on the prompt."
+                      : "Resolved from \(entry.note.components(separatedBy: " — ").first ?? "") on \(entry.network.title) just now and checked. Save asks for \(Presence.name) with the whole address on the prompt.",
                       systemImage: "checkmark.shield")
                     .font(.ui(10)).foregroundStyle(.secondary).frame(width: 470, alignment: .leading)
                 PendingButtons(confirm: "Save")
@@ -906,7 +906,7 @@ extension Workspace {
 
     func requireConfirmed(_ e: SavedAddress) throws {
         guard isConfirmed(e) else {
-            throw ExecutionError("“\(e.name)” isn’t confirmed with Touch ID, so nothing goes to it. Confirm it in Favorites › All, after checking the address against its source: if you didn’t change it, it was changed outside ihatecrypto.")
+            throw ExecutionError("“\(e.name)” isn’t confirmed with \(Presence.name), so nothing goes to it. Confirm it in Favorites › All, after checking the address against its source: if you didn’t change it, it was changed outside ihatecrypto.")
         }
     }
 

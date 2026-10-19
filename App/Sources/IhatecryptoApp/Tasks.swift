@@ -55,10 +55,10 @@ extension Workspace {
             ? say(" I'll look myself each time and write only when it's met; what I suggest waits for your Confirm.",
                   " Я буду смотреть сам и напишу, только когда условие выполнится; что предложу — будет ждать твоего Confirm.")
             : task.sells && automationWallet != nil
-            ? say(" A sale waits for your Confirm and Touch ID: what tasks buy lands on this wallet, and it sells from here.",
-                  " Продажа будет ждать твоего Confirm и Touch ID: купленное задачами лежит на этом кошельке, и продаётся оно отсюда.")
+            ? say(" A sale waits for your Confirm and \(Presence.name): what tasks buy lands on this wallet, and it sells from here.",
+                  " Продажа будет ждать твоего Confirm и \(Presence.ruGen): купленное задачами лежит на этом кошельке, и продаётся оно отсюда.")
             : usesAutomation(task)
-            ? say(" Its moves run by themselves from the automation wallet, no Touch ID", " Движения пойдут сами с кошелька автоматизации, без Touch ID")
+            ? say(" Its moves run by themselves from the automation wallet, no \(Presence.short)", " Движения пойдут сами с кошелька автоматизации, без \(Presence.ruGen)")
                 + (task.buysCoins ? say("; what it buys goes on to «\(activeWallet?.label ?? "your wallet")».", "; купленное придёт на «\(activeWallet?.label ?? "твой кошелёк")».") : ".")
                 + (automationShortForWeek.map { say(" With it, a week of the Schedule’s buys is \(Fmt.num($0)) USDC short: the Schedule has the top-up.",
                                                     " С ней на неделю покупок не хватает \(Fmt.num($0)) USDC: пополнить можно в Schedule.") } ?? "")
@@ -117,7 +117,7 @@ extension Workspace {
         // With an automation wallet the task's moves go through at once from it, without Touch ID — never one typed
         // through the debug API. Without one, each move waits on its canvas for Confirm.
         let automation = usesAutomation(task) ? automationWallet : nil
-        if let automation { reply(say("From the automation wallet «\(automation.label)», no Touch ID.", "С кошелька автоматизации «\(automation.label)», без Touch ID.")) }
+        if let automation { reply(say("From the automation wallet «\(automation.label)», no \(Presence.short).", "С кошелька автоматизации «\(automation.label)», без \(Presence.ruGen).")) }
         checkQuiet = false
         await TaskRun.$automation.withValue(automation) { await runSteps(task.steps, confirmed: automation != nil) }
         let failed = finishedAction?.outcome.ok == false
@@ -127,7 +127,7 @@ extension Workspace {
                       "На кошельке автоматизации «\(automation.label)» \(Fmt.num(sol, maxFraction: 6)) SOL — мало для комиссий Solana и счетов, которые открывает движение. Отправь на него 0.01 SOL, и следующий запуск пройдёт."))
             offerCards([
                 ChatRouter.Option(title: say("Send 0.01 SOL to \(automation.label)", "Отправить 0.01 SOL на \(automation.label)"),
-                                  comment: say("From your main wallet: Confirm and Touch ID.", "С основного кошелька: Confirm и Touch ID."),
+                                  comment: say("From your main wallet: Confirm and \(Presence.short).", "С основного кошелька: Confirm и \(Presence.ru)."),
                                   command: "send 0.01 SOL to \(automation.label)", recommended: true),
             ])
         }
@@ -228,8 +228,8 @@ extension Workspace {
         UserDefaults.standard.set(today, forKey: "topUpAsked")
         let main = activeWallet?.label ?? "Main"
         notify(.confirm, say("«\(w.label)» is short for the next buys", "На «\(w.label)» не хватит на ближайшие покупки"),
-               say("The buys in the next 24 hours need \(Fmt.num(need)) USDC; it has \(Fmt.num(total)). Top it up with \(Fmt.num(short)) USDC for the week from «\(main)»: Confirm and Touch ID once, then they run by themselves.",
-                   "Покупкам в ближайшие сутки нужно \(Fmt.num(need)) USDC, на нём \(Fmt.num(total)). Пополни его на \(Fmt.num(short)) USDC на неделю с «\(main)»: один раз Confirm и Touch ID, дальше покупки пойдут сами."),
+               say("The buys in the next 24 hours need \(Fmt.num(need)) USDC; it has \(Fmt.num(total)). Top it up with \(Fmt.num(short)) USDC for the week from «\(main)»: Confirm and \(Presence.short) once, then they run by themselves.",
+                   "Покупкам в ближайшие сутки нужно \(Fmt.num(need)) USDC, на нём \(Fmt.num(total)). Пополни его на \(Fmt.num(short)) USDC на неделю с «\(main)»: один раз Confirm и \(Presence.ru), дальше покупки пойдут сами."),
                record: false)
         if Self.userAway { showSchedule = true }
     }
@@ -467,13 +467,13 @@ extension Workspace {
                 addressBook.append(SavedAddress(name: w.label, address: address, network: network, category: "Your wallet",
                                                 icon: .symbol("clock.arrow.circlepath"), source: "signer"))
             }
-            reply(say("The automation wallet is made: scheduled tasks now spend only from it, without Touch ID. Put their budget on it — "
+            reply(say("The automation wallet is made: scheduled tasks now spend only from it, without \(Presence.name). Put their budget on it — "
                       + "keep only that there; if this Mac's keychain is lost, so is what's on it.",
-                      "Кошелёк автоматизации создан: задачи по расписанию тратят только с него, без Touch ID. Положи туда их бюджет — "
+                      "Кошелёк автоматизации создан: задачи по расписанию тратят только с него, без \(Presence.ruGen). Положи туда их бюджет — "
                       + "и только его: если связка ключей этого Мака пропадёт, пропадёт и то, что на нём."), note: note)
             offerCards([
                 ChatRouter.Option(title: say("Top up 20 USDC", "Пополнить на 20 USDC"),
-                                  comment: say("From your wallet on Solana: Touch ID once for the new address.", "С твоего кошелька на Solana: Touch ID один раз на новый адрес."),
+                                  comment: say("From your wallet on Solana: \(Presence.short) once for the new address.", "С твоего кошелька на Solana: \(Presence.ru) один раз на новый адрес."),
                                   command: "send 20 USDC to \(w.label)", recommended: true),
             ])
         } catch {

@@ -1,6 +1,7 @@
 import IhatecryptoCore
 import SwiftUI
 import TradeExecution
+import WalletCore
 
 // The automation wallet where the money is counted (the owner, 2026-10-15: «надо в сайдбар и в портфолио добавить
 // сколько на automation, иначе не понятно»; from the design canvas he picked the split total for the sidebar and the
@@ -56,7 +57,7 @@ struct AutomationSplit: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .help("The balance is both wallets: Main signs with Touch ID, Automation signs the Schedule’s tasks by itself. Click to open the Schedule.")
+        .help("The balance is both wallets: Main signs with \(Presence.name), Automation signs the Schedule’s tasks by itself. Click to open the Schedule.")
         .accessibilityLabel(masked("Main \(Fmt.usd(main)), Automation \(Fmt.usd(automation))"))
     }
 }
@@ -100,7 +101,7 @@ struct AutomationPortfolioCard: View {
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .help("Your automation wallet: the Schedule’s tasks spend from it without Touch ID. Click to open the Schedule.")
+            .help("Your automation wallet: the Schedule’s tasks spend from it without \(Presence.name). Click to open the Schedule.")
             // Money on Solana and no SOL: every task there fails on its fee. The fix is one chat message away.
             if sol < TaskRun.solFloor, !coins.isEmpty {
                 VStack(alignment: .leading, spacing: 6) {
@@ -110,7 +111,7 @@ struct AutomationPortfolioCard: View {
                         Label("Send 0.01 SOL", systemImage: "plus").font(.ui(11, .bold))
                     }
                     .buttonStyle(.bordered).controlSize(.small).pointerStyle(.link)
-                    .help("From your main wallet: the card waits for Confirm and Touch ID")
+                    .help("From your main wallet: the card waits for Confirm and \(Presence.name)")
                 }
                 .padding(.horizontal, 9).padding(.vertical, 7).frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 10).fill(Brand.jevInk.opacity(0.1)))

@@ -2,7 +2,6 @@ import AppKit
 import IhatecryptoCore
 import LLMCatalog
 import LLMCore
-import LocalAuthentication
 import SignerAPI
 import SwiftUI
 import UserNotifications
@@ -14,14 +13,14 @@ import WalletCore
 /// then top up and choose notifications. The step is kept in UserDefaults, so a quit comes back to it; the recovery
 /// words are not: after a relaunch the words steps are passed.
 enum OnboardingStep: String {
-    case model, modelReady, newWallet, words, check, secure, bring, found, ledger, networks, tradingKey, rules, money, stayInTouch
+    case model, modelReady, newWallet, words, check, secure, passcode, bring, found, ledger, networks, tradingKey, rules, money, stayInTouch
 
     /// Which of the rail's stops it belongs to.
     var stage: OnboardingStage {
         switch self {
         case .model, .modelReady: .model
         case .newWallet, .words, .check, .bring, .found, .ledger: .wallet
-        case .secure: .secure
+        case .secure, .passcode: .secure
         case .networks: .networks
         case .tradingKey, .rules: .trading
         case .money, .stayInTouch: .money
@@ -177,7 +176,8 @@ struct OnboardingView: View {
             } else {
                 WordsGoneStep { go(.secure) }
             }
-        case .secure: SecureStep(next: { go(.networks) }, back: back)
+        case .secure: SecureStep(next: { go(.passcode) }, back: back)
+        case .passcode: PasscodeStep(next: { go(.networks) }, back: back)
         case .bring:
             BringStep(back: back, ledger: { go(.ledger) }, watched: { go(.networks) }) { reply in
                 found = reply
@@ -459,8 +459,8 @@ private struct NewWalletStep: View {
                 FactRow(icon: "list.number", title: "12 recovery words",
                         line: "Made from this Mac's random number generator. They are the only way back if the Mac is lost; you see them once, next.")
                 FactRow(icon: "cpu", title: "Sealed by the Secure Enclave", line: "The key never leaves the signer; nothing can read it back, ihatecrypto included.")
-                FactRow(icon: "touchid", title: test ? "Signs without asking" : "Touch ID or your Mac password",
-                        line: test ? "A test wallet: keep only a few dollars on it." : "Every signature asks first; one touch covers one move.")
+                FactRow(icon: Presence.icon, title: test ? "Signs without asking" : Presence.touchID ? "Touch ID or your Mac password" : "Your Mac password",
+                        line: test ? "A test wallet: keep only a few dollars on it." : "Every signature asks first; one \(Presence.touchID ? "touch" : "password") covers one move.")
             }
             Tile {
                 VStack(alignment: .leading, spacing: 2) {
@@ -631,45 +631,39 @@ private struct WordsGoneStep: View {
 // MARK: - Secure
 
 /// How the signer asks before a move: Touch ID where the Mac has it, the Mac's password otherwise (macOS offers it
-/// with the lid closed too). One try now with the same macOS prompt. A PIN of its own is planned, not built.
+/// with the lid closed too). No try here: saving the code on the next step brings the same macOS prompt, once.
 private struct SecureStep: View {
     @Environment(Workspace.self) private var ws
     let next: () -> Void
     let back: () -> Void
-    @State private var tried: Bool?
-    @State private var error: String?
-    private let touchID: Bool = {
-        var e: NSError?
-        return LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &e)
-    }()
+    private let touchID = Presence.touchID
 
     var body: some View {
         let test = ws.activeWallet?.test ?? false
-        OnboardingCard(mood: tried == true ? .done : .tuning, title: test ? "A test wallet signs by itself" : "One touch now",
+        OnboardingCard(mood: .tuning, title: test ? "A test wallet signs by itself" : "Each move asks once",
                        subtitle: test ? "It doesn't ask before a move: keep only a few dollars on it."
                        : "So the first real move is no surprise: each move asks once, and so does switching wallets.",
-                       primary: test || tried == true ? "Continue" : touchID ? "Try Touch ID" : "Try the password", icon: test || tried == true ? nil : touchID ? "touchid" : "lock.fill", action: { test || tried == true ? next() : tryIt() }) {
+                       primary: "Continue", action: next) {
             HStack(spacing: 10) {
                 way("touchid", "Touch ID", touchID ? "On this Mac" : "No sensor here", on: touchID)
                 way("lock.fill", "Mac password", touchID ? "With the lid closed" : "On this Mac", on: !touchID)
-                way("circle.grid.3x3.fill", "PIN code", "Soon", on: false, soon: true)
+                way("circle.grid.3x3.fill", "Passcode", touchID ? "Opens the app" : "Next step", on: false)
             }
             if !test {
                 HStack(spacing: 14) {
-                    Image(systemName: touchID ? "touchid" : "lock.fill").font(.system(size: 34, weight: .light)).foregroundStyle(Brand.accentInk)
+                    let made = AppLock.shared.codeSet
+                    Image(systemName: made ? Presence.signIcon : Presence.icon).font(.system(size: 34, weight: .light)).foregroundStyle(Brand.accentInk)
                         .frame(width: 72, height: 72).overlay(Circle().strokeBorder(Brand.accent, lineWidth: 2))
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(touchID ? "Touch the sensor when macOS asks" : "Type your Mac's password when macOS asks").font(.ui(14.5, .bold))
-                        Text("Nothing is signed now: this only shows the prompt each move will bring. The password isn't saved anywhere; macOS checks it each time.")
+                        Text(made ? "Each move asks for \(Presence.signName)" : "macOS asks for \(Presence.name) on the next step").font(.ui(14.5, .bold))
+                        Text(made ? "Your code is already set." : touchID ? "Once, when you save your code: the same touch each move will ask for."
+                             : "Once, when you save your code. After that the code signs your moves, and the Mac password stays for new recipients and wallet changes.")
                             .font(.ui(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
-                if tried == true { statusLine("That's how it will ask.", ok: true) }
-                if let error { statusLine(error, ok: false) }
             }
         } quiet: {
             QuietButton("Back", action: back)
-            if !test && tried != true { QuietButton("Skip", action: next) }
         }
     }
 
@@ -684,15 +678,26 @@ private struct SecureStep: View {
         .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(on ? Brand.accent : .clear, lineWidth: 1.5))
         .opacity(soon ? 0.55 : 1)
     }
+}
 
-    private func tryIt() {
-        error = nil
-        Task {
-            do {
-                tried = try await LAContext().evaluatePolicy(.deviceOwnerAuthentication, localizedReason: "show how ihatecrypto asks before each move")
-            } catch {
-                self.error = error.localizedDescription
-            }
+// MARK: - Passcode
+
+/// The app's own 6-digit code (state «Make a code» on the lock-screen canvas): it opens the app, and on a Mac without
+/// Touch ID it signs moves instead of the Mac password. Typed twice; the signer then asks for Touch ID or the password.
+private struct PasscodeStep: View {
+    let next: () -> Void
+    let back: () -> Void
+    @State private var made = AppLock.shared.codeSet
+
+    var body: some View {
+        OnboardingCard(mood: made ? .done : .tuning, title: made ? "Your code is set" : "Make a 6-digit code",
+                       subtitle: made ? "ihatecrypto locks after \(AppLock.shared.lockAfter == 60 ? "an hour" : "\(AppLock.shared.lockAfter) min") away, and on sleep. Change it in Settings › Wallet."
+                       : "It opens ihatecrypto" + (Presence.touchID ? ", and so does Touch ID." : ". On this Mac it also signs your moves, instead of the Mac password."),
+                       primary: "Continue", enabled: made, action: next) {
+            if !made { CodeMaker { made = true } }
+        } quiet: {
+            QuietButton("Back", action: back)
+            if !made { QuietButton("Skip", action: next) }
         }
     }
 }
@@ -1009,18 +1014,18 @@ private struct TradingKeyStep: View {
         let ready = ws.agentActive || noDeposit
         OnboardingCard(mood: ws.agentActive ? .done : ws.executing ? .thinking : .idle, title: "A trading key for Hyperliquid",
                        subtitle: noDeposit && !ws.agentActive
-                           ? "Hyperliquid takes it once the account has had a deposit, so it waits until then. Until then every order asks for \(ws.ledgerActive ? "the Ledger's buttons" : "Touch ID")."
-                           : "Because Hyperliquid is on. Without it every order asks for \(ws.ledgerActive ? "the Ledger's buttons" : "Touch ID"); with it, orders go straight through the rules.",
-                       primary: ready ? "Continue" : ws.ledgerActive ? "Approve on the Ledger" : "Approve with Touch ID", icon: ready ? nil : "touchid", busy: ws.executing, action: { ready ? next() : approve() }) {
+                           ? "Hyperliquid takes it once the account has had a deposit, so it waits until then. Until then every order asks for \(ws.ledgerActive ? "the Ledger's buttons" : Presence.name)."
+                           : "Because Hyperliquid is on. Without it every order asks for \(ws.ledgerActive ? "the Ledger's buttons" : Presence.name); with it, orders go straight through the rules.",
+                       primary: ready ? "Continue" : ws.ledgerActive ? "Approve on the Ledger" : "Approve with \(Presence.name)", icon: ready ? nil : Presence.icon, busy: ws.executing, action: { ready ? next() : approve() }) {
             VStack(alignment: .leading, spacing: 14) {
                 FactRow(icon: "arrow.left.arrow.right", title: "It opens and closes positions", line: "Orders, stops and takes, within the trade rules.")
                 FactRow(icon: "nosign", title: "It can't withdraw", line: "Hyperliquid itself refuses a withdrawal signed by it.")
-                FactRow(icon: "pause.circle", title: "Pause it any time", line: "Say «lock» in the chat, or in Settings › Wallet › Key and signing.")
+                FactRow(icon: "pause.circle", title: "Pause it any time", line: "Say «lock» in the chat; Settings › Wallet › Hyperliquid turns it back on.")
             }
             if ws.agentActive {
                 statusLine("The trading key is on.", ok: true)
             } else if noDeposit {
-                statusLine("After the first deposit to Hyperliquid: Settings › Wallet › Key and signing has the button.")
+                statusLine("After the first deposit to Hyperliquid: Settings › Wallet › Hyperliquid has the button.")
             } else if tried, let said = ws.messages.last(where: { !$0.fromUser })?.text {
                 statusLine(said, ok: false)
             }
