@@ -159,8 +159,8 @@ if (location.pathname === '/manifesto/') {
   .nw { white-space: nowrap; }
   .js .icons img, .js .em img { scale: 0; transition: scale .55s cubic-bezier(.3,1.8,.5,1); transition-delay: calc(var(--i, 0) * 150ms + .45s); }
   .in .icons img, .in .em img { scale: 1; }
-  /* press one and it hops */
-  .icons img, .em img, .pop svg { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  /* press one and it hops (the pictures beside the text too) */
+  .icons img, .em img, .pop svg, .dial .obj, .side .sheet, .side .note, .plan .you, .plan li, .ask .re svg, .end .coin { cursor: pointer; -webkit-tap-highlight-color: transparent; }
   .hop { animation: hop .6s cubic-bezier(.3,.7,.3,1); }
   @keyframes hop { 30% { translate: 0 -.45em; scale: 1.25; } 60% { translate: 0 0; scale: .92; } 80% { scale: 1.05; } }
   /* The coin: pops in with a turn, then rolls its eyes. */
@@ -179,6 +179,22 @@ if (location.pathname === '/manifesto/') {
           opacity: 0; scale: .9; rotate: 4deg; pointer-events: none; letter-spacing: 0;
           transition: opacity .5s ease-out, scale .7s cubic-bezier(.3,1.5,.5,1), rotate .7s cubic-bezier(.3,1.5,.5,1); }
   .now .side, html:not(.js) .side { opacity: 1; scale: 1; rotate: -2deg; }
+  .now .side, html:not(.js) .side { pointer-events: auto; }
+  /* its buttons work: Confirm presses, the plan runs again, the message is sent again, Cancel hangs up, the wheel turns */
+  .press .obj, .press .lbl, .plan .go, .ask .go, .win .bt, .win .tb i, .wheel .obj { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .press.pressed .obj { animation: push .45s cubic-bezier(.3,.7,.3,1); }
+  @keyframes push { 35% { translate: 0 8px; scale: .97; } }
+  .press::after { content: ''; position: absolute; left: 50%; top: 40%; width: 64%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; border: 4px solid var(--accent); opacity: 0; pointer-events: none; }
+  .press.pressed::after { animation: burst .7s ease-out; }
+  @keyframes burst { 0% { opacity: .9; scale: .8; } 100% { opacity: 0; scale: 1.6; } }
+  .press .lbl.ok { background: #1F9D6A; }
+  .now .plan.reset li::after, .now .plan.reset .d { opacity: 0; scale: .4; transition: none; }
+  .now .plan.reset .c { animation: none; }
+  .win { transition: opacity .25s, scale .25s; }
+  .dial.closed .win { opacity: 0; scale: .92; }
+  .dial.closed .pg i { animation: none; }
+  .wheel.spin .obj { animation: spin 1.1s cubic-bezier(.3,.1,.2,1); }
+  @keyframes spin { from { rotate: 6deg; } to { rotate: 366deg; } }
   /* the whitepaper's first page */
   .sheet { background: #FFFFFF; padding: 20px 20px 22px; border-radius: 3px; text-align: center; color: #222222;
            font: 400 10px/1.45 'Times New Roman', Times, serif; box-shadow: 0 1px 2px rgba(17,17,17,.12), 0 18px 40px rgba(17,17,17,.14); }
@@ -316,7 +332,7 @@ if (location.pathname === '/manifesto/') {
     <figure class="side left ask" aria-hidden="true"><div class="inp"><span class="t">move my USDC from Base to Solana</span><i class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></i></div><div class="re"><svg viewBox="0 0 140 140"><use href="#f-think"/></svg><span>Building the route…</span></div></figure></div>
   <p>We’re told agents will soon manage money on their own. Maybe. But let’s be honest: today you won’t trust one with <mark>serious capital</mark>.</p>
   <div class="has-side"><p>We believe AI in crypto has a different job right now: not to decide for you, but to show every step and <mark>wait for your Confirm</mark>.</p>
-    <figure class="side left press" aria-hidden="true"><img class="obj" src="/mf/button.webp" alt=""><span class="lbl">Confirm</span></figure></div>
+    <figure class="side left press" aria-hidden="true"><img class="obj" src="/mf/button.webp" alt=""><span class="lbl" data-done="✓ Done">Confirm</span></figure></div>
   <p class="indent">That’s how <span class="ul">ihatecrypto</span> began<span class="pop"></span></p>
   <p>An infinite canvas like Figma<span class="em" data-i="canvas"></span> Your LLM subscription as the brain<span class="em" data-i="chat"></span> And a wallet that understands you<span class="em" data-i="wallet"></span></p>
   <div class="has-side"><p>You write one message. A <span class="ring">plan</span> appears on the canvas: every step, every chain, what you have now and what you’ll have after. You press Confirm, and <mark>in under a minute</mark> it’s done.</p>
@@ -351,7 +367,7 @@ if (location.pathname === '/manifesto/') {
     <figure class="side left ask" aria-hidden="true"><div class="inp"><span class="t">pasa mis USDC de Base a Solana</span><i class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></i></div><div class="re"><svg viewBox="0 0 140 140"><use href="#f-think"/></svg><span>Preparando la ruta…</span></div></figure></div>
   <p>Nos dicen que pronto los agentes gestionarán el dinero solos. Puede ser. Pero seamos sinceros: hoy no le confiarías a un agente <mark>una suma importante</mark>.</p>
   <div class="has-side"><p>Creemos que, por ahora, la IA tiene otro papel en la cripto: no decidir por ti, sino mostrarte cada paso y <mark>esperar a que pulses Confirm</mark>.</p>
-    <figure class="side left press" aria-hidden="true"><img class="obj" src="/mf/button.webp" alt=""><span class="lbl">Confirm</span></figure></div>
+    <figure class="side left press" aria-hidden="true"><img class="obj" src="/mf/button.webp" alt=""><span class="lbl" data-done="✓ Hecho">Confirm</span></figure></div>
   <p class="indent">Así nació <span class="ul">ihatecrypto</span><span class="pop"></span></p>
   <p>Un lienzo infinito como el de Figma<span class="em" data-i="canvas"></span> Tu suscripción de LLM como cerebro<span class="em" data-i="chat"></span> Y una billetera que te entiende<span class="em" data-i="wallet"></span></p>
   <div class="has-side"><p>Escribes un solo mensaje. En el lienzo aparece el <span class="ring">plan</span>: cada paso, cada red, cuánto tienes ahora y cuánto tendrás después. Pulsas Confirm y <mark>en menos de un minuto</mark> todo está listo.</p>
@@ -386,7 +402,7 @@ if (location.pathname === '/manifesto/') {
     <figure class="side left ask" aria-hidden="true"><div class="inp"><span class="t">переведи мои USDC с Base на Solana</span><i class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></i></div><div class="re"><svg viewBox="0 0 140 140"><use href="#f-think"/></svg><span>Собираю маршрут…</span></div></figure></div>
   <p>Нам говорят, что скоро агенты будут управлять деньгами сами. Возможно. Но давайте честно: <mark>большие деньги</mark> агенту сегодня не доверит никто.</p>
   <div class="has-side"><p>Мы считаем, что сейчас у ИИ в крипте другая задача: не решать за вас, а показать каждый шаг и <mark>дождаться, пока вы нажмёте Confirm</mark>.</p>
-    <figure class="side left press" aria-hidden="true"><img class="obj" src="/mf/button.webp" alt=""><span class="lbl">Confirm</span></figure></div>
+    <figure class="side left press" aria-hidden="true"><img class="obj" src="/mf/button.webp" alt=""><span class="lbl" data-done="✓ Готово">Confirm</span></figure></div>
   <p class="indent">Так появился <span class="ul">ihatecrypto</span><span class="pop"></span></p>
   <p>Бесконечный холст как в Figma<span class="em" data-i="canvas"></span> Ваша подписка на LLM в роли мозга<span class="em" data-i="chat"></span> И кошелёк, который вас понимает<span class="em" data-i="wallet"></span></p>
   <div class="has-side"><p>Вы пишете одно сообщение. На холсте появляется <span class="ring">план</span>: каждый шаг, каждая сеть, сколько было и сколько станет. Вы нажимаете Confirm, и <mark>меньше чем через минуту</mark> всё готово.</p>
@@ -462,15 +478,39 @@ $$('.rise').forEach((el) => {
   words.forEach((w, i) => { const s = document.createElement('span'); s.className = 'w'; s.style.setProperty('--i', i); s.textContent = w; el.append(s, ' '); });
 });
 
-// A picture in the line hops when pressed.
+// Every picture hops when pressed; the buttons in the pictures beside the text do what they say.
 addEventListener('click', (e) => {
-  const el = e.target.closest('.icons img, .em img, .pop svg');
-  if (!el) return;
-  el.classList.remove('hop');
-  void el.offsetWidth;   // restart the hop on a second press
-  el.classList.add('hop');
+  const hop = e.target.closest('.icons img, .em img, .pop svg, .dial .obj, .side .sheet, .side .note, .plan .you, .plan li, .ask .re svg, .end .coin');
+  if (hop) { hop.classList.remove('hop'); void hop.offsetWidth; hop.classList.add('hop'); return; }   // offsetWidth: a second press hops again
+  const press = e.target.closest('.press .obj, .press .lbl')?.closest('.press');
+  if (press) {
+    const lbl = press.querySelector('.lbl');
+    press.classList.remove('pressed'); void press.offsetWidth; press.classList.add('pressed');
+    lbl.textContent = lbl.dataset.done; lbl.classList.add('ok');
+    clearTimeout(press.t); press.t = setTimeout(() => { lbl.textContent = 'Confirm'; lbl.classList.remove('ok'); press.classList.remove('pressed'); }, 1800);
+    return;
+  }
+  const plan = e.target.closest('.plan .go')?.closest('.plan');
+  if (plan) { plan.classList.add('reset'); void plan.offsetWidth; requestAnimationFrame(() => plan.classList.remove('reset')); return; }
+  const ask = e.target.closest('.ask .go')?.closest('.ask');
+  if (ask && ask.classList.contains('sent')) { ask.classList.remove('sent'); type(ask.querySelector('.t'), true); return; }
+  const dial = e.target.closest('.win .bt, .win .tb i')?.closest('.dial');
+  if (dial && !dial.classList.contains('closed')) { dial.classList.add('closed'); setTimeout(() => dial.classList.remove('closed'), 1200); return; }
+  const wheel = e.target.closest('.wheel .obj')?.closest('.wheel');
+  if (wheel) { wheel.classList.remove('spin'); void wheel.offsetWidth; wheel.classList.add('spin'); }
 });
-addEventListener('animationend', (e) => e.target.classList?.remove('hop'));
+addEventListener('animationend', (e) => { e.target.classList?.remove('hop'); if (e.animationName === 'spin') e.target.closest('.wheel')?.classList.remove('spin'); });
+
+// The message in the left picture types itself, then it is sent and the coin answers; pressing send types it again.
+function type(el, again) {
+  if (el.dataset.typed && !again) return;
+  el.dataset.typed = 1;
+  const words = el.dataset.words ??= el.textContent;
+  let k = 0;
+  el.textContent = '';
+  clearInterval(el.t);
+  el.t = setInterval(() => { el.textContent = words.slice(0, ++k); if (k >= words.length) { clearInterval(el.t); el.closest('.ask').classList.add('sent'); } }, 55);
+}
 
 // Each block: «in» once it scrolls in (it comes up), «lit» once it reaches the middle of the screen (its marks, the pen,
 // the pictures stay drawn), «now» while it is there (its picture beside it, the coin's eyes).
@@ -478,17 +518,9 @@ const blocks = [$('.hero'), ...$$('.mf > *'), $('.end')];
 if (matchMedia('(prefers-reduced-motion: reduce)').matches) { blocks.forEach((el) => el.classList.add('in', 'lit', 'now')); $$('.ask').forEach((el) => el.classList.add('sent')); }
 else {
   const show = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); show.unobserve(e.target); } }), { rootMargin: '0px 0px -8% 0px' });
-  const type = (el) => {
-    if (el.dataset.typed) return;
-    el.dataset.typed = 1;
-    const words = el.textContent;
-    let k = 0;
-    el.textContent = '';
-    const t = setInterval(() => { el.textContent = words.slice(0, ++k); if (k >= words.length) { clearInterval(t); el.closest('.ask').classList.add('sent'); } }, 55);
-  };
   const mid = new IntersectionObserver((es) => es.forEach((e) => {
     e.target.classList.toggle('now', e.isIntersecting);
-    if (e.isIntersecting) { e.target.classList.add('lit'); $$('.ask .t', e.target).forEach(type); }
+    if (e.isIntersecting) { e.target.classList.add('lit'); $$('.ask .t', e.target).forEach((t) => type(t)); }
   }), { rootMargin: '-36% 0px -36% 0px' });
   blocks.forEach((el) => { show.observe(el); mid.observe(el); });
 }
