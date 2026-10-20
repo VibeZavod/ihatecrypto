@@ -189,10 +189,10 @@ if (location.pathname === '/manifesto/') {
   .now .pop use + use { animation-delay: 2s; }
   @keyframes roll { 0% { opacity: 1; } 50% { opacity: 0; } }
 
-  /* Press the bitcoin in the row of coins: a terminal asks «whois satoshi» and types out a faceless portrait. */
+  /* Press the whitepaper: a terminal asks «whois satoshi» and types out a faceless portrait over it. */
   .satoshi { position: fixed; z-index: 45; width: max-content; padding: 12px 16px 16px; border-radius: 14px; background: #111111; color: #E6E6E8;
              font: 500 12px/1.3 ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: 0; box-shadow: 0 24px 60px rgba(17,17,17,.35);
-             opacity: 0; scale: .9; translate: 0 10px; transform-origin: 50% 100%; transition: opacity .2s, scale .35s cubic-bezier(.3,1.5,.5,1), translate .35s cubic-bezier(.3,1.5,.5,1); pointer-events: none; }
+             opacity: 0; scale: .9; translate: 0 10px; transform-origin: 50% 50%; transition: opacity .2s, scale .35s cubic-bezier(.3,1.5,.5,1), translate .35s cubic-bezier(.3,1.5,.5,1); pointer-events: none; }
   .satoshi.on { opacity: 1; scale: 1; translate: none; pointer-events: auto; }
   .satoshi .dots { display: flex; gap: 6px; margin-bottom: 10px; } .satoshi .dots i { width: 10px; height: 10px; border-radius: 50%; background: #3A3B40; }
   .satoshi .dots i:first-child { background: #FF5F57; } .satoshi .dots i:nth-child(2) { background: #FEBC2E; } .satoshi .dots i:last-child { background: #28C840; }
@@ -206,7 +206,7 @@ if (location.pathname === '/manifesto/') {
   .now .side, html:not(.js) .side { opacity: 1; scale: 1; rotate: -2deg; }
   .now .side, html:not(.js) .side { pointer-events: auto; }
   /* its buttons work: Confirm presses, the plan runs again, the message is sent again, Cancel hangs up, the wheel turns */
-  .press .obj, .press .lbl, .plan .go, .ask .go, .win .bt, .win .tb i, .wheel .obj { cursor: var(--hand); -webkit-tap-highlight-color: transparent; }
+  .press .obj, .press .lbl, .plan .go, .ask .go, .win .bt, .win .tb i, .wheel .obj, .mf > .has-side:first-child .ring { cursor: var(--hand); -webkit-tap-highlight-color: transparent; }
   .press.pressed .obj { animation: push .45s cubic-bezier(.3,.7,.3,1); }
   @keyframes push { 35% { translate: 0 8px; scale: .97; } }
   .press::after { content: ''; position: absolute; left: 50%; top: 40%; width: 64%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; border: 4px solid var(--accent); opacity: 0; pointer-events: none; }
@@ -504,7 +504,7 @@ $$('.rise').forEach((el) => {
   words.forEach((w, i) => { const s = document.createElement('span'); s.className = 'w'; s.style.setProperty('--i', i); s.textContent = w; el.append(s, ' '); });
 });
 
-// The bitcoin's secret: «whois satoshi» typed out line by line over the coin. Nobody knows his face, so the portrait has none.
+// The whitepaper's secret: press it, or the circled «Satoshi Nakamoto», and «whois satoshi» is typed out over it, line by line. Nobody knows his face, so the portrait has none.
 const SATOSHI = [['p', '$ whois satoshi'], ...["           .-\"\"\"\"\"\"-.", "         .'  ______  '.", "        /   /      \\   \\", "       |   |  ?  ?  |   |", "       |   |   __   |   |", "       |    \\      /    |", "        \\    '----'    /", "     .-'`'.          .'`'-.", "    /      '-.____.-'      \\", "   |                        |"].map((l) => ['a', l]), ['', ''],
   ['k', 'name     ', 'Satoshi Nakamoto'], ['k', 'email    ', 'satoshin@gmx.com'], ['k', 'paper    ', '31 Oct 2008'], ['k', 'block 0  ', '3 Jan 2009'], ['k', 'face     ', 'unknown']];
 const term = document.createElement('div');
@@ -512,13 +512,13 @@ term.className = 'satoshi';
 term.setAttribute('aria-hidden', 'true');
 term.innerHTML = '<div class="dots"><i></i><i></i><i></i></div><pre></pre>';
 document.body.append(term);
-function whois(btc) {
+function whois(paper) {
   if (term.classList.contains('on')) return hush();
   const pre = $('pre', term);
   pre.textContent = SATOSHI.map((r) => r.slice(1).join('')).join('\n');   // full size first, to place it
-  const r = btc.getBoundingClientRect(), w = term.offsetWidth, h = term.offsetHeight;
-  term.style.left = Math.max(12, Math.min(innerWidth - w - 12, r.left + r.width / 2 - w / 2)) + 'px';
-  term.style.top = (r.top - h - 14 > 76 ? r.top - h - 14 : r.bottom + 14) + 'px';
+  const r = paper.getBoundingClientRect(), w = term.offsetWidth, h = term.offsetHeight;
+  term.style.left = Math.max(12, Math.min(innerWidth - w - 12, r.left + r.width / 2 - w / 2)) + 'px';   // over the paper, kept on screen
+  term.style.top = Math.max(76, Math.min(innerHeight - h - 12, r.top + r.height / 2 - h / 2)) + 'px';
   pre.textContent = '';
   term.classList.add('on');
   let k = 0;
@@ -539,7 +539,9 @@ addEventListener('keydown', (e) => { if (e.key === 'Escape') hush(); });
 // Every picture hops when pressed; the buttons in the pictures beside the text do what they say.
 addEventListener('click', (e) => {
   const hop = e.target.closest('.icons img, .em img, .pop svg, .dial .obj, .side .sheet, .side .note, .plan .you, .plan li, .ask .re svg, .end .coin');
-  if (hop?.matches('.icons img[src$="btc.svg"]')) whois(hop); else if (!e.target.closest('.satoshi')) hush();
+  const name = e.target.closest('.mf > .has-side:first-child .ring');   // the circled «Satoshi Nakamoto»
+  if (name) return whois(name);
+  if (hop?.matches('.side .sheet, .side .note')) whois(hop.closest('.side')); else if (!e.target.closest('.satoshi')) hush();
   if (hop) { hop.classList.remove('hop'); void hop.offsetWidth; hop.classList.add('hop'); return; }   // offsetWidth: a second press hops again
   const press = e.target.closest('.press .obj, .press .lbl')?.closest('.press');
   if (press) {
