@@ -14,6 +14,18 @@ import Testing
     #expect(Workspace.gasRounded(0) == 0)
 }
 
+@Test func gasIsAskedOnlyWhenItRunsLow() {
+    func d(_ s: String) -> Decimal { Decimal(string: s)! }
+    // Topped up to the target, then the fee rose a little: no dust asked for.
+    #expect(Workspace.gasShort(held: d("0.000036"), target: d("0.000036044")) == 0)
+    #expect(Workspace.gasShort(held: 0, target: d("0.000036")) == d("0.000036"))
+    // Below half the target: back up to all of it.
+    #expect(Workspace.gasShort(held: d("0.0055"), target: d("0.012"), floor: d("0.005")) == d("0.0065"))
+    #expect(Workspace.gasShort(held: d("0.007"), target: d("0.012"), floor: d("0.005")) == 0)
+    // Under SOL's floor its moves fail, however close to the target.
+    #expect(Workspace.gasShort(held: d("0.0049"), target: d("0.006"), floor: d("0.005")) == d("0.0011"))
+}
+
 @Test func gasSendsParseAsTheyAreTyped() {
     let sol = Decimal(string: "0.013")!, eth = Decimal(string: "0.000019")!
     // As suggestGas writes them: «send <amount> <coin> on <network> to <wallet>».

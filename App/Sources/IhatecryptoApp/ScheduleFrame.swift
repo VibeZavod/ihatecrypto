@@ -363,15 +363,23 @@ extension Workspace {
 
     /// SOL the automation wallet lacks for the next 4 weeks of its tasks: the floor for the accounts a move opens
     /// (TaskRun.solFloor) plus 0.00025 SOL a step a run — Jupiter caps its priority fee at 0.0002 SOL a swap, then the fee
-    /// of sending what it bought on to Main. 0 when it has that; nil until read.
+    /// of sending what it bought on to Main. 0 while it holds half of that (gasShort); nil until read.
     // ponytail: every step priced as a Solana swap; price EVM-only steps apart if top-ups come out far off.
-    var automationSOLShort: Decimal? {
-        guard let held = automationBudget?.sol else { return nil }
+    var automationSOLShort: Decimal? { automationBudget?.sol.map(solShort) }
+
+    /// automationSOLShort for `held` SOL on it.
+    func solShort(_ held: Decimal) -> Decimal {
         let until = Date().addingTimeInterval(28 * 86_400)
         let steps = schedulePaused ? 0 : tasks.filter { $0.paused != true && $0.movesMoney && usesAutomation($0) }
             .reduce(0) { $0 + $1.runs(until: until) * $1.steps.count }
-        let short = TaskRun.solFloor + Decimal(steps) * Decimal(string: "0.00025")! - held
-        return short > 0 ? Self.gasRounded(short) : 0
+        return Self.gasShort(held: held, target: TaskRun.solFloor + Decimal(steps) * Decimal(string: "0.00025")!, floor: TaskRun.solFloor)
+    }
+
+    /// What a top-up adds: nothing while `held` is at least half of `target` and the `floor` under which moves fail,
+    /// else up to the whole target. Topped up to the target exactly, a fee a little dearer next minute asked for dust
+    /// (0.000000044 ETH, Dev 2026-10-20).
+    static func gasShort(held: Decimal, target: Decimal, floor: Decimal = 0) -> Decimal {
+        held < max(floor, target / 2) ? gasRounded(target - held) : 0
     }
 
     /// Up, to two significant digits: 0.0123 → 0.013 SOL, 0.0000183 → 0.000019 ETH.
@@ -386,18 +394,19 @@ extension Workspace {
     /// (topUpGas). 0 = enough; a network that didn't answer is missing.
     static func evmGasShort(_ address: String?, usdc: [String: Decimal]) async -> [String: Decimal] {
         guard let address, isEVMAddress(address) else { return [:] }
-        let raw = await withTaskGroup(of: (String, Decimal?).self) { group in
+        let read = await withTaskGroup(of: (String, (held: Decimal, target: Decimal)?).self) { group in
             for n in EVMNetwork.all where n.feeToken == nil && (usdc[n.key] ?? 0) >= 1 {
                 group.addTask {
                     guard let held = try? await n.rpc.balance(address), let fee = try? await n.rpc.fees() else { return (n.key, nil) }
-                    return (n.key, (Decimal(900_000) * Decimal(fee.maxFee) - Decimal(held)) / 1_000_000_000_000_000_000)
+                    let wei: Decimal = 1_000_000_000_000_000_000
+                    return (n.key, (held: Decimal(held) / wei, target: Decimal(900_000) * Decimal(fee.maxFee) / wei))
                 }
             }
-            var out: [String: Decimal] = [:]
-            for await (key, short) in group { if let short { out[key] = short } }
+            var out: [String: (held: Decimal, target: Decimal)] = [:]
+            for await (key, r) in group { if let r { out[key] = r } }
             return out
         }
-        return raw.mapValues { $0 > 0 ? gasRounded($0) : 0 }
+        return read.mapValues { gasShort(held: $0.held, target: $0.target) }
     }
 
     /// What the automation wallet lacks for gas, network by network: SOL, then each EVM network's coin (`evm`:
@@ -506,7 +515,7 @@ struct ScheduleFrame: View {
                     VStack(alignment: .leading, spacing: 1) {
                         Text("Top up gas").font(.ui(12.5, .bold))
                         Text(ws.automationBudget == nil ? "…"
-                             : short.isEmpty ? "Enough for 4 weeks · adds \(Fmt.num(TaskRun.solFloor, maxFraction: 9)) SOL"
+                             : short.isEmpty ? "Enough for now · adds \(Fmt.num(TaskRun.solFloor, maxFraction: 9)) SOL"
                              // A network a line: joined on one, an amount was cut from its coin at the wrap.
                              : short.map { "\(Fmt.num($0.amount, maxFraction: 9)) \($0.coin) on \(WalletCommand.placeName($0.net))" }.joined(separator: "\n"))
                             .font(.ui(10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)

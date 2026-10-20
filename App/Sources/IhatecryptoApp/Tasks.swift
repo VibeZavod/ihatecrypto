@@ -123,12 +123,14 @@ extension Workspace {
         let failed = finishedAction?.outcome.ok == false
         // Short of SOL, it fails the same way every run: said with what to do, and the way to do it as a card.
         if let automation, failed, let address = automation.solana, let sol = try? await Solana.balance(owner: address).sol, sol < TaskRun.solFloor {
-            reply(say("The automation wallet «\(automation.label)» has \(Fmt.num(sol, maxFraction: 6)) SOL — too little for Solana’s fees and the accounts a move opens. Send it 0.01 SOL and the next run goes through.",
-                      "На кошельке автоматизации «\(automation.label)» \(Fmt.num(sol, maxFraction: 6)) SOL — мало для комиссий Solana и счетов, которые открывает движение. Отправь на него 0.01 SOL, и следующий запуск пройдёт."))
+            // What its tasks need for 4 weeks, as «Top up gas» works it out.
+            let need = Fmt.num(solShort(sol), maxFraction: 9)
+            reply(say("The automation wallet «\(automation.label)» has \(Fmt.num(sol, maxFraction: 6)) SOL — too little for Solana’s fees and the accounts a move opens. Send it \(need) SOL: enough for its tasks for the next 4 weeks.",
+                      "На кошельке автоматизации «\(automation.label)» \(Fmt.num(sol, maxFraction: 6)) SOL — мало для комиссий Solana и счетов, которые открывает движение. Отправь на него \(need) SOL — хватит на его задачи на 4 недели вперёд."))
             offerCards([
-                ChatRouter.Option(title: say("Send 0.01 SOL to \(automation.label)", "Отправить 0.01 SOL на \(automation.label)"),
+                ChatRouter.Option(title: say("Send \(need) SOL to \(automation.label)", "Отправить \(need) SOL на \(automation.label)"),
                                   comment: say("From your main wallet: Confirm and \(Presence.short).", "С основного кошелька: Confirm и \(Presence.ru)."),
-                                  command: "send 0.01 SOL to \(automation.label)", recommended: true),
+                                  command: "send \(need) SOL to \(automation.label)", recommended: true),
             ])
         }
         // A trade plan waits for Execute the way a move waits for Confirm; one a rule stops needs the user just as much.
