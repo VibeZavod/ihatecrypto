@@ -8,10 +8,14 @@
      into the line, one sentence rising word by word, the coin popping in, one closing line on its own screen.
      Each language's words sit in <template lang="…">: build.py keeps this language's and drops the others, fills
      {{lang}}, {{LANG}}, {{home}} and {{version}}, adds canonical + hreflang, and ties Russian one-letter words to the next.
-     The header, the coin and the flags are copied from index.html: change both. Pictures are in mf/. -->
+     The header, the coin and the flags are copied from index.html: change both. Pictures are in mf/, the link previews
+     too (mf/og-<lang>.png, drawn by og-manifesto.html). -->
 <template lang="en"><title>Manifesto — ihatecrypto</title>
 <meta name="description" content="I hate crypto. Not the money: managing it. Why we still move crypto by hand, and the first step between today and AGI.">
 <meta property="og:url" content="https://ihatecrypto.ai/manifesto/">
+<meta property="og:image" content="https://ihatecrypto.ai/mf/og-en.png">
+<meta name="twitter:image" content="https://ihatecrypto.ai/mf/og-en.png">
+<meta property="og:image:alt" content="I hate crypto. Not the money: managing it. The ihatecrypto manifesto, with the things we still do by hand around it.">
 <meta property="og:title" content="I hate crypto. Not the money. Managing it.">
 <meta property="og:description" content="The ihatecrypto manifesto: why we still move crypto by hand, and the first step between today and AGI.">
 <meta name="twitter:title" content="I hate crypto. Not the money. Managing it.">
@@ -19,6 +23,9 @@
 <template lang="es"><title>Manifiesto — ihatecrypto</title>
 <meta name="description" content="Odio la cripto. No el dinero: gestionarlo. Por qué seguimos moviendo la cripto a mano y cuál es el primer paso hacia la AGI.">
 <meta property="og:url" content="https://ihatecrypto.ai/es/manifesto/">
+<meta property="og:image" content="https://ihatecrypto.ai/mf/og-es.png">
+<meta name="twitter:image" content="https://ihatecrypto.ai/mf/og-es.png">
+<meta property="og:image:alt" content="Odio la cripto. No el dinero: gestionarlo. El manifiesto de ihatecrypto, rodeado de lo que aún hacemos a mano.">
 <meta property="og:title" content="Odio la cripto. No el dinero. Gestionarlo.">
 <meta property="og:description" content="El manifiesto de ihatecrypto: por qué seguimos moviendo la cripto a mano y cuál es el primer paso hacia la AGI.">
 <meta name="twitter:title" content="Odio la cripto. No el dinero. Gestionarlo.">
@@ -26,6 +33,9 @@
 <template lang="ru"><title>Манифест — ihatecrypto</title>
 <meta name="description" content="Я ненавижу крипту. Не деньги — управление ими. Почему крипту до сих пор переводят вручную и каким будет первый шаг к AGI.">
 <meta property="og:url" content="https://ihatecrypto.ai/ru/manifesto/">
+<meta property="og:image" content="https://ihatecrypto.ai/mf/og-ru.png">
+<meta name="twitter:image" content="https://ihatecrypto.ai/mf/og-ru.png">
+<meta property="og:image:alt" content="Я ненавижу крипту. Не деньги — управление ими. Манифест ihatecrypto и вокруг всё, что мы до сих пор делаем вручную.">
 <meta property="og:title" content="Я ненавижу крипту. Не деньги. Управление ими.">
 <meta property="og:description" content="Манифест ihatecrypto: почему крипту до сих пор переводят вручную и каким будет первый шаг к AGI.">
 <meta name="twitter:title" content="Я ненавижу крипту. Не деньги. Управление ими.">
@@ -47,11 +57,9 @@ if (location.pathname === '/manifesto/') {
 </script>
 <meta property="og:type" content="article">
 <meta property="og:site_name" content="ihatecrypto">
-<meta property="og:image" content="https://ihatecrypto.ai/og.png?v=2">
 <meta property="og:image:width" content="1200">
 <meta property="og:image:height" content="630">
 <meta name="twitter:card" content="summary_large_image">
-<meta name="twitter:image" content="https://ihatecrypto.ai/og.png?v=2">
 <link rel="icon" href="/favicon.png" sizes="64x64">
 <link rel="apple-touch-icon" href="/icon.png">
 <link rel="preload" href="/fonts/onest-latin.woff2" as="font" type="font/woff2" crossorigin>

@@ -1,0 +1,52 @@
+<!doctype html>
+<!-- The manifesto's link preview (mf/og-en.png, og-ru.png, og-es.png, 1200x630): the title in the middle, the manifesto's
+     3D things and coins around it, «Managing it» circled by hand. The owner picked it from ten (2026-10-20).
+     Render each language from a local server over the built site (it needs /fonts and /mf), e.g.
+       python3 Tools/site/build.py <ver> /tmp/site && cp -R Tools/site/{fonts,mf} Tools/site/og-manifesto.html /tmp/site/
+       cd /tmp/site && python3 -m http.server 8765, then screenshot http://127.0.0.1:8765/og-manifesto.html?l=ru at 1200x630 -->
+<html><head><meta charset="utf-8">
+<style>
+  @font-face { font-family: 'DynaPuff'; font-weight: 600; src: url(/fonts/dynapuff-latin.woff2) format('woff2'); }
+  @font-face { font-family: 'Onest'; font-weight: 400 800; src: url(/fonts/onest-cyrillic.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+  @font-face { font-family: 'Onest'; font-weight: 400 800; src: url(/fonts/onest-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+1E00-1E9F, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113; }
+  @font-face { font-family: 'Onest'; font-weight: 400 800; src: url(/fonts/onest-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  * { box-sizing: border-box; margin: 0; }
+  body { position: relative; width: 1200px; height: 630px; overflow: hidden; color: #111111; font-family: Onest, sans-serif; -webkit-font-smoothing: antialiased;
+         background: #FAFAFB radial-gradient(#D9DCE2 1.4px, transparent 1.8px) 0 0 / 26px 26px; }
+  .lock { position: absolute; left: 50%; top: 40px; translate: -50% 0; display: flex; align-items: center; gap: 12px; }
+  .lock svg { width: 52px; height: 52px; }
+  .lock b { font: 600 34px/1 DynaPuff, Onest, sans-serif; letter-spacing: -.3px; }
+  .lock i { margin-left: 6px; padding: 6px 12px; border-radius: 10px; border: 1.5px solid #E1E4EC; background: #FFFFFF; font: 600 22px Onest, sans-serif; font-style: normal; color: #5F636B; }
+  .obj { position: absolute; display: block; filter: drop-shadow(0 18px 24px rgba(17,17,17,.18)); }
+  .mid { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding-top: 30px; }
+  h1 { font: 800 132px/.96 Onest, sans-serif; letter-spacing: -.045em; }
+  .ru h1 { font-size: 120px; max-width: 9ch; }
+  p { margin-top: 26px; font: 700 46px/1.15 Onest, sans-serif; letter-spacing: -.025em; }
+  .ring { position: relative; margin-left: .25em; white-space: nowrap; }
+  .ring svg { position: absolute; left: -.5em; top: -.42em; width: calc(100% + 1em); height: 1.9em; overflow: visible; }
+  .ring path { fill: none; stroke: currentColor; stroke-width: 3; stroke-linecap: round; }
+</style></head><body>
+<svg width="0" height="0" style="position:absolute"><defs><symbol id="f-wait" viewBox="0 0 140 140"><circle cx="70" cy="70" r="64" fill="#FF7A2F"/><circle cx="70" cy="70" r="62" fill="none" stroke="#111111" stroke-width="9" stroke-dasharray="7 7"/><circle cx="70" cy="70" r="52" fill="none" stroke="#111111" stroke-width="3.5"/><circle cx="50" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="90" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="54.08" cy="53.98" r="8" fill="#111111"/><circle cx="94.08" cy="53.98" r="8" fill="#111111"/><path d="M54 98 Q70 92 86 96" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></symbol></defs></svg>
+<div class="lock"><svg viewBox="0 0 140 140"><use href="#f-wait"/></svg><b>ihatecrypto</b><i data-t="m"></i></div>
+<img class="obj" src="/mf/clipboard.webp" style="left:70px;top:150px;width:120px;rotate:-12deg">
+<img class="obj" src="/mf/bridge.webp" style="left:40px;top:330px;width:150px;rotate:8deg">
+<img class="obj" src="/mf/hourglass.webp" style="left:150px;top:480px;width:90px;rotate:-6deg">
+<img class="obj" src="/mf/gaspump.webp" style="right:70px;top:140px;width:110px;rotate:10deg">
+<img class="obj" src="/mf/pen.webp" style="right:170px;top:470px;width:110px;rotate:-14deg">
+<img class="obj" src="/mf/laptop.webp" style="right:30px;top:320px;width:150px;rotate:-8deg">
+<img class="obj" src="/mf/btc.svg" style="left:330px;top:520px;width:64px;rotate:-10deg;border-radius:50%">
+<img class="obj" src="/mf/sol.png" style="left:250px;top:90px;width:56px;rotate:12deg;border-radius:50%">
+<img class="obj" src="/mf/hype.svg" style="right:330px;top:530px;width:60px;rotate:8deg">
+<img class="obj" src="/mf/eth.svg" style="right:300px;top:96px;width:56px;rotate:-8deg">
+<div class="mid"><h1 data-t="h"></h1><p><span data-t="not"></span><span class="ring"><span data-t="it"></span><svg viewBox="0 0 200 80" preserveAspectRatio="none"><path d="M176 21C138 3 48 5 15 30C-5 47 33 74 102 74C168 74 204 53 189 29C179 15 151 7 122 8"/></svg></span></p></div>
+<script>
+const W = {
+  en: { m: 'Manifesto', h: 'I hate crypto.', not: 'Not the money.', it: 'Managing it' },
+  es: { m: 'Manifiesto', h: 'Odio la cripto.', not: 'No el dinero.', it: 'Gestionarlo' },
+  ru: { m: 'Манифест', h: 'Я ненавижу крипту.', not: 'Не деньги.', it: 'Управление ими' },
+};
+const l = W[new URLSearchParams(location.search).get('l')] ? new URLSearchParams(location.search).get('l') : 'en';
+document.body.classList.add(l);
+document.querySelectorAll('[data-t]').forEach((el) => { el.textContent = W[l][el.dataset.t]; });
+</script>
+</body></html>
