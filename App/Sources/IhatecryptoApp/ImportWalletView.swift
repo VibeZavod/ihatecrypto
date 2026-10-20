@@ -35,7 +35,7 @@ struct WalletManagement: View {
     @State private var removing: SignerWallet?
     /// Which way of adding a wallet is open; the others stay one line each.
     @State private var adding: Adding?
-    /// «New test wallet…» in the rail's wallet menu opens Settings › Wallet with it chosen.
+    /// «Test wallet: signs without Touch ID» under «Create a new wallet».
     @AppStorage("newWalletTest") private var newTest = false
 
     enum Adding { case create, phrase, key }
@@ -65,7 +65,6 @@ struct WalletManagement: View {
         // While the words are on screen, screenshots, recordings and screen sharing get a blank window.
         .onChange(of: newPhrase == nil) { _, hidden in NSApp.keyWindow?.sharingType = hidden ? .readOnly : .none }
         .onAppear {
-            if newTest { adding = .create }
             #if DEBUG
             // `-demoImport YES`: the public BIP-39 test phrase, for screenshots and checks only.
             if UserDefaults.standard.bool(forKey: "demoImport") {

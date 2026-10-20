@@ -2,6 +2,7 @@ import Foundation
 import IhatecryptoCore
 import SignerAPI
 import SwiftUI
+import TradeExecution
 import WalletCore
 
 /// Several wallets in the signer, one of which signs. The signer owns that choice (switching takes Touch ID there);
@@ -144,7 +145,7 @@ extension Workspace {
 }
 
 /// Near the balance: which wallet signs, by its name, with a lock for a Touch ID wallet and «TEST» for a test wallet
-/// (no Touch ID). A click lists the wallets: switch (Touch ID), rename, a new test wallet, the key window.
+/// (no Touch ID). A click opens the wallets: the list on the left, the picked one's addresses on every network on the right.
 struct WalletChip: View {
     @Environment(Workspace.self) private var ws
     var compact = false
@@ -172,84 +173,297 @@ struct WalletChip: View {
     }
 }
 
+/// The wallet menu (W04, picked 2026-10-20): wallets and multisigs on the left; a click shows one on the right — a
+/// wallet's address on every network with Copy and «Switch to…», a multisig's address, networks and keys. No «New test
+/// wallet» here: release users won't have one (the owner); Settings › Wallet still makes it.
 private struct WalletMenu: View {
     @Environment(Workspace.self) private var ws
     let close: () -> Void
+    /// What the right side shows: a wallet's id, «ms:» + a multisig's address, or «new-ms»; nil = the current wallet.
+    @State private var picked: String?
+    @State private var hovered: String?
     @State private var renaming: String?
     @State private var name = ""
     @State private var error: String?
 
+    /// The automation wallet lives in the Schedule (its budget, addresses, top-up), not among the wallets to switch to.
+    private var wallets: [SignerWallet] { ws.wallets.filter { !$0.isAutomation } }
+    private var shown: String { picked ?? ws.activeWalletID ?? wallets.first?.id ?? "" }
+
     var body: some View {
+        HStack(alignment: .top, spacing: 12) {
+            list.frame(width: 230).frame(maxHeight: .infinity, alignment: .top)
+            // Wide enough for a NEAR address (64 characters) in two lines.
+            detail.frame(width: 500)
+        }
+        .fixedSize(horizontal: false, vertical: true)
+        .padding(12)
+        // Solid: through the popover's glass an orange board behind tinted the grey lines orange (the owner's screenshot).
+        .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var list: some View {
         VStack(alignment: .leading, spacing: 2) {
-            Text("WALLETS").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary).padding(.horizontal, 10).padding(.bottom, 4)
-            // The automation wallet lives in the Schedule (its budget, addresses, top-up), not among the wallets to switch to.
-            ForEach(ws.wallets.filter { !$0.isAutomation }) { w in row(w) }
-            if let error { Text(error).font(.ui(10)).foregroundStyle(.red).padding(.horizontal, 10).fixedSize(horizontal: false, vertical: true) }
-            Divider().padding(.vertical, 6)
+            HStack {
+                Text("Wallets").font(.ui(15, .bold))
+                Spacer()
+                Button { close(); ws.openSettings(.wallet) } label: { Image(systemName: "gearshape") }
+                    .buttonStyle(.hoverIcon).help("Manage wallets: create, import, remove").accessibilityLabel("Manage wallets")
+            }
+            .padding(.leading, 8).padding(.bottom, 4)
+            ForEach(wallets) { w in
+                row(w.id, title: w.label, line: listLine(w), current: w.id == ws.activeWalletID) { walletIcon(w) }
+            }
+            if !ws.multisigs.isEmpty {
+                Text("MULTISIG").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary).padding(.horizontal, 8).padding(.top, 10).padding(.bottom, 2)
+                ForEach(ws.multisigs) { m in
+                    row("ms:" + m.address, title: "Multisig", line: "\(m.threshold) of \(m.keys.count) keys · " + m.networks.map(networkName).joined(separator: ", "), current: false) {
+                        Image(systemName: "lock.shield").font(.system(size: 13, weight: .semibold)).foregroundStyle(.secondary)
+                    }
+                }
+            }
+            if let error { Text(error).font(.ui(10)).foregroundStyle(.red).padding(.horizontal, 8).fixedSize(horizontal: false, vertical: true) }
+            Spacer(minLength: 14)
+            Divider().padding(.horizontal, 8).padding(.bottom, 4)
             if LedgerAccount.saved == nil {
-                MenuRow(title: "Connect Ledger…", detail: "keys stay on the device · you approve each move on it", icon: "cable.connector") {
+                action("Connect Ledger…", icon: "cable.connector", help: "Keys stay on the device; you approve each move on it") {
                     close()
                     Task { await ws.connectLedger() }
                 }
             }
-            if !ws.wallets.contains(where: \.isTest) {
-                MenuRow(title: "New test wallet…", detail: "signs without \(Presence.name) · for a few dollars", icon: "flask") {
-                    UserDefaults.standard.set(true, forKey: "newWalletTest")
-                    close(); ws.openSettings(.wallet)
-                }
-            }
-            ForEach(ws.multisigs) { m in
-                MenuRow(title: "Multisig", detail: "Safe · any \(m.threshold) of \(m.keys.count) keys · \(m.address.prefix(6))…\(m.address.suffix(4))", icon: "lock.square.stack") {
-                    close(); withAnimation(StudioView.spring) { ws.detail = "multisig" }
-                }
-            }
-            MenuRow(title: "New multisig…", detail: "Safe · as many keys as you want, on your devices", icon: "lock.shield") {
-                close(); ws.suggest("make a multisig")
-            }
-            MenuRow(title: "Manage wallets…", detail: "create, import, remove", icon: "key") { close(); ws.openSettings(.wallet) }
-            Text("Switching asks for \(Presence.name). A test wallet signs its moves without it — Claude can test with it; keep only a few dollars there.")
-                .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true).padding(.horizontal, 10).padding(.top, 4)
+            action("New wallet…", icon: "plus", help: "Create or import a wallet in Settings") { close(); ws.openSettings(.wallet) }
+            action("New multisig…", icon: "lock.shield", id: "new-ms", help: "What a multisig is, and how to make one") { picked = "new-ms"; renaming = nil }
         }
-        .padding(.vertical, 12).padding(.horizontal, 6)
-        .frame(width: 300)
     }
 
-    private func row(_ w: SignerWallet) -> some View {
-        let active = w.id == ws.activeWalletID
-        return HStack(spacing: 10) {
-            Group {
-                if w.kind == "ledger" { LedgerGlyph(size: 16) } else {
-                    Image(systemName: w.isTest ? "flask.fill" : w.isAutomation ? "clock.arrow.circlepath" : "lock.fill").font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(w.isTest || w.isAutomation ? Color.orange : Color.secondary)
+    private func row<Icon: View>(_ id: String, title: String, line: String, current: Bool, @ViewBuilder icon: () -> Icon) -> some View {
+        let on = shown == id
+        return Button { picked = id; renaming = nil } label: {
+            HStack(spacing: 10) {
+                icon().frame(width: 30, height: 30).background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(title).font(.ui(13, .semibold)).lineLimit(1)
+                    Text(line).font(.ui(11)).foregroundStyle(.secondary).lineLimit(1)
+                }
+                Spacer(minLength: 4)
+                if current {
+                    Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Brand.accentInk).accessibilityLabel("Current wallet")
                 }
             }
-            .frame(width: 18)
-            VStack(alignment: .leading, spacing: 1) {
-                if renaming == w.id {
-                    TextField("Name", text: $name).textFieldStyle(.roundedBorder).font(.ui(12)).onSubmit { rename(w) }
-                } else {
-                    Text(w.label).font(.ui(13, .semibold))
-                }
-                Text((w.kind == "ledger" ? "On the device · " : w.isTest ? "Test · no \(Presence.short) · " : w.isAutomation ? "Scheduled tasks · no \(Presence.short) · " : "\(Presence.short) · ") + short(w)).font(.ui(10)).foregroundStyle(.secondary).lineLimit(1)
-            }
-            Spacer(minLength: 4)
-            if active { Image(systemName: "checkmark").font(.system(size: 11, weight: .bold)).foregroundStyle(Brand.accentInk) }
-            Button { renaming = w.id; name = w.label } label: { Image(systemName: "pencil") }
-                .buttonStyle(.hoverIcon).help("Rename").accessibilityLabel("Rename \(w.label)")
+            .padding(8)
+            .background(RoundedRectangle(cornerRadius: 11).fill(on ? Color.primary.opacity(0.07) : hovered == id ? Color.primary.opacity(0.04) : .clear))
+            .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(on ? Brand.accent.opacity(0.55) : .clear))
+            .contentShape(Rectangle())
         }
-        .padding(.horizontal, 10).padding(.vertical, 6)
-        .background(RoundedRectangle(cornerRadius: 10).fill(active ? Brand.accent.opacity(0.1) : .clear))
-        .contentShape(Rectangle())
-        .onTapGesture {
-            guard !active, renaming == nil else { return }
-            close()
-            Task { await ws.switchWallet(w) }
-        }
-        .pointerStyle(active ? nil : .link)
+        .buttonStyle(.plain)
+        .onHover { hovered = $0 ? id : (hovered == id ? nil : hovered) }
+        .pointerStyle(.link)
     }
 
-    private func short(_ w: SignerWallet) -> String {
-        [w.solana.map { "\($0.prefix(4))…\($0.suffix(4))" }, w.evm.map { "\($0.prefix(6))…\($0.suffix(4))" }].compactMap { $0 }.joined(separator: " · ")
+    private func action(_ title: String, icon: String, id: String? = nil, help: String, _ run: @escaping () -> Void) -> some View {
+        let on = id != nil && shown == id, key = id ?? title
+        return Button(action: run) {
+            Label(title, systemImage: icon).font(.ui(12.5, .semibold))
+                .frame(maxWidth: .infinity, minHeight: 34, alignment: .leading).padding(.horizontal, 10)
+                .background(RoundedRectangle(cornerRadius: 9).fill(on ? Color.primary.opacity(0.07) : hovered == key ? Color.primary.opacity(0.04) : .clear))
+                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(on ? Brand.accent.opacity(0.55) : .clear))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).help(help)
+        .onHover { hovered = $0 ? key : (hovered == key ? nil : hovered) }
+    }
+
+    @ViewBuilder private func walletIcon(_ w: SignerWallet) -> some View {
+        if w.kind == "ledger" { LedgerGlyph(size: 16) } else {
+            Image(systemName: w.isTest ? "flask.fill" : "lock.fill").font(.system(size: 13, weight: .semibold))
+                .foregroundStyle(w.isTest ? Color.orange : Color.secondary)
+        }
+    }
+
+    private func listLine(_ w: SignerWallet) -> String {
+        let n = networks(w).filter { $0.address != nil }.count
+        let how = w.kind == "ledger" ? "On the device" : w.isTest ? "No \(Presence.short)" : Presence.short
+        return "\(how) · \(n) network\(n == 1 ? "" : "s")"
+    }
+
+    private struct Net: Identifiable {
+        let id, name, note, logo: String
+        let address: String?
+        let missing: String
+    }
+
+    /// Solana, EVM (one address on all nine), Hyperliquid (the EVM address again: its account is that key) and NEAR.
+    private func networks(_ w: SignerWallet) -> [Net] {
+        let place = w.kind == "ledger" ? "on a Ledger" : "in this wallet"
+        return [
+            Net(id: "solana", name: "Solana", note: "", logo: "sol", address: w.solana, missing: "No Solana key \(place)."),
+            Net(id: "evm", name: "EVM", note: "\(EVMNetwork.all.count) networks", logo: "eth", address: w.evm, missing: "No EVM key \(place)."),
+            Net(id: "hyperliquid", name: "Hyperliquid", note: "same as EVM", logo: "hype", address: w.evm, missing: "No EVM key \(place)."),
+            // A phrase wallet made before NEAR learns its address on the first NEAR move (one unlock).
+            Net(id: "near", name: "NEAR", note: "", logo: "near", address: w.near,
+                missing: w.kind == "phrase" ? "Shown after its first NEAR move." : "No NEAR key \(place).")
+        ]
+    }
+
+    private func networkName(_ key: String) -> String { EVMNetwork.all.first { $0.key == key }?.name ?? key.capitalized }
+
+    private var detail: some View {
+        Group {
+            if shown == "new-ms" { newMultisig }
+            else if let m = ws.multisigs.first(where: { "ms:" + $0.address == shown }) { multisig(m) }
+            else if let w = wallets.first(where: { $0.id == shown }) { wallet(w) }
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .background(RoundedRectangle(cornerRadius: 14).fill(Color.primary.opacity(0.035)))
+        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(Color.primary.opacity(0.07)))
+    }
+
+    private func wallet(_ w: SignerWallet) -> some View {
+        let current = w.id == ws.activeWalletID
+        let how = w.kind == "ledger" ? "on the device, you approve each move on it"
+            : w.isTest ? "signs without \(Presence.name), keep only a few dollars here" : "signs each move with \(Presence.name)"
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    if renaming == w.id {
+                        TextField("Name", text: $name).textFieldStyle(.roundedBorder).font(.ui(13)).frame(maxWidth: 220).onSubmit { rename(w) }
+                    } else {
+                        HStack(spacing: 4) {
+                            Text(w.label).font(.ui(17, .bold)).lineLimit(1)
+                            Button { renaming = w.id; name = w.label } label: { Image(systemName: "pencil") }
+                                .buttonStyle(.hoverIcon).help("Rename").accessibilityLabel("Rename \(w.label)")
+                        }
+                    }
+                    Text(current ? "Current wallet · \(how)" : how.prefix(1).uppercased() + how.dropFirst())
+                        .font(.ui(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                }
+                Spacer(minLength: 8)
+                if !current {
+                    Button("Switch to \(w.label)") { close(); Task { await ws.switchWallet(w) } }
+                        .buttonStyle(.borderedProminent).tint(Brand.accent).lineLimit(1)
+                        .help("Switching asks for \(Presence.name).")
+                }
+            }
+            .padding(.bottom, 12)
+            ForEach(networks(w)) { netRow($0) }
+        }
+    }
+
+    private func netRow(_ n: Net) -> some View {
+        HStack(spacing: 12) {
+            HStack(spacing: 8) {
+                TokenLogo(name: n.logo, size: 20, round: true)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(n.name).font(.ui(12.5, .semibold))
+                    if !n.note.isEmpty { Text(n.note).font(.ui(10.5)).foregroundStyle(.secondary) }
+                }
+            }
+            .frame(width: 118, alignment: .leading)
+            .help(n.id == "evm" ? EVMNetwork.all.map(\.name).joined(separator: ", ") : n.name)
+            if let a = n.address {
+                AddressLines(address: a, size: 12, copy: false).frame(maxWidth: .infinity, alignment: .leading)
+                CopyButton(title: "Copy", text: a, help: "Copy the whole \(n.name) address")
+            } else {
+                Text(n.missing).font(.ui(12)).foregroundStyle(.secondary).frame(maxWidth: .infinity, alignment: .leading)
+            }
+        }
+        .padding(.vertical, 10)
+        .opacity(n.address == nil ? 0.6 : 1)
+        .overlay(alignment: .top) { Divider() }
+    }
+
+    private func multisig(_ m: Multisig) -> some View {
+        let nets = m.networks.map(networkName)
+        let only = nets.count < 2 ? nets.joined() : nets.dropLast().joined(separator: ", ") + " or " + (nets.last ?? "")
+        return VStack(alignment: .leading, spacing: 0) {
+            HStack(spacing: 10) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Multisig").font(.ui(17, .bold))
+                    Text("Safe · money leaves when any \(m.threshold) of its \(m.keys.count) keys sign").font(.ui(12)).foregroundStyle(.secondary)
+                }
+                Spacer(minLength: 8)
+                Button("Open") { close(); withAnimation(StudioView.spring) { ws.detail = "multisig" } }
+                    .buttonStyle(.borderedProminent).tint(Brand.accent).help("Its money and payments, on the canvas")
+            }
+            .padding(.bottom, 12)
+            HStack(spacing: 12) {
+                HStack(spacing: 8) {
+                    HStack(spacing: -5) {
+                        ForEach(m.networks.prefix(3), id: \.self) { TokenLogo(name: HoldingRow.chainLogos[$0] ?? "eth", size: 20, round: true) }
+                    }
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Address").font(.ui(12.5, .semibold))
+                        Text(nets.joined(separator: ", ")).font(.ui(10.5)).foregroundStyle(.secondary).lineLimit(2)
+                    }
+                }
+                .frame(width: 118, alignment: .leading)
+                AddressLines(address: m.address, size: 12, copy: false).frame(maxWidth: .infinity, alignment: .leading)
+                CopyButton(title: "Copy", text: m.address, help: "Copy the multisig's whole address")
+            }
+            .padding(.vertical, 10)
+            .overlay(alignment: .top) { Divider() }
+            HStack(alignment: .top, spacing: 8) {
+                Image(systemName: "info.circle").foregroundStyle(Brand.accentInk)
+                Text("Send to it only on \(only). It isn't a multisig on other networks.").foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            .font(.ui(11.5)).padding(.horizontal, 10).padding(.vertical, 8).frame(maxWidth: .infinity, alignment: .leading)
+            .background(RoundedRectangle(cornerRadius: 9).fill(Brand.accent.opacity(0.08)))
+            .padding(.bottom, 10)
+            Text("KEYS · ANY \(m.threshold) OF \(m.keys.count) SIGN").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
+                .padding(.top, 10).padding(.bottom, 4).frame(maxWidth: .infinity, alignment: .leading).overlay(alignment: .top) { Divider() }
+            ForEach(m.keys) { k in
+                HStack(spacing: 10) {
+                    Group {
+                        if k.kind == "ledger" { LedgerGlyph(size: 14) } else { Image(systemName: k.kind == "mac" ? "laptopcomputer" : "iphone").foregroundStyle(.secondary) }
+                    }
+                    .frame(width: 28, height: 28).background(RoundedRectangle(cornerRadius: 8).fill(Color.primary.opacity(0.06)))
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text(k.name).font(.ui(12.5, .semibold)).lineLimit(1)
+                        Text(k.kind == "mac" ? "\(Presence.short) on this Mac" : k.kind == "ledger" ? "Approve on the device" : "Signs in the Safe app")
+                            .font(.ui(11)).foregroundStyle(.secondary)
+                    }
+                    Spacer(minLength: 4)
+                    if k.kind != "address" { Text("signs here").font(.ui(11)).foregroundStyle(.secondary) }
+                }
+                .padding(.vertical, 5)
+            }
+            Text("A multisig lives on EVM networks only: no Solana, Hyperliquid or NEAR.").font(.ui(11.5)).foregroundStyle(.secondary)
+                .padding(.top, 10).frame(maxWidth: .infinity, alignment: .leading).overlay(alignment: .top) { Divider() }
+        }
+    }
+
+    private var newMultisig: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 3) {
+                Text("New multisig").font(.ui(17, .bold))
+                Text("A shared safe on EVM networks. Money leaves it only when enough of its keys sign, so one lost or stolen device can't empty it.")
+                    .font(.ui(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                step(1, "Keys", "This Mac, your Ledger, a phone with the Safe app. As many as you want.")
+                step(2, "How many must sign", "More than half is safest: 2 of 3, 3 of 5.")
+                step(3, "Networks", "Base, Arbitrum or any of the \(Workspace.multisigNetworks.count) EVM networks. The address is the same on each.")
+            }
+            .padding(.top, 12).overlay(alignment: .top) { Divider() }
+            Spacer(minLength: 0)
+            HStack(spacing: 12) {
+                Button { close(); ws.suggest("make a multisig") } label: { Label("Make a multisig", systemImage: "plus") }
+                    .buttonStyle(.borderedProminent).tint(Brand.accent)
+                Text("It goes to the chat; nothing is made until you confirm.").font(.ui(11.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(.top, 12).overlay(alignment: .top) { Divider() }
+        }
+    }
+
+    private func step(_ n: Int, _ title: String, _ text: String) -> some View {
+        HStack(alignment: .top, spacing: 12) {
+            Text("\(n)").font(.ui(12, .bold)).frame(width: 24, height: 24).background(Circle().fill(Color.primary.opacity(0.08)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.ui(13, .semibold))
+                Text(text).font(.ui(12)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+        }
     }
 
     private func rename(_ w: SignerWallet) {

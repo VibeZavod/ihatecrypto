@@ -407,14 +407,17 @@ struct ReceiveCard: View {
 /// its ends in bold (the ends a confirm card shows), and Copy for all of it.
 struct AddressLines: View {
     let address: String
+    var size: CGFloat = 13
+    /// The «Copy address» button under it; off where the row has its own (the wallet menu).
+    var copy = true
 
     var body: some View {
         let counts = (2...6).sorted { (address.count % $0 == 0 ? 0 : 1, $0) < (address.count % $1 == 0 ? 0 : 1, $1) }
         VStack(alignment: .leading, spacing: 8) {
             ViewThatFits(in: .horizontal) { ForEach(counts, id: \.self) { block($0) } }
-                .font(.system(size: 13, design: .monospaced))
+                .font(.system(size: size, design: .monospaced))
                 .accessibilityElement(children: .ignore).accessibilityLabel(address)
-            CopyButton(title: "Copy address", text: address, help: "Copy the whole address")
+            if copy { CopyButton(title: "Copy address", text: address, help: "Copy the whole address") }
         }
     }
 
