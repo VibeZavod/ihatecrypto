@@ -371,10 +371,7 @@ struct PlaceDetailBoard: View {
                 detailRow(StockLogo(symbol: s.symbol, url: s.logo, size: 24), title: s.symbol, detail: "\(Fmt.num(s.amount, maxFraction: 6)) · \(s.price.map { "$" + Fmt.price($0) } ?? "no price")",
                           value: Fmt.usd(s.usd), sub: nil, open: { ws.openToken(s.address) })
             case .token(let t):
-                // An unverified token's icon URL is its creator's pick: not fetched (HoldingRow's rule).
-                detailRow(RemoteIcon(url: t.verified ? t.icon : nil, size: 24) {
-                              Circle().fill(Brand.solanaInk.opacity(0.15)).overlay(Text(t.symbol.prefix(1)).font(.ui(10, .bold)).foregroundStyle(Brand.solanaInk))
-                          }.frame(width: 24, height: 24).clipShape(Circle()),
+                detailRow(HoldingIcon(token: t, size: 24),
                           title: t.symbol + (t.verified ? "" : " · unverified"),
                           detail: "\(Fmt.num(t.amount, maxFraction: 6)) · \(t.price.map { "$" + Fmt.price($0) } ?? "no price")",
                           value: t.usd.map(Fmt.usd) ?? "—", sub: nil,

@@ -140,8 +140,12 @@ struct TokenLogo: View {
     /// By ticker: «xrp.png», «tsla.png», «eth.svg» (HIP-3 «xyz:TSLA» too) when bundled; nil when there's none.
     static func name(forAsset coin: String) -> String? {
         let ticker = (coin.split(separator: ":").last.map(String.init) ?? coin).lowercased()
-        return image(ticker) != nil ? ticker : nil
+        let name = aliases[ticker] ?? ticker
+        return image(name) != nil ? name : nil
     }
+
+    /// Bridged coins shown with their own coin's logo: Unit's BTC, ETH and SOL on Hyperliquid spot, Tether's USDT0.
+    static let aliases = ["ubtc": "btc", "ueth": "eth", "usol": "sol", "usdt0": "usdt"]
 }
 
 struct StudioView: View {
@@ -1779,6 +1783,28 @@ struct HiddenTokens: View {
 
 /// One token: its icon, symbol and amount under it; its value and the day's move on the right. The eye hides it (on
 /// hover) or shows a tucked one.
+/// A held token's icon: the market list's picture; without one, the bundled logo by ticker (Logos/ holds the top coins
+/// by market cap, Tools/top-logos.py); else its first letter.
+struct HoldingIcon: View {
+    let token: Holding
+    var size: CGFloat = 20
+
+    var body: some View {
+        // An unverified token's icon URL is its creator's pick: fetching it would tell a scammer the user's IP.
+        RemoteIcon(url: token.verified ? token.icon : nil, size: size) {
+            // A ticker names the coin only where it can't be copied: the network's own coin, a market list's check, or
+            // Hyperliquid's spot book (a name there belongs to one token). An airdropped «USDC» look-alike keeps its letter.
+            if token.verified || token.native || token.chain == "hyperliquid", let name = TokenLogo.name(forAsset: token.symbol) {
+                TokenLogo(name: name, size: size, round: true)
+            } else {
+                Circle().fill(Brand.solanaInk.opacity(0.15))
+                    .overlay(Text(token.symbol.prefix(1)).font(.ui(size * 0.45, .bold)).foregroundStyle(Brand.solanaInk))
+            }
+        }
+        .frame(width: size, height: size).clipShape(Circle())
+    }
+}
+
 struct HoldingRow: View {
     @Environment(Workspace.self) private var ws
     let token: Holding
@@ -1789,12 +1815,7 @@ struct HoldingRow: View {
 
     var body: some View {
         HStack(spacing: 8) {
-            // An unverified token's icon URL is its creator's pick: fetching it would tell a scammer the user's IP.
-            RemoteIcon(url: token.verified ? token.icon : nil, size: 20) {
-                Circle().fill(Brand.solanaInk.opacity(0.15))
-                    .overlay(Text(token.symbol.prefix(1)).font(.ui(9, .bold)).foregroundStyle(Brand.solanaInk))
-            }
-            .frame(width: 20, height: 20).clipShape(Circle())
+            HoldingIcon(token: token, size: 20)
             // What it made or lost since bought here, after the amount: in the hint alone it looked as if there was none.
             // One of the big five stablecoins reads like idle USDC: no day's move or P/L to show.
             let dollar = Stablecoins.isGenuine(token.contract, on: token.chain)
