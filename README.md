@@ -72,7 +72,7 @@ ihatecrypto into Applications. It's free and runs on macOS 26 or later. Every ve
 [Releases](../../releases) page with its notes and DMG. Updates come through Sparkle from updates.ihatecrypto.ai,
 signed with the project's EdDSA key.
 
-**Build from source** (macOS 26, Xcode 26):
+**Build from source** (Xcode 27; the app runs on macOS 26 and later):
 
 ```sh
 cd App

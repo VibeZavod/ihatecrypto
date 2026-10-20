@@ -5,7 +5,7 @@ protocols the app takes on, and a short talk before the code saves a rewrite.
 
 ## Requirements
 
-- macOS 26 and Xcode 26 (Swift 6.2).
+- Xcode 27 (the macOS 27 SDK; the app itself runs on macOS 26 and later).
 - [XcodeGen](https://github.com/yonaskolb/XcodeGen) and an Apple developer team, only for the full app.
 
 ## Build and test
