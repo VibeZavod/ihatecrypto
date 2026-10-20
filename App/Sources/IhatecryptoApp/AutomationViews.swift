@@ -107,11 +107,11 @@ struct AutomationPortfolioCard: View {
                 VStack(alignment: .leading, spacing: 6) {
                     Label("No SOL for fees: it can’t send yet", systemImage: "exclamationmark.triangle.fill")
                         .font(.ui(10.5, .semibold)).foregroundStyle(Brand.jevInk)
-                    Button { Task { await ws.send("send 0.01 SOL to \(w.label) on Solana") } } label: {
-                        Label("Send 0.01 SOL", systemImage: "plus").font(.ui(11, .bold))
+                    Button { ws.suggestGas() } label: {
+                        Label("Top up gas", systemImage: "fuelpump.fill").font(.ui(11, .bold))
                     }
                     .buttonStyle(.bordered).controlSize(.small).pointerStyle(.link)
-                    .help("From your main wallet: the card waits for Confirm and \(Presence.name)")
+                    .help("Puts the send to «\(w.label)» in the chat; nothing goes until you send it, then Confirm and \(Presence.name)")
                 }
                 .padding(.horizontal, 9).padding(.vertical, 7).frame(maxWidth: .infinity, alignment: .leading)
                 .background(RoundedRectangle(cornerRadius: 10).fill(Brand.jevInk.opacity(0.1)))

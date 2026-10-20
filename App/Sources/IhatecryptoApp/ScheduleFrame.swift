@@ -351,10 +351,70 @@ extension Workspace {
     /// sends the line; meanwhile TopUpBalances shows what it comes from. The card then waits for Confirm and Touch ID.
     func suggestTopUp(_ amount: Decimal = 20) {
         guard let w = automationWallet else { return }
-        // «on Solana»: the wallet is saved on Solana and Base too, and without it the chat asked which one. No SOL on it
-        // yet: its fees go along in the same chain, or its first task fails on them.
-        let gas = (automationBudget?.sol ?? 0) < TaskRun.solFloor ? ", then send 0.01 SOL to \(w.label) on Solana" : ""
+        // «on Solana»: the wallet is saved on Solana and Base too, and without it the chat asked which one. Short of SOL:
+        // its fees go along in the same chain, or its tasks fail on them.
+        let sol = automationSOLShort ?? 0
+        let gas = sol > 0 ? ", then send \(Fmt.num(sol, maxFraction: 9)) SOL to \(w.label) on Solana" : ""
         suggest("send \(Fmt.num(amount)) USDC to \(w.label) on Solana" + gas, select: Fmt.num(amount))
+    }
+
+    /// SOL the automation wallet lacks for the next 4 weeks of its tasks: the floor for the accounts a move opens
+    /// (TaskRun.solFloor) plus 0.00025 SOL a step a run — Jupiter caps its priority fee at 0.0002 SOL a swap, then the fee
+    /// of sending what it bought on to Main. 0 when it has that; nil until read.
+    // ponytail: every step priced as a Solana swap; price EVM-only steps apart if top-ups come out far off.
+    var automationSOLShort: Decimal? {
+        guard let held = automationBudget?.sol else { return nil }
+        let until = Date().addingTimeInterval(28 * 86_400)
+        let steps = schedulePaused ? 0 : tasks.filter { $0.paused != true && $0.movesMoney && usesAutomation($0) }
+            .reduce(0) { $0 + $1.runs(until: until) * $1.steps.count }
+        let short = TaskRun.solFloor + Decimal(steps) * Decimal(string: "0.00025")! - held
+        return short > 0 ? Self.gasRounded(short) : 0
+    }
+
+    /// Up, to two significant digits: 0.0123 → 0.013 SOL, 0.0000183 → 0.000019 ETH.
+    static func gasRounded(_ x: Decimal) -> Decimal {
+        let d = NSDecimalNumber(decimal: x).doubleValue
+        guard d > 0 else { return 0 }
+        return x.rounded(max(0, 1 - Int(log10(d).rounded(.down))), .up)
+    }
+
+    /// What the gas coin lacks on each EVM network holding ≥ 1 USDC of the automation wallet's: three moves at today's
+    /// fee (≈ 300k gas each: an approve and a swap or a deposit); after that a move buys its own gas with the USDC
+    /// (topUpGas). 0 = enough; a network that didn't answer is missing.
+    static func evmGasShort(_ address: String?, usdc: [String: Decimal]) async -> [String: Decimal] {
+        guard let address, isEVMAddress(address) else { return [:] }
+        let raw = await withTaskGroup(of: (String, Decimal?).self) { group in
+            for n in EVMNetwork.all where n.feeToken == nil && (usdc[n.key] ?? 0) >= 1 {
+                group.addTask {
+                    guard let held = try? await n.rpc.balance(address), let fee = try? await n.rpc.fees() else { return (n.key, nil) }
+                    return (n.key, (Decimal(900_000) * Decimal(fee.maxFee) - Decimal(held)) / 1_000_000_000_000_000_000)
+                }
+            }
+            var out: [String: Decimal] = [:]
+            for await (key, short) in group { if let short { out[key] = short } }
+            return out
+        }
+        return raw.mapValues { $0 > 0 ? gasRounded($0) : 0 }
+    }
+
+    /// What the automation wallet lacks for gas, network by network: SOL, then each EVM network's coin (`evm`:
+    /// evmGasShort, read by the Schedule frame). Empty when it has enough or isn't read yet.
+    func automationGasShort(evm: [String: Decimal] = [:]) -> [(net: String, coin: String, amount: Decimal)] {
+        var out: [(net: String, coin: String, amount: Decimal)] = []
+        if let sol = automationSOLShort, sol > 0 { out.append((net: "solana", coin: "SOL", amount: sol)) }
+        for n in EVMNetwork.all { if let s = evm[n.key], s > 0 { out.append((net: n.key, coin: n.gasCoin, amount: s)) } }
+        return out
+    }
+
+    /// «Top up gas»: what it lacks, typed into the chat as sends from the wallet that's on with the first amount selected
+    /// to type over — nothing goes until the user sends it (the owner, 2026-10-20: «ничего не отправляй автоматически»).
+    /// Enough everywhere: a spare TaskRun.solFloor of SOL.
+    func suggestGas(evm: [String: Decimal] = [:]) {
+        guard let w = automationWallet else { return }
+        let short = automationGasShort(evm: evm)
+        let sends = (short.isEmpty ? [(net: "solana", coin: "SOL", amount: TaskRun.solFloor)] : short)
+            .map { "send \(Fmt.num($0.amount, maxFraction: 9)) \($0.coin) on \($0.net) to \(w.label)" }
+        suggest(sends.joined(separator: ", then "), select: Fmt.num(short.first?.amount ?? TaskRun.solFloor, maxFraction: 9))
     }
 
     /// The draft is a top-up of the automation wallet: its amount.
@@ -374,6 +434,8 @@ struct ScheduleFrame: View {
     @State private var showPaused = false
     @State private var hovered: String?
     @State private var walletNet = "solana"
+    /// What the gas coin lacks on the EVM networks holding the wallet's USDC (Workspace.evmGasShort), for «Top up gas».
+    @State private var evmGas: [String: Decimal] = [:]
     static let width: CGFloat = 320
 
     enum Tab: String, CaseIterable { case tasks = "Tasks", history = "History", wallet = "Wallet" }
@@ -416,6 +478,45 @@ struct ScheduleFrame: View {
                 await ws.loadAutomationBudget()
                 try? await Task.sleep(for: .seconds(60))
             }
+        }
+        // The gas coin where its USDC is: each minute, and again as soon as the USDC moves to another network.
+        .task(id: ws.automationBudget?.evm) {
+            while !Task.isCancelled {
+                let usdc = ws.automationBudget?.evm ?? [:]
+                let read = await Workspace.evmGasShort(ws.automationWallet?.evm, usdc: usdc)
+                if Task.isCancelled { return }
+                evmGas = evmGas.filter { (usdc[$0.key] ?? 0) >= 1 }.merging(read) { $1 }
+                try? await Task.sleep(for: .seconds(60))
+            }
+        }
+    }
+
+    /// «Top up gas» on the Tasks and Wallet tabs: what the wallet lacks for gas, worked out here, network by network; a
+    /// press types the sends into the chat and the user sends them (the owner, 2026-10-20).
+    @ViewBuilder private var gasButton: some View {
+        if ws.automationWallet != nil {
+            let short = ws.automationGasShort(evm: evmGas)
+            Button { ws.suggestGas(evm: evmGas) } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: "fuelpump.fill").font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(short.isEmpty ? Color.secondary : Brand.accent)
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("Top up gas").font(.ui(12.5, .bold))
+                        Text(ws.automationBudget == nil ? "…"
+                             : short.isEmpty ? "Enough for 4 weeks · adds \(Fmt.num(TaskRun.solFloor, maxFraction: 9)) SOL"
+                             // A network a line: joined on one, an amount was cut from its coin at the wrap.
+                             : short.map { "\(Fmt.num($0.amount, maxFraction: 9)) \($0.coin) on \(WalletCommand.placeName($0.net))" }.joined(separator: "\n"))
+                            .font(.ui(10.5)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+                    }
+                    Spacer(minLength: 0)
+                }
+                .padding(.horizontal, 12).padding(.vertical, 7).frame(maxWidth: .infinity, minHeight: 34, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(LitBlock(radius: 12))
+            .background(RoundedRectangle(cornerRadius: 12).strokeBorder(short.isEmpty ? Brand.cardBorder : Brand.accent))
+            .help("Puts the send from your wallet in the chat, the amount worked out for the next 4 weeks of tasks; nothing goes until you send it")
+            .accessibilityLabel("Top up gas")
         }
     }
 
@@ -460,9 +561,9 @@ struct ScheduleFrame: View {
                         Text("\(Fmt.num(sol, maxFraction: 6)) SOL for Solana’s fees: too little, its tasks there fail.")
                             .font(.ui(11, .semibold)).foregroundStyle(Brand.loss).fixedSize(horizontal: false, vertical: true)
                         Spacer(minLength: 4)
-                        Button { Task { await ws.send("send 0.01 SOL to \(w.label) on Solana") } } label: { Label("Send 0.01 SOL", systemImage: "plus").font(.ui(11.5, .bold)) }
+                        Button { ws.suggestGas(evm: evmGas) } label: { Label("Top up gas", systemImage: "fuelpump.fill").font(.ui(11.5, .bold)) }
                             .buttonStyle(.bordered).controlSize(.small).pointerStyle(.link)
-                            .help("From your main wallet: the card waits for Confirm and \(Presence.name)")
+                            .help("Puts the send to «\(w.label)» in the chat; nothing goes until you send it, then Confirm and \(Presence.name)")
                     }
                 }
                 // Short for the week ahead, or nothing on it: the way to put the budget there — the button puts it in the
@@ -508,6 +609,7 @@ struct ScheduleFrame: View {
             }
             .buttonStyle(LitBlock(radius: 12)).background(RoundedRectangle(cornerRadius: 12).strokeBorder(Brand.cardBorder))
             .help("Puts a start in the chat: say what to do and when, in any words")
+            gasButton
             if !paused.isEmpty {
                 Button { withAnimation(StudioView.spring) { showPaused.toggle() } } label: {
                     HStack(spacing: 6) {
@@ -663,6 +765,7 @@ struct ScheduleFrame: View {
                             .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
                     }
                 }
+                gasButton
                 Text("It signs scheduled tasks only, with the same checks; its key stays in this Mac’s keychain. Sent to another network? Ask the chat to move it.")
                     .font(.ui(10)).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
             }
