@@ -1,5 +1,35 @@
 [
   {
+    "version": "0.6.9",
+    "date": "2026-10-20",
+    "stories": [
+      {
+        "title": "Your wallets and their addresses",
+        "text": "Click the wallet's name by the balance. Your wallets are on the left; click one to see its address on every network — Solana, EVM (the same address on all nine), Hyperliquid and NEAR — whole, each with Copy, and «Switch to …». A multisig shows its address, the networks it's on and its keys.",
+        "symbol": "wallet.bifold.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "A balance that doesn't jump",
+        "text": "The balance no longer shows zeros while it loads: you see the last one, faded, until every network is read — and the sidebar, the portfolio and the menu bar now show the same total, Automation included.",
+        "symbol": "dollarsign.circle.fill",
+        "color": "34C759"
+      },
+      {
+        "title": "Top up gas from the Schedule",
+        "text": "The Schedule's Tasks and Wallet tabs have «Top up gas». It works out how much SOL the automation wallet's tasks need for the next 4 weeks, and the gas coin on each network where it holds USDC, and types the send into the chat with the amount ready to change — nothing goes until you send it, then Confirm.",
+        "symbol": "fuelpump.fill",
+        "color": "FF7A2F"
+      },
+      {
+        "title": "Adding an AI account keeps your chat",
+        "text": "Adding an account in Settings › AI model no longer switches the chat to it — press Switch when you want it.",
+        "symbol": "person.crop.circle.badge.checkmark",
+        "color": "5856D6"
+      }
+    ]
+  },
+  {
     "version": "0.6.8",
     "date": "2026-10-20",
     "stories": [
