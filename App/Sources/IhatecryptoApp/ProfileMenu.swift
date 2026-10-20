@@ -82,7 +82,7 @@ struct ProfileMenu: View {
             Text("Accounts").font(.ui(15, .bold)).padding(.horizontal, 6).padding(.top, 4).padding(.bottom, 2)
             ForEach(accounts) { info in
                 AccountRow(info: info, inUse: info.id == ws.providerID,
-                           use: { go { use(info) } },
+                           use: { go { ws.useAccount(info.id) } },
                            add: { go { ws.openSettings(.signIns) } },
                            signOut: { go { signingOut = info } })
             }
@@ -114,17 +114,6 @@ struct ProfileMenu: View {
         .task { await ws.refreshLocalModels() }
     }
 
-    /// The chat goes on with this account, as the model chip's menu does it; its model stays as chosen there.
-    private func use(_ info: ProviderInfo) {
-        ws.providerID = info.id
-        // A server on this Mac runs only what it has downloaded: its first chat model stands in for one that isn't there.
-        if info.kind == .local, let live = ws.liveModels[info.id], !live.contains(ws.model),
-           let first = live.first(where: { LLMCatalog.chatRefusal(model: $0) == nil }) { ws.model = first }
-        // Loaded into memory now, so the first answer doesn't wait for it.
-        if info.id == "ollama" { OllamaModels.preload(ws.model) }
-        ws.saveCanvas()
-    }
-
     private func go(_ action: () -> Void) {
         open = false
         action()
@@ -152,18 +141,19 @@ private struct AccountRow: View {
                         Text(info.kindName).font(.ui(11.5)).foregroundStyle(.secondary).lineLimit(1)
                     }
                     Spacer(minLength: 6)
+                    if inUse { Image(systemName: "checkmark").font(.system(size: 12, weight: .bold)).foregroundStyle(Brand.accent) }
                 }
                 .padding(.leading, 10).padding(.vertical, 9)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
             .pointerStyle(inUse ? nil : .link)
-            .accessibilityLabel(inUse ? "\(name), in use" : "Use \(name)")
+            .accessibilityLabel(inUse ? "\(name), the chat's model" : "Switch to \(name)")
             .help(inUse ? "The chat uses \(name)" : "The chat goes on with \(name)")
             // Under the pointer only, taking no room otherwise; it stays in the layout so an open menu keeps its anchor.
             Menu {
                 Group {
-                    if !inUse { Button("Use \(name)", systemImage: "checkmark", action: use) }
+                    if !inUse { Button("Switch to \(name)", systemImage: "arrow.left.arrow.right", action: use) }
                     Button("Add another account…", systemImage: "plus", action: add)
                     // A server on this Mac has no login to leave.
                     if info.kind != .local {

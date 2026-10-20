@@ -784,6 +784,10 @@ struct ModelSection: View {
     @Environment(Workspace.self) private var ws
     @AppStorage("modelThinking") private var thinking = false
     @State private var key = ""
+    /// The account whose sign-in shows below the list; nil = the one the chat uses. Picking a row here never switches
+    /// the chat: «Switch» does (the owner, 2026-10-20: «я просто хотел подключить другой аккаунт»).
+    @State private var shownID: String?
+    private var shown: String { shownID ?? ws.providerID }
     private static let ways = ["claude-code", "chatgpt", "openrouter"]
 
     var body: some View {
@@ -800,7 +804,7 @@ struct ModelSection: View {
                 }
             }
         }
-        .onChange(of: ws.providerID) { key = "" }
+        .onChange(of: shown) { key = ""; ws.llmStatus = nil; ws.availableModels = [] }
     }
 
     /// A second model (Jev on OpenRouter) reads each command and plan again; it can stop a move, never approve one.
@@ -822,8 +826,8 @@ struct ModelSection: View {
     }
 
     private var model: some View {
-        let info = ws.provider.info
-        return SettingsSection(icon: "sparkles", title: "Chat model", line: "Lets you write freely, in any language. Choose a way to connect.") {
+        let id = shown, info = ws.provider(id).info, connected = ws.hasModel(id)
+        return SettingsSection(icon: "sparkles", title: "Chat model", line: "Lets you write freely, in any language. Connect one or more; the chat uses one at a time.") {
             SettingsGroup {
                 way("claude-code", "Claude subscription", "Uses Claude Code on this Mac", logo: "llm-claude")
                 way("chatgpt", "ChatGPT subscription", "Plus or Pro · sign in in the browser", logo: "llm-openai")
@@ -833,9 +837,16 @@ struct ModelSection: View {
             SettingsGroup {
                 SettingsRow("\(info.name)", icon: "info.circle", info: info.note.isEmpty ? nil : info.note) {
                     if let unavailable = info.unavailable { Text(unavailable).foregroundStyle(Brand.accentInk).fixedSize(horizontal: false, vertical: true) }
-                    else { SettingsPill(text: ws.hasModel ? "Connected" : "Not connected", good: ws.hasModel) }
+                    else if connected, id == ws.providerID { chatsModel }
+                    else {
+                        SettingsPill(text: connected ? "Connected" : "Not connected", good: connected)
+                        if connected {
+                            Button("Switch", systemImage: "arrow.left.arrow.right") { ws.useAccount(id) }
+                                .help("The chat goes on with \(info.name)")
+                        }
+                    }
                 }
-                if info.unavailable == nil { connection(info) }
+                if info.unavailable == nil { connection(id, info) }
             }
             SettingsGroup {
                 SettingsRow("Think before answering", icon: "brain",
@@ -846,72 +857,91 @@ struct ModelSection: View {
         }
     }
 
-    private func radio(_ selected: Bool) -> some View {
-        Circle().strokeBorder(selected ? Brand.accent : Color.secondary.opacity(0.5), lineWidth: selected ? 4 : 1.5)
-            .frame(width: 16, height: 16).accessibilityHidden(true)
+    /// The chat's account: a check mark and what it means, never «In use» (the owner didn't get it, 2026-10-20).
+    private var chatsModel: some View {
+        Label("Chat model", systemImage: "checkmark.circle.fill").font(.ui(12, .semibold)).foregroundStyle(Brand.profit)
+            .help("The chat answers with this account")
+    }
+
+    /// Where an account stands, at a row's end: the chat's, connected, or nothing yet.
+    @ViewBuilder private func state(_ id: String) -> some View {
+        if ws.hasModel(id) {
+            if id == ws.providerID { chatsModel } else { SettingsPill(text: "Connected", good: true) }
+        }
+    }
+
+    /// The row picked shows its sign-in below, with a faint fill; the chat stays on its account.
+    private func pickFill(_ selected: Bool) -> some View {
+        Rectangle().fill(selected ? Color.primary.opacity(0.06) : .clear)
     }
 
     private func way(_ id: String, _ title: String, _ line: String, logo: String) -> some View {
-        let selected = ws.providerID == id
-        return Button { ws.providerID = id } label: {
+        let selected = shown == id
+        return Button { shownID = id } label: {
             HStack(spacing: 10) {
-                radio(selected)
                 LogoTile(logo: logo)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title).font(.ui(13, .semibold))
                     Text(line).font(.ui(11.5)).foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 8)
-                if selected, ws.hasModel { SettingsPill(text: "Connected", good: true) }
+                state(id)
             }
             .padding(.horizontal, 14).padding(.vertical, 12).frame(maxWidth: .infinity, alignment: .leading)
             .contentShape(Rectangle())
-            .overlay(alignment: .bottom) { Brand.cardBorder.opacity(0.65).frame(height: 0.5).padding(.leading, 78) }
+            .background(pickFill(selected))
+            .overlay(alignment: .bottom) { Brand.cardBorder.opacity(0.65).frame(height: 0.5).padding(.leading, 52) }
         }
-        .buttonStyle(.plain).accessibilityAddTraits(selected ? [.isSelected] : [])
+        .buttonStyle(.plain).pointerStyle(selected ? nil : .link)
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
+        .help(selected ? "Its sign-in is below" : "Show how to connect \(title)")
     }
 
     /// Less common providers stay reachable from a single row.
     private var other: some View {
-        let selected = !Self.ways.contains(ws.providerID)
+        let selected = !Self.ways.contains(shown)
+        // The row speaks of the one picked here, or else of the chat's when it is one of these.
+        let id: String? = selected ? shown : Self.ways.contains(ws.providerID) ? nil : ws.providerID
         return HStack(spacing: 10) {
-            radio(selected)
             LogoTile(symbol: "key.fill")
             VStack(alignment: .leading, spacing: 2) {
                 Text("API key or a model on this Mac").font(.ui(13, .semibold))
-                Text(selected ? ws.provider.info.name : "Choose a provider or local model").font(.ui(11.5)).foregroundStyle(.secondary)
+                Text(id.map { ws.provider($0).info.name } ?? "Choose a provider or local model").font(.ui(11.5)).foregroundStyle(.secondary)
             }
             Spacer(minLength: 8)
-            if selected, ws.hasModel { SettingsPill(text: "Connected", good: true) }
+            if let id { state(id) }
             Menu("Choose…") {
                 ForEach(ProviderKind.allCases, id: \.self) { kind in
                     Section(kind.title) {
                         ForEach(LLMCatalog.all.filter { $0.info.kind == kind && !Self.ways.contains($0.info.id) }, id: \.info.id) { p in
-                            Button(p.info.unavailable == nil ? p.info.name : p.info.name + " — unavailable") { ws.providerID = p.info.id }
+                            Button(p.info.unavailable == nil ? p.info.name : p.info.name + " — unavailable") { shownID = p.info.id }
                         }
                     }
                 }
             }
             .fixedSize()
         }
-        .padding(.horizontal, 14).padding(.vertical, 12).accessibilityAddTraits(selected ? [.isSelected] : [])
+        .padding(.horizontal, 14).padding(.vertical, 12)
+        .background(pickFill(selected))
+        .accessibilityAddTraits(selected ? [.isSelected] : [])
     }
 
-    @ViewBuilder private func connection(_ info: ProviderInfo) -> some View {
-        SettingsRow("Sign-in", icon: "person.crop.circle", info: connectionText) {
-            if let label = info.existingLoginLabel, ws.provider.existingLogin() != nil {
-                Button(label) { ws.useExistingLogin() }
+    @ViewBuilder private func connection(_ id: String, _ info: ProviderInfo) -> some View {
+        let provider = ws.provider(id), credential = ws.credential(id)
+        SettingsRow("Sign-in", icon: "person.crop.circle", info: connectionText(credential, info)) {
+            if let label = info.existingLoginLabel, provider.existingLogin() != nil {
+                Button(label) { ws.useExistingLogin(id) }
             }
             // Claude Code: installed from here when it's missing, signed in from a terminal once it's there.
             if info.id == "claude-code" {
-                if case .external(let path)? = ws.provider.existingLogin() {
+                if case .external(let path)? = provider.existingLogin() {
                     Button("Sign in in Terminal") { try? ClaudeCodeInstaller.signIn(path) }
                 } else {
                     Button(ws.claudeCodeInstall ?? "Install Claude Code") { Task { await ws.installClaudeCode() } }.disabled(ws.claudeCodeInstall != nil)
                 }
             }
             if let label = info.signInLabel {
-                Button(label) { Task { await ws.signIn() } }.disabled(ws.llmBusy)
+                Button(label) { Task { await ws.signIn(id) } }.disabled(ws.llmBusy)
             }
             if info.signInLabel == nil, info.existingLoginLabel == nil {
                 Text(info.kind == .local ? "No key needed" : "Use an API key below").foregroundStyle(.secondary)
@@ -920,15 +950,15 @@ struct ModelSection: View {
         if info.takesKey {
             SettingsRow("API key", icon: "key") {
                 SecureField("API key", text: $key).textFieldStyle(.roundedBorder).frame(maxWidth: 320)
-                Button("Save") { ws.setCredential(.apiKey(key)); key = "" }.disabled(key.isEmpty)
+                Button("Save") { ws.setCredential(.apiKey(key), for: id); key = "" }.disabled(key.isEmpty)
             }
         }
         SettingsRow("Model", icon: "sparkles") {
-            TextField("Model", text: Binding(get: { ws.model }, set: { ws.model = $0 }))
+            TextField("Model", text: Binding(get: { ws.model(id) }, set: { ws.modelChoices[id] = $0 }))
                 .textFieldStyle(.roundedBorder).labelsHidden().frame(maxWidth: 300)
             Menu("List") {
-                if ws.availableModels.isEmpty { Button("Load models") { Task { await ws.loadModels() } } }
-                ForEach(ws.availableModels, id: \.self) { id in Button(id) { ws.model = id } }
+                if ws.availableModels.isEmpty { Button("Load models") { Task { await ws.loadModels(id) } } }
+                ForEach(ws.availableModels, id: \.self) { m in Button(m) { ws.modelChoices[id] = m } }
             }
             .fixedSize()
         }
@@ -938,23 +968,23 @@ struct ModelSection: View {
             if let n = ws.examProgress {
                 ProgressView().controlSize(.small)
                 Text("\(n)/\(ModelExam.questions.count)").monospacedDigit().foregroundStyle(.secondary)
-            } else if let s = ws.score(ws.providerID, ws.model) {
+            } else if let s = ws.score(id, ws.model(id)) {
                 SettingsPill(text: s.short, good: s.good)
             }
-            Button("Check") { Task { await ws.checkModel() } }.disabled(ws.llmBusy || ws.examProgress != nil || !ws.hasModel)
-            if ws.credential != nil { Button("Disconnect") { ws.setCredential(nil) } }
+            Button("Check") { Task { await ws.checkModel(id) } }.disabled(ws.llmBusy || ws.examProgress != nil || !ws.hasModel(id))
+            if credential != nil { Button("Disconnect") { ws.setCredential(nil, for: id) } }
         }
         if let status = ws.llmStatus {
             SettingsRow(status, icon: "info.circle") { EmptyView() }.textSelection(.enabled)
         }
     }
 
-    private var connectionText: String {
-        switch ws.credential {
+    private func connectionText(_ credential: Credential?, _ info: ProviderInfo) -> String {
+        switch credential {
         case .apiKey: "Connected: key in Keychain."
         case .oauth: "Connected: signed in via browser."
         case .external(let path): "Connected: \(path)."
-        case nil: ws.provider.info.kind == .local ? "No key needed; the local server must be running." : "Not connected."
+        case nil: info.kind == .local ? "No key needed; the local server must be running." : "Not connected."
         }
     }
 }

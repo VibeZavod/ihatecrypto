@@ -617,40 +617,59 @@ final class Workspace {
     var llmStatus: String?
     var availableModels: [String] = []
 
-    var provider: any LLMProvider { LLMCatalog.provider(id: providerID) ?? LLMCatalog.all[0] }
+    // The account the chat uses is `providerID`; the functions that take an `id` work on any account, so Settings can
+    // connect one without the chat switching to it.
+    var provider: any LLMProvider { provider(providerID) }
+    func provider(_ id: String) -> any LLMProvider { LLMCatalog.provider(id: id) ?? LLMCatalog.all[0] }
     var model: String {
-        get {
-            let chosen = modelChoices[providerID] ?? provider.info.defaultModel
-            // A subscription that doesn't offer the chosen model now answers 400 for it (a lapsed ChatGPT plan lists only
-            // gpt-6-luna and 5.6): its first listed model stands in, and the choice comes back once the list has it again.
-            // ponytail: the list kept is its first four; a choice further down would be stood in for too.
-            if provider.info.kind == .subscription, let live = liveModels[providerID], let first = live.first, !live.contains(chosen) { return first }
-            return chosen
-        }
+        get { model(providerID) }
         set { modelChoices[providerID] = newValue }
     }
-    var credential: Credential? {
+    func model(_ id: String) -> String {
+        let info = provider(id).info, chosen = modelChoices[id] ?? info.defaultModel
+        // A subscription that doesn't offer the chosen model now answers 400 for it (a lapsed ChatGPT plan lists only
+        // gpt-6-luna and 5.6): its first listed model stands in, and the choice comes back once the list has it again.
+        // ponytail: the list kept is its first four; a choice further down would be stood in for too.
+        if info.kind == .subscription, let live = liveModels[id], let first = live.first, !live.contains(chosen) { return first }
+        return chosen
+    }
+    var credential: Credential? { credential(providerID) }
+    func credential(_ id: String) -> Credential? {
         _ = credentialVersion
-        return Keychain.load(providerID)
+        return Keychain.load(id)
     }
     /// Whether the chosen provider has a login, for views: a Keychain read is a round trip to securityd (≈ 4 ms) and
     /// the rail redraws with every balance refresh. A login found is remembered (a token refresh never removes one);
     /// «none» is read again, since a read can fail once (a fresh build's Keychain prompt) and must not stick.
-    var signedIn: Bool {
+    var signedIn: Bool { signedIn(providerID) }
+    func signedIn(_ id: String) -> Bool {
         _ = credentialVersion
-        if signedInCache.contains(providerID) { return true }
-        guard Keychain.load(providerID) != nil else { return false }
-        signedInCache.insert(providerID)
+        if signedInCache.contains(id) { return true }
+        guard Keychain.load(id) != nil else { return false }
+        signedInCache.insert(id)
         return true
     }
     @ObservationIgnored private var signedInCache: Set<String> = []
     /// A model can read the chat: a subscription or a key signed in, or on this Mac a downloaded model of a server that
     /// answers. Without one the chat isn't offered: keyword guesses misread free words, and people took that for the product.
-    var hasModel: Bool {
-        let info = provider.info
+    var hasModel: Bool { hasModel(providerID) }
+    func hasModel(_ id: String) -> Bool {
+        let info = provider(id).info, model = self.model(id)
         guard info.unavailable == nil, LLMCatalog.chatRefusal(model: model) == nil else { return false }
-        guard info.kind == .local else { return signedIn }
+        guard info.kind == .local else { return signedIn(id) }
         return localServers[info.id] != false && liveModels[info.id].map { $0.contains(model) } != false
+    }
+
+    /// The chat goes on with this account, as the profile menu and Settings' «Switch» do it; its model stays as
+    /// chosen for it.
+    func useAccount(_ id: String) {
+        providerID = id
+        // A server on this Mac runs only what it has downloaded: its first chat model stands in for one that isn't there.
+        if provider.info.kind == .local, let live = liveModels[id], !live.contains(model),
+           let first = live.first(where: { LLMCatalog.chatRefusal(model: $0) == nil }) { model = first }
+        // Loaded into memory now, so the first answer doesn't wait for it.
+        if id == "ollama" { OllamaModels.preload(model) }
+        saveCanvas()
     }
 
     /// How each model did in the chat's exam (Settings › AI model › Check), by «provider/model»; kept between launches.
@@ -662,10 +681,11 @@ final class Workspace {
 
     func score(_ provider: String, _ model: String) -> ModelExam.Result? { modelScores["\(provider)/\(model)"] }
 
-    /// Runs the exam on the chosen model: its score shows in Settings and in the model menu.
-    func checkModel() async {
-        guard let client = llmClient(), examProgress == nil else { llmStatus = "Connect \(provider.info.name) first."; return }
-        let key = "\(providerID)/\(model)", model = model
+    /// Runs the exam on an account's chosen model (the chat's by default): its score shows in Settings and in the model menu.
+    func checkModel(_ id: String? = nil) async {
+        let id = id ?? providerID
+        guard let client = llmClient(id), examProgress == nil else { llmStatus = "Connect \(provider(id).info.name) first."; return }
+        let model = self.model(id), key = "\(id)/\(model)"
         examProgress = 0
         defer { examProgress = nil }
         let result = await ModelExam.run(client: client, model: model) { n in await MainActor.run { self.examProgress = n } }
@@ -675,10 +695,14 @@ final class Workspace {
             : "\(LLMCatalog.displayName(model: model)) understood only \(result.passed) of \(result.total) — it will misread requests. A bigger model or a subscription reads better. Missed: " + result.misses.prefix(3).joined(separator: "; ")
     }
 
-    func setCredential(_ credential: Credential?) {
-        Keychain.save(credential, for: providerID)
-        signedInCache.remove(providerID)
+    /// Saves an account's login (the chat's by default). Adding one doesn't switch the chat to it (the owner, 2026-10-20:
+    /// «я просто хотел подключить другой аккаунт»), unless the chat has no model to go on with.
+    func setCredential(_ credential: Credential?, for id: String? = nil) {
+        let id = id ?? providerID
+        Keychain.save(credential, for: id)
+        signedInCache.remove(id)
         credentialVersion += 1
+        if credential != nil, id != providerID, !hasModel { useAccount(id) }
     }
 
     /// Signs out of one account, in use or not: its login leaves the Keychain. A chat that used it asks for a model
@@ -705,9 +729,10 @@ final class Workspace {
         }
     }
 
-    /// nil until the chosen provider is connected.
-    func llmClient() -> (any LLMClient)? {
-        let p = provider, id = p.info.id
+    /// nil until the account (the chat's by default) is connected.
+    func llmClient(_ id: String? = nil) -> (any LLMClient)? {
+        let p = provider(id ?? providerID)
+        let id = p.info.id, credential = self.credential(id)
         guard p.info.unavailable == nil, credential != nil || p.info.kind == .local,
               let client = try? p.client(credential, save: { Keychain.save($0, for: id) }) else { return nil }
         // Settings › Models › «Think before answering»: every request reasons first.
@@ -724,12 +749,13 @@ final class Workspace {
     @ObservationIgnored var modelFacts: [String: ModelFacts] = [:]
     @ObservationIgnored var modelFactsAsked = Date.distantPast
 
-    func signIn() async {
+    func signIn(_ id: String? = nil) async {
+        let id = id ?? providerID
         llmBusy = true
         defer { llmBusy = false }
         llmStatus = "Waiting for the sign-in in the browser…"
         do {
-            setCredential(try await provider.signIn(open: { url in Task { @MainActor in NSWorkspace.shared.open(url) } }))
+            setCredential(try await provider(id).signIn(open: { url in Task { @MainActor in NSWorkspace.shared.open(url) } }), for: id)
             llmStatus = "Signed in."
         } catch {
             llmStatus = error.localizedDescription
@@ -755,9 +781,10 @@ final class Workspace {
     /// How Jev's sign-in went, for Settings.
     var jevStatus: String?
 
-    func useExistingLogin() {
-        guard let login = provider.existingLogin() else { llmStatus = "No sign-in found on this Mac."; return }
-        setCredential(login)
+    func useExistingLogin(_ id: String? = nil) {
+        let id = id ?? providerID
+        guard let login = provider(id).existingLogin() else { llmStatus = "No sign-in found on this Mac."; return }
+        setCredential(login, for: id)
         llmStatus = "Connected."
     }
 
@@ -810,14 +837,15 @@ final class Workspace {
         }
     }
 
-    func loadModels() async {
+    func loadModels(_ id: String? = nil) async {
+        let p = provider(id ?? providerID)
         do {
-            availableModels = try await provider.models(credential)
+            availableModels = try await p.models(credential(p.info.id))
         } catch {
             llmStatus = error.localizedDescription
         }
         // Not listed live (no key yet, a subscription): the models checked for it.
-        if availableModels.isEmpty { availableModels = provider.info.models }
+        if availableModels.isEmpty { availableModels = p.info.models }
         if availableModels.isEmpty { llmStatus = "This provider does not list its models; type the name." }
     }
 

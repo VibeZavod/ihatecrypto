@@ -201,7 +201,7 @@ extension Workspace {
         defer { claudeCodeInstall = nil }
         do {
             try await ClaudeCodeInstaller.install { [weak self] text in self?.claudeCodeInstall = text }
-            if provider.existingLogin() != nil { useExistingLogin() }
+            if provider("claude-code").existingLogin() != nil { useExistingLogin("claude-code") }
             reply(say("Claude Code is installed. Sign in to your Claude account with «Sign in in Terminal» in Settings › Models.",
                       "Claude Code установлен. Войди в аккаунт Claude кнопкой «Sign in in Terminal» в Settings › Models."))
         } catch {
@@ -364,9 +364,9 @@ struct LocalModelsPanel: View {
             if let s = ws.score("ollama", m) { SettingsPill(text: s.short, good: s.good) }
             Spacer(minLength: 6)
             if ws.providerID == "ollama", ws.model == m, have {
-                Label("In use", systemImage: "checkmark.circle.fill").font(.ui(12, .semibold)).foregroundStyle(Brand.profit)
+                Label("Chat model", systemImage: "checkmark.circle.fill").font(.ui(12, .semibold)).foregroundStyle(Brand.profit)
             } else if have {
-                Button("Use") { ws.useLocal(m) }
+                Button("Switch") { ws.useLocal(m) }
             } else if let p = ws.modelDownloads[m] {
                 Text("Downloading · \(Int(p * 100))%").font(.ui(11.5)).monospacedDigit()
             } else if fits {
