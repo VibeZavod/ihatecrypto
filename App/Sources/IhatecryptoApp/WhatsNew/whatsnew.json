@@ -1,5 +1,17 @@
 [
   {
+    "version": "0.6.8",
+    "date": "2026-10-20",
+    "stories": [
+      {
+        "title": "HYPE is verified",
+        "text": "HYPE on the Hyperliquid card has a check mark, like ETH on its networks. Other coins on Hyperliquid's spot side no longer say «unverified»: a name there belongs to one token, so none of them can be a look-alike.",
+        "symbol": "checkmark.seal.fill",
+        "color": "34C759"
+      }
+    ]
+  },
+  {
     "version": "0.6.7",
     "date": "2026-10-20",
     "stories": [
