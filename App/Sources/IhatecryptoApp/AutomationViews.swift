@@ -89,7 +89,7 @@ struct AutomationPortfolioCard: View {
                         VStack(alignment: .leading, spacing: 2) {
                             Text(w.label).font(.ui(14, .semibold)).lineLimit(1)
                             // Short: the portfolio's column is narrow, and «…tasks · n…» was cut at two lines.
-                            Text("your Schedule wallet · not in this total").font(.ui(10)).foregroundStyle(.secondary)
+                            Text("your Schedule wallet").font(.ui(10)).foregroundStyle(.secondary)
                                 .lineLimit(3).fixedSize(horizontal: false, vertical: true)
                         }
                         Spacer(minLength: 4)
