@@ -1,0 +1,505 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<!-- The manifesto at ihatecrypto.ai/manifesto/ (and /es/, /ru/): one column of text told while scrolling, in the manner of
+     wabi.ai/manifesto — words marked as you reach them, a word circled by hand with its picture beside it, logos popping
+     into the line, one sentence rising word by word, the coin popping in, one closing line on its own screen.
+     Each language's words sit in <template lang="…">: build.py keeps this language's and drops the others, fills
+     {{lang}}, {{LANG}}, {{home}} and {{version}}, adds canonical + hreflang, and ties Russian one-letter words to the next.
+     The header, the coin and the flags are copied from index.html: change both. Pictures are in mf/. -->
+<template lang="en"><title>Manifesto — ihatecrypto</title>
+<meta name="description" content="I hate crypto. Not the money: managing it. Why we still move crypto by hand, and the first step between today and AGI.">
+<meta property="og:url" content="https://ihatecrypto.ai/manifesto/">
+<meta property="og:title" content="I hate crypto. Not the money. Managing it.">
+<meta property="og:description" content="The ihatecrypto manifesto: why we still move crypto by hand, and the first step between today and AGI.">
+<meta name="twitter:title" content="I hate crypto. Not the money. Managing it.">
+<meta name="share" content="ihatecrypto: a Mac app that does crypto from one sentence"></template>
+<template lang="es"><title>Manifiesto — ihatecrypto</title>
+<meta name="description" content="Odio la cripto. No el dinero: gestionarlo. Por qué seguimos moviendo la cripto a mano y cuál es el primer paso hacia la AGI.">
+<meta property="og:url" content="https://ihatecrypto.ai/es/manifesto/">
+<meta property="og:title" content="Odio la cripto. No el dinero. Gestionarlo.">
+<meta property="og:description" content="El manifiesto de ihatecrypto: por qué seguimos moviendo la cripto a mano y cuál es el primer paso hacia la AGI.">
+<meta name="twitter:title" content="Odio la cripto. No el dinero. Gestionarlo.">
+<meta name="share" content="ihatecrypto: una app para Mac que se encarga de tus criptos con una sola frase"></template>
+<template lang="ru"><title>Манифест — ihatecrypto</title>
+<meta name="description" content="Я ненавижу крипту. Не деньги — управление ими. Почему крипту до сих пор переводят вручную и каким будет первый шаг к AGI.">
+<meta property="og:url" content="https://ihatecrypto.ai/ru/manifesto/">
+<meta property="og:title" content="Я ненавижу крипту. Не деньги. Управление ими.">
+<meta property="og:description" content="Манифест ihatecrypto: почему крипту до сих пор переводят вручную и каким будет первый шаг к AGI.">
+<meta name="twitter:title" content="Я ненавижу крипту. Не деньги. Управление ими.">
+<meta name="share" content="ihatecrypto — приложение для Mac: вся крипта одной фразой">
+<link rel="preload" href="/fonts/onest-cyrillic.woff2" as="font" type="font/woff2" crossorigin></template>
+<link rel="canonical">
+<meta name="theme-color" content="#FAFAFB">
+<script>
+document.documentElement.classList.add('js');
+// Not on a Mac (a phone, an iPad, another computer): the page offers to send its link to a Mac instead of a download.
+if (!/Macintosh/.test(navigator.userAgent) || navigator.maxTouchPoints > 1) document.documentElement.classList.add('away');
+// The English address for someone who picked Spanish or Russian on the site, or whose system speaks it: that page.
+if (location.pathname === '/manifesto/') {
+  let l = null;
+  try { l = localStorage.getItem('lang'); } catch (e) {}
+  l = l || (navigator.languages || [navigator.language || 'en']).map((c) => c.slice(0, 2)).find((c) => ['en', 'es', 'ru'].includes(c));
+  if (l === 'es' || l === 'ru') location.replace(`/${l}/manifesto/` + location.search);
+}
+</script>
+<meta property="og:type" content="article">
+<meta property="og:site_name" content="ihatecrypto">
+<meta property="og:image" content="https://ihatecrypto.ai/og.png?v=2">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://ihatecrypto.ai/og.png?v=2">
+<link rel="icon" href="/favicon.png" sizes="64x64">
+<link rel="apple-touch-icon" href="/icon.png">
+<link rel="preload" href="/fonts/onest-latin.woff2" as="font" type="font/woff2" crossorigin>
+<style>
+  @font-face { font-family: 'DynaPuff'; font-style: normal; font-weight: 600; font-display: swap; src: url(/fonts/dynapuff-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/fonts/onest-cyrillic-ext.woff2) format('woff2'); unicode-range: U+0460-052F, U+1C80-1C8A, U+20B4, U+2DE0-2DFF, U+A640-A69F, U+FE2E-FE2F; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/fonts/onest-cyrillic.woff2) format('woff2'); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/fonts/onest-latin-ext.woff2) format('woff2'); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C4, U+2113, U+2C60-2C7F, U+A720-A7FF; }
+  @font-face { font-family: 'Onest'; font-style: normal; font-weight: 400 800; font-display: swap; src: url(/fonts/onest-latin.woff2) format('woff2'); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
+  :root { color-scheme: light; --ink: #111111; --muted: #5F636B; --line: #E1E4EC; --accent: #FF7A2F; --accent-ink: #B8480C; --col: 560px; }
+  * { box-sizing: border-box; margin: 0; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { background: #FAFAFB radial-gradient(#D9DCE2 1.2px, transparent 1.5px) 0 0 / 22px 22px; color: var(--ink);
+         font: 400 16px/1.5 Onest, system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: clip;
+         padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
+  body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 49; height: max(12px, env(safe-area-inset-top)); background: #FAFAFB; pointer-events: none; }
+  a { color: var(--accent-ink); }
+  .away .mac-only, html:not(.away) .away-only { display: none !important; }
+  .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .glass { background: rgba(255,255,255,.74); -webkit-backdrop-filter: blur(24px) saturate(1.6); backdrop-filter: blur(24px) saturate(1.6);
+           border: 1px solid rgba(17,17,17,.08); box-shadow: inset 0 1px 0 rgba(255,255,255,.95), 0 16px 48px rgba(17,17,17,.10); }
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: 10px; height: 48px; padding: 0 30px; border-radius: 12px; flex: none;
+         background: var(--accent); color: var(--ink); font: 600 15px Onest, sans-serif; text-decoration: none; white-space: nowrap; transition: box-shadow .25s; }
+  .btn:hover { box-shadow: 0 0 0 3px #FFFFFF, 0 0 0 5.5px var(--accent); }
+  button.btn { border: 0; cursor: pointer; }
+  .btn:focus-visible, .nav a:focus-visible, .lang-btn:focus-visible, .lang-menu a:focus-visible, .logo:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+  .meta { color: var(--muted); font-size: 13px; margin-top: 10px; text-align: center; text-wrap: balance; }
+
+  /* The header (as on the landing): the name, the manifesto, the language, the download. */
+  .top { position: fixed; top: 0; left: 0; right: 0; z-index: 50; padding: 10px max(16px, env(safe-area-inset-right)) 0 max(16px, env(safe-area-inset-left)); pointer-events: none; }
+  .bar { position: relative; pointer-events: auto; max-width: 1120px; height: 58px; margin: 0 auto; padding: 0 9px 0 12px; border-radius: 17px; display: flex; align-items: center; gap: 8px; }
+  .logo { display: flex; align-items: center; gap: 9px; margin-right: auto; color: var(--ink); text-decoration: none; border-radius: 10px; min-width: 0; }
+  .logo svg { width: 36px; height: 36px; flex: none; }
+  .logo span { font: 600 23px/1 DynaPuff, Onest, sans-serif; letter-spacing: -.2px; white-space: nowrap; }
+  .nav { display: flex; gap: 2px; }
+  .nav a { color: #3A3D44; text-decoration: none; font: 500 14px Onest, sans-serif; padding: 8px 12px; border-radius: 10px; border: 1.5px solid transparent; }
+  .nav a:hover, .nav a[aria-current] { border-color: rgba(255,122,47,.6); color: var(--ink); }
+  .lang { position: relative; flex: none; }
+  .lang-btn { height: 40px; display: flex; align-items: center; gap: 7px; padding: 0 10px 0 8px; border-radius: 11px; border: 1.5px solid var(--line);
+              background: #FFFFFF; font: 600 13px Onest, sans-serif; color: var(--ink); cursor: pointer; }
+  .lang-btn:hover, .lang-btn[aria-expanded=true] { border-color: rgba(255,122,47,.6); }
+  .lang-btn .chev { color: var(--muted); }
+  .fl { width: 20px; height: 20px; flex: none; }
+  .lang-menu { position: absolute; top: calc(100% + 8px); right: 0; z-index: 60; min-width: 184px; padding: 6px; border-radius: 14px; display: flex; flex-direction: column; gap: 2px;
+               background: #FFFFFF; border: 1px solid rgba(17,17,17,.08); box-shadow: 0 18px 48px rgba(17,17,17,.16); }
+  .lang-menu[hidden] { display: none; }
+  .lang-menu a { display: flex; align-items: center; gap: 10px; height: 40px; padding: 0 10px; border-radius: 10px; border: 1.5px solid transparent;
+                 font: 500 14px Onest, sans-serif; color: var(--ink); text-decoration: none; }
+  .lang-menu a:hover { border-color: rgba(255,122,47,.6); }
+  .lang-menu a[aria-checked=true] { background: rgba(255,122,47,.10); font-weight: 600; }
+  .lang-menu .ck { margin-left: auto; color: var(--accent-ink); opacity: 0; }
+  .lang-menu [aria-checked=true] .ck { opacity: 1; }
+  .bar .btn { height: 40px; padding: 0 16px; gap: 8px; border-radius: 11px; font-size: 14px; }
+
+  /* The first screen: the title alone, as big as the screen allows. */
+  .hero { min-height: 100vh; min-height: 100svh; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; padding: 96px 16px 56px; }
+  .hero h1 { font: 800 clamp(46px, 11.5vw, 176px)/.94 Onest, sans-serif; letter-spacing: -.05em; max-width: 9ch; text-wrap: balance; }
+  .hero p { font: 600 clamp(22px, 2.8vw, 38px)/1.2 Onest, sans-serif; letter-spacing: -.02em; margin-top: .9em; color: #3A3D44; }
+
+  /* The text: one narrow column with wide gaps; each block comes up as it scrolls in. */
+  .mf { max-width: calc(var(--col) + 32px); margin: 0 auto; padding: 0 16px; font: 500 clamp(20px, 14px + 1vw, 25px)/1.42 Onest, sans-serif; letter-spacing: -.015em; }
+  .mf > * + * { margin-top: clamp(60px, 9vw, 112px); }
+  .mf p { text-wrap: pretty; }
+  .mf strong { font-weight: 750; }
+  .mf .indent { padding-left: 1.3em; }
+
+  /* A word marked by a felt-tip, drawn left to right once its block reaches the middle of the screen. */
+  mark { color: inherit; padding: 0 .14em; margin: 0 -.14em; -webkit-box-decoration-break: clone; box-decoration-break: clone;
+         background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 24' preserveAspectRatio='none'%3E%3Cpath d='M2 5.5C18 3 36 4.6 52 3.2S84 2.4 98.6 4.2L97.6 20.2C80 21.8 60 20.6 42 21.4S10 22.2 1.6 20.6Z' fill='%23FFC29A'/%3E%3C/svg%3E") no-repeat 0 60% / 0 1.04em;
+         transition: background-size 1s cubic-bezier(.3,.6,.2,1) .25s; }
+  .lit mark, .hero.in mark, html:not(.js) mark { background-size: 100% 1.04em; }
+  .hero mark { transition-delay: 1.2s; }
+
+  /* A word circled, or underlined, by hand: the pen goes round once the block is in the middle. */
+  .ring, .ul { position: relative; white-space: nowrap; }
+  .ring svg { position: absolute; left: -.7em; top: -.72em; width: calc(100% + 1.4em); height: 2.45em; overflow: visible; pointer-events: none; }
+  .ul svg { position: absolute; left: -.08em; bottom: -.3em; width: calc(100% + .16em); height: .42em; overflow: visible; pointer-events: none; }
+  .ink path { fill: none; stroke: var(--ink); stroke-width: 2.6; stroke-linecap: round; stroke-dasharray: 1 1.2; stroke-dashoffset: 1.01; transition: stroke-dashoffset .9s cubic-bezier(.45,.1,.25,1) .2s; }
+  .ul path { stroke-width: 3.4; }
+  .now .ring path, .lit .ul path { stroke-dashoffset: 0; }
+  .lit .ul path { transition-delay: .6s; }
+
+  /* One sentence that comes up word by word. */
+  .js .rise .w { display: inline-block; opacity: 0; translate: 0 .5em; transition: opacity .45s ease-out, translate .5s cubic-bezier(.2,.7,.2,1); transition-delay: calc(var(--i) * 75ms + .35s); }
+  .js .in.rise .w { opacity: 1; translate: none; }
+
+  /* Logos and little pictures in the line: they pop in as their block comes up. */
+  .icons { display: inline-flex; gap: .2em; margin-left: .25em; vertical-align: -.24em; white-space: nowrap; }
+  .icons img { display: block; width: 1.15em; height: 1.15em; border-radius: 50%; background: #FFFFFF; box-shadow: 0 0 0 1px rgba(17,17,17,.08); }
+  /* a 3D thing the size of the line in place of the full stop, centred on the line (the negative margins keep its height) */
+  .em { display: inline-block; width: 1.5em; height: 1.5em; margin: -.3em .1em -.3em .18em; vertical-align: middle; }
+  .em img { display: block; width: 100%; height: 100%; object-fit: contain; }
+  .nw { white-space: nowrap; }
+  .js .icons img, .js .em img { scale: 0; transition: scale .55s cubic-bezier(.3,1.8,.5,1); transition-delay: calc(var(--i, 0) * 150ms + .45s); }
+  .in .icons img, .in .em img { scale: 1; }
+  /* press one and it hops */
+  .icons img, .em img, .pop svg { cursor: pointer; -webkit-tap-highlight-color: transparent; }
+  .hop { animation: hop .6s cubic-bezier(.3,.7,.3,1); }
+  @keyframes hop { 30% { translate: 0 -.45em; scale: 1.25; } 60% { translate: 0 0; scale: .92; } 80% { scale: 1.05; } }
+  /* The coin: pops in with a turn, then rolls its eyes. */
+  .pop { display: inline-block; width: 1.75em; height: 1.75em; margin-left: .2em; vertical-align: -.55em; }
+  .pop svg { display: block; width: 100%; height: 100%; }
+  .js .pop svg { scale: 0; rotate: -45deg; transition: scale .6s cubic-bezier(.3,1.8,.5,1) .45s, rotate .7s cubic-bezier(.3,1.6,.5,1) .45s; }
+  .lit .pop svg { scale: 1; rotate: 8deg; }
+  .pop use + use { opacity: 0; }
+  .now .pop use { animation: roll 1.6s steps(1) infinite 1.2s; }
+  .now .pop use + use { animation-delay: 2s; }
+  @keyframes roll { 0% { opacity: 1; } 50% { opacity: 0; } }
+
+  /* A picture beside the circled word: to the right of the column on a wide screen, under the words on a narrow one. */
+  .has-side { position: relative; }
+  .side { position: absolute; left: calc(100% + 40px); top: 50%; width: min(300px, calc((100vw - var(--col)) / 2 - 76px)); translate: 0 -50%;
+          opacity: 0; scale: .9; rotate: 4deg; pointer-events: none; letter-spacing: 0;
+          transition: opacity .5s ease-out, scale .7s cubic-bezier(.3,1.5,.5,1), rotate .7s cubic-bezier(.3,1.5,.5,1); }
+  .now .side, html:not(.js) .side { opacity: 1; scale: 1; rotate: -2deg; }
+  /* the whitepaper's first page */
+  .sheet { background: #FFFFFF; padding: 20px 20px 22px; border-radius: 3px; text-align: center; color: #222222;
+           font: 400 10px/1.45 'Times New Roman', Times, serif; box-shadow: 0 1px 2px rgba(17,17,17,.12), 0 18px 40px rgba(17,17,17,.14); }
+  .sheet b:first-child { display: block; font-size: 14px; line-height: 1.25; margin-bottom: 8px; }
+  .sheet span { display: block; margin-bottom: 10px; }
+  .sheet p { text-align: justify; hyphens: auto; }
+  .sheet i { display: block; height: 64px; margin-top: 10px; background: repeating-linear-gradient(#E3E4E8 0 2px, transparent 2px 9px); }
+  .note { position: absolute; right: -12px; top: -16px; rotate: 7deg; padding: 6px 10px; border-radius: 6px; background: var(--accent); color: var(--ink);
+          font: 700 13px Onest, sans-serif; box-shadow: 0 6px 14px rgba(17,17,17,.16); }
+  /* one message, its plan, Confirm, done */
+  .plan { font: 500 14px/1.35 Onest, sans-serif; }
+  .plan .you { width: fit-content; max-width: 92%; margin-left: auto; padding: 10px 13px; border-radius: 14px 14px 4px 14px; background: var(--ink); color: #FFFFFF; }
+  .plan .card { margin-top: 10px; padding: 12px; border-radius: 16px; background: #FFFFFF; border: 1px solid var(--line); box-shadow: 0 18px 40px rgba(17,17,17,.12); }
+  .plan .ph { padding: 2px 4px 9px; font: 700 11px Onest, sans-serif; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); }
+  .plan ol { list-style: none; padding: 0; display: grid; gap: 6px; }
+  .plan li { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 10px; background: #F4F5F7; font-weight: 600; }
+  .plan li img { width: 22px; height: 22px; border-radius: 50%; }
+  .plan li::after { content: '✓'; margin-left: auto; width: 20px; height: 20px; flex: none; display: grid; place-items: center; border-radius: 50%;
+                    background: #1F9D6A; color: #FFFFFF; font-size: 12px; opacity: 0; scale: .4; }
+  .now .plan li::after { opacity: 1; scale: 1; transition: opacity .25s, scale .4s cubic-bezier(.3,1.8,.5,1); }
+  .now .plan li:nth-child(1)::after { transition-delay: 1.1s; } .now .plan li:nth-child(2)::after { transition-delay: 1.45s; }
+  .now .plan li:nth-child(3)::after { transition-delay: 1.8s; } .now .plan li:nth-child(4)::after { transition-delay: 2.15s; }
+  .plan .go { position: relative; height: 40px; margin-top: 10px; }
+  .plan .go span { position: absolute; inset: 0; display: grid; place-items: center; border-radius: 11px; font-weight: 700; }
+  .plan .c { background: var(--accent); }
+  .plan .d { background: #E3F4EC; color: #0B7A55; opacity: 0; }
+  .now .plan .c { animation: press .4s .6s both; }
+  .now .plan .d { opacity: 1; transition: opacity .3s 2.5s; }
+  @keyframes press { 50% { scale: .94; } }
+  /* the modem and its dial-up window */
+  .dial { font: 400 12px/1.3 Tahoma, Verdana, 'Segoe UI', sans-serif; }
+  .obj { display: block; width: 100%; filter: drop-shadow(0 16px 22px rgba(17,17,17,.18)); }
+  .dial .obj { width: 80%; margin: 0 auto -14px; position: relative; z-index: 1; }
+  .win { position: relative; z-index: 2; padding: 2px; background: #C3C3C3; border: 2px solid; border-color: #FFFFFF #555555 #555555 #FFFFFF; box-shadow: 1px 1px 0 #111111, 0 18px 36px rgba(17,17,17,.16); color: #111111; }
+  .win .tb { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 3px 3px 3px 6px; background: linear-gradient(90deg, #000A7B, #1084D0); color: #FFFFFF; font-weight: 700; }
+  .win .tb i { width: 16px; height: 14px; flex: none; display: grid; place-items: center; background: #C3C3C3; color: #111111; font: 700 10px/1 Tahoma, sans-serif; border: 1px solid; border-color: #FFFFFF #555555 #555555 #FFFFFF; }
+  .win .bd { display: grid; gap: 8px; padding: 12px 10px 10px; }
+  .win .pg { height: 16px; padding: 2px; background: #FFFFFF; border: 1px solid; border-color: #555555 #FFFFFF #FFFFFF #555555; }
+  .win .pg i { display: block; width: 0; height: 100%; background: repeating-linear-gradient(90deg, #000A7B 0 9px, transparent 9px 11px); }
+  .now .win .pg i { animation: dialing 5s steps(14) infinite .3s; }
+  @keyframes dialing { to { width: 100%; } }
+  .win .bt { justify-self: end; padding: 3px 14px; border: 2px solid; border-color: #FFFFFF #555555 #555555 #FFFFFF; box-shadow: 1px 1px 0 #111111; }
+  /* on the left: what you type, the button that waits */
+  .side.left { left: auto; right: calc(100% + 40px); rotate: -4deg; }
+  .now .side.left { rotate: 2deg; }
+  .ask { font: 500 15px/1.35 Onest, sans-serif; }
+  .ask .inp { display: flex; align-items: flex-end; gap: 10px; min-height: 60px; padding: 12px 12px 12px 16px; border-radius: 18px; background: #FFFFFF; border: 1.5px solid var(--line); box-shadow: 0 18px 40px rgba(17,17,17,.12); }
+  .ask .t { flex: 1; align-self: center; }
+  .ask .t::after { content: ''; display: inline-block; width: 2px; height: 1.1em; margin-left: 1px; vertical-align: -.18em; background: var(--accent); animation: caret 1s steps(1) infinite; }
+  .ask.sent .t::after { display: none; }
+  @keyframes caret { 50% { opacity: 0; } }
+  .ask .go { flex: none; width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--accent); color: var(--ink); }
+  .ask.sent .go { animation: press .4s both; }
+  .ask .re { display: flex; align-items: center; gap: 8px; margin-top: 12px; opacity: 0; translate: 0 8px; transition: opacity .4s .5s, translate .4s .5s; }
+  .ask.sent .re, html:not(.js) .ask .re { opacity: 1; translate: none; }
+  .ask .re svg { width: 30px; height: 30px; flex: none; }
+  .ask .re span { padding: 8px 12px; border-radius: 14px 14px 14px 4px; background: #FFFFFF; border: 1px solid var(--line); }
+  .press .obj { width: 76%; margin: 0 auto; position: relative; z-index: 1; }
+  .press::before { content: ''; position: absolute; left: 50%; top: 40%; width: 64%; aspect-ratio: 1; translate: -50% -50%; border-radius: 50%; border: 3px solid var(--accent); opacity: 0; }
+  .now .press::before { animation: waiting 1.8s ease-out infinite; }
+  @keyframes waiting { 0% { opacity: .6; scale: .7; } 100% { opacity: 0; scale: 1.3; } }
+  .press .lbl { display: block; width: fit-content; margin: 8px auto 0; padding: 7px 14px; border-radius: 10px; background: var(--ink); color: #FFFFFF; font: 700 14px Onest, sans-serif; }
+  /* the wheel turns as it comes in */
+  .wheel .obj { rotate: -16deg; transition: rotate 1.6s cubic-bezier(.3,1.3,.4,1) .1s; }
+  .now .wheel .obj { rotate: 6deg; }
+  @media (max-width: 1199px) {
+    .side, .side.left { position: relative; left: auto; right: auto; top: auto; width: auto; max-width: 320px; margin: 40px auto 0; translate: none; }
+    .wheel { max-width: 240px; }
+  }
+
+  /* The end: one line, the coin happy, the download. */
+  .end { display: flex; flex-direction: column; align-items: center; text-align: center; padding: clamp(64px, 17vh, 152px) 16px 96px; }
+  .end .coin { width: 96px; height: 96px; }
+  .end h2 { max-width: 16ch; margin-top: 22px; font: 800 clamp(38px, 6vw, 84px)/1.02 Onest, sans-serif; letter-spacing: -.04em; text-wrap: balance; }
+  .end .btn { margin-top: 34px; height: 54px; font-size: 16px; }
+  .js .end > * { opacity: 0; translate: 0 22px; transition: opacity .8s ease-out, translate .8s cubic-bezier(.2,.7,.2,1); }
+  .js .end > h2 { transition-delay: .15s; } .js .end > :nth-child(n+3) { transition-delay: .4s; }
+  .js .end .coin { scale: 0; rotate: -40deg; transition: scale .6s cubic-bezier(.3,1.8,.5,1), rotate .7s cubic-bezier(.3,1.6,.5,1), opacity .3s; }
+  .js .end.in > * { opacity: 1; translate: none; scale: 1; rotate: 0deg; }
+  footer { text-align: center; color: var(--muted); font-size: 13px; padding: 24px 16px 44px; }
+
+  /* Blocks come up as they scroll in. */
+  .js .hero > *, .js .mf > * { opacity: 0; translate: 0 22px; transition: opacity .9s ease-out, translate .9s cubic-bezier(.2,.7,.2,1); }
+  .js .hero > p { transition-delay: .4s; }
+  .js .hero.in > *, .js .mf > .in { opacity: 1; translate: none; }
+
+  @media (max-width: 760px) {
+    .nav { display: none; }
+    .logo svg { width: 30px; height: 30px; }
+    .logo span { font-size: 19px; }
+    .bar { gap: 6px; padding: 0 7px 0 10px; }
+    .bar .btn { padding: 0 12px; }
+  }
+  @media (max-width: 480px) { .lang-btn { padding: 0 9px; } .lang-btn b, .lang-btn .chev { display: none; } .bar .btn svg { display: none; } }
+  @media (max-width: 380px) { .logo span { font-size: 17px; } }
+  @media (prefers-reduced-motion: reduce) { *, *::after { transition: none !important; animation: none !important; } }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="f-wait" viewBox="0 0 140 140"><circle cx="70" cy="70" r="64" fill="#FF7A2F"/><circle cx="70" cy="70" r="62" fill="none" stroke="#111111" stroke-width="9" stroke-dasharray="7 7"/><circle cx="70" cy="70" r="52" fill="none" stroke="#111111" stroke-width="3.5"/><circle cx="50" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="90" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="54.08" cy="53.98" r="8" fill="#111111"/><circle cx="94.08" cy="53.98" r="8" fill="#111111"/><path d="M54 98 Q70 92 86 96" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="f-think" viewBox="0 0 140 140"><circle cx="70" cy="70" r="64" fill="#FF7A2F"/><circle cx="70" cy="70" r="62" fill="none" stroke="#111111" stroke-width="9" stroke-dasharray="7 7"/><circle cx="70" cy="70" r="52" fill="none" stroke="#111111" stroke-width="3.5"/><circle cx="50" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="90" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="44.35" cy="55.00" r="8" fill="#111111"/><circle cx="84.35" cy="55.00" r="8" fill="#111111"/><path d="M52 98 Q58 92 64 98 Q70 104 76 98 Q82 92 88 98" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+<symbol id="f-touch" viewBox="0 0 140 140"><circle cx="70" cy="70" r="64" fill="#FF7A2F"/><circle cx="70" cy="70" r="62" fill="none" stroke="#111111" stroke-width="9" stroke-dasharray="7 7"/><circle cx="70" cy="70" r="52" fill="none" stroke="#111111" stroke-width="3.5"/><circle cx="50" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="90" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="47.00" cy="68.00" r="8" fill="#111111"/><circle cx="87.00" cy="68.00" r="8" fill="#111111"/><path d="M34 36 Q48 28 62 36 M78 36 Q92 28 106 36" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/><circle cx="70" cy="97" r="6" fill="none" stroke="#111111" stroke-width="7"/></symbol>
+<symbol id="f-done" viewBox="0 0 140 140"><circle cx="70" cy="70" r="64" fill="#FF7A2F"/><circle cx="70" cy="70" r="62" fill="none" stroke="#111111" stroke-width="9" stroke-dasharray="7 7"/><circle cx="70" cy="70" r="52" fill="none" stroke="#111111" stroke-width="3.5"/><path d="M36 64 Q50 48 64 64 M76 64 Q90 48 104 64 M50 86 Q70 106 90 86" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
+</defs></svg>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+<symbol id="fl-en" viewBox="0 0 28 28"><clipPath id="fc-en"><circle cx="14" cy="14" r="14"/></clipPath><g clip-path="url(#fc-en)"><rect width="28" height="28" fill="#FFFFFF"/><path d="M0 1.08h28M0 5.38h28M0 9.69h28M0 14h28M0 18.31h28M0 22.62h28M0 26.92h28" stroke="#B22234" stroke-width="2.15"/><rect width="14" height="15.08" fill="#3C3B6E"/></g><circle cx="14" cy="14" r="13.5" fill="none" stroke="rgba(17,17,17,.18)"/></symbol>
+<symbol id="fl-es" viewBox="0 0 28 28"><clipPath id="fc-es"><circle cx="14" cy="14" r="14"/></clipPath><g clip-path="url(#fc-es)"><rect width="28" height="7" fill="#AA151B"/><rect y="7" width="28" height="14" fill="#F1BF00"/><rect y="21" width="28" height="7" fill="#AA151B"/></g><circle cx="14" cy="14" r="13.5" fill="none" stroke="rgba(17,17,17,.18)"/></symbol>
+<symbol id="fl-ru" viewBox="0 0 28 28"><clipPath id="fc-ru"><circle cx="14" cy="14" r="14"/></clipPath><g clip-path="url(#fc-ru)"><rect width="28" height="9.34" fill="#FFFFFF"/><rect y="9.33" width="28" height="9.34" fill="#0039A6"/><rect y="18.66" width="28" height="9.34" fill="#D52B1E"/></g><circle cx="14" cy="14" r="13.5" fill="none" stroke="rgba(17,17,17,.18)"/></symbol>
+</defs></svg>
+
+<header class="top">
+  <div class="bar glass">
+    <a class="logo" href="{{home}}" aria-label="ihatecrypto"><svg viewBox="0 0 140 140" aria-hidden="true"><use href="#f-wait"/></svg><span>ihatecrypto</span></a>
+    <nav class="nav"><a href="{{home}}manifesto/" aria-current="page"><template lang="en">Manifesto</template><template lang="es">Manifiesto</template><template lang="ru">Манифест</template></a></nav>
+    <div class="lang">
+      <button type="button" class="lang-btn" aria-haspopup="menu" aria-expanded="false"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-{{lang}}"/></svg><span class="sr"><template lang="en">Language: </template><template lang="es">Idioma: </template><template lang="ru">Язык: </template></span><b>{{LANG}}</b><svg class="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
+      <div class="lang-menu" role="menu" hidden><a role="menuitemradio" aria-checked="false" href="/manifesto/" hreflang="en"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg><span>English</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></a><a role="menuitemradio" aria-checked="false" href="/es/manifesto/" hreflang="es"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-es"/></svg><span>Español</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></a><a role="menuitemradio" aria-checked="false" href="/ru/manifesto/" hreflang="ru"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-ru"/></svg><span>Русский</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></a></div>
+    </div>
+    <button type="button" class="btn sendto away-only"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span><template lang="en">Send to Mac</template><template lang="es">A mi Mac</template><template lang="ru">На Mac</template></span></button>
+    <a class="btn mac-only" href="/ihatecrypto.dmg" download><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span><template lang="en">Download</template><template lang="es">Descargar</template><template lang="ru">Скачать</template></span></a>
+  </div>
+</header>
+
+<main>
+<template lang="en">
+<section class="hero"><h1>I hate crypto.</h1><p>Not the money. <mark>Managing it</mark>.</p></section>
+<article class="mf">
+  <div class="has-side"><p>In 2008, <span class="ring">Satoshi Nakamoto</span> promised us <mark>money without middlemen</mark>. Our own. Sent straight from one person to another.</p><figure class="side" data-fig="paper" aria-hidden="true"></figure></div>
+  <p>And for a while, it felt that way. Bitcoin. Stablecoins. DeFi. Stocks on a blockchain. Money that <mark>never closes for the weekend</mark><span class="icons" data-i="btc.svg eth.svg usdc.png sol.png hype.svg aave.svg tsla.png"></span></p>
+  <p class="rise">But year after year, managing it is the same as on day one.</p>
+  <p>Copy an address and check the first and last four characters<span class="em" data-i="clipboard"></span> Find a bridge<span class="em" data-i="bridge"></span> Wait<span class="em" data-i="hourglass"></span> Land on a new chain with no gas<span class="em" data-i="gaspump"></span> Sign a transaction <mark>that makes no sense</mark><span class="em" data-i="pen"></span></p>
+  <p>We write code with AI<span class="em" data-i="laptop"></span> We search with AI<span class="em" data-i="magnifier"></span> We learn with AI<span class="em" data-i="gradcap"></span> And crypto? We still <mark>move it by hand</mark>: step by step, signature by signature.</p>
+  <div class="has-side"><p>When you can simply tell crypto what you want, it <mark>stops being work</mark><span class="em" data-i="coffee"></span> No more checking addresses. No more hunting for a bridge. And no more signing what you don’t understand.</p>
+    <figure class="side left ask" aria-hidden="true"><div class="inp"><span class="t">move my USDC from Base to Solana</span><i class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></i></div><div class="re"><svg viewBox="0 0 140 140"><use href="#f-think"/></svg><span>Building the route…</span></div></figure></div>
+  <p>We’re told agents will soon manage money on their own. Maybe. But let’s be honest: today you won’t trust one with <mark>serious capital</mark>.</p>
+  <div class="has-side"><p>We believe AI in crypto has a different job right now: not to decide for you, but to show every step and <mark>wait for your Confirm</mark>.</p>
+    <figure class="side left press" aria-hidden="true"><img class="obj" src="/mf/button.webp" alt=""><span class="lbl">Confirm</span></figure></div>
+  <p class="indent">That’s how <span class="ul">ihatecrypto</span> began<span class="pop"></span></p>
+  <p>An infinite canvas like Figma<span class="em" data-i="canvas"></span> ChatGPT as the brain<span class="em" data-i="chat"></span> And a wallet that understands you<span class="em" data-i="wallet"></span></p>
+  <div class="has-side"><p>You write one message. A <span class="ring">plan</span> appears on the canvas: every step, every chain, what you have now and what you’ll have after. You press Confirm, and <mark>in under a minute</mark> it’s done.</p>
+    <figure class="side plan" aria-hidden="true"><div class="you">Move my pay to Solana, buy Tesla and SOL, lend the rest</div><div class="card"><div class="ph">Plan · 8 steps · 3 chains</div><ol><li><img src="/mf/usdc.png" alt="">Move to Solana</li><li><img src="/mf/tsla.png" alt="">Buy Tesla</li><li><img src="/mf/sol.png" alt="">Buy SOL</li><li><img src="/mf/jup.png" alt="">Lend the rest</li></ol><div class="go"><span class="c">Confirm</span><span class="d">Done in 55 s</span></div></div></figure></div>
+  <p>The keys stay on your Mac. The brain is your own AI subscription. The last word is always yours.</p>
+  <p>What will you ask for first? <strong>Honestly, we don’t know.</strong> Maybe a bridge. Maybe Tesla stock. Maybe a deposit, or a trade with a stop. The only limit is <mark>your imagination</mark>.</p>
+  <div class="has-side"><p>But we do know this. One day we’ll look back on manual bridges and checking addresses the way we look back on the <span class="ring">modem</span> that screeched before letting us online. Back then it worked. And that was fine.</p>
+    <figure class="side dial" aria-hidden="true"><img class="obj" src="/mf/modem.webp" alt=""><div class="win"><div class="tb"><span>Dial-Up Networking</span><i>✕</i></div><div class="bd"><p>Dialing…</p><div class="pg"><i></i></div><p>Connecting at 56,000 bps</p><span class="bt">Cancel</span></div></div></figure></div>
+  <div class="has-side"><p>One day agents will manage money on their own. But autopilot didn’t arrive overnight: first, cars learned to <span class="ring">keep their lane</span> while your hands stayed on the wheel.</p>
+    <figure class="side wheel" aria-hidden="true"><img class="obj" src="/mf/wheel.webp" alt=""></figure></div>
+  <p>ihatecrypto is <span class="ul">your hands on the wheel</span>. The first step between today and AGI.</p>
+</article>
+<section class="end">
+  <svg class="coin" viewBox="0 0 140 140" aria-hidden="true"><use href="#f-done"/></svg>
+  <h2>Now you can hate crypto a little less.</h2>
+  <a class="btn mac-only" href="/ihatecrypto.dmg" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Download for Mac</span></a>
+  <p class="meta mac-only">Free · macOS 26 or later · v{{version}}</p>
+  <button type="button" class="btn sendto away-only" data-ok="Copied"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span>Send the link to my Mac</span></button>
+  <p class="meta away-only">ihatecrypto is a Mac app: send yourself the link and open it on your Mac.</p>
+</section>
+</template>
+<template lang="es">
+<section class="hero"><h1>Odio la cripto.</h1><p>No el dinero. <mark>Gestionarlo</mark>.</p></section>
+<article class="mf">
+  <div class="has-side"><p>En 2008, <span class="ring">Satoshi Nakamoto</span> nos prometió <mark>dinero sin intermediarios</mark>: dinero propio, que pasa directamente de una persona a otra.</p><figure class="side" data-fig="paper" aria-hidden="true"></figure></div>
+  <p>Y durante un tiempo pareció que así era. Bitcoin. Stablecoins. DeFi. Acciones en la blockchain. Dinero que <mark>no descansa ni los fines de semana</mark><span class="icons" data-i="btc.svg eth.svg usdc.png sol.png hype.svg aave.svg tsla.png"></span></p>
+  <p class="rise">Pero año tras año, gestionarlo sigue siendo igual que el primer día.</p>
+  <p>Copiar una dirección y comprobar los cuatro primeros y los cuatro últimos caracteres<span class="em" data-i="clipboard"></span> Buscar un puente<span class="em" data-i="bridge"></span> Esperar<span class="em" data-i="hourglass"></span> Llegar a una red nueva sin gas<span class="em" data-i="gaspump"></span> Firmar una transacción <mark>que no se entiende</mark><span class="em" data-i="pen"></span></p>
+  <p>Escribimos código con IA<span class="em" data-i="laptop"></span> Buscamos con IA<span class="em" data-i="magnifier"></span> Aprendemos con IA<span class="em" data-i="gradcap"></span> ¿Y la cripto? La seguimos <mark>moviendo a mano</mark>: paso a paso, firma a firma.</p>
+  <div class="has-side"><p>Cuando basta con decir lo que quieres, la cripto <mark>deja de ser un trabajo</mark><span class="em" data-i="coffee"></span> Ya no hay que comprobar direcciones. Ni buscar puentes. Ni firmar lo que no entiendes.</p>
+    <figure class="side left ask" aria-hidden="true"><div class="inp"><span class="t">pasa mis USDC de Base a Solana</span><i class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></i></div><div class="re"><svg viewBox="0 0 140 140"><use href="#f-think"/></svg><span>Preparando la ruta…</span></div></figure></div>
+  <p>Nos dicen que pronto los agentes gestionarán el dinero solos. Puede ser. Pero seamos sinceros: hoy no le confiarías a un agente <mark>una suma importante</mark>.</p>
+  <div class="has-side"><p>Creemos que, por ahora, la IA tiene otro papel en la cripto: no decidir por ti, sino mostrarte cada paso y <mark>esperar a que pulses Confirm</mark>.</p>
+    <figure class="side left press" aria-hidden="true"><img class="obj" src="/mf/button.webp" alt=""><span class="lbl">Confirm</span></figure></div>
+  <p class="indent">Así nació <span class="ul">ihatecrypto</span><span class="pop"></span></p>
+  <p>Un lienzo infinito como el de Figma<span class="em" data-i="canvas"></span> ChatGPT como cerebro<span class="em" data-i="chat"></span> Y una billetera que te entiende<span class="em" data-i="wallet"></span></p>
+  <div class="has-side"><p>Escribes un solo mensaje. En el lienzo aparece el <span class="ring">plan</span>: cada paso, cada red, cuánto tienes ahora y cuánto tendrás después. Pulsas Confirm y <mark>en menos de un minuto</mark> todo está listo.</p>
+    <figure class="side plan" aria-hidden="true"><div class="you">Pasa mi sueldo a Solana, compra Tesla y SOL, y presta el resto</div><div class="card"><div class="ph">Plan · 8 pasos · 3 redes</div><ol><li><img src="/mf/usdc.png" alt="">Pasar a Solana</li><li><img src="/mf/tsla.png" alt="">Comprar Tesla</li><li><img src="/mf/sol.png" alt="">Comprar SOL</li><li><img src="/mf/jup.png" alt="">Prestar el resto</li></ol><div class="go"><span class="c">Confirm</span><span class="d">Hecho en 55 s</span></div></div></figure></div>
+  <p>Las claves se guardan solo en tu Mac. El cerebro es tu propia suscripción de IA. La última palabra siempre es tuya.</p>
+  <p>¿Qué pedirás primero? <strong>Sinceramente, no lo sabemos.</strong> Quizá pasar fondos a otra red. Quizá acciones de Tesla. Quizá un depósito o una operación con stop. El único límite es <mark>tu imaginación</mark>.</p>
+  <div class="has-side"><p>Pero algo sí sabemos. Algún día recordaremos cómo buscábamos puentes y comprobábamos direcciones a mano, igual que hoy recordamos el <span class="ring">módem</span> que chirriaba antes de dejarnos entrar en internet. Entonces funcionaba, y nos parecía normal.</p>
+    <figure class="side dial" aria-hidden="true"><img class="obj" src="/mf/modem.webp" alt=""><div class="win"><div class="tb"><span>Acceso telefónico a redes</span><i>✕</i></div><div class="bd"><p>Marcando…</p><div class="pg"><i></i></div><p>Conectando a 56.000 bps</p><span class="bt">Cancelar</span></div></div></figure></div>
+  <div class="has-side"><p>Algún día los agentes gestionarán el dinero solos. Pero el piloto automático tampoco llegó de un día para otro: primero los coches aprendieron a <span class="ring">mantener el carril</span> mientras el conductor seguía con las manos en el volante.</p>
+    <figure class="side wheel" aria-hidden="true"><img class="obj" src="/mf/wheel.webp" alt=""></figure></div>
+  <p>Con ihatecrypto, <span class="ul">tus manos siguen en el volante</span>. El primer paso hacia la AGI.</p>
+</article>
+<section class="end">
+  <svg class="coin" viewBox="0 0 140 140" aria-hidden="true"><use href="#f-done"/></svg>
+  <h2>Ahora puedes odiar la cripto un poco menos.</h2>
+  <a class="btn mac-only" href="/ihatecrypto.dmg" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Descargar para Mac</span></a>
+  <p class="meta mac-only">Gratis · macOS 26 o posterior · v{{version}}</p>
+  <button type="button" class="btn sendto away-only" data-ok="Copiado"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span>Enviar el enlace a mi Mac</span></button>
+  <p class="meta away-only">ihatecrypto es una app para Mac: envíate el enlace y ábrelo en tu Mac.</p>
+</section>
+</template>
+<template lang="ru">
+<section class="hero"><h1>Я ненавижу крипту.</h1><p>Не деньги. <mark>Управление ими</mark>.</p></section>
+<article class="mf">
+  <div class="has-side"><p>В 2008 году <span class="ring">Сатоши Накамото</span> пообещал нам <mark>деньги без посредников</mark>: наши собственные, которые идут напрямую от человека к человеку.</p><figure class="side" data-fig="paper" aria-hidden="true"></figure></div>
+  <p>И какое-то время казалось, что так и есть. Биткоин. Стейблкоины. DeFi. Акции на блокчейне. Деньги, <mark>у которых нет выходных</mark><span class="icons" data-i="btc.svg eth.svg usdc.png sol.png hype.svg aave.svg tsla.png"></span></p>
+  <p class="rise">Но год за годом управлять ими приходится так же, как в первый день.</p>
+  <p>Скопировать адрес и сверить первые и последние четыре символа<span class="em" data-i="clipboard"></span> Найти мост<span class="em" data-i="bridge"></span> Ждать<span class="em" data-i="hourglass"></span> Оказаться в новой сети без газа<span class="em" data-i="gaspump"></span> Подписать транзакцию, <mark>в которой ничего не понятно</mark><span class="em" data-i="pen"></span></p>
+  <p>Код мы пишем вместе с ИИ<span class="em" data-i="laptop"></span> Ответы ищем у ИИ<span class="em" data-i="magnifier"></span> Учимся тоже у ИИ<span class="em" data-i="gradcap"></span> А крипту? Крипту мы до сих пор <mark>переводим вручную</mark>: шаг за шагом, подпись за подписью.</p>
+  <div class="has-side"><p>Когда достаточно просто сказать, что нужно, крипта <mark>перестаёт быть работой</mark><span class="em" data-i="coffee"></span> Больше не нужно сверять адреса. Не нужно искать мост. И не нужно подписывать то, чего вы не понимаете.</p>
+    <figure class="side left ask" aria-hidden="true"><div class="inp"><span class="t">переведи мои USDC с Base на Solana</span><i class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></i></div><div class="re"><svg viewBox="0 0 140 140"><use href="#f-think"/></svg><span>Собираю маршрут…</span></div></figure></div>
+  <p>Нам говорят, что скоро агенты будут управлять деньгами сами. Возможно. Но давайте честно: <mark>большие деньги</mark> агенту сегодня не доверит никто.</p>
+  <div class="has-side"><p>Мы считаем, что сейчас у ИИ в крипте другая задача: не решать за вас, а показать каждый шаг и <mark>дождаться, пока вы нажмёте Confirm</mark>.</p>
+    <figure class="side left press" aria-hidden="true"><img class="obj" src="/mf/button.webp" alt=""><span class="lbl">Confirm</span></figure></div>
+  <p class="indent">Так появился <span class="ul">ihatecrypto</span><span class="pop"></span></p>
+  <p>Бесконечный холст как в Figma<span class="em" data-i="canvas"></span> ChatGPT в роли мозга<span class="em" data-i="chat"></span> И кошелёк, который вас понимает<span class="em" data-i="wallet"></span></p>
+  <div class="has-side"><p>Вы пишете одно сообщение. На холсте появляется <span class="ring">план</span>: каждый шаг, каждая сеть, сколько было и сколько станет. Вы нажимаете Confirm, и <mark>меньше чем через минуту</mark> всё готово.</p>
+    <figure class="side plan" aria-hidden="true"><div class="you">Переведи зарплату на Solana, купи Tesla и SOL, остальное положи под процент</div><div class="card"><div class="ph">План · 8 шагов · 3 сети</div><ol><li><img src="/mf/usdc.png" alt="">Перевод на Solana</li><li><img src="/mf/tsla.png" alt="">Купить Tesla</li><li><img src="/mf/sol.png" alt="">Купить SOL</li><li><img src="/mf/jup.png" alt="">Остальное под процент</li></ol><div class="go"><span class="c">Confirm</span><span class="d">Готово за 55 с</span></div></div></figure></div>
+  <p>Ключи хранятся только на вашем Mac. Мозг — ваша собственная подписка на ИИ. Последнее слово всегда за вами.</p>
+  <p>Что вы попросите первым? <strong>Честно, не знаем.</strong> Может, перевод в другую сеть. Может, акции Tesla. Может, депозит или сделку со стопом. Ограничение одно — <mark>ваше воображение</mark>.</p>
+  <div class="has-side"><p>Но одно мы знаем точно. Когда-нибудь мы будем вспоминать, как сами искали мосты и сверяли адреса, — так же, как сейчас вспоминаем <span class="ring">модем</span>, который пищал, прежде чем пустить в интернет. Тогда это работало, и всех устраивало.</p>
+    <figure class="side dial" aria-hidden="true"><img class="obj" src="/mf/modem.webp" alt=""><div class="win"><div class="tb"><span>Удалённый доступ к сети</span><i>✕</i></div><div class="bd"><p>Набор номера…</p><div class="pg"><i></i></div><p>Подключение на 56 000 бит/с</p><span class="bt">Отмена</span></div></div></figure></div>
+  <div class="has-side"><p>Однажды агенты будут управлять деньгами сами. Но и автопилот появился не сразу: сначала машины научились <span class="ring">держать полосу</span>, пока водитель не отпускал руль.</p>
+    <figure class="side wheel" aria-hidden="true"><img class="obj" src="/mf/wheel.webp" alt=""></figure></div>
+  <p>ihatecrypto — это <span class="ul">ваши руки на руле</span>. Первый шаг на пути к AGI.</p>
+</article>
+<section class="end">
+  <svg class="coin" viewBox="0 0 140 140" aria-hidden="true"><use href="#f-done"/></svg>
+  <h2>Теперь крипту можно ненавидеть чуть меньше.</h2>
+  <a class="btn mac-only" href="/ihatecrypto.dmg" download><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg><span>Скачать для Mac</span></a>
+  <p class="meta mac-only">Бесплатно · macOS 26 и новее · v{{version}}</p>
+  <button type="button" class="btn sendto away-only" data-ok="Скопировано"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span>Отправить ссылку на Mac</span></button>
+  <p class="meta away-only">ihatecrypto — приложение для Mac: отправьте себе ссылку и откройте её на Mac.</p>
+</section>
+</template>
+</main>
+<footer><a href="{{home}}">ihatecrypto</a> · <a href="/manifesto/" hreflang="en" lang="en">English</a> · <a href="/es/manifesto/" hreflang="es" lang="es">Español</a> · <a href="/ru/manifesto/" hreflang="ru" lang="ru">Русский</a></footer>
+
+<script>
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+const lang = document.documentElement.lang;
+
+// The pen strokes, the coin, the pictures in the line and the whitepaper's first page: put where the words ask.
+const RING = '<svg class="ink" viewBox="0 0 200 80" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M176 21C138 3 48 5 15 30C-5 47 33 74 102 74C168 74 204 53 189 29C179 15 151 7 122 8"/></svg>';
+const LINE = '<svg class="ink" viewBox="0 0 100 12" preserveAspectRatio="none" aria-hidden="true"><path pathLength="1" d="M2 8C22 4 46 9 68 6S90 4 98 5.5"/></svg>';
+const COIN = '<svg viewBox="0 0 140 140" aria-hidden="true"><use href="#f-wait"/><use href="#f-think"/></svg>';
+const PAPER = '<div class="sheet"><b>Bitcoin: A Peer-to-Peer Electronic Cash System</b><span>Satoshi Nakamoto<br>satoshin@gmx.com<br>www.bitcoin.org</span>'
+  + '<p><b>Abstract.</b> A purely peer-to-peer version of electronic cash would allow online payments to be sent <mark>directly from one party to another</mark> without going through a financial institution.</p><i></i></div><span class="note">31.10.2008</span>';
+$$('.ring').forEach((el) => el.insertAdjacentHTML('beforeend', RING));
+$$('.ul').forEach((el) => el.insertAdjacentHTML('beforeend', LINE));
+$$('.pop').forEach((el) => { el.innerHTML = COIN; });
+$$('.mf > *').forEach((b) => $$('.em', b).forEach((el, i) => { el.innerHTML = `<img src="/mf/${el.dataset.i}.webp" alt="">`; el.style.setProperty('--i', i); }));
+// a picture in the line never starts a line alone: it is tied to the word before it (a marked word stays marked)
+$$('.em, .icons, .pop').forEach((el) => {
+  const box = document.createElement('span');
+  box.className = 'nw';
+  let prev = el.previousSibling, word;
+  if (prev && prev.nodeName === 'MARK' && prev.lastChild?.nodeType === 3) {
+    const t = prev.lastChild, k = Math.max(t.data.lastIndexOf(' '), t.data.lastIndexOf('\u00a0')) + 1;
+    word = document.createElement('mark');
+    word.textContent = t.data.slice(k);
+    t.data = t.data.slice(0, k);
+    if (!prev.textContent) prev.remove();
+  } else if (prev && prev.nodeType === 1) word = prev;   // a circled or underlined word: already one piece
+  else if (prev && prev.nodeType === 3) {
+    const k = Math.max(prev.data.lastIndexOf(' '), prev.data.lastIndexOf('\u00a0')) + 1;
+    word = document.createTextNode(prev.data.slice(k));
+    prev.data = prev.data.slice(0, k);
+  } else return;
+  el.replaceWith(box);
+  box.append(word, el);
+});
+$$('.icons').forEach((el) => { el.innerHTML = el.dataset.i.split(' ').map((f, i) => `<img src="/mf/${f}" alt="" style="--i:${i}">`).join(''); });
+$$('[data-fig=paper]').forEach((el) => { el.innerHTML = PAPER; });
+// a paragraph's last two words stay on one line: no word alone at its end
+$$('.mf p, .hero p, .end h2').forEach((p) => {
+  const walk = document.createTreeWalker(p, NodeFilter.SHOW_TEXT);
+  let last = null;
+  while (walk.nextNode()) if (/ \S/.test(walk.currentNode.data)) last = walk.currentNode;
+  if (last) last.data = last.data.replace(/ (?=\S+\s*$)/, '\u00a0');
+});
+// the sentence that comes up word by word (a no-break space keeps its two words together)
+$$('.rise').forEach((el) => {
+  const words = el.textContent.split(' ');
+  el.textContent = '';
+  words.forEach((w, i) => { const s = document.createElement('span'); s.className = 'w'; s.style.setProperty('--i', i); s.textContent = w; el.append(s, ' '); });
+});
+
+// A picture in the line hops when pressed.
+addEventListener('click', (e) => {
+  const el = e.target.closest('.icons img, .em img, .pop svg');
+  if (!el) return;
+  el.classList.remove('hop');
+  void el.offsetWidth;   // restart the hop on a second press
+  el.classList.add('hop');
+});
+addEventListener('animationend', (e) => e.target.classList?.remove('hop'));
+
+// Each block: «in» once it scrolls in (it comes up), «lit» once it reaches the middle of the screen (its marks, the pen,
+// the pictures stay drawn), «now» while it is there (its picture beside it, the coin's eyes).
+const blocks = [$('.hero'), ...$$('.mf > *'), $('.end')];
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) { blocks.forEach((el) => el.classList.add('in', 'lit', 'now')); $$('.ask').forEach((el) => el.classList.add('sent')); }
+else {
+  const show = new IntersectionObserver((es) => es.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); show.unobserve(e.target); } }), { rootMargin: '0px 0px -8% 0px' });
+  const type = (el) => {
+    if (el.dataset.typed) return;
+    el.dataset.typed = 1;
+    const words = el.textContent;
+    let k = 0;
+    el.textContent = '';
+    const t = setInterval(() => { el.textContent = words.slice(0, ++k); if (k >= words.length) { clearInterval(t); el.closest('.ask').classList.add('sent'); } }, 55);
+  };
+  const mid = new IntersectionObserver((es) => es.forEach((e) => {
+    e.target.classList.toggle('now', e.isIntersecting);
+    if (e.isIntersecting) { e.target.classList.add('lit'); $$('.ask .t', e.target).forEach(type); }
+  }), { rootMargin: '-36% 0px -36% 0px' });
+  blocks.forEach((el) => { show.observe(el); mid.observe(el); });
+}
+
+// The language: links to the manifesto in each; the one picked is remembered, as on the landing.
+const langBtn = $('.lang-btn'), langMenu = $('.lang-menu');
+const langOpen = (b) => { langMenu.hidden = !b; langBtn.setAttribute('aria-expanded', b); };
+langBtn.addEventListener('click', () => langOpen(langMenu.hidden));
+addEventListener('click', (e) => { if (!e.target.closest('.lang')) langOpen(false); });
+addEventListener('keydown', (e) => { if (e.key === 'Escape' && !langMenu.hidden) { langOpen(false); langBtn.focus(); } });
+$$('.lang-menu a').forEach((a) => {
+  a.setAttribute('aria-checked', a.hreflang === lang);
+  a.addEventListener('click', () => { try { localStorage.setItem('lang', a.hreflang); } catch (e) {} });
+});
+
+// Off a Mac the link travels to one: the share sheet, or the link copied.
+const SHARE = 'https://ihatecrypto.ai/?send';
+$$('.sendto').forEach((b) => b.addEventListener('click', async () => {
+  try { navigator.sendBeacon('/e', JSON.stringify({ n: 'send', l: lang })); } catch (e) {}
+  if (navigator.share) { try { await navigator.share({ title: 'ihatecrypto', text: $('meta[name=share]').content, url: SHARE }); } catch (e) {} return; }   // a cancel is fine
+  try { await navigator.clipboard.writeText(SHARE); } catch (e) { return; }
+  const word = $('span', b), was = word.textContent;
+  b.style.minWidth = b.offsetWidth + 'px';
+  word.textContent = '✓ ' + ($('.end .sendto').dataset.ok);
+  setTimeout(() => { word.textContent = was; }, 1500);
+}));
+</script>
+</body>
+</html>

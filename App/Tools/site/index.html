@@ -114,7 +114,7 @@
   .nav { display: flex; gap: 2px; }
   .nav a { color: #3A3D44; text-decoration: none; font: 500 14px Onest, sans-serif; padding: 8px 12px; border-radius: 10px; border: 1.5px solid transparent; }
   .nav a:hover { border-color: rgba(255,122,47,.6); color: var(--ink); }
-  /* The menu (a phone, a narrow window): the sections, back to the top, the language. */
+  /* The menu (a phone, a narrow window): the manifesto and the language. */
   .menu-btn { display: none; width: 40px; height: 40px; flex: none; align-items: center; justify-content: center; border-radius: 11px; border: 1.5px solid var(--line);
               background: #FFFFFF; color: var(--ink); cursor: pointer; }
   .menu-btn:hover, .menu-btn[aria-expanded=true] { border-color: rgba(255,122,47,.6); }
@@ -492,14 +492,14 @@
 <header class="top">
   <div class="bar glass">
     <a class="logo" href="#top" aria-label="ihatecrypto"><svg viewBox="0 0 140 140" aria-hidden="true"><use href="#f-wait"/></svg><span>ihatecrypto</span></a>
-    <nav class="nav" aria-label="Sections"><a href="#canvas" data-t="n_cv">Canvas</a><a href="#how" data-t="n_how">How it works</a><a href="#safe" data-t="n_safe">Security</a><a href="#faq" data-t="n_faq">Questions</a></nav>
+    <nav class="nav"><a href="/manifesto/" data-t="n_mf">Manifesto</a></nav>
     <div class="lang">
       <button type="button" class="lang-btn" aria-haspopup="menu" aria-expanded="false"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg><span class="sr">Language: </span><b>EN</b><svg class="chev" width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M2 3.5l3 3 3-3" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>
       <div class="lang-menu" role="menu" hidden><button type="button" role="menuitemradio" aria-checked="true" data-l="en"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg><span>English</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button><button type="button" role="menuitemradio" aria-checked="false" data-l="es"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-es"/></svg><span>Español</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button><button type="button" role="menuitemradio" aria-checked="false" data-l="ru"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-ru"/></svg><span>Русский</span><svg class="ck" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg></button></div>
     </div>
     <button type="button" class="menu-btn" aria-haspopup="menu" aria-expanded="false" data-ta="menu" aria-label="Menu"><svg class="bars" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h16"/></svg><svg class="x" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg></button>
     <div class="menu" hidden>
-      <a href="#top" data-t="n_top">To the top</a><a href="#canvas" data-t="n_cv">Canvas</a><a href="#how" data-t="n_how">How it works</a><a href="#safe" data-t="n_safe">Security</a><a href="#ask" data-t="n_ask">Examples</a><a href="#faq" data-t="n_faq">Questions</a>
+      <a href="/manifesto/" data-t="n_mf">Manifesto</a>
       <div class="mlangs"><button type="button" data-l="en" aria-pressed="true"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-en"/></svg>EN</button><button type="button" data-l="es" aria-pressed="false"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-es"/></svg>ES</button><button type="button" data-l="ru" aria-pressed="false"><svg class="fl" viewBox="0 0 28 28" aria-hidden="true"><use href="#fl-ru"/></svg>RU</button></div>
     </div>
     <button type="button" class="btn sendto away-only"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 3 3 10.5l7 2.5M21 3l-3 18-8-8M21 3 10 13v6l3.2-3.2"/></svg><span data-t="send_s">Send to Mac</span></button>
@@ -710,9 +710,8 @@
 },
 "es": {
 "se": "https://support.apple.com/es-es/guide/security/sec59b0b31ff/web",
+"n_mf": "Manifiesto",
 "menu": "Menú",
-"n_top": "Arriba",
-"n_ask": "Ejemplos",
 "swipe": "← Desliza el lienzo →",
 "send_s": "A mi Mac",
 "send": "Enviar el enlace a mi Mac",
@@ -721,9 +720,6 @@
 "copied": "Copiado",
 "copy": "Copiar enlace",
 "mail": "Correo",
-"n_how": "Cómo funciona",
-"n_safe": "Seguridad",
-"n_faq": "Preguntas",
 "dl_s": "Descargar",
 "dl": "Descargar para Mac",
 "req": "Gratis · macOS 26 o posterior",
@@ -771,7 +767,6 @@
 "safe_fine": "Firmada y notarizada por Apple. Las actualizaciones también van firmadas y se instalan solas.",
 "u_h": "Qué puedes pedir",
 "also": "Y más, por ejemplo:",
-"n_cv": "Lienzo",
 "cv_h": "Un lienzo como Figma. Un chat como ChatGPT.",
 "cv_p": "Cada movimiento, gráfico, plan y alerta es un bloque en un lienzo infinito, así lo ves todo a la vez. Al lado hay un chat: pídele algo y añade un bloque nuevo o cambia uno existente. Cada idea puede tener su propio lienzo.",
 "cf0t": "Cada movimiento es un bloque",
@@ -818,9 +813,8 @@
 },
 "ru": {
 "se": "https://support.apple.com/ru-ru/guide/security/sec59b0b31ff/web",
+"n_mf": "Манифест",
 "menu": "Меню",
-"n_top": "Наверх",
-"n_ask": "Примеры",
 "swipe": "← Листайте холст →",
 "send_s": "На Mac",
 "send": "Отправить ссылку на Mac",
@@ -829,9 +823,6 @@
 "copied": "Скопировано",
 "copy": "Скопировать ссылку",
 "mail": "Почта",
-"n_how": "Как это работает",
-"n_safe": "Безопасность",
-"n_faq": "Вопросы",
 "dl_s": "Скачать",
 "dl": "Скачать для Mac",
 "req": "Бесплатно · macOS 26 и новее",
@@ -879,7 +870,6 @@
 "safe_fine": "Приложение подписано и заверено Apple. Обновления тоже подписаны и ставятся сами.",
 "u_h": "Что можно попросить",
 "also": "А ещё, например:",
-"n_cv": "Холст",
 "cv_h": "Холст как в Figma. Чат как в ChatGPT.",
 "cv_p": "Операции, графики, планы и алерты лежат блоками на бесконечном холсте — всё перед глазами сразу. Рядом чат: попросите, и он добавит новый блок или поменяет старый. Для каждой идеи можно завести отдельный холст.",
 "cf0t": "Каждая операция — блок",
@@ -1169,6 +1159,7 @@ function setLang(l) {
   shares();
   $$('.eyebrow span, .askb').forEach(hug);
   $$('.askb').forEach((el, k) => { el.textContent = ASK[k].cmds[l]; });
+  $$('a[data-t=n_mf]').forEach((a) => { a.href = (l === 'en' ? '' : '/' + l) + '/manifesto/'; });
   $('.lang-btn b').textContent = l.toUpperCase(); $('.lang-btn use').setAttribute('href', '#fl-' + l);
   $$('.lang-menu button').forEach((b) => b.setAttribute('aria-checked', b.dataset.l === l));
   $$('.mlangs button').forEach((b) => b.setAttribute('aria-pressed', b.dataset.l === l));

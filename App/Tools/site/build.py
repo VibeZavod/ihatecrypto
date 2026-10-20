@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """The landing in three languages, as search engines read it: index.html (English, the page as written) and /es/, /ru/
 rendered from the same page with its own words (the i18n block): the text, the title and description, the previews,
-the FAQ for search results, and hreflang links tying the three together.
+the FAQ for search results, and hreflang links tying the three together. The manifesto (manifesto.html) the same way,
+at /manifesto/, /es/manifesto/ and /ru/manifesto/.
 
     python3 Tools/site/build.py <version> <out dir>      (release.sh runs it; out is dist/site)
 """
@@ -48,6 +49,7 @@ def render(page: str, lang: str, T: dict) -> str:
     # the head: language, title, description, previews
     title, desc, og = say('meta_title'), say('meta_desc'), f"ihatecrypto — {say('slogan')}"
     page = page.replace('<html lang="en">', f'<html lang="{lang}" data-lang="{lang}">', 1)
+    page = page.replace('href="/manifesto/"', f'href="/{path}manifesto/"')
     page = re.sub(r'<title>[^<]*</title>', f'<title>{html.escape(title)}</title>', page, 1)
     for attr, value in [('name="description"', desc), ('property="og:title"', og), ('name="twitter:title"', og),
                         ('property="og:description"', desc), ('name="twitter:description"', desc)]:
@@ -80,15 +82,33 @@ def enclave(page: str, url: str) -> str:
                   lambda m: m.group(1) + f'<a href="{url}" target="_blank" rel="noopener">Secure Enclave</a>', page)
 
 
+def manifesto(page: str, lang: str) -> str:
+    """manifesto.html in one language: its words sit in <template lang="…">, this language's stay and the others go.
+    A Russian one-letter word is tied to the next one by a no-break space, as on the landing."""
+    path, _ = LANGS[lang]
+    page = re.sub(r'<template lang="(\w+)">(.*?)</template>', lambda m: m.group(2) if m.group(1) == lang else '', page, flags=re.S)
+    links = ''.join(f'<link rel="alternate" hreflang="{l}" href="{SITE}{p}manifesto/">\n' for l, (p, _) in LANGS.items())
+    page = page.replace('<link rel="canonical">', f'<link rel="canonical" href="{SITE}{path}manifesto/">\n{links}'
+                        f'<link rel="alternate" hreflang="x-default" href="{SITE}manifesto/">', 1)
+    page = page.replace('<html lang="en">', f'<html lang="{lang}">', 1)
+    page = page.replace('{{lang}}', lang).replace('{{LANG}}', lang.upper()).replace('{{home}}', '/' + path)
+    if lang == 'ru':
+        page = re.sub(r'(?<![\w-])([ВвИиСсКкАаОоУуЯя]) ', '\\1\u00a0', page)
+    return page
+
+
 def main():
     version, out = sys.argv[1], Path(sys.argv[2])
-    page = (Path(__file__).parent / 'index.html').read_text(encoding='utf-8').replace('{{version}}', version)
+    here = Path(__file__).parent
+    page = (here / 'index.html').read_text(encoding='utf-8').replace('{{version}}', version)
+    mf = (here / 'manifesto.html').read_text(encoding='utf-8').replace('{{version}}', version)
     T = json.loads(re.search(r'<script type="application/json" id="i18n">\n(.*?)\n</script>', page, re.S).group(1))
     for lang, (path, _) in LANGS.items():
-        target = out / path / 'index.html'
-        target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_text(enclave(render(page, lang, T), T[lang]['se']), encoding='utf-8')
-        print(target)
+        for target, text in [(out / path / 'index.html', enclave(render(page, lang, T), T[lang]['se'])),
+                             (out / path / 'manifesto' / 'index.html', manifesto(mf, lang))]:
+            target.parent.mkdir(parents=True, exist_ok=True)
+            target.write_text(text, encoding='utf-8')
+            print(target)
 
 
 if __name__ == '__main__':
