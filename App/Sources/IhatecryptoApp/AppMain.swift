@@ -106,12 +106,11 @@ struct AppMain: App {
         .defaultSize(width: 1320, height: 860)
         .windowStyle(.hiddenTitleBar)
         .commands {
-            CommandGroup(after: .appSettings) {
-                Button("Lock ihatecrypto") { AppLock.shared.lock() }.keyboardShortcut("l").disabled(!AppLock.shared.codeSet)
-            }
-            // Settings open in the main window, in place of the canvas: no separate Settings window.
+            // Settings open in the main window, in place of the canvas: no separate Settings window. Lock sits in the
+            // same group: one placed `after: .appSettings` is dropped along with the group this replaces.
             CommandGroup(replacing: .appSettings) {
                 Button("Settings…") { workspace.openSettings(); StatusItem.shared.openMain() }.keyboardShortcut(",")
+                Button("Lock ihatecrypto") { AppLock.shared.lock() }.keyboardShortcut("l").disabled(!AppLock.shared.codeSet)
             }
             // ⌘Q leaves ihatecrypto in the menu bar, its schedule, stops and alerts going on (the user: «оставить в меню
             // баре чтобы можно было следить за скедуал транзакциями»); before, Keep running's agent brought a quit app
