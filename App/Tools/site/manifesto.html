@@ -79,14 +79,17 @@ if (location.pathname === '/manifesto/') {
   img { -webkit-user-drag: none; }
   * { box-sizing: border-box; margin: 0; }
   html { -webkit-text-size-adjust: 100%; }
-  /* The page paints itself orange from «That's how ihatecrypto began» to the modem (html.orange, set while scrolling). The dots are
-     see-through ink, so they suit both grounds and only the colour has to change. */
   :root { --bg: #FAFAFB; }
-  html.orange { --bg: #FF7A2F; }
-  body { background: var(--bg) radial-gradient(rgba(17,17,17,.13) 1.2px, transparent 1.5px) 0 0 / 22px 22px; color: var(--ink); transition: background-color .7s ease;
+  body { background: var(--bg) radial-gradient(rgba(17,17,17,.13) 1.2px, transparent 1.5px) 0 0 / 22px 22px; color: var(--ink);
          font: 400 16px/1.5 Onest, system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: clip;
          padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
-  body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 49; height: max(12px, env(safe-area-inset-top)); background: var(--bg); transition: background-color .7s ease; pointer-events: none; }
+  body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 49; height: max(12px, env(safe-area-inset-top)); background: var(--bg); transition: background-color .5s ease .3s; pointer-events: none; }
+  html.orange body::before { background: #FF7A2F; }
+  /* From «That's how ihatecrypto began» to the modem the page is orange (html.orange, set while scrolling): the colour spills out of
+     the coin in a growing circle and drains back into the circled «modem» (or into the coin, scrolling up). Its dots follow the page's. */
+  .flood { position: fixed; inset: 0; z-index: -1; pointer-events: none; background: #FF7A2F radial-gradient(rgba(17,17,17,.13) 1.2px, transparent 1.5px) 0 0 / 22px 22px;
+           clip-path: circle(0 at var(--fx, 50%) var(--fy, 50%)); transition: clip-path 1s cubic-bezier(.65,.05,.3,1); }
+  html.orange .flood { clip-path: circle(150vmax at var(--fx, 50%) var(--fy, 50%)); }
   a { color: var(--accent-ink); }
   .away .mac-only, html:not(.away) .away-only { display: none !important; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -306,6 +309,7 @@ if (location.pathname === '/manifesto/') {
 </style>
 </head>
 <body>
+<div class="flood" aria-hidden="true"></div>
 <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
 <symbol id="f-wait" viewBox="0 0 140 140"><circle cx="70" cy="70" r="64" fill="#FF7A2F"/><circle cx="70" cy="70" r="62" fill="none" stroke="#111111" stroke-width="9" stroke-dasharray="7 7"/><circle cx="70" cy="70" r="52" fill="none" stroke="#111111" stroke-width="3.5"/><circle cx="50" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="90" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="54.08" cy="53.98" r="8" fill="#111111"/><circle cx="94.08" cy="53.98" r="8" fill="#111111"/><path d="M54 98 Q70 92 86 96" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
 <symbol id="f-think" viewBox="0 0 140 140"><circle cx="70" cy="70" r="64" fill="#FF7A2F"/><circle cx="70" cy="70" r="62" fill="none" stroke="#111111" stroke-width="9" stroke-dasharray="7 7"/><circle cx="70" cy="70" r="52" fill="none" stroke="#111111" stroke-width="3.5"/><circle cx="50" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="90" cy="62" r="17" fill="#FFFFFF" stroke="#111111" stroke-width="5"/><circle cx="44.35" cy="55.00" r="8" fill="#111111"/><circle cx="84.35" cy="55.00" r="8" fill="#111111"/><path d="M52 98 Q58 92 64 98 Q70 104 76 98 Q82 92 88 98" fill="none" stroke="#111111" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/></symbol>
@@ -340,11 +344,11 @@ if (location.pathname === '/manifesto/') {
   <p class="rise">But year after year, managing it is the same as on day one.</p>
   <p>Copy an address and check the first and last four characters<span class="em" data-i="clipboard"></span> Find a bridge<span class="em" data-i="bridge"></span> Wait<span class="em" data-i="hourglass"></span> Land on a new chain with no gas<span class="em" data-i="gaspump"></span> Sign a transaction <mark>that makes no sense</mark><span class="em" data-i="pen"></span></p>
   <p>We write code with AI<span class="em" data-i="laptop"></span> We search with AI<span class="em" data-i="magnifier"></span> We learn with AI<span class="em" data-i="gradcap"></span> And crypto? We still <mark>move it by hand</mark>: step by step, signature by signature.</p>
-  <div class="has-side"><p>When you can simply tell crypto what you want, it <mark>stops being work</mark><span class="em" data-i="coffee"></span> No more checking addresses. No more hunting for a bridge. And no more signing what you don’t understand.</p>
-    <figure class="side left ask" aria-hidden="true"><div class="inp"><span class="t">move my USDC from Base to Solana</span><i class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></i></div><div class="re"><svg viewBox="0 0 140 140"><use href="#f-think"/></svg><span>Building the route…</span></div></figure></div>
-  <p>We’re told agents will soon manage money on their own. Maybe. But let’s be honest: today you won’t trust one with <mark>serious capital</mark>.</p>
+  <p>So hand it all to agents? That’s the pitch: soon they’ll manage money on their own. Maybe. But let’s be honest: today you won’t trust one with <mark>serious capital</mark>.</p>
   <div class="has-side"><p>We believe AI in crypto has a different job right now: not to decide for you, but to show every step and <mark>wait for your Confirm</mark>.</p>
     <figure class="side left press" aria-hidden="true"><img class="obj" src="/mf/button.webp" alt=""><span class="lbl" data-done="✓ Done">Confirm</span></figure></div>
+  <div class="has-side"><p>And then crypto <mark>stops being work</mark><span class="em" data-i="coffee"></span> You just say what you want. No checking addresses, no hunting for a bridge, no signing what you don’t understand.</p>
+    <figure class="side left ask" aria-hidden="true"><div class="inp"><span class="t">move my USDC from Base to Solana</span><i class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></i></div><div class="re"><svg viewBox="0 0 140 140"><use href="#f-think"/></svg><span>Building the route…</span></div></figure></div>
   <p class="indent">That’s how <span class="ul">ihatecrypto</span> began<span class="pop"></span></p>
   <p>An infinite canvas like Figma<span class="em" data-i="canvas"></span> Your LLM subscription as the brain<span class="em" data-i="chat"></span> And a wallet that understands you<span class="em" data-i="wallet"></span></p>
   <div class="has-side"><p>You write one message. A <span class="ring">plan</span> appears on the canvas: every step, every chain, what you have now and what you’ll have after. You press Confirm, and <mark>in under a minute</mark> it’s done.</p>
@@ -375,11 +379,11 @@ if (location.pathname === '/manifesto/') {
   <p class="rise">Pero año tras año, gestionarlo sigue siendo igual que el primer día.</p>
   <p>Copiar una dirección y comprobar los cuatro primeros y los cuatro últimos caracteres<span class="em" data-i="clipboard"></span> Buscar un puente<span class="em" data-i="bridge"></span> Esperar<span class="em" data-i="hourglass"></span> Llegar a una red nueva sin gas<span class="em" data-i="gaspump"></span> Firmar una transacción <mark>que no se entiende</mark><span class="em" data-i="pen"></span></p>
   <p>Escribimos código con IA<span class="em" data-i="laptop"></span> Buscamos con IA<span class="em" data-i="magnifier"></span> Aprendemos con IA<span class="em" data-i="gradcap"></span> ¿Y la cripto? La seguimos <mark>moviendo a mano</mark>: paso a paso, firma a firma.</p>
-  <div class="has-side"><p>Cuando basta con decir lo que quieres, la cripto <mark>deja de ser un trabajo</mark><span class="em" data-i="coffee"></span> Ya no hay que comprobar direcciones. Ni buscar puentes. Ni firmar lo que no entiendes.</p>
-    <figure class="side left ask" aria-hidden="true"><div class="inp"><span class="t">pasa mis USDC de Base a Solana</span><i class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></i></div><div class="re"><svg viewBox="0 0 140 140"><use href="#f-think"/></svg><span>Preparando la ruta…</span></div></figure></div>
-  <p>Nos dicen que pronto los agentes gestionarán el dinero solos. Puede ser. Pero seamos sinceros: hoy no le confiarías a un agente <mark>una suma importante</mark>.</p>
+  <p>¿Entonces, dejarlo todo en manos de agentes? Eso nos dicen: pronto gestionarán el dinero solos. Puede ser. Pero seamos sinceros: hoy no le confiarías a un agente <mark>una suma importante</mark>.</p>
   <div class="has-side"><p>Creemos que, por ahora, la IA tiene otro papel en la cripto: no decidir por ti, sino mostrarte cada paso y <mark>esperar a que pulses Confirm</mark>.</p>
     <figure class="side left press" aria-hidden="true"><img class="obj" src="/mf/button.webp" alt=""><span class="lbl" data-done="✓ Hecho">Confirm</span></figure></div>
+  <div class="has-side"><p>Y entonces la cripto <mark>deja de ser un trabajo</mark><span class="em" data-i="coffee"></span> Solo dices lo que quieres. Sin comprobar direcciones, sin buscar puentes, sin firmar lo que no entiendes.</p>
+    <figure class="side left ask" aria-hidden="true"><div class="inp"><span class="t">pasa mis USDC de Base a Solana</span><i class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></i></div><div class="re"><svg viewBox="0 0 140 140"><use href="#f-think"/></svg><span>Preparando la ruta…</span></div></figure></div>
   <p class="indent">Así nació <span class="ul">ihatecrypto</span><span class="pop"></span></p>
   <p>Un lienzo infinito como el de Figma<span class="em" data-i="canvas"></span> Tu suscripción de LLM como cerebro<span class="em" data-i="chat"></span> Y una billetera que te entiende<span class="em" data-i="wallet"></span></p>
   <div class="has-side"><p>Escribes un solo mensaje. En el lienzo aparece el <span class="ring">plan</span>: cada paso, cada red, cuánto tienes ahora y cuánto tendrás después. Pulsas Confirm y <mark>en menos de un minuto</mark> todo está listo.</p>
@@ -410,11 +414,11 @@ if (location.pathname === '/manifesto/') {
   <p class="rise">Но год за годом управлять ими приходится так же, как в первый день.</p>
   <p>Скопировать адрес и сверить первые и последние четыре символа<span class="em" data-i="clipboard"></span> Найти мост<span class="em" data-i="bridge"></span> Ждать<span class="em" data-i="hourglass"></span> Оказаться в новой сети без газа<span class="em" data-i="gaspump"></span> Подписать транзакцию, <mark>в которой ничего не понятно</mark><span class="em" data-i="pen"></span></p>
   <p>Код мы пишем вместе с ИИ<span class="em" data-i="laptop"></span> Ответы ищем у ИИ<span class="em" data-i="magnifier"></span> Учимся тоже у ИИ<span class="em" data-i="gradcap"></span> А крипту? Крипту мы до сих пор <mark>переводим вручную</mark>: шаг за шагом, подпись за подписью.</p>
-  <div class="has-side"><p>Когда достаточно просто сказать, что нужно, крипта <mark>перестаёт быть работой</mark><span class="em" data-i="coffee"></span> Больше не нужно сверять адреса. Не нужно искать мост. И не нужно подписывать то, чего вы не понимаете.</p>
-    <figure class="side left ask" aria-hidden="true"><div class="inp"><span class="t">переведи мои USDC с Base на Solana</span><i class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></i></div><div class="re"><svg viewBox="0 0 140 140"><use href="#f-think"/></svg><span>Собираю маршрут…</span></div></figure></div>
-  <p>Нам говорят, что скоро агенты будут управлять деньгами сами. Возможно. Но давайте честно: <mark>большие деньги</mark> агенту сегодня не доверит никто.</p>
+  <p>Казалось бы, отдайте это агентам. Нам так и говорят: скоро они будут управлять деньгами сами. Возможно. Но давайте честно: <mark>большие деньги</mark> агенту сегодня не доверит никто.</p>
   <div class="has-side"><p>Мы считаем, что сейчас у ИИ в крипте другая задача: не решать за вас, а показать каждый шаг и <mark>дождаться, пока вы нажмёте Confirm</mark>.</p>
     <figure class="side left press" aria-hidden="true"><img class="obj" src="/mf/button.webp" alt=""><span class="lbl" data-done="✓ Готово">Confirm</span></figure></div>
+  <div class="has-side"><p>И тогда крипта <mark>перестаёт быть работой</mark><span class="em" data-i="coffee"></span> Вы просто говорите, что нужно. Не нужно сверять адреса, искать мост и подписывать то, чего вы не понимаете.</p>
+    <figure class="side left ask" aria-hidden="true"><div class="inp"><span class="t">переведи мои USDC с Base на Solana</span><i class="go"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M6 11l6-6 6 6"/></svg></i></div><div class="re"><svg viewBox="0 0 140 140"><use href="#f-think"/></svg><span>Собираю маршрут…</span></div></figure></div>
   <p class="indent">Так появился <span class="ul">ihatecrypto</span><span class="pop"></span></p>
   <p>Бесконечный холст как в Figma<span class="em" data-i="canvas"></span> Ваша подписка на LLM в роли мозга<span class="em" data-i="chat"></span> И кошелёк, который вас понимает<span class="em" data-i="wallet"></span></p>
   <div class="has-side"><p>Вы пишете одно сообщение. На холсте появляется <span class="ring">план</span>: каждый шаг, каждая сеть, сколько было и сколько станет. Вы нажимаете Confirm, и <mark>меньше чем через минуту</mark> всё готово.</p>
@@ -525,12 +529,20 @@ function type(el, again) {
   el.t = setInterval(() => { el.textContent = words.slice(0, ++k); if (k >= words.length) { clearInterval(el.t); el.closest('.ask').classList.add('sent'); } }, 55);
 }
 
-// The orange stretch: from «That's how ihatecrypto began» reaching the middle of the screen to the modem reaching it.
-const from = $('.mf > .indent'), to = $('.dial')?.closest('.mf > *'), tint = $('meta[name=theme-color]');
-let painting = false;
+// The orange stretch: from «That's how ihatecrypto began» reaching the middle of the screen to the modem reaching it. The colour
+// grows out of the coin and drains into the circled «modem» (into the coin again when scrolling back up).
+const from = $('.mf > .indent'), to = $('.dial')?.closest('.mf > *'), tint = $('meta[name=theme-color]'), flood = $('.flood');
+let painting = false, orange = false;
+function centre(el) { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }
 function paint() {
   painting = false;
-  const mid = innerHeight / 2, on = from.getBoundingClientRect().top < mid && to.getBoundingClientRect().top > mid;
+  flood.style.backgroundPositionY = -(scrollY % 22) + 'px';   // the dots line up with the page's
+  const mid = innerHeight / 2, past = to.getBoundingClientRect().top < mid, on = from.getBoundingClientRect().top < mid && !past;
+  if (on === orange) return;
+  orange = on;
+  const [x, y] = centre(!on && past ? to.querySelector('.ring') || to : from.querySelector('.pop') || from);
+  flood.style.setProperty('--fx', x + 'px');
+  flood.style.setProperty('--fy', y + 'px');
   document.documentElement.classList.toggle('orange', on);
   tint.content = on ? '#FF7A2F' : '#FAFAFB';   // Safari's bar above the page takes the same colour
 }
