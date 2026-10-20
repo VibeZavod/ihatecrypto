@@ -79,10 +79,14 @@ if (location.pathname === '/manifesto/') {
   img { -webkit-user-drag: none; }
   * { box-sizing: border-box; margin: 0; }
   html { -webkit-text-size-adjust: 100%; }
-  body { background: #FAFAFB radial-gradient(#D9DCE2 1.2px, transparent 1.5px) 0 0 / 22px 22px; color: var(--ink);
+  /* The page paints itself orange from «That's how ihatecrypto began» to the modem (html.orange, set while scrolling). The dots are
+     see-through ink, so they suit both grounds and only the colour has to change. */
+  :root { --bg: #FAFAFB; }
+  html.orange { --bg: #FF7A2F; }
+  body { background: var(--bg) radial-gradient(rgba(17,17,17,.13) 1.2px, transparent 1.5px) 0 0 / 22px 22px; color: var(--ink); transition: background-color .7s ease;
          font: 400 16px/1.5 Onest, system-ui, sans-serif; -webkit-font-smoothing: antialiased; overflow-x: clip;
          padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
-  body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 49; height: max(12px, env(safe-area-inset-top)); background: #FAFAFB; pointer-events: none; }
+  body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 49; height: max(12px, env(safe-area-inset-top)); background: var(--bg); transition: background-color .7s ease; pointer-events: none; }
   a { color: var(--accent-ink); }
   .away .mac-only, html:not(.away) .away-only { display: none !important; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -142,6 +146,7 @@ if (location.pathname === '/manifesto/') {
          background: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 24' preserveAspectRatio='none'%3E%3Cpath d='M2 5.5C18 3 36 4.6 52 3.2S84 2.4 98.6 4.2L97.6 20.2C80 21.8 60 20.6 42 21.4S10 22.2 1.6 20.6Z' fill='%23FFC29A'/%3E%3C/svg%3E") no-repeat 0 60% / 0 1.04em;
          transition: background-size 1s cubic-bezier(.3,.6,.2,1) .25s; }
   .lit mark, .hero.in mark, html:not(.js) mark { background-size: 100% 1.04em; }
+  .orange mark { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 24' preserveAspectRatio='none'%3E%3Cpath d='M2 5.5C18 3 36 4.6 52 3.2S84 2.4 98.6 4.2L97.6 20.2C80 21.8 60 20.6 42 21.4S10 22.2 1.6 20.6Z' fill='%23FFFFFF' fill-opacity='.85'/%3E%3C/svg%3E"); }
   .hero mark { transition-delay: 1.2s; }
 
   /* A word circled, or underlined, by hand: the pen goes round once the block is in the middle. */
@@ -518,6 +523,21 @@ function type(el, again) {
   el.textContent = '';
   clearInterval(el.t);
   el.t = setInterval(() => { el.textContent = words.slice(0, ++k); if (k >= words.length) { clearInterval(el.t); el.closest('.ask').classList.add('sent'); } }, 55);
+}
+
+// The orange stretch: from «That's how ihatecrypto began» reaching the middle of the screen to the modem reaching it.
+const from = $('.mf > .indent'), to = $('.dial')?.closest('.mf > *'), tint = $('meta[name=theme-color]');
+let painting = false;
+function paint() {
+  painting = false;
+  const mid = innerHeight / 2, on = from.getBoundingClientRect().top < mid && to.getBoundingClientRect().top > mid;
+  document.documentElement.classList.toggle('orange', on);
+  tint.content = on ? '#FF7A2F' : '#FAFAFB';   // Safari's bar above the page takes the same colour
+}
+if (from && to) {
+  addEventListener('scroll', () => { if (!painting) { painting = true; requestAnimationFrame(paint); } }, { passive: true });
+  addEventListener('resize', paint);
+  paint();
 }
 
 // Each block: «in» once it scrolls in (it comes up), «lit» once it reaches the middle of the screen (its marks, the pen,
