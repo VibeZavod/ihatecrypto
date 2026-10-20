@@ -85,11 +85,11 @@ if (location.pathname === '/manifesto/') {
          padding: 0 env(safe-area-inset-right) 0 env(safe-area-inset-left); }
   body::before { content: ''; position: fixed; top: 0; left: 0; right: 0; z-index: 49; height: max(12px, env(safe-area-inset-top)); background: var(--bg); transition: background-color .5s ease .3s; pointer-events: none; }
   html.orange body::before { background: #FF7A2F; }
-  /* From «That's how ihatecrypto began» to the modem the page is orange (html.orange, set while scrolling): the colour spills out of
-     the coin in a growing circle and drains back into the circled «modem» (or into the coin, scrolling up). Its dots follow the page's. */
+  /* From «That's how ihatecrypto began» to the modem the page is orange (html.orange, set while scrolling): the colour rises as a
+     wave from beyond the edge the page is moving toward and leaves past the other one, so the orange stretch passes by like the
+     text does. Its dots follow the page's. */
   .flood { position: fixed; inset: 0; z-index: -1; pointer-events: none; background: #FF7A2F radial-gradient(rgba(17,17,17,.13) 1.2px, transparent 1.5px) 0 0 / 22px 22px;
-           clip-path: circle(0 at var(--fx, 50%) var(--fy, 50%)); transition: clip-path 1s cubic-bezier(.65,.05,.3,1); }
-  html.orange .flood { clip-path: circle(150vmax at var(--fx, 50%) var(--fy, 50%)); }
+           clip-path: circle(0 at 50% -100%); transition: clip-path 1.1s cubic-bezier(.55,.05,.3,1); }
   a { color: var(--accent-ink); }
   .away .mac-only, html:not(.away) .away-only { display: none !important; }
   .sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
@@ -575,26 +575,36 @@ function type(el, again) {
 }
 
 // The orange stretch: from «That's how ihatecrypto began» reaching the middle of the screen to the modem reaching it. The colour
-// grows out of the coin and drains into the circled «modem» (into the coin again when scrolling back up).
+// comes in as a wave from beyond the edge ahead (the bottom, scrolling down) and leaves past the edge behind (the top), and the
+// other way round scrolling up: a circle whose centre sits off screen, grown until it covers the screen, or shrunk back to it.
 const from = $('.mf > .indent'), to = $('.dial')?.closest('.mf > *'), tint = $('meta[name=theme-color]'), flood = $('.flood');
-let painting = false, orange = false;
-function centre(el) { const r = el.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; }
-function paint() {
+let painting = false, orange = false, lastY = scrollY;
+function wave(edge, grow) {   // edge: 1 below the screen, -1 above it
+  const off = innerHeight * .3, y = edge > 0 ? innerHeight + off : -off, cover = Math.hypot(innerWidth / 2, innerHeight + off) + 16;
+  const at = (r) => `circle(${r}px at 50% ${y}px)`;
+  flood.style.transition = 'none';
+  flood.style.clipPath = at(grow ? off : cover);   // start: touching that edge, or covering the screen from it
+  void flood.offsetWidth;
+  flood.style.transition = '';
+  flood.style.clipPath = at(grow ? cover : off);
+}
+function paint(first) {
   painting = false;
   flood.style.backgroundPositionY = -(scrollY % 22) + 'px';   // the dots line up with the page's
-  const mid = innerHeight / 2, past = to.getBoundingClientRect().top < mid, on = from.getBoundingClientRect().top < mid && !past;
+  const mid = innerHeight / 2, on = from.getBoundingClientRect().top < mid && to.getBoundingClientRect().top > mid;
+  const down = scrollY >= lastY;
+  lastY = scrollY;
   if (on === orange) return;
   orange = on;
-  const [x, y] = centre(!on && past ? to.querySelector('.ring') || to : from.querySelector('.pop') || from);
-  flood.style.setProperty('--fx', x + 'px');
-  flood.style.setProperty('--fy', y + 'px');
+  if (first === true) flood.style.clipPath = on ? 'inset(0)' : 'circle(0 at 50% -100%)';   // opened in the middle of it: no wave
+  else wave(on === down ? 1 : -1, on);   // in: from the edge ahead; out: past the edge behind
   document.documentElement.classList.toggle('orange', on);
   tint.content = on ? '#FF7A2F' : '#FAFAFB';   // Safari's bar above the page takes the same colour
 }
 if (from && to) {
   addEventListener('scroll', () => { if (!painting) { painting = true; requestAnimationFrame(paint); } }, { passive: true });
-  addEventListener('resize', paint);
-  paint();
+  addEventListener('resize', () => { if (orange) flood.style.clipPath = 'inset(0)'; });
+  paint(true);
 }
 
 // Each block: «in» once it scrolls in (it comes up), «lit» once it reaches the middle of the screen (its marks, the pen,
