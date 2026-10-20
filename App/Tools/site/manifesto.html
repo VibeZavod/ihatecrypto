@@ -190,7 +190,7 @@ if (location.pathname === '/manifesto/') {
   @keyframes roll { 0% { opacity: 1; } 50% { opacity: 0; } }
 
   /* Press the whitepaper or the circled name: a terminal asks «whois satoshi» and types out the face Newsweek put on the cover in 2014. */
-  .satoshi { position: fixed; z-index: 45; width: max-content; padding: 12px 16px 16px; border-radius: 14px; background: #FFFFFF; color: #111111;
+  .satoshi { position: fixed; z-index: 45; width: max-content; box-sizing: border-box; padding: 12px 16px 16px; border-radius: 14px; background: #FFFFFF; color: #111111;
              border: 1px solid var(--line); font: 500 12px/1.35 ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: 0; box-shadow: 0 24px 60px rgba(17,17,17,.22);
              opacity: 0; scale: .9; translate: 0 10px; transform-origin: 50% 50%; transition: opacity .2s, scale .35s cubic-bezier(.3,1.5,.5,1), translate .35s cubic-bezier(.3,1.5,.5,1); pointer-events: none; }
   .satoshi.on { opacity: 1; scale: 1; translate: none; pointer-events: auto; cursor: var(--hand); }
@@ -518,11 +518,12 @@ const [cmd, art, info] = $$('pre', term);
 function infoLine([k, v]) { const l = document.createElement('div'); l.innerHTML = '<span class="k"></span>'; l.firstChild.textContent = k; l.append(v); return l; }
 function whois(paper) {
   if (term.classList.contains('on')) return hush();
+  term.style.width = term.style.height = '';
   cmd.textContent = '$ whois satoshi'; art.textContent = ART.join('\n'); info.replaceChildren(...INFO.map(infoLine));   // full size first, to place it
   const r = paper.getBoundingClientRect(), w = term.offsetWidth, h = term.offsetHeight;
+  term.style.width = w + 'px'; term.style.height = h + 'px';   // the box keeps that size while the lines type in and while it fades out
   term.style.left = Math.max(12, Math.min(innerWidth - w - 12, r.left + r.width / 2 - w / 2)) + 'px';   // over the paper, kept on screen
   term.style.top = Math.max(76, Math.min(innerHeight - h - 12, r.top + r.height / 2 - h / 2)) + 'px';
-  term.style.minHeight = h + 'px';
   art.textContent = ''; info.replaceChildren();
   term.classList.add('on');
   let k = 0;
@@ -534,7 +535,15 @@ function whois(paper) {
   }, 32);
   addEventListener('scroll', hush, { once: true, passive: true });
 }
-function hush() { clearInterval(term.t); term.classList.remove('on'); }
+function hush() {   // gone at once, and emptied, so nothing lingers or flashes on the next press
+  if (!term.classList.contains('on')) return;
+  clearInterval(term.t);
+  term.style.transition = 'none';
+  term.classList.remove('on');
+  cmd.textContent = art.textContent = ''; info.replaceChildren();
+  void term.offsetWidth;
+  term.style.transition = '';
+}
 addEventListener('keydown', (e) => { if (e.key === 'Escape') hush(); });
 
 // Every picture hops when pressed; the buttons in the pictures beside the text do what they say.
