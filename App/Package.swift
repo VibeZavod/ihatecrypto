@@ -105,7 +105,12 @@ let package = Package(
 // same API) takes CryptoKit's place. A Mac build never reads this.
 // ponytail: decided by the machine that builds, so cross-compiling from a Mac would take the Mac branch.
 #if !os(macOS)
-package.dependencies = [secp256k1, .package(url: "https://github.com/apple/swift-crypto", exact: "5.0.3")]
+// swift-secp256k1 0.24 dropped the build plugin that copied P256K's Swift sources in, and did nothing on Windows.
+// ponytail: the Mac stays on 0.23.2 (shipped, checked); move it to 0.24 too once 0.24 has been out a while.
+package.dependencies = [
+    .package(url: "https://github.com/21-DOT-DEV/swift-secp256k1", exact: "0.24.0"),
+    .package(url: "https://github.com/apple/swift-crypto", exact: "5.0.3"),
+]
 package.targets.removeAll { ["IhatecryptoApp", "IhatecryptoSigner", "IhatecryptoAppTests"].contains($0.name) }
 for target in package.targets {
     if ["WalletCore", "SolanaChain", "LLMCore", "Ledger", "WalletTests"].contains(target.name) {
