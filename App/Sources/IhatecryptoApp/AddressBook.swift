@@ -664,7 +664,8 @@ struct AddressEditor: View {
     }
 }
 
-/// Logos, symbols, emoji, or a picture: from a file, the clipboard or the site's own icon.
+/// Logos, symbols, emoji, or a picture: from a file, the clipboard or the site's own icon. One scroll for all of it; the
+/// buttons under the search jump to a part and light up the part in view (the owner's variant C, 2026-10-20).
 struct IconPicker: View {
     @Binding var icon: AddressIcon?
     let name: String
@@ -672,74 +673,222 @@ struct IconPicker: View {
     @State private var fetching = false
     @State private var error: String?
     @State private var search = ""
+    /// The part at the top of the scroll; `tapped` holds a jump's part until the user scrolls by hand, since the last
+    /// parts can't reach the top; at the very end the picture part is the one in view.
+    @State private var top: Part? = .logos
+    @State private var tapped: Part?
+    @State private var atEnd = false
+
+    enum Part: String, CaseIterable, Identifiable {
+        case logos = "Logos", symbols = "Symbols", emoji = "Emoji", picture = "Picture"
+        var id: Self { self }
+        var symbol: String {
+            switch self {
+            case .logos: "circle.circle"
+            case .symbols: "star"
+            case .emoji: "face.smiling"
+            case .picture: "photo"
+            }
+        }
+    }
 
     /// Every token and network logo in the app (Logos/, bundled flat): the library, searched by ticker.
     static let logos: [String] = Set(["png", "svg"].flatMap { Bundle.main.urls(forResourcesWithExtension: $0, subdirectory: nil) ?? [] }
         .map { $0.deletingPathExtension().lastPathComponent }).sorted()
     static let symbols = ["building.columns", "wallet.pass", "person.fill", "person.2.fill", "creditcard.fill", "banknote.fill", "bag.fill",
                           "cart.fill", "briefcase.fill", "gift.fill", "heart.fill", "star.fill", "house.fill", "lock.fill", "bolt.fill", "flame.fill"]
-    static let emoji = ["🏦", "💼", "🐋", "🚀", "💎", "🔥", "🐸", "🦄", "🍀", "👑", "🧊", "🌙"]
+    /// Each with the words a search finds it by.
+    static let emoji = [("🏦", "bank"), ("💼", "briefcase work"), ("🐋", "whale"), ("🚀", "rocket"), ("💎", "gem diamond"), ("🔥", "fire"),
+                        ("🐸", "frog"), ("🦄", "unicorn"), ("🍀", "clover luck"), ("👑", "crown king"), ("🧊", "ice cube"), ("🌙", "moon night")]
+
+    private var query: String { search.trimmingCharacters(in: .whitespaces).lowercased() }
+    private var logos: [String] { query.isEmpty ? Self.logos : Self.logos.filter { $0.contains(query) } }
+    private var symbols: [String] { query.isEmpty ? Self.symbols : Self.symbols.filter { $0.contains(query) } }
+    private var emoji: [String] { Self.emoji.filter { query.isEmpty || $0.1.contains(query) }.map(\.0) }
+    private var lit: Part { tapped ?? (atEnd ? .picture : top ?? .logos) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            HStack {
-                Text("TOKENS AND NETWORKS").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
-                TextField("Search, e.g. sol, aapl", text: $search).textFieldStyle(.roundedBorder).font(.ui(11))
-            }
-            ScrollView {
-                LazyVGrid(columns: Array(repeating: GridItem(.fixed(32), spacing: 6), count: 9), alignment: .leading, spacing: 6) {
-                    ForEach(Self.logos.filter { search.isEmpty || $0.contains(search.lowercased()) }, id: \.self) { l in
-                        pick(.logo(l)) { TokenLogo(name: l, size: 26) }.help(l.uppercased())
+        ScrollViewReader { proxy in
+            VStack(spacing: 0) {
+                header
+                HStack(spacing: 8) {
+                    Image(systemName: "magnifyingglass").font(.system(size: 12, weight: .semibold)).foregroundStyle(.secondary)
+                    TextField("Search logos, symbols, emoji", text: $search).textFieldStyle(.plain).font(.ui(12.5)).accessibilityLabel("Search")
+                }
+                .padding(.horizontal, 10).frame(height: 32)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Color.primary.opacity(0.06)))
+                .overlay(RoundedRectangle(cornerRadius: 9).strokeBorder(Color.primary.opacity(0.1)))
+                .padding(.horizontal, 16).padding(.bottom, 10)
+                HStack(spacing: 6) {
+                    ForEach(Part.allCases) { part in jump(part) { withAnimation(.snappy) { proxy.scrollTo(part, anchor: .top) } } }
+                }
+                .padding(.horizontal, 16).padding(.bottom, 12)
+                Divider()
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        ForEach(Part.allCases) { part in section(part).id(part) }
                     }
+                    .scrollTargetLayout()
+                    .padding(16)
                 }
+                .scrollPosition(id: $top, anchor: .top)
+                .onScrollGeometryChange(for: Bool.self) { $0.contentSize.height > $0.containerSize.height && $0.visibleRect.maxY >= $0.contentSize.height - 2 } action: { atEnd = $1 }
+                .onScrollPhaseChange { _, phase in if phase != .animating && phase != .idle { tapped = nil } }
             }
-            .frame(height: 150)
-            section("SYMBOLS") {
-                ForEach(Self.symbols, id: \.self) { s in pick(.symbol(s)) { Image(systemName: s).font(.system(size: 15)).frame(width: 26, height: 26) } }
-            }
-            section("EMOJI") {
-                ForEach(Self.emoji, id: \.self) { e in pick(.emoji(e)) { Text(e).font(.ui(20)).frame(width: 26, height: 26) } }
-            }
-            Text("PICTURE").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
-            HStack {
-                Button("Choose image…", action: choose)
-                Button("Paste image") {
-                    guard let image = NSImage(pasteboard: .general) else { error = "No image on the clipboard."; return }
-                    store(image)
-                }
-                Spacer()
-                Button("Default") { icon = nil }.buttonStyle(.borderless)
-            }
-            HStack {
-                TextField("website, e.g. bybit.com", text: $domain).textFieldStyle(.roundedBorder)
-                    .onAppear { if domain.isEmpty, let word = name.split(separator: " ").first, word.count > 2 { domain = word.lowercased() + ".com" } }
-                Button(fetching ? "…" : "Get logo") {
-                    fetching = true
-                    Task {
-                        if let image = await AddressIcons.logo(domain: domain) { store(image) } else { error = "No icon found for \(domain)." }
-                        fetching = false
-                    }
-                }
-                .disabled(fetching || !domain.contains("."))
-            }
-            if let error { Text(error).font(.ui(10)).foregroundStyle(Brand.loss) }
-            Text("The site’s icon comes through Google’s favicon service; nothing else is sent.").font(.ui(10)).foregroundStyle(.tertiary)
         }
-        .padding(16)
-        .frame(width: 380)
+        .frame(width: 380, height: 560)
     }
 
-    private func section<Content: View>(_ title: String, @ViewBuilder _ items: () -> Content) -> some View {
+    /// What is picked now, and the way back to the default.
+    private var header: some View {
+        HStack(spacing: 12) {
+            Group {
+                if let icon { PickedIcon(icon: icon, size: 30, letter: name) } else {
+                    Circle().strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [3, 3])).foregroundStyle(.secondary).frame(width: 26, height: 26)
+                }
+            }
+            .frame(width: 42, height: 42)
+            .background(RoundedRectangle(cornerRadius: 11).fill(Color.primary.opacity(0.06)))
+            .overlay(RoundedRectangle(cornerRadius: 11).strokeBorder(Color.primary.opacity(0.1)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(name.isEmpty ? "Choose a picture" : name).font(.ui(14, .semibold)).lineLimit(1)
+                Text(kind).font(.ui(11.5)).foregroundStyle(.secondary)
+            }
+            Spacer()
+            Button { icon = nil; error = nil } label: {
+                Text("Default").font(.ui(12, .medium)).foregroundStyle(.primary).padding(.horizontal, 10).frame(height: 28)
+                    .background(RoundedRectangle(cornerRadius: 8).fill(Color(nsColor: .controlBackgroundColor)))
+                    .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(Color.primary.opacity(0.14)))
+            }
+            .buttonStyle(LitBlock(radius: 8)).disabled(icon == nil).opacity(icon == nil ? 0.4 : 1)
+        }
+        .padding(.horizontal, 16).padding(.top, 14).padding(.bottom, 12)
+    }
+
+    private var kind: String {
+        switch icon {
+        case .logo(let l)?: "Logo · " + l.uppercased()
+        case .symbol?: "Symbol"
+        case .emoji?: "Emoji"
+        case .image?: "Your picture"
+        case nil: "Default"
+        }
+    }
+
+    private func jump(_ part: Part, _ go: @escaping () -> Void) -> some View {
+        let on = lit == part
+        return Button { tapped = part; go() } label: {
+            Label(part.rawValue, systemImage: part.symbol).font(.ui(12, on ? .semibold : .medium)).lineLimit(1)
+                .foregroundStyle(on ? Brand.accentInk : .primary)
+                .frame(maxWidth: .infinity, minHeight: 30)
+                .background(RoundedRectangle(cornerRadius: 8).fill(on ? Brand.accent.opacity(0.14) : .clear))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(on ? Brand.accent : Color.primary.opacity(0.12), lineWidth: on ? 1.5 : 1))
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain).pointerStyle(.link)
+    }
+
+    @ViewBuilder private func section(_ part: Part) -> some View {
+        switch part {
+        case .logos:
+            if !logos.isEmpty {
+                grid("TOKENS AND NETWORKS", logos.count) {
+                    ForEach(logos, id: \.self) { l in pick(.logo(l)) { TokenLogo(name: l, size: 26) }.help(l.uppercased()) }
+                }
+            }
+        case .symbols:
+            if !symbols.isEmpty {
+                grid("SYMBOLS", symbols.count) {
+                    ForEach(symbols, id: \.self) { s in pick(.symbol(s)) { Image(systemName: s).font(.system(size: 15)).frame(width: 26, height: 26) } }
+                }
+            }
+        case .emoji:
+            if !emoji.isEmpty {
+                grid("EMOJI", emoji.count) {
+                    ForEach(emoji, id: \.self) { e in pick(.emoji(e)) { Text(e).font(.ui(20)).frame(width: 26, height: 26) } }
+                }
+            }
+        case .picture: picture
+        }
+    }
+
+    private func grid<Content: View>(_ title: String, _ count: Int, @ViewBuilder _ items: () -> Content) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(title).font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
+            HStack {
+                label(title)
+                Spacer()
+                Text("\(count)").font(.ui(10, .semibold)).foregroundStyle(.tertiary)
+            }
             LazyVGrid(columns: Array(repeating: GridItem(.fixed(32), spacing: 6), count: 9), alignment: .leading, spacing: 6) { items() }
         }
+    }
+
+    private func label(_ title: String) -> some View {
+        Text(title).font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
+    }
+
+    /// Three ways, each a solid card: on the popover's glass a plain tinted button read as a faded label.
+    private var picture: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            label("YOUR PICTURE")
+            Button(action: choose) { way("Choose a file", "PNG, JPG or SVG from this Mac", "photo", chevron: true) }
+                .buttonStyle(LitBlock(radius: 12))
+            Button {
+                guard let image = NSImage(pasteboard: .general) else { error = "No image on the clipboard."; return }
+                store(image)
+            } label: { way("Paste an image", "A copied picture or a screenshot", "doc.on.clipboard", chevron: true) }
+            .buttonStyle(LitBlock(radius: 12))
+            VStack(alignment: .leading, spacing: 10) {
+                way("Logo from a website", "The site’s own icon", "globe", chevron: false)
+                HStack(spacing: 8) {
+                    TextField("website, e.g. bybit.com", text: $domain).textFieldStyle(.roundedBorder)
+                        .onAppear { if domain.isEmpty, let word = name.split(separator: " ").first, word.count > 2 { domain = word.lowercased() + ".com" } }
+                    Button {
+                        fetching = true
+                        Task {
+                            if let image = await AddressIcons.logo(domain: domain) { store(image) } else { error = "No icon found for \(domain)." }
+                            fetching = false
+                        }
+                    } label: { Text(fetching ? "Getting…" : "Get logo").font(.ui(12.5, .semibold)) }
+                    .buttonStyle(.borderedProminent).tint(Brand.accent)
+                    .disabled(fetching || !domain.contains("."))
+                }
+                Text("Only the site’s address goes to Google’s icon service, nothing else.").font(.ui(10.5)).foregroundStyle(.secondary)
+            }
+            .padding(10)
+            .background(card)
+            if let error { Text(error).font(.ui(11)).foregroundStyle(Brand.loss) }
+        }
+    }
+
+    /// An accent tile, a title with a hint under it, and a chevron when the whole card is the button.
+    private func way(_ title: String, _ hint: String, _ symbol: String, chevron: Bool) -> some View {
+        HStack(spacing: 12) {
+            Image(systemName: symbol).font(.system(size: 15, weight: .medium)).foregroundStyle(Brand.accentInk)
+                .frame(width: 34, height: 34)
+                .background(RoundedRectangle(cornerRadius: 9).fill(Brand.accent.opacity(0.14)))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title).font(.ui(13, .semibold)).foregroundStyle(.primary)
+                Text(hint).font(.ui(11.5)).foregroundStyle(.secondary)
+            }
+            Spacer(minLength: 0)
+            if chevron { Image(systemName: "chevron.right").font(.system(size: 11, weight: .semibold)).foregroundStyle(.tertiary) }
+        }
+        .padding(chevron ? 10 : 0)
+        .background { if chevron { card } }
+    }
+
+    /// Opaque, so what's behind the popover's glass doesn't show through the buttons.
+    private var card: some View {
+        RoundedRectangle(cornerRadius: 12).fill(Color(nsColor: .controlBackgroundColor))
+            .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(Color.primary.opacity(0.12)))
     }
 
     private func pick<Label: View>(_ value: AddressIcon, @ViewBuilder _ label: () -> Label) -> some View {
         Button { icon = value; error = nil } label: {
             label().frame(width: 32, height: 32)
                 .background(RoundedRectangle(cornerRadius: 8).fill(icon == value ? Brand.accent.opacity(0.18) : .clear))
+                .overlay(RoundedRectangle(cornerRadius: 8).strokeBorder(icon == value ? Brand.accent : .clear, lineWidth: 1.5))
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
