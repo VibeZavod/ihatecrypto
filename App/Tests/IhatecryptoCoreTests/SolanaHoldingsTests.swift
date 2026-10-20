@@ -78,6 +78,9 @@ import Testing
     #expect(spot[0].usd == Decimal(string: "3.5")!)
     #expect(spot[1].usd == Decimal(string: "43.885")!)
     #expect(spot[1].looksReal == true)
+    #expect(spot[0].verified && spot[1].verified)
+    #expect(Holding(chain: "hyperliquid", contract: "UBTC", amount: 1, symbol: "UBTC").unverified == false)
+    #expect(Holding(chain: "base", contract: "0xabc", amount: 1, symbol: "USDC").unverified)
     #expect(spot[1].change24h == Decimal(string: "9.7125")!)
 }
 

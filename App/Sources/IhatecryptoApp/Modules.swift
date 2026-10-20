@@ -372,7 +372,7 @@ struct PlaceDetailBoard: View {
                           value: Fmt.usd(s.usd), sub: nil, open: { ws.openToken(s.address) })
             case .token(let t):
                 detailRow(HoldingIcon(token: t, size: 24),
-                          title: t.symbol + (t.verified ? "" : " · unverified"),
+                          title: t.symbol + (t.unverified ? " · unverified" : ""),
                           detail: "\(Fmt.num(t.amount, maxFraction: 6)) · \(t.price.map { "$" + Fmt.price($0) } ?? "no price")",
                           value: t.usd.map(Fmt.usd) ?? "—", sub: nil,
                           open: ws.opener(chain: t.chain, contract: t.contract, symbol: t.symbol))

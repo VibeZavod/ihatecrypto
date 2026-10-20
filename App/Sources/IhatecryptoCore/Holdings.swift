@@ -35,6 +35,9 @@ public struct Holding: Sendable, Identifiable, Equatable {
     /// Airdropped look-alikes are unverified with no real pool behind them: they stay out of sight until the user
     /// asks. A token the user bought has a pool (or a market list's check) and shows.
     public var looksReal: Bool { verified || ((liquidity ?? 0) >= 10_000 && (usd ?? 0) >= 0.01) }
+    /// Marked «unverified»: no list vouches for it. Never on Hyperliquid's spot book, where a name belongs to one token,
+    /// so nothing there can be a look-alike.
+    public var unverified: Bool { !verified && chain != "hyperliquid" }
 }
 
 public enum Holdings {
@@ -420,7 +423,8 @@ public enum Holdings {
             let market = universe.first { ($0["tokens"] as? [Int]) == [token, 0] }
             let context = (market?["index"] as? Int).flatMap { $0 < contexts.count ? contexts[$0] : nil }
             let price = number(context?["midPx"]) ?? number(context?["markPx"]), before = number(context?["prevDayPx"])
-            return Holding(chain: "hyperliquid", contract: coin, amount: amount, symbol: coin, price: price, liquidity: number(context?["dayNtlVlm"]),
+            // HYPE is Hyperliquid's own coin, vouched for like ETH on its networks (a spot name belongs to one token).
+            return Holding(chain: "hyperliquid", contract: coin, amount: amount, symbol: coin, price: price, verified: coin == "HYPE", liquidity: number(context?["dayNtlVlm"]),
                            change24h: price.flatMap { p in before.flatMap { $0 > 0 ? (p - $0) / $0 * 100 : nil } })
         }
     }
