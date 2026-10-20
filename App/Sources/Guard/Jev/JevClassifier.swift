@@ -1,4 +1,7 @@
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import TxGuard
 
 /// TypeSafe Jev through OpenRouter's Decisions API as a second opinion on untrusted text.

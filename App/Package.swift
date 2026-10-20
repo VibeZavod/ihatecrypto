@@ -1,6 +1,9 @@
 // swift-tools-version: 6.2
 import PackageDescription
 
+// libsecp256k1 from Bitcoin Core: secp256k1 keys and recoverable ECDSA for EVM and Hyperliquid signatures.
+let secp256k1 = Package.Dependency.package(url: "https://github.com/21-DOT-DEV/swift-secp256k1", exact: "0.23.2")
+
 let package = Package(
     name: "ihatecrypto",
     // en.lproj/InfoPlist.strings (the app's display name) makes SwiftPM ask for a default language.
@@ -15,8 +18,7 @@ let package = Package(
         .library(name: "IhatecryptoSignerKit", targets: ["SignerAPI", "WalletCore", "TxGuard", "HyperliquidSigning", "SolanaChain", "EVMChain"]),
     ],
     dependencies: [
-        // libsecp256k1 from Bitcoin Core: secp256k1 keys and recoverable ECDSA for EVM and Hyperliquid signatures.
-        .package(url: "https://github.com/21-DOT-DEV/swift-secp256k1", exact: "0.23.2"),
+        secp256k1,
         // Updates for the copy from the site (Updater.swift). Declared here too, so `swift build` and the Xcode
         // project resolve the same packages and stop rewriting Package.resolved over each other.
         .package(url: "https://github.com/sparkle-project/Sparkle", exact: "2.10.0"),
@@ -98,3 +100,18 @@ let package = Package(
         ),
     ]
 )
+
+// Windows and Linux: the core without the Mac — no SwiftUI window, XPC signer or Sparkle there, and swift-crypto (the
+// same API) takes CryptoKit's place. A Mac build never reads this.
+// ponytail: decided by the machine that builds, so cross-compiling from a Mac would take the Mac branch.
+#if !os(macOS)
+package.dependencies = [secp256k1, .package(url: "https://github.com/apple/swift-crypto", exact: "5.0.3")]
+package.targets.removeAll { ["IhatecryptoApp", "IhatecryptoSigner", "IhatecryptoAppTests"].contains($0.name) }
+for target in package.targets {
+    if ["WalletCore", "SolanaChain", "LLMCore", "Ledger", "WalletTests"].contains(target.name) {
+        target.dependencies.append(.product(name: "Crypto", package: "swift-crypto"))
+    }
+    // PBKDF2 for the BIP-39 seed; CommonCrypto's on a Mac.
+    if target.name == "WalletCore" { target.dependencies.append(.product(name: "CryptoExtras", package: "swift-crypto")) }
+}
+#endif

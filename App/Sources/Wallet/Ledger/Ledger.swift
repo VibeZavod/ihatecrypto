@@ -296,6 +296,8 @@ public struct LedgerDevice: Sendable {
     }
 }
 
+// BSD sockets: the emulator is reached from a Mac only for now.
+#if canImport(Darwin)
 /// Speculos, Ledger's emulator, over its APDU socket: a 4-byte big-endian length and the APDU; the reply is a 4-byte
 /// length, the data and the status word. For tests; the app talks to a real device over USB.
 public struct LedgerTCPTransport: LedgerTransport {
@@ -338,3 +340,4 @@ public struct LedgerTCPTransport: LedgerTransport {
         return try read(length + 2)
     }
 }
+#endif

@@ -1,5 +1,7 @@
 import Foundation
+#if canImport(LocalAuthentication)
 import LocalAuthentication
+#endif
 
 /// How this Mac asks for the person before a signature: Touch ID where it has the sensor, its login password
 /// otherwise (`.deviceOwnerAuthentication` falls back to it by itself). Texts name the one this Mac uses.
@@ -11,8 +13,13 @@ public enum Presence {
         // `-noTouchID YES`: a Mac without the sensor, to read its texts on one that has it.
         if UserDefaults.standard.bool(forKey: "noTouchID") { return false }
         #endif
+        #if canImport(LocalAuthentication)
         var error: NSError?
         return LAContext().canEvaluatePolicy(.deviceOwnerAuthenticationWithBiometrics, error: &error)
+        #else
+        // ponytail: no Touch ID off a Mac; Windows Hello gets its own wording with the Windows signer.
+        return false
+        #endif
     }()
 
     /// In a sentence: «asks for Touch ID» / «asks for your Mac password».

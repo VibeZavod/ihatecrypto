@@ -2,11 +2,13 @@ import Foundation
 import HyperliquidSigning
 import WalletCore
 
+#if os(macOS)
 /// The only door into the signing process. Requests and replies are Codable JSON over one XPC call,
 /// so the boundary is a small, auditable list rather than an object graph.
 @objc public protocol SignerXPC {
     func handle(_ request: Data, reply: @escaping @Sendable (Data) -> Void)
 }
+#endif
 
 public enum SignerRequest: Codable, Sendable {
     case status
@@ -259,6 +261,8 @@ public struct SignerReply: Codable, Sendable {
     }
 }
 
+// The XPC client exists only on macOS; the requests and replies above are plain JSON any transport can carry.
+#if os(macOS)
 /// App side: talks to the XPC service embedded in the bundle. Unavailable when running from `swift run`.
 public final class SignerClient: @unchecked Sendable {
     /// The signer built into this copy: app.ihatecrypto.mac.signer, or the development copy's app.ihatecrypto.mac.dev.signer.
@@ -330,3 +334,4 @@ public final class SignerClient: @unchecked Sendable {
         }
     }
 }
+#endif

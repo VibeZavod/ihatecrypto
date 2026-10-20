@@ -68,3 +68,13 @@ Jev проверяет команду модели против сообщени
 ## Новый протокол DeFi
 
 Папка `DeFi/<Протокол>/`, цель в `Package.swift`, программа протокола в списке `SolanaGuard.knownPrograms` и правила балансов в команде проверки. Общий тип хранилища выделяется, когда появится второй протокол.
+
+## Windows (ветка `windows`)
+
+Ядро — всё, кроме `IhatecryptoApp` и `Signer/Service`, — собирается и проходит тесты вне Apple. Mac-сборка от этого не меняется: блок `#if !os(macOS)` в конце `Package.swift` убирает окно, XPC-подписанта и Sparkle и подключает swift-crypto (тот же API, что у CryptoKit).
+
+Только на Mac (закрыто `#if`): Touch ID (`Presence.touchID` вне Mac — `false`), XPC-клиент подписанта, Ledger по USB и Bluetooth и транспорт к эмулятору Speculos (BSD-сокеты), OAuth-сервер для входа через браузер (вне Mac — ошибка «connect with an API key»), Apple Intelligence. Вне Mac `URLSession.bytes` отдаёт ответ модели целиком, а не по словам (`LLM/Core/Networking.swift`).
+
+Дальше: seed через DPAPI и Windows Hello, процесс подписи на named pipe с тем же JSON (`SignerRequest`/`SignerReply`), интерфейс на Tauri + веб, Ledger через Windows HID, установщик и подпись Authenticode.
+
+Проверка: GitHub Actions `.github/workflows/windows.yml` на каждый пуш в `windows`; локально — Linux-контейнер `swift:6.2` (OrbStack), в нём те же swift-crypto и corelibs Foundation.

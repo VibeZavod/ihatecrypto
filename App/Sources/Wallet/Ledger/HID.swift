@@ -1,3 +1,5 @@
+// USB over IOKit is the Mac's; a Windows HID transport (same 64-byte framing) comes with the Windows build.
+#if canImport(IOKit)
 import Foundation
 import IOKit.hid
 
@@ -89,3 +91,4 @@ public struct LedgerHID: LedgerTransport {
         }
     }
 }
+#endif

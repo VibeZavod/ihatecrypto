@@ -1,6 +1,9 @@
 import DeFiJupiterLend
 import DeFiKamino
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 
 /// Where an asset earns right now, across the protocols ihatecrypto knows, with what ihatecrypto can do there and the catch.
 public enum Yields {

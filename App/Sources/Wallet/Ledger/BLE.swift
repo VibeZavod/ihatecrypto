@@ -1,3 +1,5 @@
+// Bluetooth over CoreBluetooth is the Mac's.
+#if canImport(CoreBluetooth)
 import CoreBluetooth
 import Foundation
 
@@ -222,3 +224,4 @@ extension LedgerBLE: CBCentralManagerDelegate, CBPeripheralDelegate {
         }
     }
 }
+#endif

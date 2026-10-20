@@ -1,6 +1,9 @@
 import EVMChain
 import ExecutionCore
 import Foundation
+#if canImport(FoundationNetworking)
+import FoundationNetworking
+#endif
 import IhatecryptoCore
 
 /// The vault's net rate (after its fee) from Morpho's public API (api.morpho.org, no key); nil when it doesn't answer.

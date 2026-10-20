@@ -1,7 +1,13 @@
+#if canImport(CryptoKit)
 import CryptoKit
+#else
+import Crypto
+#endif
 import Foundation
+#if canImport(Network)
 import Network
 import os
+#endif
 
 /// RFC 7636 proof key for the browser sign-in flows.
 public struct PKCE: Sendable {
@@ -42,6 +48,7 @@ public enum JWT {
     }
 }
 
+#if canImport(Network)
 /// Catches one OAuth redirect on the loopback interface, so nothing outside this Mac can reach it.
 public final class LoopbackServer: @unchecked Sendable {
     public let port: UInt16
@@ -120,3 +127,18 @@ public final class LoopbackServer: @unchecked Sendable {
         return Data((head + body).utf8)
     }
 }
+#else
+/// ponytail: no loopback listener off Apple yet (WinSock, or the Tauri shell catching the redirect), so browser sign-in
+/// says so at once instead of hanging; API keys work.
+public final class LoopbackServer: Sendable {
+    public let port: UInt16 = 0
+
+    public static func start(port: UInt16 = 0, path: String) async throws -> LoopbackServer {
+        throw LLMError("Browser sign-in isn't on this system yet: connect with an API key.")
+    }
+
+    public func waitForCallback(timeout: TimeInterval = 300) async throws -> [String: String] {
+        throw LLMError("Browser sign-in isn't on this system yet: connect with an API key.")
+    }
+}
+#endif
