@@ -124,6 +124,18 @@ public enum Solana {
         public let usdc: Decimal
         /// Every other token in the wallet, the most valuable first; scam airdrops included (see Holding.looksReal).
         public var tokens: [Holding] = []
+        /// Jupiter didn't answer: the tokens came by mint, without names or prices, and their money isn't counted.
+        public var unpriced = false
+
+        /// Unpriced, the tokens take the last read's names and prices at their new amounts: read as they came, the
+        /// automation wallet's 25 USDT dropped out of the balance until the next read. Still unpriced when one is new.
+        public func pricing(from last: [Holding]) -> Balance {
+            guard unpriced else { return self }
+            var b = self
+            b.tokens = tokens.map { t in last.first { $0.contract == t.contract }?.at(t.amount) ?? t }
+            b.unpriced = tokens.contains { t in !last.contains { $0.contract == t.contract } }
+            return b
+        }
     }
 
     /// `lendShares`: Jupiter Lend's share tokens (jlUSDC…) among the tokens too, for a transfer of them as they are.
@@ -176,21 +188,24 @@ public enum Solana {
             let amount = try dec(info.tokenAmount.amount) / pow(10, info.tokenAmount.decimals)
             if info.mint == usdcMint { usdc += amount } else if amount > 0 { others[info.mint, default: 0] += amount }
         }
-        return Balance(sol: Decimal(l.value) / 1_000_000_000, usdc: usdc, tokens: await holdings(others, lendShares: lendShares))
+        let held = await holdings(others, lendShares: lendShares)
+        return Balance(sol: Decimal(l.value) / 1_000_000_000, usdc: usdc, tokens: held.tokens, unpriced: !held.priced)
     }
 
     /// Names, icons and prices from Jupiter, 100 mints a request (its search's limit). Jupiter Lend's share tokens are
     /// left out: the Jupiter Lend row counts them. Without Jupiter the tokens still show, by mint and unpriced.
-    static func holdings(_ amounts: [String: Decimal], lendShares: Bool = false) async -> [Holding] {
+    static func holdings(_ amounts: [String: Decimal], lendShares: Bool = false) async -> (tokens: [Holding], priced: Bool) {
         let mints = amounts.keys.sorted()
-        var pages: [Data] = []
+        var pages: [Data] = [], priced = true
         for start in stride(from: 0, to: mints.count, by: 100) {
             let chunk = mints[start..<min(start + 100, mints.count)]
             if let data = await Holdings.retrying({ try await HTTP.get("https://lite-api.jup.ag/tokens/v2/search?query=" + chunk.joined(separator: ",")) }) {
                 pages.append(data)
+            } else {
+                priced = false
             }
         }
-        return holdings(amounts, jupiter: pages, lendShares: lendShares)
+        return (holdings(amounts, jupiter: pages, lendShares: lendShares), priced)
     }
 
     static func holdings(_ amounts: [String: Decimal], jupiter pages: [Data], lendShares: Bool = false) -> [Holding] {

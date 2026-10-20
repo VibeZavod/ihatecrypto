@@ -263,11 +263,12 @@ extension Workspace {
         if !shownTokens.isEmpty {
             facts.append("Other tokens: " + shownTokens.map { "\(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol)\($0.native ? "" : " (\($0.contract))") on \($0.chain)\($0.usd.map { " ≈ \(Fmt.usd($0))" } ?? "")" }.joined(separator: ", ") + ".")
         }
-        if let t = total { facts.append("Portfolio total: \(Fmt.usd(t)), gas included (\(Fmt.usd(solUSD + gasETHUSD)) in SOL and ETH for fees).") }
+        if let t = total { facts.append("Main wallet total: \(Fmt.usd(t)), gas included (\(Fmt.usd(solUSD + gasETHUSD)) in SOL and ETH for fees).") }
+        if let b = balance { facts.append("Balance on screen (sidebar, portfolio, menu bar; both wallets): \(Fmt.usd(b)).") }
         if let w = automationWallet, let b = automationBudget, let usd = automationUSD {
             let coins = ([b.solana.map { "\(Fmt.num($0)) USDC on Solana" }] + b.tokens.map { "\(Fmt.num($0.amount, maxFraction: 6)) \($0.symbol) on Solana" }
                          + b.evm.filter { $0.value > 0 }.map { "\(Fmt.num($0.value)) USDC on \(EVMNetwork.named($0.key)?.name ?? $0.key)" }).compactMap { $0 }
-            facts.append("Automation wallet «\(w.label)» (the user's own, signs the Schedule's tasks; the sidebar's balance counts it, the portfolio total doesn't): "
+            facts.append("Automation wallet «\(w.label)» (the user's own, signs the Schedule's tasks; counted in the balance on screen): "
                          + "\(Fmt.usd(usd)) — \(coins.isEmpty ? "nothing" : coins.joined(separator: ", ")); \(Fmt.num(b.sol ?? 0, maxFraction: 4)) SOL for fees.")
         }
         let week = equitySeries()

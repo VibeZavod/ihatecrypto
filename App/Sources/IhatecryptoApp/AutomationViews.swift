@@ -14,14 +14,6 @@ extension Workspace {
         guard automationWallet != nil, let b = automationBudget else { return nil }
         return b.total + b.tokens.reduce(0) { $0 + ($1.usd ?? 0) } + (b.sol ?? 0) * (markets["SOL"]?.markPx ?? 0)
     }
-
-    /// The automation wallet's money, read every minute while the sidebar shows the balance.
-    func watchAutomation() async {
-        while automationWallet != nil, !Task.isCancelled {
-            await loadAutomationBudget()
-            try? await Task.sleep(for: .seconds(60))
-        }
-    }
 }
 
 /// Under the sidebar's balance, once the automation wallet holds something: the total splits into the main wallet and

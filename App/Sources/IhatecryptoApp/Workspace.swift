@@ -121,6 +121,12 @@ final class Workspace {
     /// The balances were read: what the rail and the portfolio ask instead of `updatedAt`, which is new every refresh
     /// and redrew them both each time.
     private(set) var balancesLoaded = false
+    /// The tokens on the other networks were read for this wallet (loadHoldings): the balance waits for them too.
+    var holdingsLoaded = false
+    /// Each wallet's last full balance, by its id: shown faded while a new one is read, after a switch or at launch.
+    var lastBalance: [String: Decimal] = LocalStore.load("balances.json") ?? [:] {
+        didSet { LocalStore.save(lastBalance, "balances.json") }
+    }
     /// Whether the signing process holds a key; nil outside ihatecrypto.app, where there is no signer.
     var signerHasWallet: Bool?
     /// The wallet whose key the signing process holds; only then can a plan be executed.
@@ -514,6 +520,19 @@ final class Workspace {
     var gasETHUSD: Decimal { gasETH * (markets["ETH"]?.markPx ?? 0) }
     /// Everything the wallet holds, gas included: the balance on screen.
     var total: Decimal? { equity.map { $0 + solUSD + gasETHUSD + shownNativeUSD } }
+    /// Every read the balance adds up came back for this wallet: the networks, the tokens on the others, the automation
+    /// wallet. Until then the screen shows the last full balance, never the sum of what came so far: after a wallet
+    /// switch that read $0 for seconds, and the money looked gone.
+    var balanceReady: Bool {
+        balancesLoaded && holdingsLoaded && (solana.map { !$0.unpriced } ?? !isSolanaAddress(solanaAddress)) && (hl != nil || !isEVMAddress(hlAddress))
+            && (automationWallet == nil || automationBudget != nil)
+    }
+    /// Both wallets, the main one and Automation: the one balance the sidebar, the portfolio and the menu bar show.
+    var balance: Decimal? { balanceReady ? total.map { $0 + (automationUSD ?? 0) } : nil }
+    func rememberBalance() {
+        guard let balance, lastBalance[activeWalletID ?? ""] != balance else { return }
+        lastBalance[activeWalletID ?? ""] = balance
+    }
     /// Hyperliquid's HLP vault: what is in it and, while a deposit is locked, until when.
     var hlp: (equity: Decimal, lockedUntil: Date?) = (0, nil)
     /// On Base, at the Hyperliquid (EVM) address: idle USDC, USDC supplied to Aave, ETH for gas.
@@ -1859,12 +1878,13 @@ final class Workspace {
             async let b: Void = loadBase()
             async let r: Void = loadRobinhood()
             async let t: Void = refreshTokens()
-            _ = await (m, s, h, b, r, t)
+            async let a: Void = loadAutomationBudget()
+            _ = await (m, s, h, b, r, t, a)
         }
         // Every network's numbers in one update of the window, with the time they were read.
         read.landed = true
         read.assigns.forEach { $0() }
-        if same() { updatedAt = Date(); recordEquity() }
+        if same() { updatedAt = Date(); recordEquity(); rememberBalance() }
         // Not waited for: a spammed address takes many pages, and the balances above shouldn't sit behind it.
         if !holdingsLoading { Task { await loadHoldings() } }
         if let w = previewWallet {
@@ -1921,8 +1941,12 @@ final class Workspace {
         var found = read.flatMap { r in r.tokens ?? otherTokens.filter { $0.chain == r.chain } }
         // A vault's shares a contract call just brought, before the explorer lists them.
         if evm { found += await missingDeposits(found, owner: me) }
-        guard me == hlAddress, nearAccount == nearAddress else { return }   // another wallet since: its own read follows
+        // Another wallet since: its read starts now. refresh() starts none while this one runs, and the new wallet's
+        // tokens waited for the next round, 30 s.
+        guard me == hlAddress, nearAccount == nearAddress else { Task { if !holdingsLoading { await loadHoldings() } }; return }
         if found != otherTokens { otherTokens = found }
+        if !holdingsLoaded { holdingsLoaded = true }
+        rememberBalance()
     }
 
     /// Base balances at our EVM address and Aave's rate; quiet on errors (the rest of the portfolio still shows).
@@ -1994,7 +2018,7 @@ final class Workspace {
             let k = await kaminoPositions, n = await nearBalance
             land { [self] in
                 guard current() else { return }
-                solana = s
+                solana = s.pricing(from: solana?.tokens ?? [])
                 solanaError = nil
                 // Tuples aren't Equatable: without this check @Observable redraws on every refresh.
                 if !l.elementsEqual(lend, by: ==) { lend = l }

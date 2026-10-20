@@ -48,6 +48,7 @@ extension Workspace {
         protocolPositions = []
         protocolsReadAt = nil
         updatedAt = nil
+        holdingsLoaded = false
         schedules = UserDefaults.standard.data(forKey: Self.scoped("schedules", id)).flatMap { try? JSONDecoder().decode([Schedule].self, from: $0) } ?? []
         tasks = UserDefaults.standard.data(forKey: Self.scoped("tasks", id)).flatMap { try? JSONDecoder().decode([ScheduledTask].self, from: $0) } ?? []
         taskQueue = nil
@@ -69,6 +70,7 @@ extension Workspace {
             equityHistory = []
             costBasis = [:]
         }
+        lastBalance[id] = nil
         for key in ["schedules", "tasks", "exitRules"] { UserDefaults.standard.removeObject(forKey: Self.scoped(key, id)) }
         for file in ["equity", "costbasis"] { LocalStore.remove(Self.scoped(file, id) + ".json") }
     }

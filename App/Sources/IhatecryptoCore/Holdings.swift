@@ -26,6 +26,12 @@ public struct Holding: Sendable, Identifiable, Equatable {
     /// The key the user's show/hide choice is kept under: the mint on Solana, «chain:contract» elsewhere.
     public var id: String { chain == "solana" ? contract : "\(chain):\(contract.lowercased())" }
 
+    /// The same token at another amount.
+    public func at(_ amount: Decimal) -> Holding {
+        Holding(chain: chain, contract: contract, amount: amount, symbol: symbol, icon: icon, price: price, verified: verified,
+                liquidity: liquidity, native: native, change24h: change24h)
+    }
+
     public init(chain: String, contract: String, amount: Decimal, symbol: String, icon: URL? = nil, price: Decimal? = nil,
                 verified: Bool = false, liquidity: Decimal? = nil, native: Bool = false, change24h: Decimal? = nil) {
         (self.chain, self.contract, self.amount, self.symbol, self.icon, self.price) = (chain, contract, amount, symbol, icon, price)

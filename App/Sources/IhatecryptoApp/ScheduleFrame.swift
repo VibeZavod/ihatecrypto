@@ -312,14 +312,17 @@ extension Workspace {
     }
 
     func loadAutomationBudget() async {
-        guard let w = automationWallet else { automationBudget = nil; return }
+        guard let w = automationWallet else { if automationBudget != nil { automationBudget = nil }; return }
         async let sol = Self.solanaBalance(w.solana)
         async let evm = Self.evmUSDC(w.evm)
         async let near = Self.nearUSDC(w.near)
-        let solana = await sol
-        let budget = AutomationBudget(solana: solana?.usdc, sol: solana?.sol, evm: await evm, near: await near,
-                                      tokens: solana?.tokens.filter(\.looksReal) ?? [])
-        if budget != automationBudget { automationBudget = budget }
+        let solana = (await sol)?.pricing(from: automationBudget?.tokens ?? []), e = await evm, n = await near
+        // A read that failed or came unpriced keeps the last one: read as it came, the balance dropped by Automation's money.
+        if w.solana != nil, solana == nil || solana?.unpriced == true { return }
+        let budget = AutomationBudget(solana: solana?.usdc, sol: solana?.sol, evm: (automationBudget?.evm ?? [:]).merging(e) { $1 },
+                                      near: n ?? automationBudget?.near, tokens: solana?.tokens.filter(\.looksReal) ?? [])
+        // With the rest of a refresh: the balance is both wallets, read together.
+        land { [self] in if automationWallet?.id == w.id, budget != automationBudget { automationBudget = budget } }
     }
 
     private static func solanaBalance(_ address: String?) async -> Solana.Balance? {

@@ -647,13 +647,10 @@ struct StudioRail: View {
                     // Keeps its whole name: the freshness line gives way, not «Led…».
                     WalletChip().layoutPriority(1).onHover { walletHover = $0 }
                 }
-                if !ws.balancesLoaded {
-                    Skeleton(width: 150, height: 34, radius: 9).padding(.vertical, 3)
-                } else {
-                    // Both wallets: what went to Automation is still the user's (AutomationViews.swift).
-                    let auto = ws.automationUSD.flatMap { $0 >= Decimal(string: "0.01")! ? $0 : nil }
-                    Text(balanceHidden ? "$•••••" : ws.total.map { Fmt.usd($0 + (auto ?? 0)) } ?? "—").font(.ui(32, .semibold)).monospacedDigit().tracking(-0.6)
-                    if let auto, let main = ws.total { AutomationSplit(main: main, automation: auto) }
+                // Both wallets: what went to Automation is still the user's (AutomationViews.swift).
+                BalanceAmount(font: .ui(32, .semibold), mask: "$•••••", skeleton: CGSize(width: 150, height: 34)).tracking(-0.6)
+                if ws.balanceReady, let auto = ws.automationUSD, auto >= Decimal(string: "0.01")!, let main = ws.total {
+                    AutomationSplit(main: main, automation: auto)
                 }
                 if !ws.positions.isEmpty, !balanceHidden {
                     Text("\(signed(ws.positionsPnl)) in positions").font(.ui(12, .semibold))
@@ -662,9 +659,8 @@ struct StudioRail: View {
             }
             .padding(.horizontal, 4)
             .onHover { balanceHover = $0 }
-            .task(id: ws.automationWallet?.id) { await ws.watchAutomation() }
             // The loaded balance fades in instead of popping up.
-            .animation(.easeOut(duration: 0.35), value: !ws.balancesLoaded)
+            .animation(.easeOut(duration: 0.35), value: ws.balanceReady)
             RailActions()
             CanvasList()
             ProfileMenu(compact: false)
@@ -687,11 +683,7 @@ struct StudioRail: View {
                     BrandLogo(size: 34, mood: refreshing ? .thinking : .idle, animated: true)
                     if Flavor.dev { DevTag() }
                     VStack(spacing: 1) {
-                        if !ws.balancesLoaded {
-                            Skeleton(width: 44, height: 11)
-                        } else {
-                            Text(balanceHidden ? "$•••" : ws.total.map { Fmt.usd($0 + (ws.automationUSD ?? 0)) } ?? "—").font(.ui(11, .semibold)).monospacedDigit().lineLimit(1).minimumScaleFactor(0.7)
-                        }
+                        BalanceAmount(font: .ui(11, .semibold), mask: "$•••", skeleton: CGSize(width: 44, height: 11)).lineLimit(1).minimumScaleFactor(0.7)
                         if !ws.positions.isEmpty, !balanceHidden {
                             Text(signed(ws.positionsPnl)).font(.ui(10, .semibold))
                                 .foregroundStyle(ws.positionsPnl < 0 ? Brand.loss : Brand.profit)
@@ -704,7 +696,6 @@ struct StudioRail: View {
             }
             .buttonStyle(LitBlock())
             .disabled(refreshing)
-            .task(id: ws.automationWallet?.id) { await ws.watchAutomation() }
             .help(refreshing ? "Updating the balance…" : "Balance — click to update it")
             WalletChip(compact: true)
             Divider().frame(width: 32)
@@ -759,6 +750,34 @@ struct Skeleton: View {
             .overlay { LightSweep(radius: radius).allowsHitTesting(false) }
             .frame(width: width, height: height)
             .accessibilityElement().accessibilityLabel("Loading")
+    }
+}
+
+/// The balance wherever it shows (sidebar, portfolio, menu bar): both wallets once every read is in (`balanceReady`).
+/// Until then this wallet's last full balance, faded under the skeleton's light; the skeleton when it never had one.
+struct BalanceAmount: View {
+    @Environment(Workspace.self) private var ws
+    let font: Font
+    /// What stands for the amount while the balance is hidden; nil = its digits as dots.
+    var mask: String? = nil
+    var skeleton = CGSize(width: 110, height: 22)
+
+    private func shown(_ usd: Decimal?) -> String {
+        guard BalanceEye.shared.hidden else { return usd.map(Fmt.usd) ?? "—" }
+        return mask ?? Fmt.dots(usd.map(Fmt.usd) ?? "—")
+    }
+
+    var body: some View {
+        if ws.balanceReady {
+            Text(shown(ws.balance)).font(font).monospacedDigit()
+        } else if let last = ws.lastBalance[ws.activeWalletID ?? ""] {
+            Text(shown(last)).font(font).monospacedDigit().opacity(0.4)
+                .overlay { LightSweep(radius: 6).allowsHitTesting(false) }
+                .help("Updating: the last full balance until every network answers")
+                .accessibilityLabel("Updating, last balance \(shown(last))")
+        } else {
+            Skeleton(width: skeleton.width, height: skeleton.height, radius: skeleton.height / 3)
+        }
     }
 }
 
@@ -1850,20 +1869,20 @@ struct StudioPortfolio: View {
 
     var body: some View {
         Group {
-            if !ws.balancesLoaded { loading } else { loaded.transition(.opacity) }
+            if !ws.balanceReady { loading } else { loaded.transition(.opacity) }
         }
         .padding(14)
         .frame(width: 270)
         .background(RoundedRectangle(cornerRadius: 26).fill(Brand.card).shadow(color: .black.opacity(0.08), radius: 18, y: 10))
         .overlay(RoundedRectangle(cornerRadius: 26).strokeBorder(Brand.cardBorder))
-        .animation(.easeOut(duration: 0.35), value: !ws.balancesLoaded)
+        .animation(.easeOut(duration: 0.35), value: ws.balanceReady)
     }
 
-    /// Before the first balances arrive: the card's shape, shimmering.
+    /// Until every read is in: the card's shape, shimmering, under the last full balance.
     private var loading: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("PORTFOLIO").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
-            Skeleton(width: 110, height: 22, radius: 7)
+            BalanceAmount(font: .ui(20, .heavy))
             Skeleton(height: 30, radius: 8)
             HStack(spacing: 12) {
                 Skeleton(width: 70, height: 70, radius: 35)
@@ -1880,7 +1899,7 @@ struct StudioPortfolio: View {
             HStack {
                 VStack(alignment: .leading, spacing: 1) {
                     Text("PORTFOLIO").font(.ui(10, .semibold)).tracking(1.2).foregroundStyle(.secondary)
-                    Text(masked(ws.total.map(Fmt.usd) ?? "—")).font(.ui(20, .heavy)).monospacedDigit()
+                    BalanceAmount(font: .ui(20, .heavy))
                     if series.count > 2, let first = series.first, let last = series.last {
                         Text("\(masked(signed(last.usd - first.usd))) · \(Int((last.at.timeIntervalSince(first.at) / 86_400).rounded(.up))) d")
                             .font(.ui(10, .semibold)).monospacedDigit()
