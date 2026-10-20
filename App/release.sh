@@ -1,8 +1,8 @@
 #!/bin/zsh
 # An update for the site: ./release.sh 0.2 https://example.com/ihatecrypto
-#   → dist/site/ihatecrypto-0.2.zip and dist/site/appcast.xml (with the release notes inside), plus dist/ihatecrypto-0.2.dmg
+#   → dist/site/ihatecrypto-0.2.tar.xz and dist/site/appcast.xml (with the release notes inside), plus dist/ihatecrypto-0.2.dmg
 #     for a first install. Upload dist/site/ to that URL: copies installed from that disk image find the appcast there and
-#     update themselves. Keep dist/site/ between releases: the old zips make the small .delta updates.
+#     update themselves. Keep dist/site/ between releases: the old archives make the small .delta updates.
 # A copy to hand over: ./release.sh 0.2   → dist/ihatecrypto-0.2.dmg, notarized, no update checks. Opens on any Mac
 #   with macOS 26 by a double click and starts on the first screen; the Keychain and Application Support stay here.
 # Needs, once on this Mac:
@@ -87,7 +87,8 @@ xcrun SetFile -a C "$mount"
 osascript Tools/dmg/layout.applescript "${mount#/Volumes/}" || echo "  Finder didn't lay out the window: the disk image works, without its background."
 sync
 hdiutil detach "$mount" -quiet
-hdiutil convert $out/rw.dmg -format UDZO -imagekey zlib-level=9 -o $dmg > /dev/null
+# LZMA (ULMO): the zlib image outgrew the host's 25 MiB per file at 0.6.7 (26.6 MB; LZMA 21.8 MB).
+hdiutil convert $out/rw.dmg -format ULMO -o $dmg > /dev/null
 rm -f $out/rw.dmg
 identity=$(security find-identity -v -p codesigning | awk -F'"' '/Developer ID Application.*N78L833HCS/ { print $2; exit }')
 [[ -n $identity ]] && codesign --sign "$identity" --timestamp $dmg
@@ -103,10 +104,12 @@ fi
 step "archive and appcast"
 # Their own folder: generate_appcast reads every archive beside the feed, and the disk images in dist/ aren't updates.
 mkdir -p $out/site
-ditto -c -k --sequesterRsrc --keepParent "$app" $out/site/ihatecrypto-$version.zip
+# tar.xz, not zip: the zip outgrew the host's 25 MiB per file at 0.6.7 (26.8 MB; xz 16 MB). Sparkle 2 unpacks it; no
+# AppleDouble files or xattrs go in, the signature and the stapled ticket live in the bundle's own files.
+(cd "${app:h}" && COPYFILE_DISABLE=1 tar --no-mac-metadata --no-xattrs --options xz:compression-level=9 -cJf "$OLDPWD/$out/site/ihatecrypto-$version.tar.xz" "${app:t}")
 python3 Tools/release-notes.py "$version" > $out/site/ihatecrypto-$version.html
 rm -rf $out/export $out/ihatecrypto.xcarchive $out/export.plist
-# Signs the new zip (and the feed: the app requires a signed one) with the key in the Keychain; the notes go inside.
+# Signs the new archive (and the feed: the app requires a signed one) with the key in the Keychain; the notes go inside.
 # The landing's disk image would read as one more archive of the same version, so it steps out while the feed is made.
 rm -f $out/site/ihatecrypto.dmg
 $sparkle/generate_appcast --download-url-prefix "$site/" $out/site
