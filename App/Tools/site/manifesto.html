@@ -189,15 +189,16 @@ if (location.pathname === '/manifesto/') {
   .now .pop use + use { animation-delay: 2s; }
   @keyframes roll { 0% { opacity: 1; } 50% { opacity: 0; } }
 
-  /* Press the whitepaper: a terminal asks «whois satoshi» and types out a faceless portrait over it. */
-  .satoshi { position: fixed; z-index: 45; width: max-content; padding: 12px 16px 16px; border-radius: 14px; background: #111111; color: #E6E6E8;
-             font: 500 12px/1.3 ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: 0; box-shadow: 0 24px 60px rgba(17,17,17,.35);
+  /* Press the whitepaper or the circled name: a terminal asks «whois satoshi» and types out the face Newsweek put on the cover in 2014. */
+  .satoshi { position: fixed; z-index: 45; width: max-content; padding: 12px 16px 16px; border-radius: 14px; background: #FFFFFF; color: #111111;
+             border: 1px solid var(--line); font: 500 12px/1.35 ui-monospace, 'SF Mono', Menlo, monospace; letter-spacing: 0; box-shadow: 0 24px 60px rgba(17,17,17,.22);
              opacity: 0; scale: .9; translate: 0 10px; transform-origin: 50% 50%; transition: opacity .2s, scale .35s cubic-bezier(.3,1.5,.5,1), translate .35s cubic-bezier(.3,1.5,.5,1); pointer-events: none; }
   .satoshi.on { opacity: 1; scale: 1; translate: none; pointer-events: auto; cursor: var(--hand); }
-  .satoshi .dots { display: flex; gap: 6px; margin-bottom: 10px; } .satoshi .dots i { width: 10px; height: 10px; border-radius: 50%; background: #3A3B40; }
+  .satoshi .dots { display: flex; gap: 6px; margin-bottom: 10px; } .satoshi .dots i { width: 10px; height: 10px; border-radius: 50%; }
   .satoshi .dots i:first-child { background: #FF5F57; } .satoshi .dots i:nth-child(2) { background: #FEBC2E; } .satoshi .dots i:last-child { background: #28C840; }
   .satoshi pre { margin: 0; font: inherit; white-space: pre; }
-  .satoshi .p { color: #FF7A2F; } .satoshi .k { color: #8A8D94; } .satoshi .a { color: #C9CACE; }
+  .satoshi .art { margin: 8px 0 10px; font-size: 5.5px; line-height: 5.5px; color: #111111; }
+  .satoshi .p { color: var(--accent-ink); } .satoshi .k { color: var(--muted); }
   /* A picture beside the circled word: to the right of the column on a wide screen, under the words on a narrow one. */
   .has-side { position: relative; }
   .side { position: absolute; left: calc(100% + 40px); top: 50%; width: min(300px, calc((100vw - var(--col)) / 2 - 76px)); translate: 0 -50%;
@@ -504,33 +505,33 @@ $$('.rise').forEach((el) => {
   words.forEach((w, i) => { const s = document.createElement('span'); s.className = 'w'; s.style.setProperty('--i', i); s.textContent = w; el.append(s, ' '); });
 });
 
-// The whitepaper's secret: press it, or the circled «Satoshi Nakamoto», and «whois satoshi» is typed out over it, line by line. Nobody knows his face, so the portrait has none.
-const SATOSHI = [['p', '$ whois satoshi'], ...["           .-\"\"\"\"\"\"-.", "         .'  ______  '.", "        /   /      \\   \\", "       |   |  ?  ?  |   |", "       |   |   __   |   |", "       |    \\      /    |", "        \\    '----'    /", "     .-'`'.          .'`'-.", "    /      '-.____.-'      \\", "   |                        |"].map((l) => ['a', l]), ['', ''],
-  ['k', 'name     ', 'Satoshi Nakamoto'], ['k', 'email    ', 'satoshin@gmx.com'], ['k', 'paper    ', '31 Oct 2008'], ['k', 'block 0  ', '3 Jan 2009'], ['k', 'face     ', 'unknown']];
+// The whitepaper's secret: press it, or the circled «Satoshi Nakamoto», and «whois satoshi» is typed out over the paper: the face
+// Newsweek put on its cover in March 2014 as Satoshi's, in ASCII, and what came of it. Nobody knows his real face.
+const ART = ["                       ..:...:::-===+*#+=*#*+=----::....", "                 ... .       .... .-++*#**####**+=-::.::-==:.", "            .:...    ..:.:::....:=+=-::-=**++###%##*####%%@%#+", "           .-:=+-:..  ...:::::===-:..:.......:--==+==---==*@#**", "          -*#*=-:...:-========-..     ....:-:..::..::-=*#%##@%%-", "         .@%+==:::==++++=--::.           ...:--===-=-:==***#%%*=-", "        .@%#++===++==--:::..          .   ...:::----=+*=#::*+#+=.", "       =%%#%#*++*+=--:......          .........::::--*==-:=-=+=+:.", "      @@@@@#**##==-:::........................:::::.--:-::.++*=-=::", "     =@#=##**+*+=:::.................    ..::.:::::::::::..*=-#:=:::", "   :%@- =*:-:................ ..:::::-=+==:.:.:::::-...:. ==+:=====+-", "   +@- =@=.=+**+==:.  .......::-=++*##*+=*=::::-:-::-.:: :==%:.=#==*+=:", "   :+ :@@:+#===-:::::.......:::....:...:==-++-:-:-:-==-:.#=*#+.-#+==#+*=", "   .-.+@%.=:....:-=--::::-.:::--:---:... .:--:-----+=:**+=##+==:**+-**=#+", "    ==*@+....    ..-+=-----==+=:.........:.:::----==*#@*##*+*++==#+==*==%.", "   .+=#@:.-.   ..  .-*+-::=+*=..      ...:------===+%%%%%@%*#***=#*+=++=%:", "    -=%%:::.:..:-==--+*. .-=+=-..:.:.::::::-=--=:-+##@@@%@@%@#+*###+*-***", "    .-::-:.=##*+-==*++:  .-.:-=*###*==--=*+-=---:=*#@@@@@@@%%%*##%%=*++%.", "    ::.....:=++===-:-:   ::  .::-===---:::-::----==+*%@@@%*+#%##%%%*=**=", "   :-   .: .===+=--:=-  .+-+..::::--::.:---=:::::--+*#%@%###%%%%#%%++*.", "    :    . :------:--   :-*--::=++++**+=-.::.::::--===++*%##*%#*#++#*", "     :   ::.....:.:.   ...-#:.:.:----::...-.:::------=*+#*=+%@%%#-%=", "         :.:...:::     .:::=*+-:::...::::=::-------=+*###+=-#%@%+=.", "        =--.:-:::::-----:.  .+#=---::::-----==----=+***#*==+%**++", "        :--:---=--%#***%%%*=:+=-==--------===-=+=+++*+#*+==*+-=*", "        .:-:::==::-=+#%##**#*=..-=---===--==----=++=*++*==+=-+=", "        :::--=-..:::==+=-::::.::.-----===-=-=-===-=+*+#*====+-", "        -.::=+...::..:....:.::::::-=--------=======+=+*+==+=.", "        =.:=#::--:--:-====---::--::==----===---==-======+-.", "        -::=:-**-:--==--=+***+==---:*=:::+=---=======--=:", "        --..-*=.=*#*#%%#**+++*#%*=--=::-=+-=--=+++=====-", "         +--=::+***##******+--==##+-::--*=-===++++===-*.", "          *##+#%#***###***##%%#+==++===++-=++**++=====+", "           =***====++**++**=+==#%%****#*++++++++=--===:", "            =#:--+*##****#***----=+**%*****+===-:--=-*", "             -#==++++****#++=++===+*#*****+===-::--===", "              :*+**+*##*****+++**#***+*++==+=----====:+.", "               :++*#*******###***+==+*=-=++=--===++==.-@:"];
+const INFO = [['match    ', 'Dorian Nakamoto?'], ['source   ', 'Newsweek, March 2014'], ['reply    ', '"I got nothing to do with it."'], ['verdict  ', 'not him'], ['face     ', 'still unknown']];
 const term = document.createElement('div');
 term.className = 'satoshi';
 term.setAttribute('aria-hidden', 'true');
-term.innerHTML = '<div class="dots"><i></i><i></i><i></i></div><pre></pre>';
+term.innerHTML = '<div class="dots"><i></i><i></i><i></i></div><pre class="cmd p"></pre><pre class="art"></pre><pre class="info"></pre>';
 document.body.append(term);
+const [cmd, art, info] = $$('pre', term);
+function infoLine([k, v]) { const l = document.createElement('div'); l.innerHTML = '<span class="k"></span>'; l.firstChild.textContent = k; l.append(v); return l; }
 function whois(paper) {
   if (term.classList.contains('on')) return hush();
-  const pre = $('pre', term);
-  pre.textContent = SATOSHI.map((r) => r.slice(1).join('')).join('\n');   // full size first, to place it
+  cmd.textContent = '$ whois satoshi'; art.textContent = ART.join('\n'); info.replaceChildren(...INFO.map(infoLine));   // full size first, to place it
   const r = paper.getBoundingClientRect(), w = term.offsetWidth, h = term.offsetHeight;
   term.style.left = Math.max(12, Math.min(innerWidth - w - 12, r.left + r.width / 2 - w / 2)) + 'px';   // over the paper, kept on screen
   term.style.top = Math.max(76, Math.min(innerHeight - h - 12, r.top + r.height / 2 - h / 2)) + 'px';
-  pre.textContent = '';
+  term.style.minHeight = h + 'px';
+  art.textContent = ''; info.replaceChildren();
   term.classList.add('on');
   let k = 0;
   clearInterval(term.t);
-  term.t = setInterval(() => {
-    const [c, a, b] = SATOSHI[k++], line = document.createElement('span');
-    line.innerHTML = c === 'k' ? `<span class="k"></span>` : `<span class="${c}"></span>`;
-    line.firstChild.textContent = a;
-    if (b) line.append(b);
-    pre.append(line, k < SATOSHI.length ? '\n' : '');
-    if (k >= SATOSHI.length) clearInterval(term.t);
-  }, 45);
+  term.t = setInterval(() => {   // the portrait two lines a tick, then the answer a line a tick
+    if (k < ART.length) { art.textContent += (k ? '\n' : '') + ART.slice(k, k + 2).join('\n'); k = Math.min(k + 2, ART.length); }
+    else if (k - ART.length < INFO.length) info.append(infoLine(INFO[k++ - ART.length]));
+    else clearInterval(term.t);
+  }, 32);
   addEventListener('scroll', hush, { once: true, passive: true });
 }
 function hush() { clearInterval(term.t); term.classList.remove('on'); }
