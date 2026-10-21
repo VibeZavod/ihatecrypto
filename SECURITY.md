@@ -68,7 +68,8 @@ changes on every start and sits in an owner-only file, and refuses requests a br
 drives the app, only status requests reach the signer.
 
 **Updates.** Releases are signed with the team's Developer ID and notarized. Sparkle checks each update against the
-EdDSA public key in the app.
+EdDSA public key in the app. The app only says a new version is out: nothing downloads or installs until you press
+Install.
 
 **No telemetry.** The app sends no analytics. It copies the crash reports macOS writes into its own folder and sends
 them nowhere.

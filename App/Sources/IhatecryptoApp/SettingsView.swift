@@ -181,10 +181,10 @@ struct SettingsView: View {
 
     private var about: some View {
         let info = Bundle.main.infoDictionary
-        return SettingsSection(icon: "info.circle", title: "About", line: "Updates come by themselves once a day.") {
+        return SettingsSection(icon: "info.circle", title: "About", line: "Checks for a new version once a day. It installs only when you press Install.") {
             SettingsGroup {
                 SettingsRow("ihatecrypto \(info?["CFBundleShortVersionString"] as? String ?? "")", icon: "app.badge",
-                            info: "Build \(info?["CFBundleVersion"] as? String ?? "?"). A new version downloads in the background and goes in at «Restart to update»; the wallet, settings and canvases stay.") {
+                            info: "Build \(info?["CFBundleVersion"] as? String ?? "?"). A new version shows its notes and waits for you to press Install; the wallet, settings and canvases stay.") {
                     if Updater.shared.available { Button("Check for updates") { Updater.shared.check() } }
                 }
             }

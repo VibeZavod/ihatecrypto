@@ -401,9 +401,6 @@ final class Workspace {
     var tuning: String?
     /// Settings fill the main window in place of the canvas and the chat.
     var settingsOpen = false
-    /// A new version Sparkle has downloaded, waiting for a restart to install (Updater.swift): the app menu and the menu
-    /// bar's popover offer «Restart to update».
-    var updateReady: String?
 
     /// Shows Settings, on `tab` (a `SettingsView.Tab`) when given.
     func openSettings(_ tab: SettingsView.Tab? = nil) {
@@ -1176,8 +1173,8 @@ final class Workspace {
                 Updater.shared.check()
                 reply(say("Checking for a new version: Sparkle's window shows what it finds.", "Проверяю новую версию: окно Sparkle покажет, что нашлось."))
             } else {
-                reply(say("This copy was built on this Mac, so it doesn't update itself. The copy from the site checks once a day.",
-                          "Эта копия собрана на этом Маке, поэтому сама не обновляется. Копия с сайта проверяет обновления раз в день."))
+                reply(say("This copy was built on this Mac, so it doesn't look for updates. The copy from the site looks once a day.",
+                          "Эта копия собрана на этом Маке, поэтому обновлений не ищет. Копия с сайта проверяет их раз в день."))
             }
             return
         }

@@ -2,7 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <!-- Merged into the plist Xcode generates (GENERATE_INFOPLIST_FILE). Sparkle: the feed comes from the build
      (release.sh sets SPARKLE_FEED_URL); the public key checks every update's EdDSA signature, its private half is in
-     the release Mac's login Keychain (generate_keys). -->
+     the release Mac's login Keychain (generate_keys). SUAllowsAutomaticUpdates is off: Sparkle only says a new version
+     is out, and nothing downloads or installs until the user presses Install. -->
 <plist version="1.0">
 <dict>
 	<key>CFBundleLocalizations</key>
@@ -16,6 +17,8 @@
 	<string>M33U6kNhHKliCA5j1gWYALgMqVgURJABRT+L8zgf/hY=</string>
 	<key>SUEnableAutomaticChecks</key>
 	<true/>
+	<key>SUAllowsAutomaticUpdates</key>
+	<false/>
 	<key>SUScheduledCheckInterval</key>
 	<integer>86400</integer>
 	<key>SUVerifyUpdateBeforeExtraction</key>
