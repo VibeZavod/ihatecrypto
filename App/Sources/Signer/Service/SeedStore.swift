@@ -504,7 +504,7 @@ enum RecipientStore {
 
 /// The addresses of the wallets whose keys this signer holds, each written when its key was derived here: money between
 /// them stays the user's, so none is a new address for another (what a task bought goes from Automation to Main by
-/// itself). Not the wallet list in defaults: anything on the Mac can write that.
+/// itself). Kept apart from the wallet list (SignerPrefs) so a wallet is «ours» only once its key was derived here.
 enum OwnStore {
     static let service = "app.ihatecrypto.own"
     static var query: [String: Any] {

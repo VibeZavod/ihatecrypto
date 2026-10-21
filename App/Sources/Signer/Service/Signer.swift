@@ -12,8 +12,9 @@ import WalletCore
 /// has no network). Token-account owners it claims are re-derived here, and with presence on, the system
 /// prompt shows what the signer itself parsed, so a lying app is visible to the user.
 enum Signer {
-    /// Public addresses live in the service's sandbox defaults so status never touches the seed.
-    static var defaults: UserDefaults { .standard }
+    /// Public addresses and the signer's settings, out of the seed's way so status never touches it: in the Keychain
+    /// (SignerPrefs), not the sandbox's preferences file, which anything on the Mac could rewrite.
+    static var defaults: SignerPrefs { .shared }
 
     static func handle(_ request: SignerRequest) throws -> SignerReply {
         switch request {
