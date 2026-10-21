@@ -33,6 +33,7 @@ swift build && swift build --build-tests && swift test --skip-build
 ./lint.sh
 ./run.sh                             # no signing process: balances only
 TEAM=<team id> ./build-app.sh        # «ihatecrypto Dev.app»; add Debug for a build in .build/xcode
+./verify-release.sh <version>        # rebuild a release from its tag and compare it with the DMG (~5 min)
 swift run WalletCheck <command>      # live checks on ~/.ihatecrypto/test-wallet.txt; nothing sent without --yes
 swift run LLMCheck <provider> "text" # one model provider; on a subscription it spends the user's limits
 open -W --stdout /dev/stdout ".build/xcode/Build/Products/Debug/ihatecrypto Dev.app" --args -signerSelfTest YES

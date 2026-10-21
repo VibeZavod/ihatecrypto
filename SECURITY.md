@@ -71,6 +71,12 @@ drives the app, only status requests reach the signer.
 EdDSA public key in the app. The app only says a new version is out: nothing downloads or installs until you press
 Install.
 
+**Reproducible releases.** From the version after 0.6.9, a release can be rebuilt from its tag byte for byte, apart
+from the code signatures that only the project's keys can make. `App/verify-release.sh <version>` downloads the DMG,
+builds the tag the way `release.sh` did (with the Xcode build the release names, in the same folder) and compares every
+file with the signatures taken off both copies. The **Verify release** workflow runs it on GitHub's Mac for each
+published release, so a green run there says the download is this code.
+
 **No telemetry.** The app sends no analytics. It copies the crash reports macOS writes into its own folder and sends
 them nowhere.
 

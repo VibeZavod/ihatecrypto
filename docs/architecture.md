@@ -53,6 +53,9 @@ move through something that is off.
   `Flavor` (`IhatecryptoApp/Canvases.swift`) gives it its own data folder (`Application Support/ihatecrypto-dev`), debug
   API port (51790) and Keep running agent. Release goes to `~/Applications/ihatecrypto Dev.app`.
 - `release.sh`: the signed, notarized release with its Sparkle update archive and appcast.
+- `verify-release.sh <version>`: rebuilds a release's tag with `Tools/build-release.sh`, the build `release.sh` makes, in
+  the same folder (`/private/tmp/ihatecrypto-release`, since its path goes into the binaries) and compares it with the
+  published DMG file by file, code signatures taken off. The Verify release workflow runs it for every release.
 - Signer self-test on the public test phrase, from `App/`:
   `open -W --stdout /dev/stdout ".build/xcode/Build/Products/Debug/ihatecrypto Dev.app" --args -signerSelfTest YES`.
   Launch flags work only in Debug builds. Use `open`: launched directly, the app can't reach its XPC service.

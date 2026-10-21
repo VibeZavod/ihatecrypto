@@ -12,6 +12,8 @@
 		<string>en</string>
 		<string>ru</string>
 	</array>
+	<key>XcodeGenVersion</key>
+	<string>$(XCODEGEN_VERSION)</string>
 	<key>SUFeedURL</key>
 	<string>$(SPARKLE_FEED_URL)</string>
 	<key>SUPublicEDKey</key>

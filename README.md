@@ -84,6 +84,10 @@ TEAM=<your team id> ./build-app.sh    # the full app with Signer.xpc, signed by 
 `build-app.sh` makes «ihatecrypto Dev.app» with its own bundle id, Keychain group and data folder, so it never
 touches an installed ihatecrypto.app or its wallets.
 
+**Check a release** against the code: `App/verify-release.sh <version>` rebuilds that tag and compares it with the
+release's DMG file by file, apart from code signatures; the **Verify release** workflow does the same on GitHub for
+every release. See [SECURITY.md](SECURITY.md#how-it-is-built).
+
 <details>
 <summary>Details for contributors</summary>
 
