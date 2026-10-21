@@ -178,6 +178,14 @@ enum SeedStore {
         return seed
     }
 
+    /// A wallet's seed opened with no prompt, or nil: only one sealed without Touch ID (a test or the automation wallet)
+    /// opens so. What the settings say about a wallet is held to this wherever it would skip a prompt.
+    static func withoutPrompt(id: String) -> Data? {
+        let context = LAContext()
+        context.interactionNotAllowed = true
+        return try? openSeed(id: id, context: context)
+    }
+
     /// A sealed secret opened with its Enclave key, wherever that key's group is.
     private static func open(_ sealed: (data: Data, tag: Data), context: LAContext) throws -> Data {
         var q = keyQuery(sealed.tag)

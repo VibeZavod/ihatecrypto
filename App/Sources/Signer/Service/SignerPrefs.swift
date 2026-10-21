@@ -40,8 +40,8 @@ final class SignerPrefs: @unchecked Sendable {
             return values
         }
         guard status == errSecItemNotFound else { return nil }
-        // ponytail: the file is taken once as it is, so a change made to it before this version stays; checking its
-        // addresses against OwnStore would catch that, if it matters.
+        // Taken once as it is. What a change made to it earlier could skip is checked where it's used: «our address»
+        // against the key at every signature (Signer.vouch), a test wallet by its seed opening without a prompt.
         let old = UserDefaults.standard.dictionaryRepresentation().filter { Self.carried($0.key) }
         save(old)
         return old
