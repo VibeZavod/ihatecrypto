@@ -1,7 +1,7 @@
 <p align="center">
   <picture>
     <source media="(prefers-color-scheme: dark)" srcset="images/hero-dark.png">
-    <img src="images/hero-light.png" width="800" alt="ihatecrypto: the portfolio on the left, «buy $10 of Tesla» laid out as cards on the canvas (10 USDC from Solana, bridged with Relay, approved and swapped for TSLA on Robinhood Chain) and the chat below">
+    <img src="images/hero-light.png" width="800" alt="ihatecrypto. Even crypto hates crypto. Say it. See the move. You confirm. Below, the app window: the portfolio on the left, «buy $10 of Tesla» laid out as cards on the canvas (10 USDC from Solana, bridged with Relay, approved and swapped for TSLA on Robinhood Chain) and the chat below">
   </picture>
 </p>
 
