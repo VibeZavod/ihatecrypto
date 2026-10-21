@@ -295,10 +295,13 @@
 
   /* Why it's safe. */
   .tiles { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; margin-top: 40px; }
-  .tile { padding: 24px 24px 26px; border-radius: 20px; background: #FFFFFF; border: 1.5px solid var(--line); }
+  /* dark, so the tiles don't sink into the page (the owner: «сделай чтобы бэкграунд не был такого же цвета») */
+  .tile { padding: 24px 24px 26px; border-radius: 20px; background: #141518; color: #FFFFFF; }
+  .tile .ic { background: rgba(255,122,47,.16); color: #FF8A47; }
+  .tile p a { color: #FF9A5C; }
   .ic { width: 46px; height: 46px; border-radius: 13px; background: #FFF1E8; color: var(--accent-ink); display: flex; align-items: center; justify-content: center; }
   .tile h3 { font: 700 18px Onest, sans-serif; margin-top: 18px; }
-  .tile p { color: var(--muted); font-size: 15px; margin-top: 8px; }
+  .tile p { color: #A3A6AD; font-size: 15px; margin-top: 8px; }
   .fine { display: flex; align-items: center; justify-content: center; gap: 8px; margin-top: 22px; color: var(--muted); font-size: 14px; text-align: center; }
   .fine svg { flex: none; }
   .oss { display: flex; flex-direction: column; align-items: center; text-align: center; padding: 56px 24px 52px; }
