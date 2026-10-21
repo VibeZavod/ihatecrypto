@@ -5,8 +5,8 @@ import Sparkle
 
 /// Updates for the copy downloaded from the site (release.sh). Sparkle reads the site's appcast once a day and checks
 /// each update's EdDSA signature and the feed's. It never downloads or installs by itself (SUAllowsAutomaticUpdates is
-/// off in the plist): it shows the new version with its notes, or a notification in the background, and the user
-/// presses Install. A copy built on this Mac has no feed (SUFeedURL is empty) and never looks. «check for updates» in
+/// off in the plist): a small window says the new version is out, or a notification in the background, and the user
+/// presses Install. The window has no notes (SUShowReleaseNotes is off): What's new shows them after the update. A copy built on this Mac has no feed (SUFeedURL is empty) and never looks. «check for updates» in
 /// the chat or the app menu looks now.
 /// `swift run` has no Sparkle and no bundle: nothing here runs there.
 final class Updater: NSObject {
@@ -35,7 +35,7 @@ final class Updater: NSObject {
         #endif
     }
 
-    /// Sparkle's window: «You're up to date», or the new version with its notes and Install.
+    /// Sparkle's window: «You're up to date», or the new version with Install.
     func check() {
         #if canImport(Sparkle)
         NSApp.activate()
