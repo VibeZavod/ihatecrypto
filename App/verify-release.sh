@@ -101,6 +101,11 @@ if diff $root/compare/release.txt $root/compare/built.txt > $root/compare/diff.t
 else
   echo "✗ ihatecrypto $version differs from the code at v$version (< release, > built from the code):"
   cat $root/compare/diff.txt
+  # A property list that differs: its keys side by side, so a run on another Mac says why without the files.
+  for p in $(grep -E '^< file .*\.plist ' $root/compare/diff.txt | awk '{ print $3 }'); do
+    echo "· $p (< release, > built):"
+    diff <(plutil -p $root/compare/release.app/$p) <(plutil -p $root/compare/built.app/$p) || true
+  done
   echo "both copies, signatures off: $root/compare"
   exit 1
 fi
