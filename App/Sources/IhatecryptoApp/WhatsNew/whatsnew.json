@@ -1,5 +1,18 @@
 [
   {
+    "version": "0.7.4",
+    "date": "2026-10-23",
+    "stories": [
+      {
+        "title": "Your trade on its chart",
+        "text": "With a coin's chart on the canvas, a long or short on that coin is drawn right on it: the entry, the stop and the take across the candles, the loss and the gain between them, and Cancel and Confirm on top. A buy, a send or a plan on another coin puts the chart beside its card, never above its buttons.",
+        "symbol": "chart.xyaxis.line",
+        "color": "0A84FF",
+        "try": "chart HYPE"
+      }
+    ]
+  },
+  {
     "version": "0.7.3",
     "date": "2026-10-23",
     "stories": [
