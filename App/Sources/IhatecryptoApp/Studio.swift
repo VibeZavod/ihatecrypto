@@ -1,5 +1,6 @@
 import AppKit
 import DeFiYields
+import HyperliquidSigning
 import IhatecryptoCore
 import JupiterSwap
 import LLMCatalog
@@ -2178,6 +2179,7 @@ extension Workspace {
             var lines = [row("at the stop", "−\(Fmt.usd(s.lossAtStopUSD))")]
             if let profit = s.profitAtTakeUSD { lines.append(row("at the take", "+\(Fmt.usd(profit))")) }
             lines.append(row("fees", "≈ \(Fmt.usd(s.feesUSD)) incl."))
+            lines.append(row("ihatecrypto", "\(Fmt.usd(s.builderFeesUSD)) of them · \(HLBuilder.rate)"))
             steps.append(card("RESULT · ESTIMATE", "−\(Fmt.usd(s.lossAtStopUSD))" + (s.profitAtTakeUSD.map { " / +\(Fmt.usd($0))" } ?? ""), lines, "info", .check))
         }
         let signatures = nodes.filter { $0.signature != nil }.count
