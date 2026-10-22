@@ -160,7 +160,11 @@ final class Workspace {
     }
     var preparing = false
     var executing = false {
-        didSet { if oldValue, !executing { lastOwnMove = Date(); endSigningSession(); continueTask(); Task { await continueAgent() } } }
+        didSet {
+            guard oldValue, !executing else { return }
+            lastOwnMove = Date(); endSigningSession(); continueTask()
+            Task { if agentGoal == nil { await explainFailure() } else { await continueAgent() } }
+        }
     }
 
     /// One Touch ID covers one move: once it's done the next signature asks again, unless the user chose 5–30 minutes.

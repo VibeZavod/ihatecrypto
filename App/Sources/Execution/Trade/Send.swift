@@ -18,7 +18,7 @@ extension Executor {
         case arbitrum(String)
         /// USDG on Robinhood Chain.
         case robinhood(String)
-        /// Another Hyperliquid account: USDC from the perp balance, no bridge.
+        /// Another Hyperliquid account: USDC from the perp balance; what it lacks is bridged in first.
         case hyperliquid(String)
         case tempo(String)
         case ethereum(String)
@@ -74,12 +74,19 @@ extension Executor {
     private func sendHyperliquidUSDC(_ amount: Decimal, to destination: String, label: String) async throws -> String {
         // To the micro-dollar, not the cent: «send all» leaves nothing behind.
         let usdc = amount.rounded(6, .down)
-        let free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
-        guard usdc > 0, usdc <= free else { throw ExecutionError("\(Fmt.usd(free)) free on Hyperliquid; can't send \(Fmt.num(usdc)).") }
         let to = destination.lowercased()
         guard to != wallet.evm.lowercased() else { throw ExecutionError("That is this wallet's own Hyperliquid account.") }
+        // The first transfer to an account Hyperliquid hasn't seen yet loses 1 USDC on the way (its ledger, 2026-10-22: sent
+        // 2, fee 1, 1 arrived): 1 more goes, so the amount asked arrives.
+        let opening: Decimal = (try? await Hyperliquid.isNewAccount(to)) == true ? 1 : 0
+        try await ensureHyperliquid(usdc: usdc + opening)
+        let free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
+        guard usdc > 0, usdc + opening <= free else {
+            throw ExecutionError("\(Fmt.usd(free)) free on Hyperliquid; can't send \(Fmt.num(usdc))"
+                                 + (opening > 0 ? " plus the 1 USDC Hyperliquid keeps once for a new account." : "."))
+        }
         let time = UInt64(Date().timeIntervalSince1970 * 1000)
-        let action = HLSigner.usdSendAction(destination: to, amount: "\(usdc)", time: time, mainnet: true)
+        let action = HLSigner.usdSendAction(destination: to, amount: "\(usdc + opening)", time: time, mainnet: true)
         let signature = try await signer.signHyperliquidUser(action, recipients: [to])
         try journal.append(.init(chain: "hyperliquid", id: "\(time)", kind: .signed, note: "send \(Fmt.num(usdc)) USDC to \(label)"))
         let reply = HLReply.parse(try await HLExchange.send(action: action, nonce: time, signature: signature, mainnet: true))
@@ -88,7 +95,30 @@ extension Executor {
             throw ExecutionError("Hyperliquid refused the transfer: \(e).")
         }
         try journal.append(.init(chain: "hyperliquid", id: "\(time)", kind: .confirmed, note: "\(reply)"))
-        return "Sent \(Fmt.num(usdc)) USDC to \(label) on Hyperliquid."
+        return "Sent \(Fmt.num(usdc)) USDC to \(label) on Hyperliquid" + (opening > 0 ? ", plus 1 USDC Hyperliquid kept once for opening their account." : ".")
+    }
+
+    /// What Hyperliquid lacks for a send comes over first, as ensureEVM does for an EVM network: from Solana over Relay,
+    /// else straight from the EVM network holding it. «Send 150 USDC to HL wallet» with $3.96 there and the money on
+    /// Solana failed at the signature (2026-10-22).
+    func ensureHyperliquid(usdc want: Decimal) async throws {
+        let free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
+        guard want > free else { return }
+        let short = want - free
+        let onSolana = Decimal(try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
+        if onSolana < short + Decimal(string: "0.1")! {
+            let idle = Dictionary(await idleUSDC().map { ($0.net.key, $0.usdc) }, uniquingKeysWith: +)
+            if let (from, send) = EVMNetwork.source(arrive: short, onSolana: onSolana, target: "hyperliquid", held: { idle[$0] }) {
+                report("Hyperliquid has \(Fmt.usd(free)) and Solana \(Fmt.num(onSolana)) USDC: bringing \(Fmt.num(send)) straight from \(from.name).")
+                report(try await bridge(from, to: nil, hyperliquid: true, usdc: send))
+                // Inside a chain the bridge returns before it lands; the send needs the money there.
+                if let landings = Self.landings { for line in try await landings.wait(for: "hyperliquid") { report(line) } }
+                return
+            }
+        }
+        let (step, changes) = try await prepareBridge(.arrive(Self.bridgeArrive(need: short, margin: 0, solanaUSDC: onSolana)))
+        report("Hyperliquid has \(Fmt.usd(free)): \(Fmt.num(step.spend)) USDC from Solana → \(Fmt.num(step.arriving)) USDC there first. " + changes.joined(separator: " "))
+        try await sendBridge(step)
     }
 
     static func usdc(_ units: UInt64) -> String { Fmt.num(Decimal(units) / 1_000_000, maxFraction: 6) }
