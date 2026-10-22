@@ -335,7 +335,8 @@ extension Workspace {
     /// After execution «take closer» or «stop 2%» are about the open position: its orders move on the exchange
     /// instead of a new plan starting. Only stop and take may change; anything else is a new plan.
     /// `confirm`: a model read the message, so the new orders wait on a card for Confirm, like any other model reading
-    /// that touches a position; the user's own typed «stop 2%» moves them at once, as before.
+    /// that touches a position. Every chat message goes through the model, so a typed «stop 2%» waits too; only the
+    /// no-model path (`confirm: false`) moves them at once.
     func editExecuted(from before: TradeIntent, to next: TradeIntent, confirm: Bool = false) async -> Bool {
         guard let p = positions.first(where: { $0.coin == before.asset }) else { return false }
         var same = next
@@ -644,16 +645,15 @@ extension Workspace {
                 guard days > 0 else { reply(say("A recurring buy needs at least a day between buys.", "Между регулярными покупками нужен хотя бы день.")); return }
                 // The per-purchase rule applies to each run; a schedule adds up, so it is shown per month too.
                 // The first buy is a card like any other and waits for Confirm: a schedule set up from the chat never signs
-                // at once by itself. The schedule's own runs start one period later.
-                schedules.removeAll { $0.symbol == asset.symbol }
+                // at once by itself. Only that Confirm turns the schedule on (firstBuyOf); its own runs start one period later.
                 var schedule = Schedule(symbol: asset.symbol, usdc: usdc, days: days, next: Date())
                 schedule.advance()
-                schedules.append(schedule)
                 let monthly = usdc * Decimal(30) / Decimal(days)
                 let every = days == 1 ? say("daily", "каждый день") : days == 7 ? say("weekly", "каждую неделю") : say("every \(days) days", "раз в \(days) дн.")
-                reply(say("Scheduled purchases: \(asset.symbol) for \(Fmt.usd(usdc)) \(every) — ≈ \(Fmt.usd(monthly)) a month. The first one is on the canvas: press Confirm to buy now. The next ones start \(Fmt.date(schedule.next)) and run while ihatecrypto is open; each goes through the same checks and signing.",
-                          "Регулярные покупки: \(asset.symbol) на \(Fmt.usd(usdc)) \(every) — ≈ \(Fmt.usd(monthly)) в месяц. Первая — карточкой на холсте: нажми Confirm, чтобы купить сейчас. Следующие пойдут с \(Fmt.date(schedule.next)), пока ihatecrypto открыт; каждая проходит те же проверки и подпись."))
+                reply(say("Scheduled purchases: \(asset.symbol) for \(Fmt.usd(usdc)) \(every) — ≈ \(Fmt.usd(monthly)) a month. The first one is on the canvas: its Confirm buys now and turns the schedule on, Cancel leaves none. The next ones start \(Fmt.date(schedule.next)) and run while ihatecrypto is open; each goes through the same checks and signing.",
+                          "Регулярные покупки: \(asset.symbol) на \(Fmt.usd(usdc)) \(every) — ≈ \(Fmt.usd(monthly)) в месяц. Первая — карточкой на холсте: Confirm купит сейчас и включит расписание, Cancel не оставит его. Следующие пойдут с \(Fmt.date(schedule.next)), пока ihatecrypto открыт; каждая проходит те же проверки и подпись."))
                 await handleWallet(.buy(asset, usdc: usdc), quiet: true)
+                if case .wallet(.buy(let a, _))? = pendingAction, a.symbol == asset.symbol { firstBuyOf = schedule }
                 return
             case .stopSchedules:
                 let n = schedules.count

@@ -200,7 +200,16 @@ final class Workspace {
             if pendingAction != nil, oldValue == nil { remindToConfirm() }
             // A way picked on a route's step belongs to that trade: another move waiting for Confirm drops it.
             if case .wallet(let command)? = pendingAction { routeWays = routeWays.filter { $0.key == command.wayKey } }
+            if let p = pendingAction, !isFirstBuy(p) { firstBuyOf = nil }
         }
+    }
+    /// The recurring buy whose first buy is the card waiting for Confirm: it's kept only when that card is confirmed
+    /// (carryOut), so a Cancel or another card in its place leaves no schedule behind.
+    var firstBuyOf: Schedule?
+
+    func isFirstBuy(_ p: PendingAction) -> Bool {
+        guard let s = firstBuyOf, case .wallet(.buy(let asset, _)) = p else { return false }
+        return asset.symbol == s.symbol
     }
 
     /// A card waits for Confirm while the window isn't in front (the model took a few seconds and the user looked
@@ -1089,6 +1098,7 @@ final class Workspace {
             pendingAction = nil
             pendingText = nil
             if declines {
+                firstBuyOf = nil
                 reply(say("Cancelled — nothing moved.", "Отменено — ничего не ушло.", "Cancelado: no se movió nada."))
                 return
             }
@@ -1299,7 +1309,13 @@ final class Workspace {
     /// A move the user confirmed, carried out.
     func carryOut(_ pending: PendingAction) async {
         switch pending {
-        case .wallet(let command): await move(command)
+        case .wallet(let command):
+            if let s = firstBuyOf, isFirstBuy(pending) {
+                schedules.removeAll { $0.symbol == s.symbol }
+                schedules.append(s)
+            }
+            firstBuyOf = nil
+            await move(command)
         case .position(let command, let coin): await manage(command, coin: coin)
         case .orders(let commands, let coin, let next):
             for command in commands { await manage(command, coin: coin) }
@@ -1538,7 +1554,7 @@ final class Workspace {
     /// («Why?» on its card), the move keeps waiting as before.
     private func dropWaiting(keepAction: Bool = false) {
         if pendingAllocation != nil { pendingAllocation = nil; allocationPreview = nil; rebalancePlan = nil }
-        if !keepAction { pendingAction = nil; pendingText = nil }
+        if !keepAction { pendingAction = nil; pendingText = nil; firstBuyOf = nil }
         taskQueue = nil
     }
 
