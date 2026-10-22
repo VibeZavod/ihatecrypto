@@ -649,7 +649,13 @@ extension Executor {
                                              what: p.coinIn ? "\(Fmt.num(p.units / 1e18, maxFraction: 8)) \(wrappedName)" : what,
                                              note: "Swap \(what) for \(p.tokenOut.symbol)")
                 if p.coinOut {
-                    let got = try await balance(weth, on: rpc) - wethBefore
+                    // A node can answer from before the swap's block: it said 0, the unwrap was skipped and the WETH stayed
+                    // in the wallet (2026-10-22, after an EIP-7702 batch on Base). So it's asked again while nothing shows.
+                    var got = try await balance(weth, on: rpc) - wethBefore
+                    for _ in 0..<10 where got <= 0 {
+                        try await Task.sleep(for: .seconds(1))
+                        got = try await balance(weth, on: rpc) - wethBefore
+                    }
                     received = got
                     if got > 0 {
                         last = try await sendEVM(rpc, to: weth, data: Data([0x2e, 0x1a, 0x7d, 0x4d]) + (try ABI.word(got)), note: "Unwrap \(Fmt.num(got / 1e18, maxFraction: 8)) \(wrappedName) into \(net.gasCoin)")
