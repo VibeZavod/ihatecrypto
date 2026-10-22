@@ -296,7 +296,8 @@ extension Executor {
             throw ExecutionError("\(f(have)) \(net.gasCoin) on \(net.name): not enough for \(f(wei)) and the fee (up to \(f(gasLimit * maxFee))).")
         }
         let note = "Send \(f(wei)) \(net.gasCoin) to \(label)"
-        let raw = try await signer.signEVMTransfer(chainId: rpc.chainId, nonce: try await rpc.nonce(wallet.evm), maxPriorityFee: tip, maxFee: maxFee,
+        let nonce = try await nextNonce(rpc)
+        let raw = try await signer.signEVMTransfer(chainId: rpc.chainId, nonce: nonce, maxPriorityFee: tip, maxFee: maxFee,
                                                    gasLimit: gasLimit, to: recipient, value: wei, recipients: [recipient])
         let hash = "0x" + Keccak.hash256(raw).hex
         try journal.append(.init(chain: net.key, id: hash, kind: .signed, note: note))
@@ -306,6 +307,7 @@ extension Executor {
             throw ExecutionError("\(note) failed on \(net.name): \(net.explorer)/tx/\(hash)")
         }
         try journal.append(.init(chain: net.key, id: hash, kind: .confirmed))
+        confirmed(nonce + 1, rpc)
         return "Sent \(f(wei)) \(net.gasCoin) to \(label) on \(net.name). \(net.explorer)/tx/\(hash)"
     }
 

@@ -456,7 +456,7 @@ extension Executor {
                 guard fee <= (try await rpc.balance(wallet.evm)) else { throw ExecutionError("Not enough \(net.gasCoin) on \(net.name) for gas even after a top-up: \(note).") }
             }
         }
-        let nonce = try await rpc.nonce(wallet.evm)
+        let nonce = try await nextNonce(rpc)
         let raw = if let batch {
             try await signer.signEVMBatch(chainId: rpc.chainId, nonce: nonce, maxPriorityFee: tip, maxFee: maxFee, gasLimit: gasLimit, calls: batch,
                                           recipients: recipients)
@@ -475,8 +475,24 @@ extension Executor {
             throw ExecutionError("\(note) failed on \(net.name): \(net.explorer)/tx/\(hash)")
         }
         try journal.append(.init(chain: net.key, id: hash, kind: .confirmed))
+        // A batch's own authorization takes the next nonce too (Batch7702.sign).
+        confirmed(nonce + (batch == nil ? 1 : 2), rpc)
         report("\(note): done. \(net.explorer)/tx/\(hash)")
         return hash
+    }
+
+    /// The nonce for this wallet's next transaction. A node can answer behind right after our own: after an EIP-7702 batch
+    /// at nonce 0 one said 1 (the batch's authorization had taken it), and the unwrap that came next was refused as «nonce
+    /// too low». So it's never below what follows our last confirmed transaction there.
+    func nextNonce(_ rpc: EVMRPC) async throws -> UInt64 {
+        let node = try await rpc.nonce(wallet.evm), key = "\(rpc.chainId):\(wallet.evm.lowercased())"
+        return Self.evmNonces.withLock { max(node, $0[key] ?? 0) }
+    }
+
+    /// Only after a receipt: a transaction that never landed would leave a gap no later one could get past.
+    func confirmed(_ next: UInt64, _ rpc: EVMRPC) {
+        let key = "\(rpc.chainId):\(wallet.evm.lowercased())"
+        Self.evmNonces.withLock { $0[key] = max($0[key] ?? 0, next) }
     }
 
     /// Set while a gas top-up runs: its own transactions don't start another.

@@ -5,6 +5,7 @@ import HyperliquidSigning
 import IhatecryptoCore
 import RelayBridge
 import SolanaChain
+import Synchronization
 import TxGuard
 import WalletCore
 
@@ -117,6 +118,8 @@ public actor Executor {
     /// the P/L knows what a Relay buy cost: its money and its tokens are two transactions the chain can't pair.
     let traded: (@Sendable (String, Decimal, Decimal) -> Void)?
     private var lastNonce: UInt64 = 0
+    /// «chainId:address» → the nonce after that wallet's last confirmed transaction there, across moves (nextNonce).
+    static let evmNonces = Mutex<[String: UInt64]>([:])
 
     /// Worst price accepted for a market entry or exit, from the mark.
     /// Smallest bridge worth its fee (Relay ≈ $0.02 flat).
