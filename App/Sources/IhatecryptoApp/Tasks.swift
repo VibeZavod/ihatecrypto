@@ -293,6 +293,7 @@ extension Workspace {
             if k == 0, !confirmed, TaskRun.automation == nil, let c = WalletCommand.parse(step) { await freshenSource(c) }
             if k == 0, !confirmed, TaskRun.automation == nil, let c = WalletCommand.parse(step), let why = refusalBeforeCard(c) {
                 reply(why)
+                noteFailure(steps.joined(separator: " then "), ExecutionError(why))
                 break
             }
             // After a move, a step spends what the move brought, Relay's cents taken off.
@@ -353,7 +354,7 @@ extension Workspace {
         saveCanvas()
         taskQueue = rest.isEmpty ? nil : (canvasID, rest, Date(), arrived)
         // A confirmed chain is through (or stopped): the model goes on with the request it was a step of.
-        if confirmed { await continueAgent() }
+        if confirmed { await afterMove() }
     }
 
     /// A step that spends money on a network, run after a move landed there: when the move's fee left it a little short

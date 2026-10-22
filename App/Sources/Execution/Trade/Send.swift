@@ -149,10 +149,10 @@ extension Executor {
             // The fee, plus the recipient's token account rent (≈ 0.002 SOL) when they have none yet.
             .init(label: "lamports", before: Int64(solBefore), after: Int64(simulation.after[wallet.solana]?.lamports ?? 0), atLeast: -3_000_000),
         ]))
-        guard verdict.ok else { throw ExecutionError("The guard stopped the transfer: " + verdict.problems.joined(separator: " ")) }
+        guard verdict.ok else { throw GuardStop("The guard stopped the transfer: " + verdict.problems.joined(separator: " ")) }
         let signed = try await signer.signSolana(unsigned, accounts: message.staticKeys, recipients: [owner], tokenOwners: owners)
         guard signed.count == unsigned.count, signed.subdata(in: 65..<signed.count) == unsigned.subdata(in: 65..<unsigned.count) else {
-            throw ExecutionError("What was signed isn't what was checked.")
+            throw GuardStop("What was signed isn't what was checked.")
         }
         let signature = Base58.encode(signed.subdata(in: 1..<65))
         try journal.append(.init(chain: "solana", id: signature, kind: .signed, note: "send \(f(units)) \(symbol) to \(label); valid until block \(lastValid)"))
@@ -235,10 +235,10 @@ extension Executor {
         verdict.merge(SolanaGuard.balances([
             .init(label: "lamports", before: Int64(have), after: Int64(simulation.after[wallet.solana]?.lamports ?? 0), atLeast: -Int64(lamports) - 20_000),
         ]))
-        guard verdict.ok else { throw ExecutionError("The guard stopped the transfer: " + verdict.problems.joined(separator: " ")) }
+        guard verdict.ok else { throw GuardStop("The guard stopped the transfer: " + verdict.problems.joined(separator: " ")) }
         let signed = try await signer.signSolana(unsigned, accounts: message.staticKeys, recipients: [owner], tokenOwners: [:])
         guard signed.count == unsigned.count, signed.subdata(in: 65..<signed.count) == unsigned.subdata(in: 65..<unsigned.count) else {
-            throw ExecutionError("What was signed isn't what was checked.")
+            throw GuardStop("What was signed isn't what was checked.")
         }
         let signature = Base58.encode(signed.subdata(in: 1..<65))
         try journal.append(.init(chain: "solana", id: signature, kind: .signed, note: "send \(Fmt.num(sol, maxFraction: 9)) SOL to \(label); valid until block \(lastValid)"))

@@ -574,7 +574,7 @@ extension Executor {
                                           originCurrency: from, destinationCurrency: to, amount: 0, units: "\(units)")
         let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": quote.recipient.lowercased()],
                                          expected: ["sender": me.lowercased(), "recipient": me.lowercased()], subject: "Relay quote")
-        guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
+        guard binding.ok else { throw GuardStop(binding.problems.joined(separator: " ")) }
         guard let proxy = try await Relay.approvalProxy(chainId: net.relayChain)?.lowercased(),
               let call = quote.evm.last, call.to.lowercased() == proxy, call.chainId == net.relayChain, call.value == "0" || call.value == "<null>",
               quote.evm.dropLast().allSatisfy({ $0.to.lowercased() == from.lowercased() && $0.data.prefix(4).hex == "095ea7b3"
@@ -687,7 +687,7 @@ extension Executor {
                                           originCurrency: token.address, destinationCurrency: Relay.Currency.solanaUSDC, amount: 0, units: "\(units)")
         let binding = BindingGuard.check(["sender": quote.sender, "recipient": quote.recipient],
                                          expected: ["sender": me, "recipient": wallet.solana], subject: "Relay quote")
-        guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
+        guard binding.ok else { throw GuardStop(binding.problems.joined(separator: " ")) }
         guard let proxy = try await Relay.approvalProxy(chainId: net.relayChain)?.lowercased(),
               let call = quote.evm.last, call.to.lowercased() == proxy, call.chainId == net.relayChain, call.value == "0" || call.value == "<null>",
               quote.evm.dropLast().allSatisfy({ $0.to.lowercased() == token.address && $0.data.prefix(4).hex == "095ea7b3"

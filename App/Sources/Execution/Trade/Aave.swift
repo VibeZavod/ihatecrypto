@@ -278,11 +278,11 @@ extension Executor {
                                           amount: amount, topupGasUSD: topup, units: "\(net.raw(amount))")
         let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": toSolana ? quote.recipient : quote.recipient.lowercased()],
                                          expected: ["sender": me.lowercased(), "recipient": toSolana ? recipient : recipient.lowercased()], subject: "Relay quote")
-        guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
+        guard binding.ok else { throw GuardStop(binding.problems.joined(separator: " ")) }
         guard let depository = try await Relay.depository(chainId: chain)?.lowercased(),
               let deposit = quote.evm.first(where: { $0.id == "deposit" }), deposit.to.lowercased() == depository, deposit.chainId == chain,
               deposit.value == "0" || deposit.value == "<null>" else {
-            throw ExecutionError("Relay's deposit isn't to its published depository on \(net.name). Nothing was signed.")
+            throw GuardStop("Relay's deposit isn't to its published depository on \(net.name). Nothing was signed.")
         }
         // depositErc20(address depositor, address token, uint256 amount, bytes32 id)
         let args = Data(deposit.data.dropFirst(4))
@@ -290,7 +290,7 @@ extension Executor {
               ABI.address(in: args, word: 0)?.lowercased() == me.lowercased(),
               ABI.address(in: args, word: 1)?.lowercased() == usdc,
               ABI.decimal(in: args, word: 2) == net.raw(amount) else {
-            throw ExecutionError("Relay's deposit asks for something else than \(show(amount)) USDC from this wallet. Nothing was signed.")
+            throw GuardStop("Relay's deposit asks for something else than \(show(amount)) USDC from this wallet. Nothing was signed.")
         }
         let arriving = Decimal(string: quote.amountOutFormatted) ?? 0
         let spend = Decimal(amount) / 1_000_000
@@ -541,7 +541,7 @@ extension Executor {
                                               destinationCurrency: "0x0000000000000000000000000000000000000000", amount: units, units: "\(net.raw(units))")
             let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": quote.recipient.lowercased()],
                                              expected: ["sender": me.lowercased(), "recipient": me.lowercased()], subject: "Relay quote")
-            guard binding.ok else { throw ExecutionError(binding.problems.joined(separator: " ")) }
+            guard binding.ok else { throw GuardStop(binding.problems.joined(separator: " ")) }
             guard let call = quote.evm.last, call.to.lowercased() == proxy, call.chainId == chain, call.value == "0" || call.value == "<null>",
                   quote.evm.dropLast().allSatisfy({ step in
                       let args = Data(step.data.dropFirst(4))

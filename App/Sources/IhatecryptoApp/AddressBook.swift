@@ -1168,7 +1168,11 @@ extension Workspace {
         }
         if let off = transferRefusal(entry) { reply(off, note: note); return }
         // Not inside a chain: a step before it may have just brought the money.
-        if !quiet, let short = transferShortfall(entry.network.rawValue, amount) { reply(short, note: note); return }
+        if !quiet, let short = transferShortfall(entry.network.rawValue, amount) {
+            reply(short, note: note)
+            noteFailure("send \(Fmt.num(amount)) USDC to \(entry.name) on \(entry.network.rawValue)", ExecutionError(short))
+            return
+        }
         pendingAction = .transfer(entry, amount)
         pendingText = "send \(Fmt.num(amount)) USDC to \(entry.name)"
         let ends = AddressCheck.ends(entry.address)
@@ -1231,6 +1235,7 @@ extension Workspace {
             runningAction = nil
             finishedAction = (title, CanvasOutcome(at: Date(), ok: false), steps)
             reply("Failed: \(error.localizedDescription)")
+            noteFailure(title, error)
         }
         // The outcome board comes from the saved canvas: now, not after the refresh (a repeated reply doesn't save).
         saveCanvas()

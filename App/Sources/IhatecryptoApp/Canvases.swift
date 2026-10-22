@@ -3140,7 +3140,11 @@ extension Workspace {
         if case .schedule = command { dcaChoice = nil }
         // It reads the active wallet's balances: a task on the automation wallet leaves the check to the move itself.
         if TaskRun.automation == nil { await freshenSource(command) }
-        if TaskRun.automation == nil, let why = refusalBeforeCard(command, inChain: quiet) { reply(why, note: note); return }
+        if TaskRun.automation == nil, let why = refusalBeforeCard(command, inChain: quiet) {
+            reply(why, note: note)
+            if !quiet { noteFailure(command.summary, ExecutionError(why)) }
+            return
+        }
         switch command {
         case .yields, .allocate, .rebalance, .schedule, .stopSchedules, .jupiterDCAOrders:
             // Read-only, or with a board and a step of their own.

@@ -161,9 +161,11 @@ final class Workspace {
     var preparing = false
     var executing = false {
         didSet {
+            // A new move: a failure before it that wasn't reasoned about is old news.
+            if executing, !oldValue { failure = nil }
             guard oldValue, !executing else { return }
             lastOwnMove = Date(); endSigningSession(); continueTask()
-            Task { if agentGoal == nil { await explainFailure() } else { await continueAgent() } }
+            Task { await afterMove() }
         }
     }
 
@@ -173,6 +175,8 @@ final class Workspace {
         Task { _ = try? await SignerClient().send(.endSession) }
     }
     var executionError: String?
+    /// The last money move or trade that didn't go through, until the model has reasoned about it (explainFailure).
+    @ObservationIgnored var failure: (what: String, why: String, at: Date)?
     /// A confirmed money move while it runs: its route stays on the canvas with the latest step, until the outcome.
     var runningAction: (title: String, steps: [ActivityBubble], lines: [String], started: Date)? {
         didSet { if moveRunning != (runningAction != nil) { moveRunning = runningAction != nil } }
@@ -991,6 +995,8 @@ final class Workspace {
     func send(_ raw: String, shown: String? = nil, about: [StepContext]? = nil) async {
         var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !text.isEmpty, !busy else { return }
+        // A move the message asked for that was refused before its card: reasoned about once the message is through.
+        defer { Task { await explainFailure() } }
         // Anything they write takes over from what the model was carrying out; the Confirm button carries it on.
         if !Self.pressed { agentGoal = nil }
         if SeedGuard.containsMnemonic(text) {
