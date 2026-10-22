@@ -317,6 +317,7 @@ import WalletCore
     let own: [(UInt64, String)] = [(8453, AaveV3.basePool), (42161, AaveV3.arbitrum.pool), (8453, MorphoVault.base.address),
                                    (8453, UniswapV3.on(8453)!.router), (4663, UniswapV3.robinhoodRouter), (4663, UniswapV4.permit2),
                                    (137, "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be"), (4217, "0x4cd00e387622c35bddb9b4c962c136462338bc31"),
+                                   (8453, "0x5567954cd026cebfe486062cb75848e0f1c12e58"),
                                    (10, UniswapV4.on(10)!.router), (10, UniswapV3.on(10)!.router), (999, UniswapV2.on(999)!.router), (999, UniswapV4.permit2)]
     for (chain, spender) in own {
         #expect(EVMCall.decode(try ERC20.approve(spender: spender, amount: 1)).payees(to: EVMRPC.baseUSDC, value: 0, chainId: chain).isEmpty, "\(spender)")

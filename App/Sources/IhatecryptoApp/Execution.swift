@@ -63,6 +63,22 @@ nonisolated struct XPCTradeSigner: TradeSigner {
         return signature
     }
 
+    func signSolanaSponsored(_ wire: Data, accounts: [String], tokenOwners: [String: String], sponsor: String) async throws -> Data {
+        let reply = try await Self.signing {
+            try await send(.signSolana(wire: wire, accounts: accounts, recipients: [], tokenOwners: tokenOwners, sponsor: sponsor))
+        }
+        guard reply.ok, let signed = reply.signedWire else { throw GuardStop(Self.reason(reply)) }
+        return signed
+    }
+
+    func signReceiveAuthorization(_ p: Permit3009) async throws -> EVMSignature {
+        let reply = try await Self.signing {
+            try await send(.signReceiveAuthorization(chainId: p.chainId, token: p.token, to: p.to, value: p.value, validBefore: p.validBefore, nonce: p.nonce))
+        }
+        guard reply.ok, let signature = reply.signature else { throw GuardStop(Self.reason(reply)) }
+        return signature
+    }
+
     func signEVM(chainId: UInt64, nonce: UInt64, maxPriorityFee: UInt64, maxFee: UInt64, gasLimit: UInt64,
                  to: String, data: Data, recipients: [String]) async throws -> Data {
         let reply = try await Self.signing { try await send(.signEVMTransaction(chainId: chainId, nonce: nonce, maxPriorityFee: maxPriorityFee, maxFee: maxFee,

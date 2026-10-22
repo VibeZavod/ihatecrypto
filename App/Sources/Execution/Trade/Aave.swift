@@ -270,6 +270,11 @@ extension Executor {
         // Gas for what comes next there (a buy on Robinhood Chain), when the destination has a gas coin and too little of it.
         var topup: Decimal?
         if let dest, dest.feeToken == nil, try await dest.rpc.balance(me) < dest.gasFloor { topup = dest.topupUSD }
+        // No gas here for an approve and a deposit: where the dollar pays by signature, Relay takes it so and its solver pays
+        // the gas. CCTP and 1Click both start with a transaction here, so they're not asked.
+        if net.feeToken == nil, Permit3009.supports(chainId: base.chainId, token: usdc), try await base.balance(me) < net.gasFloor {
+            return try await bridgeByPermit(net, to: dest, hyperliquid: hyperliquid, amount: amount, topup: topup)
+        }
 
         let recipient = toSolana ? wallet.solana : me
         let quote = try await Relay.quote(user: me, recipient: recipient, originChain: chain,
@@ -322,7 +327,7 @@ extension Executor {
         try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "\(net.name) USDC→\(there) \(show(amount)), tx \(hash)"))
         let requestId = quote.requestId, gas = topup != nil, sent = show(amount)
         let landing: @Sendable () async throws -> String = { [self] in
-            try await relayLanding(requestId, hash: hash, from: net, to: dest, hyperliquid: hyperliquid, before: before, arriving: arriving,
+            try await relayLanding(requestId, link: "\(net.explorer)/tx/\(hash)", from: net, to: dest, hyperliquid: hyperliquid, before: before, arriving: arriving,
                                    sent: sent, stable: stable, there: there, gas: gas)
         }
         // Inside a chain the next step is signed while this lands; a step spending where it lands waits for it (Landings).
@@ -342,7 +347,7 @@ extension Executor {
     }
 
     /// A Relay order from an EVM network, signed: Relay's word until it settles, then the USDC on the other side.
-    private func relayLanding(_ requestId: String, hash: String, from net: EVMNetwork, to dest: EVMNetwork?, hyperliquid: Bool, before: UInt64,
+    private func relayLanding(_ requestId: String, link: String, from net: EVMNetwork, to dest: EVMNetwork?, hyperliquid: Bool, before: UInt64,
                               arriving: Decimal, sent: String, stable: String, there: String, gas: Bool) async throws -> String {
         let started = Date()
         while Date().timeIntervalSince(started) < 180 {
@@ -350,7 +355,7 @@ extension Executor {
             if status == "success" { try journal.append(.init(chain: "relay", id: requestId, kind: .settled, note: status)); break }
             if ["refund", "failure"].contains(status) {
                 try journal.append(.init(chain: "relay", id: requestId, kind: .failed, note: status))
-                throw ExecutionError("Relay returned \(status). Check USDC on \(net.name). \(net.explorer)/tx/\(hash)")
+                throw ExecutionError("Relay returned \(status). Check USDC on \(net.name). \(link)")
             }
             try await Task.sleep(for: .seconds(2))
         }
@@ -363,7 +368,68 @@ extension Executor {
             }
             try await Task.sleep(for: .seconds(2))
         }
-        throw ExecutionError("Relay didn't credit \(there) within 4 minutes. Order \(requestId) is in the journal. \(net.explorer)/tx/\(hash)")
+        throw ExecutionError("Relay didn't credit \(there) within 4 minutes. Order \(requestId) is in the journal. \(link)")
+    }
+
+    /// `amount` of `net`'s USDC to Solana (as SOL when `sol`), to Hyperliquid or to another EVM network, paid by signature:
+    /// Relay's approval proxy takes it (EIP-3009, Permit3009) and its solver pays the gas, so a wallet with no gas coin here
+    /// still moves it. The quote is checked like a deposit: from and to this wallet, our token and amount, Relay's proxy.
+    func bridgeByPermit(_ net: EVMNetwork, to dest: EVMNetwork?, hyperliquid: Bool = false, amount: UInt64, topup: Decimal? = nil,
+                        sol: Bool = false) async throws -> String {
+        let me = wallet.evm, chain = net.relayChain, toSolana = dest == nil && !hyperliquid
+        func show(_ u: UInt64) -> String { Fmt.num(Decimal(u) / 1_000_000, maxFraction: 6) }
+        let there = hyperliquid ? "Hyperliquid" : dest?.name ?? "Solana", stable = sol ? "SOL" : dest?.key == "robinhood" ? "USDG" : "USDC"
+        let recipient = toSolana ? wallet.solana : me
+        let quote = try await Relay.quote(user: me, recipient: recipient, originChain: chain,
+                                          destinationChain: hyperliquid ? Relay.Chain.hyperliquid : dest?.relayChain ?? Relay.Chain.solana, originCurrency: net.usdc,
+                                          destinationCurrency: sol ? Relay.Currency.solanaSOL : hyperliquid ? Relay.Currency.hyperliquidUSDC : dest?.usdc ?? Relay.Currency.solanaUSDC,
+                                          amount: amount, topupGasUSD: topup, units: "\(net.raw(amount))", usePermit: true)
+        let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": toSolana ? quote.recipient : quote.recipient.lowercased()],
+                                         expected: ["sender": me.lowercased(), "recipient": toSolana ? recipient : recipient.lowercased()], subject: "Relay quote")
+        guard binding.ok else { throw GuardStop(binding.problems.joined(separator: " ")) }
+        let permit = quote.permit.map { Permit3009(chainId: $0.chainId, token: $0.token.lowercased(), from: $0.from, to: $0.to, value: amount,
+                                                   validBefore: $0.validBefore, nonce: $0.nonce) }
+        guard let p = quote.permit, let permit, p.chainId == net.rpc.chainId, permit.token == net.usdc, p.value == "\(net.raw(amount))", p.validAfter == 0,
+              permit.refusal(owner: me, now: UInt64(Date().timeIntervalSince1970)) == nil,
+              p.domainName == Permit3009.tokens["\(p.chainId):\(permit.token)"]?.name, p.domainVersion == Permit3009.tokens["\(p.chainId):\(permit.token)"]?.version else {
+            throw ExecutionError("There's no \(net.gasCoin) on \(net.name) for gas, and Relay won't take its USDC by signature right now (it asks for a transaction). "
+                                 + "Add a little \(net.gasCoin) to \(net.name); nothing was signed.")
+        }
+        let arriving = Decimal(string: quote.amountOutFormatted) ?? 0, spend = Decimal(amount) / 1_000_000
+        let worth = sol ? Decimal(string: quote.amountOutUSD) ?? 0 : arriving
+        try Self.checkLoss(spend - worth - (topup ?? 0), paid: spend, cap: min(max(worth * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1), what: "Relay")
+        let before = sol ? try await rpc.balance(wallet.solana) : try await relayLanded(dest, hyperliquid: hyperliquid)
+        let signature = try await signer.signReceiveAuthorization(permit)
+        try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "\(net.name) USDC→\(there) \(show(amount)) by signature"))
+        try await Relay.postPermit(p, signature: "0x" + signature.r.hex + signature.s.hex + String(format: "%02x", signature.v))
+        report("Signed: Relay takes \(show(amount)) USDC on \(net.name) by signature and pays the gas there; ≈ \(Fmt.num(arriving, maxFraction: 6)) \(stable) to \(there).")
+        let requestId = quote.requestId, sent = show(amount), link = "https://relay.link/transaction/\(requestId)"
+        let landing: @Sendable () async throws -> String = { [self] in
+            guard sol else {
+                return try await relayLanding(requestId, link: link, from: net, to: dest, hyperliquid: hyperliquid, before: before, arriving: arriving,
+                                              sent: sent, stable: stable, there: there, gas: topup != nil)
+            }
+            let started = Date()
+            while Date().timeIntervalSince(started) < 180 {
+                let status = try await Relay.status(requestId: requestId).status
+                if ["refund", "failure"].contains(status) {
+                    try journal.append(.init(chain: "relay", id: requestId, kind: .failed, note: status))
+                    throw ExecutionError("Relay returned \(status). Check USDC on \(net.name). \(link)")
+                }
+                let now = try await rpc.balance(wallet.solana)
+                if status == "success", now > before {
+                    try journal.append(.init(chain: "relay", id: requestId, kind: .settled, note: status))
+                    return "Moved \(sent) USDC from \(net.name) to Solana as SOL in \(Int(Date().timeIntervalSince(started))) s: +\(Fmt.num(Decimal(now - before) / 1_000_000_000, maxFraction: 6)) SOL."
+                }
+                try await Task.sleep(for: .seconds(2))
+            }
+            throw ExecutionError("Relay didn't credit Solana within 3 minutes. Order \(requestId) is in the journal. \(link)")
+        }
+        if let landings = Self.landings {
+            landings.add(hyperliquid ? "hyperliquid" : dest?.key ?? "solana") { try await landing() }
+            return "Sent \(sent) USDC from \(net.name) to \(there) by signature: ≈ \(Fmt.num(arriving)) \(stable) lands there in seconds, and what needs it waits for it."
+        }
+        return try await landing()
     }
 
     /// An exact approve when the allowance is short, then a wait until the chain shows it: the next call's dry run
@@ -511,7 +577,19 @@ extension Executor {
         let price = try await Relay.nativePrice(chainId: rpc.chainId) ?? 0
         let expected = Self.gasExpected(usd: usd, price: price)
         let solanaUSDC = Decimal(try await self.rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)) / 1_000_000
+        let dollars = NSDecimalNumber(decimal: ((usd + 1) * 1_000_000).rounded(0, .up)).uint64Value
         if solanaUSDC >= usd + 1 {
+            try await ensureEVM(net, usdc: 0, gas: (floor: before + expected, topupUSD: usd))
+        } else if before < net.gasFloor, Permit3009.supports(chainId: rpc.chainId, token: net.usdc), try await net.usdcBalance(me) >= dollars + 1_000_000 {
+            // No gas anywhere: this network's USDC goes to Solana by signature (Relay pays the gas here) — a dollar of it as SOL
+            // when Solana has none for its own fee — and the gas comes back from there.
+            report("No \(net.gasCoin) on \(net.name) and too little USDC on Solana to bring it: \(net.name)'s USDC goes to Solana by signature first, then the gas comes back.")
+            try await Self.$landings.withValue(nil) {
+                if try await self.rpc.balance(wallet.solana) < TopUpOrder.solanaFeeFloor {
+                    report(try await bridgeByPermit(net, to: nil, amount: 1_000_000, sol: true))
+                }
+                report(try await bridgeByPermit(net, to: nil, amount: dollars))
+            }
             try await ensureEVM(net, usdc: 0, gas: (floor: before + expected, topupUSD: usd))
         } else {
             try await swapForGas(net, usd: usd)

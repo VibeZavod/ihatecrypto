@@ -32,14 +32,21 @@ public struct SolanaPolicy: Sendable {
     /// False where lookup-table contents come from someone the check cannot verify (the signer has no network):
     /// then money may not go to an account that only a lookup table names.
     public var trustLookupTables: Bool
+    /// Someone else who pays the fee and signs first (Jupiter's gasless swap: its wallet pays for a wallet with no SOL).
+    /// Our wallet is then the second and last signer; what it signs for is checked the same. SOL may go to someone else
+    /// only out of the sponsor's own account — or back to the sponsor, up to `sponsorRefund`: the rent it fronted for the
+    /// swap's temporary account, returned to us when that closes. The simulation checks what we get in the end.
+    public var sponsor: String?
+    public static let sponsorRefund: UInt64 = 5_000_000
 
     public init(owner: String, recipients: Set<String> = [], programs: [String: String] = SolanaGuard.knownPrograms,
-                maxPriorityFee: UInt64 = 5_000_000, trustLookupTables: Bool = true) {
+                maxPriorityFee: UInt64 = 5_000_000, trustLookupTables: Bool = true, sponsor: String? = nil) {
         self.owner = owner
         self.recipients = recipients
         self.programs = programs
         self.maxPriorityFee = maxPriorityFee
         self.trustLookupTables = trustLookupTables
+        self.sponsor = sponsor
     }
 }
 
@@ -82,11 +89,19 @@ public enum SolanaGuard {
     /// `tokenOwners`: token account → its owner wallet, for the owner's and the allowed recipients' accounts.
     public static func check(_ m: SolanaMessage, accounts: [String], policy: SolanaPolicy, tokenOwners: [String: String]) -> Verdict {
         var v = Verdict()
-        guard m.requiredSignatures == 1, accounts.first == policy.owner else {
-            v.problems.append("Only your wallet may sign and pay for the transaction.")
-            return v
+        if let sponsor = policy.sponsor {
+            guard sponsor != policy.owner, m.requiredSignatures == 2, accounts.count > 1, accounts[0] == sponsor, accounts[1] == policy.owner else {
+                v.problems.append("Only \(sponsor.prefix(6))… may pay the fee, and your wallet must be the only other signer.")
+                return v
+            }
+            v.checks.append("\(sponsor.prefix(6))… pays the network fee; your wallet is the only other signer.")
+        } else {
+            guard m.requiredSignatures == 1, accounts.first == policy.owner else {
+                v.problems.append("Only your wallet may sign and pay for the transaction.")
+                return v
+            }
+            v.checks.append("Only your wallet signs and pays the fee.")
         }
-        v.checks.append("Only your wallet signs and pays the fee.")
 
         func mine(_ address: String) -> Bool {
             address == policy.owner || tokenOwners[address] == policy.owner
@@ -107,6 +122,7 @@ public enum SolanaGuard {
 
         var unitLimit: UInt64 = 200_000
         var unitPrice: UInt64 = 0
+        var refunded: UInt64 = 0
         for (n, ix) in m.instructions.enumerated() {
             guard ix.programIndex < m.staticKeys.count else {
                 v.problems.append("Instruction \(n + 1): the program is loaded from a lookup table.")
@@ -130,7 +146,16 @@ public enum SolanaGuard {
                     continue
                 }
                 let lamports = le64(ix.data, 4)
-                if allowed(to) {
+                if let sponsor = policy.sponsor, account(0) == sponsor {
+                    v.checks.append("\(Double(lamports) / 1e9) SOL from the fee payer's own account.")
+                } else if let sponsor = policy.sponsor, to == sponsor, account(0) == policy.owner, policy.trustLookupTables || staticKeys.contains(to) {
+                    refunded += lamports
+                    if refunded <= SolanaPolicy.sponsorRefund {
+                        v.checks.append("\(Double(lamports) / 1e9) SOL back to the fee payer for the account it opened; the simulation checks what you get.")
+                    } else {
+                        v.problems.append("\(Double(refunded) / 1e9) SOL back to the fee payer is more than the rent it fronted.")
+                    }
+                } else if allowed(to) {
                     v.checks.append("\(Double(lamports) / 1e9) SOL → \(name(to)).")
                 } else {
                     v.problems.append("SOL goes to someone else's address \(to).")

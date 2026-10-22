@@ -57,6 +57,26 @@ public enum Relay {
         public var amountOut = ""
         public var amountInUSD = ""
         public var amountOutUSD = ""
+        /// With `usePermit`: the EIP-3009 ReceiveWithAuthorization Relay asks for instead of transactions (its solver pays the
+        /// gas), when that is the step's only item; nil when it asks for anything else (an approval, a second signature).
+        public var permit: Permit?
+    }
+
+    /// One payment by signature as Relay's quote gives it, and where its signature goes.
+    public struct Permit: Sendable, Equatable {
+        public let chainId: UInt64
+        public let token: String
+        public let domainName: String
+        public let domainVersion: String
+        public let from: String
+        public let to: String
+        public let value: String
+        public let validAfter: UInt64
+        public let validBefore: UInt64
+        public let nonce: Data
+        public let endpoint: String
+        /// The post body as Relay returned it ({kind: "eip3009", requestId, api}).
+        public let body: Data
     }
 
     public struct EVMStep: Sendable {
@@ -119,9 +139,10 @@ public enum Relay {
     /// `exactOutput`: `amount` is what must arrive (destination units) instead of what is sent.
     /// `topupGasUSD`: also deliver that much of the destination's native coin for gas (EVM destinations).
     /// `units`: the amount as a decimal string, for token amounts past 64 bits (it replaces `amount`).
+    /// `usePermit`: an origin USDC goes by a signature (`Quote.permit`) instead of an approve and a deposit.
     public static func quote(user: String, recipient: String, originChain: UInt64, destinationChain: UInt64,
                              originCurrency: String, destinationCurrency: String, amount: UInt64, exactOutput: Bool = false,
-                             topupGasUSD: Decimal? = nil, units: String? = nil) async throws -> Quote {
+                             topupGasUSD: Decimal? = nil, units: String? = nil, usePermit: Bool = false) async throws -> Quote {
         var request = URLRequest(url: URL(string: base + "/quote/v2")!, timeoutInterval: 30)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -129,6 +150,7 @@ public enum Relay {
             "user": user, "recipient": recipient, "originChainId": originChain, "destinationChainId": destinationChain,
             "originCurrency": originCurrency, "destinationCurrency": destinationCurrency, "amount": units ?? "\(amount)", "tradeType": exactOutput ? "EXACT_OUTPUT" : "EXACT_INPUT",
         ]
+        if usePermit { body["usePermit"] = true }
         if let usd = topupGasUSD {
             body["topupGas"] = true
             body["topupGasAmount"] = "\(Int((NSDecimalNumber(decimal: usd).doubleValue * 1_000_000).rounded(.up)))"
@@ -200,7 +222,34 @@ public enum Relay {
         quote.amountOut = amounts("currencyOut")["amount"] as? String ?? ""
         quote.amountInUSD = amounts("currencyIn")["amountUsd"] as? String ?? ""
         quote.amountOutUSD = amounts("currencyOut")["amountUsd"] as? String ?? ""
+        if usePermit { quote.permit = Self.permit(in: steps) }
         return quote
+    }
+
+    /// The step's one ReceiveWithAuthorization item, or nil when the steps ask for anything else as well.
+    static func permit(in steps: [[String: Any]]) -> Permit? {
+        let items = steps.flatMap { $0["items"] as? [[String: Any]] ?? [] }
+        guard steps.count == 1, items.count == 1, let d = items[0]["data"] as? [String: Any], let sign = d["sign"] as? [String: Any],
+              sign["primaryType"] as? String == "ReceiveWithAuthorization", let domain = sign["domain"] as? [String: Any],
+              let v = sign["value"] as? [String: Any], let post = d["post"] as? [String: Any], let endpoint = post["endpoint"] as? String,
+              let body = post["body"] as? [String: Any], body["kind"] as? String == "eip3009", let bodyData = try? JSONSerialization.data(withJSONObject: body),
+              let nonce = (v["nonce"] as? String).flatMap({ Data(hex: $0) }) else { return nil }
+        func number(_ x: Any?) -> UInt64? { (x as? NSNumber)?.uint64Value ?? (x as? String).flatMap(UInt64.init) }
+        guard let chainId = number(domain["chainId"]), let validAfter = number(v["validAfter"]), let validBefore = number(v["validBefore"]) else { return nil }
+        return Permit(chainId: chainId, token: domain["verifyingContract"] as? String ?? "", domainName: domain["name"] as? String ?? "",
+                      domainVersion: domain["version"] as? String ?? "", from: v["from"] as? String ?? "", to: v["to"] as? String ?? "",
+                      value: "\(v["value"] ?? "")", validAfter: validAfter, validBefore: validBefore, nonce: nonce, endpoint: endpoint, body: bodyData)
+    }
+
+    /// Posts a signed permit (`signature`: 0x r‖s‖v); Relay's solver then sends it and fills the order.
+    public static func postPermit(_ permit: Permit, signature: String) async throws {
+        // Like /authorize: the step's body as is, the signature as a query parameter (Relay's SDK does the same).
+        var request = URLRequest(url: URL(string: base + permit.endpoint + "?signature=\(signature)")!, timeoutInterval: 30)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = permit.body
+        let (data, response) = try await URLSession.shared.data(for: request)
+        guard (200..<300).contains((response as? HTTPURLResponse)?.statusCode ?? 0) else { throw RelayError(data) }
     }
 
     /// "waiting", "pending", "submitted", "success", "delayed", "refund", "failure".

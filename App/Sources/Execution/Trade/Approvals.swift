@@ -34,7 +34,7 @@ extension Executor {
         if s == UniswapV3.on(chainId)?.router || (chainId == 4663 && s == UniswapV3.robinhoodRouter) { return "Uniswap v3 router" }
         if s == UniswapV2.on(chainId)?.router { return "Uniswap v2 router" }
         if s == UniswapV4.on(chainId)?.router { return "Uniswap's Universal Router" }
-        if ["0x4cd00e387622c35bddb9b4c962c136462338bc31", "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be"].contains(s) { return "Relay" }
+        if s == "0x4cd00e387622c35bddb9b4c962c136462338bc31" || Permit3009.relayProxies.contains(s) { return "Relay" }
         if AaveV3.markets.contains(where: { $0.rpc.chainId == chainId && $0.pool.lowercased() == s }) { return "Aave pool" }
         if MorphoVault.vaults.contains(where: { $0.rpc.chainId == chainId && $0.address.lowercased() == s }) { return "Morpho vault" }
         return nil

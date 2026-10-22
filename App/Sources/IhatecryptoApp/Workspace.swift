@@ -1993,6 +1993,8 @@ final class Workspace {
         if found != otherTokens { otherTokens = found }
         if !holdingsLoaded { holdingsLoaded = true }
         rememberBalance()
+        // Every network's gas coin is known now: dollars without it get their way out offered (once a network).
+        offerGasWays()
     }
 
     /// Base balances at our EVM address and Aave's rate; quiet on errors (the rest of the portfolio still shows).

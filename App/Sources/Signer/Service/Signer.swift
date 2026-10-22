@@ -142,7 +142,7 @@ enum Signer {
             }
             switch inner {
             case .signSolana, .signEVMTransaction, .signEVMBatch, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
-                 .signNearIntentDeposit, .signNearTransfer: break
+                 .signReceiveAuthorization, .signNearIntentDeposit, .signNearTransfer: break
             default: throw WalletError("The automation wallet signs only a task's moves.")
             }
             return try Wallets.$signing.withValue(wallet) { try handle(inner) }
@@ -479,8 +479,12 @@ enum Signer {
             r.checks = ["Each call parsed by the signer and held to the one-call rules; the wallet runs only the audited batch account's code."]
             return r
 
-        case .signSolana(let wire, let accounts, let recipients, let tokenOwners, let extraPrograms):
+        case .signSolana(let wire, let accounts, let recipients, let tokenOwners, let extraPrograms, let sponsor):
             let owner = try address("solana")
+            let sponsorKey = try sponsor.map { s -> Data in
+                guard let key = try? Base58.decode(s), key.count == 32 else { throw WalletError("The fee payer isn't a Solana address.") }
+                return key
+            }
             let message = try SolanaMessage.parse(transaction: wire)
             // Lookup tables are resolved by the app; the static part must be exactly what is in the transaction,
             // and money may not go to an account named only by a lookup table (no network here to check one).
@@ -490,7 +494,8 @@ enum Signer {
             var programs = SolanaGuard.knownPrograms
             for p in extraPrograms where programs[p] == nil { programs[p] = "program \(p.prefix(6))… (approved by you)" }
             let verdict = SolanaGuard.check(message, accounts: accounts,
-                                            policy: SolanaPolicy(owner: owner, recipients: Set(recipients), programs: programs, trustLookupTables: false),
+                                            policy: SolanaPolicy(owner: owner, recipients: Set(recipients), programs: programs, trustLookupTables: false,
+                                                                 sponsor: sponsor),
                                             tokenOwners: verifiedOwners(tokenOwners, mints: accounts))
             guard verdict.ok else { return refused(verdict) }
             try approve(recipients)
@@ -498,10 +503,24 @@ enum Signer {
             // The programs the user allowed for this one transaction are named in full: they run with the wallet's authority.
             let extra = extraPrograms.filter { SolanaGuard.knownPrograms[$0] == nil && (try? Base58.decode($0))?.count == 32 }
                 .map { "runs \($0), not on ihatecrypto's list" }
-            r.signedWire = try withKey("solana", reason: ([prompt("sign a Solana transaction", verdict)] + extra).joined(separator: "\n")) {
-                try SolanaTransaction.sign(wire, privateKey: $0).wire
+            let payer = sponsor.map { ["the network fee is paid by \($0.prefix(4))…\($0.suffix(4)), not by you"] } ?? []
+            r.signedWire = try withKey("solana", reason: ([prompt("sign a Solana transaction", verdict)] + extra + payer).joined(separator: "\n")) {
+                try SolanaTransaction.sign(wire, privateKey: $0, sponsor: sponsorKey).wire
             }
             r.checks = verdict.checks
+            return r
+
+        case .signReceiveAuthorization(let chainId, let token, let to, let value, let validBefore, let nonce):
+            let permit = Permit3009(chainId: chainId, token: token, from: try address("evm"), to: to, value: value, validBefore: validBefore, nonce: nonce)
+            if let refusal = permit.refusal(owner: permit.from, now: UInt64(Date().timeIntervalSince1970)) {
+                var v = Verdict()
+                v.problems.append(refusal)
+                return refused(v)
+            }
+            let digest = try permit.typed().parts().digest
+            var r = SignerReply(ok: true)
+            r.signature = try withKey("evm", reason: permit.summary) { try EVMSigner.sign(digest: digest, privateKey: $0) }
+            r.checks = ["The signer built the payment by signature itself: a dollar it knows, from this wallet, to Relay's approval proxy, valid under an hour."]
             return r
 
         case .signHyperliquidL1(let action, let nonce, let mainnet):

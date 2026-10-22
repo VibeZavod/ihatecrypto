@@ -36,8 +36,10 @@ public enum SignerRequest: Codable, Sendable {
     case renameWallet(id: String, label: String)
     /// Signs a Solana transaction after the guard checks it. `accounts`: the full account list the app resolved.
     /// `extraPrograms`: programs outside the built-in list that the user allowed for this one transaction
-    /// (a dApp in the browser); the Touch ID prompt names them.
-    case signSolana(wire: Data, accounts: [String], recipients: [String], tokenOwners: [String: String], extraPrograms: [String] = [])
+    /// (a dApp in the browser); the Touch ID prompt names them. `sponsor`: someone else pays the fee and signs first
+    /// (Jupiter's gasless swap); our wallet must then be the second and last signer, and the prompt says who pays.
+    case signSolana(wire: Data, accounts: [String], recipients: [String], tokenOwners: [String: String], extraPrograms: [String] = [],
+                    sponsor: String? = nil)
     /// Sign-in text from a site. Refused when the bytes are a Solana transaction message in disguise.
     case signSolanaMessage(message: Data)
     /// EVM personal_sign (EIP-191) with the main EVM key; a bare 32-byte hash is refused.
@@ -66,6 +68,11 @@ public enum SignerRequest: Codable, Sendable {
     case signHyperliquidUser(action: MsgPack, mainnet: Bool, recipients: [String])
     /// Relay's binding of our Hyperliquid deposit to an order; the signer requires wallet and depositor to be ours.
     case signRelayNonceMapping(wallet: String, depositor: String, id: Data, nonce: UInt64)
+    /// Dollars Relay's approval proxy takes by signature (EIP-3009 ReceiveWithAuthorization) and its solver pays the network
+    /// fee for: the way out of a network where the wallet has USDC and no gas. The signer builds the typed data itself
+    /// (EVMChain's Permit3009): only USDC or USDG it knows by their own domain, from this wallet, to Relay's proxy, valid
+    /// an hour at most. Reply: signature.
+    case signReceiveAuthorization(chainId: UInt64, token: String, to: String, value: UInt64, validBefore: UInt64, nonce: Data)
     /// Creates (once) a Hyperliquid agent key inside the signer and returns the approveAgent action signed by
     /// the main key. The agent can trade but not withdraw, so it needs no Touch ID afterwards.
     case enableAgent
@@ -306,7 +313,7 @@ public final class SignerClient: @unchecked Sendable {
             switch request {
             case .status, .nearAddress, .endSession, .ledgerAgent(_, false), .addressBook: break
             case .signSolana, .signEVMTransaction, .signEVMBatch, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
-                 .signNearIntentDeposit, .signNearTransfer, .signNearDeleteAccount:
+                 .signReceiveAuthorization, .signNearIntentDeposit, .signNearTransfer, .signNearDeleteAccount:
                 let status = try await Self.$untrusted.withValue(false) { try await send(.status) }
                 guard status.wallets?.first(where: { $0.id == status.activeWallet })?.isTest == true else {
                     throw WalletError("Nothing is signed from the debug API while a wallet that asks for \(Presence.name) signs: confirm money moves in ihatecrypto’s window, or switch to a test wallet.")

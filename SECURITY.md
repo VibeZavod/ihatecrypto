@@ -52,7 +52,9 @@ person.
 
 - Solana: only programs on a fixed list run (System, SPL Token, Jupiter, Relay Depository, Kamino and a few more).
   Money goes only to the user's own accounts or to an address bound to a quote they approved. Token approvals, owner
-  changes and other fee payers are refused, and the priority fee has a cap.
+  changes and other fee payers are refused, and the priority fee has a cap. The one other fee payer is Jupiter's wallet
+  on its gasless swap, for a wallet with no SOL: it signs first, the user's wallet is the only other signer, and every
+  instruction is checked the same; SOL may go elsewhere only out of the fee payer's own account.
 - Simulation: the transaction runs on the network first, and the balances after must match what the user approved.
 - Bridges: a 1Click deposit address must be bound by 1Click to the user's recipient, refund address, assets and
   amount. A Relay deposit must come from the user's wallet and name them as sender and recipient.
@@ -62,7 +64,10 @@ person.
   ihatecrypto's, are refused.
 - EVM: the signer decodes calldata itself and refuses unlimited approvals, `setApprovalForAll`, permits, Permit2 for
   longer than a day and `transferFrom` out of the user's wallet. Typed data with Permit or nested types, and a bare
-  hash to sign, are refused.
+  hash to sign, are refused. The one payment by signature it makes is its own: an EIP-3009 authorization it builds
+  itself, for USDC (or Robinhood Chain's USDG) by the token's own domain, from the user's wallet, to Relay's approval
+  proxy only, valid an hour at most. Relay's solver pays the gas, so dollars on a network with no gas coin can still
+  move out.
 
 **Untrusted text.** Pasted messages and what the model's lookups bring back (token listings, pages, API replies) pass
 local rules before any model reads them. A second check (Settings › Second check) has the chat's model read each
