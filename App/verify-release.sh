@@ -92,6 +92,15 @@ list() {
 }
 unsign $root/release/ihatecrypto.app $root/compare/release.app
 unsign $root/built.xcarchive/Products/Applications/ihatecrypto.app $root/compare/built.app
+# Xcode writes the build Mac's macOS into Info.plist, and a build phase deletes it (project.yml). Before 0.7.2 that phase
+# could run before Xcode had written the file, and on GitHub's Mac the key stayed. The same deletion here, only where
+# the release has no such key: the build machine's macOS isn't code.
+machine() { /usr/libexec/PlistBuddy -c "Print :BuildMachineOSBuild" "$1" > /dev/null 2>&1; }
+for p in Contents/Info.plist Contents/XPCServices/Signer.xpc/Contents/Info.plist; do
+  if ! machine $root/compare/release.app/$p && machine $root/compare/built.app/$p; then
+    /usr/libexec/PlistBuddy -c "Delete :BuildMachineOSBuild" $root/compare/built.app/$p
+  fi
+done
 list $root/compare/release.app > $root/compare/release.txt
 list $root/compare/built.app > $root/compare/built.txt
 if diff $root/compare/release.txt $root/compare/built.txt > $root/compare/diff.txt; then
