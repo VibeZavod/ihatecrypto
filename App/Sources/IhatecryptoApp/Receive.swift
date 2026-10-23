@@ -584,7 +584,7 @@ struct StuckDollars {
 extension Workspace {
     /// The least USDC Jupiter's wallet pays a swap's fee for (gasless, for a wallet that can't pay): $5, at 0.19% then and
     /// 0.03% from $10 (measured 2026-10-23).
-    static let gaslessSwapUSD: Decimal = 5
+    nonisolated static let gaslessSwapUSD: Decimal = 5
 
     /// Where the wallet holds dollars but not the coin fees are paid in, so a first move there would stop: Solana without
     /// SOL; an EVM network without its gas coin when Solana can't bring it either (topUpGas buys it with Solana's USDC,
@@ -593,10 +593,22 @@ extension Workspace {
     /// on Solana Jupiter's gasless swap for SOL; where the dollar pays by signature (Permit3009), the USDC goes to Solana or
     /// brings its own gas with Relay paying (Executor.bridgeByPermit, topUpGas).
     var stuckDollars: [StuckDollars] {
-        let usd = solana?.usdc ?? 0, solanaPays = (solana?.sol ?? 0) >= Decimal(TopUpOrder.solanaFeeFloor) / 1_000_000_000
+        let ru = say("en", "ru") == "ru"
+        return Self.stuck(solanaUSDC: solana?.usdc ?? 0, solanaSOL: solana?.sol ?? 0, hyperliquidFree: hl?.withdrawable ?? 0, say: { ru ? $1 : $0 }) { n in
+            let gas = n.key == "base" ? base?.eth ?? 0 : n.key == "robinhood" ? robinhood?.eth ?? 0
+                : (holdings + otherTokens).first { $0.chain == n.key && $0.native }?.amount ?? 0
+            return (usdc(on: n.key) ?? 0, gas)
+        }
+    }
+
+    /// The same from plain numbers: Solana's USDC and SOL, Hyperliquid's withdrawable, and each EVM network's dollars and gas
+    /// coin (`held`). `say` picks the chat's language.
+    nonisolated static func stuck(solanaUSDC usd: Decimal, solanaSOL: Decimal, hyperliquidFree: Decimal, say: (String, String) -> String,
+                                  held: (EVMNetwork) -> (usdc: Decimal, gas: Decimal)) -> [StuckDollars] {
+        let solanaPays = solanaSOL >= Decimal(TopUpOrder.solanaFeeFloor) / 1_000_000_000
         var out: [StuckDollars] = []
         if usd >= 1, !solanaPays {
-            let swap = Self.gaslessSwapUSD
+            let swap = gaslessSwapUSD
             out.append(StuckDollars(network: "Solana", key: "solana", coin: "SOL", usd: 1, usdc: usd, ways: usd >= swap ? [
                 ChatRouter.Option(title: say("Swap \(Fmt.num(swap)) USDC for SOL", "Обменять \(Fmt.num(swap)) USDC на SOL"),
                                   comment: say("Jupiter pays this swap's fee; then SOL pays the rest", "Комиссию этого обмена платит Jupiter, дальше платит SOL"),
@@ -604,13 +616,10 @@ extension Workspace {
             ] : []))
         }
         // Gas comes over by itself where Solana (USDC and SOL) or Hyperliquid can bring it (Executor.topUpGas): not stuck.
-        guard !(solanaPays && usd >= 2), (hl?.withdrawable ?? 0) < 2 else { return out }
+        guard !(solanaPays && usd >= 2), hyperliquidFree < 2 else { return out }
         for n in EVMNetwork.searched where n.feeToken == nil {
-            let there = usdc(on: n.key) ?? 0
-            guard there >= 1 else { continue }
-            let gas = n.key == "base" ? base?.eth ?? 0 : n.key == "robinhood" ? robinhood?.eth ?? 0
-                : (holdings + otherTokens).first { $0.chain == n.key && $0.native }?.amount ?? 0
-            guard gas < Decimal(n.gasFloor) / 1_000_000_000_000_000_000 else { continue }
+            let (there, gas) = held(n)
+            guard there >= 1, gas < Decimal(n.gasFloor) / 1_000_000_000_000_000_000 else { continue }
             let stable = EVMRPC.dollars[n.usdc] ?? "USDC", all = Fmt.num(there.rounded(2, .down))
             let bySignature = Permit3009.supports(chainId: n.rpc.chainId, token: n.usdc) ? [
                 ChatRouter.Option(title: say("Move \(all) \(stable) to Solana", "Перевести \(all) \(stable) на Solana"),
