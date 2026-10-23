@@ -564,7 +564,8 @@ extension Workspace {
                 guard let a = await solanaAsset(from, note: nil), let b = await solanaAsset(to, note: nil) else {
                     throw ExecutionError("Jupiter couldn't name both tokens of this swap. Nothing was signed.")
                 }
-                reply(try await e.convert(from: a, to: b, amount: amount), note: "Solana · Jupiter")
+                let shown = jupiterShown.flatMap { $0.command == command ? $0.out : nil }
+                reply(try await e.convert(from: a, to: b, amount: amount, shown: shown), note: "Solana · Jupiter")
             case .swapOn("near", let from, let to, let amount):
                 guard let account = try await SignerClient().send(.nearAddress).nearAddress else { throw ExecutionError("The signer has no NEAR address.") }
                 nearAddress = account

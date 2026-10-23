@@ -826,6 +826,21 @@ public enum EVMCall: Equatable, Sendable {
         return Set(s.map { $0.lowercased() })
     }
 
+    /// Contracts ihatecrypto's own moves call with calldata the signer doesn't read: Relay's depository and approval proxies
+    /// (a quote's call), Tempo's exchange and fee manager, Safe's factory. Uniswap's routers, Permit2, Aave and the rest get
+    /// only calls the decoder reads from ihatecrypto; an unread one there (a site's) could spend what was approved to them.
+    static let ownUnreadCallees: Set<String> = Set([RelayMulticallPermit.depository, Tempo.exchange, Tempo.feeManager, Safe.factory].map { $0.lowercased() })
+        .union(Permit3009.relayProxies)
+
+    /// The contract of a call the signer can't read, to be allowed in person once, whoever asks for it (a site, the chat's
+    /// `call`): nil when the call is read, pays that contract (then it's a recipient), or is one of ihatecrypto's own.
+    public func unreadTarget(to: String, value: UInt64, chainId: UInt64) -> String? {
+        let target = to.lowercased()
+        guard case .contract = self, !Self.ownUnreadCallees.contains(target),
+              !payees(to: to, value: value, chainId: chainId).contains(where: { $0.lowercased() == target }) else { return nil }
+        return target
+    }
+
     /// Who gets money, or the right to spend it, from this call: `to` when it carries coins (unless they come straight back,
     /// `returnsCoins`), a token's or NFT's recipient, and a spender that isn't one of `knownSpenders`. The signer signs only
     /// when each is the wallet's own or approved in person.

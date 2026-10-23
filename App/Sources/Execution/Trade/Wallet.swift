@@ -322,7 +322,9 @@ extension Executor {
     /// Any verified token into any other through Jupiter: buying and selling, and staking SOL into JitoSOL and back.
     /// The simulated balances must show at least Jupiter's minimum output arriving in our own account. `amount` in the
     /// input token; nil = all of it (SOL keeps 0.01 for fees). Spending USDC on one coin obeys the concentration rule.
-    public func convert(from: SpotAsset, to: SpotAsset, amount requested: Decimal?, equity: Decimal? = nil, dryRun: Bool = false) async throws -> String {
+    /// `shown`: the output the card showed, in the token's units — the swap doesn't go for more than 1% less.
+    public func convert(from: SpotAsset, to: SpotAsset, amount requested: Decimal?, equity: Decimal? = nil, dryRun: Bool = false,
+                        shown: UInt64? = nil) async throws -> String {
         guard from != to else { throw ExecutionError("That's the same token.") }
         let nativeIn = from.symbol == "SOL", nativeOut = to.symbol == "SOL"
         let scale = Decimal(sign: .plus, exponent: from.decimals, significand: 1)
@@ -348,6 +350,12 @@ extension Executor {
         let owners = [inAccount: wallet.solana, outAccount: wallet.solana]   // wSOL accounts too, for the native side
         let outBefore = nativeOut ? try await rpc.balance(wallet.solana) : try await rpc.tokenBalance(owner: wallet.solana, mint: to.mint)
         var changes: [String] = []
+        // The price moved more than 1% (and Jupiter's own fee, when its wallet pays) under what the card showed: not signed.
+        func holdsShown(_ out: UInt64, feeBps: Decimal = 0) throws {
+            guard let shown, Decimal(out) < Decimal(shown) * (1 - (100 + feeBps) / 10_000) else { return }
+            throw ExecutionError("Jupiter now gives \(Fmt.num(Decimal(out) / outScale, maxFraction: 8)) \(to.symbol), more than 1% under the "
+                                 + "\(Fmt.num(Decimal(shown) / outScale, maxFraction: 8)) the card showed. Nothing was signed; Refresh shows the new price.")
+        }
         // Under the fee floor (USDC came without SOL) Jupiter's own wallet may pay the fee: its gasless swap, checked the same.
         // Jupiter decides: a wallet that can still pay (a few thousandths of SOL) gets the ordinary swap below. JupiterZ's
         // market makers are left out: their program isn't on the guard's list.
@@ -360,6 +368,7 @@ extension Executor {
             throw ExecutionError("There's \(Fmt.num(Decimal(lamports) / 1_000_000_000, maxFraction: 6)) SOL for the network fee, too little for this swap, and Jupiter pays the fee only for a bigger one ($5 and up). Swap more, or add ≈ 0.01 SOL first.")
         }
         if let (order, sponsor) = gasless {
+            try holdsShown(order.outAmount, feeBps: Decimal(order.feeBps))
             report("\(from.symbol) → \(to.symbol) via Jupiter, its wallet paying the fee: \(Fmt.num(Decimal(units) / scale, maxFraction: 8)) → ≈ \(Fmt.num(Decimal(order.outAmount) / outScale, maxFraction: 8)), at least \(Fmt.num(Decimal(order.minOut) / outScale, maxFraction: 8)) (\(Fmt.num(Decimal(order.feeBps) / 100, maxFraction: 2))% fee). Route: \(order.route).")
             var rules: [(String, String, Bool, Int64)] = [(inAccount, from.symbol, true, -Int64(units))]
             if !nativeOut { rules.append((outAccount, "\(to.symbol) (quote minimum)", true, Int64(order.minOut))) }
@@ -376,6 +385,7 @@ extension Executor {
                 let quote: Jupiter.Quote
                 do { quote = try await Jupiter.quote(input: from.mint, output: to.mint, amount: units, excludeDexes: excluded) }
                 catch { throw firstFailure ?? error }
+                try holdsShown(quote.outAmount)
                 report("\(from.symbol) → \(to.symbol) via Jupiter: \(Fmt.num(Decimal(units) / scale, maxFraction: 8)) → ≈ \(Fmt.num(Decimal(quote.outAmount) / outScale, maxFraction: 8)), at least \(Fmt.num(Decimal(quote.minOut) / outScale, maxFraction: 8)). Route: \(quote.route).")
                 let tx = try await Jupiter.swapTransaction(quote, user: wallet.solana)
                 var rules: [(String, String, Bool, Int64)] = []

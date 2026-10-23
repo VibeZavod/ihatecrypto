@@ -322,9 +322,10 @@ enum Signer {
             guard let yocto = UInt128(amount), yocto > 0 else { throw WalletError("Not a NEAR amount: \(amount).") }
             guard depositAddress.wholeMatch(of: /[0-9a-f]{64}/) != nil else { throw WalletError("Not a 1Click deposit account: \(depositAddress).") }
             guard blockHash.count == 32 else { throw WalletError("A NEAR block hash is 32 bytes.") }
-            try approve([depositAddress])
+            let doing = "sell \(NearTransaction.near(yocto)) NEAR: wrapped and sent to the 1Click deposit \(depositAddress.prefix(8))…\(depositAddress.suffix(6))"
+            try approve([depositAddress], doing: doing)
             var r = SignerReply(ok: true)
-            r.signedRaw = try withNearKey(reason: "sell \(NearTransaction.near(yocto)) NEAR: wrapped and sent to the 1Click deposit \(depositAddress.prefix(8))…\(depositAddress.suffix(6))") { nearSecret, account in
+            r.signedRaw = try withNearKey(reason: doing) { nearSecret, account in
                 try NearTransaction.sign(receiver: NearTransaction.wrapContract, nonce: nonce, blockHash: blockHash,
                                          actions: NearTransaction.intentDeposit(account: account, depositAddress: depositAddress, amount: yocto),
                                          privateKey: nearSecret).signed
@@ -335,7 +336,7 @@ enum Signer {
         case .signNearTransfer(let amount, let receiver, let recipients, let nonce, let blockHash):
             guard let yocto = UInt128(amount), yocto > 0 else { throw WalletError("Not a NEAR amount: \(amount).") }
             try checkNearRecipient(receiver, recipients, blockHash)
-            try approve([receiver])
+            try approve([receiver], doing: "send \(NearTransaction.near(yocto)) NEAR to \(receiver)")
             var r = SignerReply(ok: true)
             r.signedRaw = try withNearKey(reason: "send \(NearTransaction.near(yocto)) NEAR to \(receiver)") { nearSecret, account in
                 guard receiver != account else { throw WalletError("That is this wallet's own NEAR account.") }
@@ -346,7 +347,7 @@ enum Signer {
 
         case .signNearDeleteAccount(let beneficiary, let recipients, let nonce, let blockHash):
             try checkNearRecipient(beneficiary, recipients, blockHash)
-            try approve([beneficiary])
+            try approve([beneficiary], doing: "delete your NEAR account into \(beneficiary)")
             // Always a fresh prompt, whatever Touch ID session is open: this empties and removes the account.
             try SeedStore.confirm("DELETE your NEAR account and send all the NEAR on it to \(beneficiary)")
             let (raw, account) = try withNearKey(reason: "delete your NEAR account into \(beneficiary)") { nearSecret, account in
@@ -422,15 +423,14 @@ enum Signer {
                 v.problems.append("Money or the right to spend it goes to an unapproved address \(payee).")
             }
             guard v.ok else { return refused(v) }
-            // A contract whose call can't be read (a site's, from the browser) comes as a recipient only to be asked
-            // about: it's allowed as a call, apart from money recipients, unless the call also pays it coins.
-            let payees = Set(call.payees(to: to, value: value, chainId: chainId).map(RecipientStore.key))
-            let target: String? = if case .contract = call, !EVMCall.knownSpenders(chainId: chainId).contains(RecipientStore.key(to)),
-                                     !payees.contains(RecipientStore.key(to)) { RecipientStore.key(to) } else { nil }
-            try approve(recipients.filter { RecipientStore.key($0) != target })
-            if let target, recipients.contains(where: { RecipientStore.key($0) == target }) { try approve([target], calls: true) }
+            // A contract whose call can't be read is asked about in person once, whether or not the app named it: it's
+            // allowed as a call, apart from money recipients (a site's contract comes as a recipient only to be asked about).
+            let doing = call.summary(chainId: chainId, to: to, value: value) + "\nnetwork fee " + tx.feeText
+            let target = call.unreadTarget(to: to, value: value, chainId: chainId)
+            try approve(recipients.filter { RecipientStore.key($0) != target }, doing: doing)
+            if let target { try approve([target], calls: true, doing: doing) }
             var r = SignerReply(ok: true)
-            r.signedRaw = try withKey("evm", reason: call.summary(chainId: chainId, to: to, value: value) + "\nnetwork fee " + tx.feeText) {
+            r.signedRaw = try withKey("evm", reason: doing) {
                 try tx.signed(privateKey: $0).raw
             }
             r.checks = ["Calldata parsed by the signer: no unlimited approvals, no spending by others, money only to approved addresses."]
@@ -442,7 +442,7 @@ enum Signer {
             var v = Verdict()
             if let why = Safe.refusal(move, approved: Set((recipients + [owner, safe]).map { $0.lowercased() })) { v.problems.append(why) }
             guard v.ok else { return refused(v) }
-            try approve(recipients)
+            try approve(recipients, doing: "approve the multisig's move: " + move.summary)
             var r = SignerReply(ok: true)
             r.signature = try withKey("evm", reason: "approve the multisig's move: " + move.summary) {
                 try EVMSigner.sign(digest: try move.hash(), privateKey: $0)
@@ -466,13 +466,19 @@ enum Signer {
                 }
             }
             guard v.ok else { return refused(v) }
-            try approve(recipients)
             // The prompt names every call, read from its calldata here, then that they go as one — and that the wallet
             // keeps running the batch account's code on that network afterwards (it accepts coins and tokens as before).
             let lines = calls.map { EVMCall.decode($0.data).summary(chainId: chainId, to: $0.to, value: 0) }
             let net = EVMRPC.names[chainId] ?? "network \(chainId)"
+            let doing = lines.joined(separator: "\nthen ") + "\nas one transaction: this wallet runs the audited batch account on \(net) (EIP-7702)\nnetwork fee " + fee.feeText
+            // Each unread contract is asked about once, as in a single call; one another call lets spend (an exact approve
+            // for the chat's `call`) is a money recipient, and that approval covers its call too.
+            let targets = calls.compactMap { EVMCall.decode($0.data).unreadTarget(to: $0.to, value: 0, chainId: chainId) }
+            let payees = Set(calls.flatMap { EVMCall.decode($0.data).payees(to: $0.to, value: 0, chainId: chainId) }.map(RecipientStore.key))
+            try approve(recipients.filter { !targets.contains(RecipientStore.key($0)) || payees.contains(RecipientStore.key($0)) }, doing: doing)
+            if !targets.isEmpty { try approve(targets, calls: true, doing: doing) }
             var r = SignerReply(ok: true)
-            r.signedRaw = try withKey("evm", reason: lines.joined(separator: "\nthen ") + "\nas one transaction: this wallet runs the audited batch account on \(net) (EIP-7702)\nnetwork fee " + fee.feeText) {
+            r.signedRaw = try withKey("evm", reason: doing) {
                 try Batch7702.signed(chainId: chainId, nonce: nonce, maxPriorityFee: maxPriorityFee, maxFee: maxFee, gasLimit: gasLimit,
                                      owner: owner, calls: calls, privateKey: $0).raw
             }
@@ -498,13 +504,14 @@ enum Signer {
                                                                  sponsor: sponsor),
                                             tokenOwners: verifiedOwners(tokenOwners, mints: accounts))
             guard verdict.ok else { return refused(verdict) }
-            try approve(recipients)
-            var r = SignerReply(ok: true)
             // The programs the user allowed for this one transaction are named in full: they run with the wallet's authority.
             let extra = extraPrograms.filter { SolanaGuard.knownPrograms[$0] == nil && (try? Base58.decode($0))?.count == 32 }
                 .map { "runs \($0), not on ihatecrypto's list" }
             let payer = sponsor.map { ["the network fee is paid by \($0.prefix(4))…\($0.suffix(4)), not by you"] } ?? []
-            r.signedWire = try withKey("solana", reason: ([prompt("sign a Solana transaction", verdict)] + extra + payer).joined(separator: "\n")) {
+            let doing = ([prompt("sign a Solana transaction", verdict)] + extra + payer).joined(separator: "\n")
+            try approve(recipients, doing: doing)
+            var r = SignerReply(ok: true)
+            r.signedWire = try withKey("solana", reason: doing) {
                 try SolanaTransaction.sign(wire, privateKey: $0, sponsor: sponsorKey).wire
             }
             r.checks = verdict.checks
@@ -578,10 +585,10 @@ enum Signer {
             let verdict = HLGuard.check(action, owner: try address("evm"), recipients: Set(recipients))
             guard verdict.ok else { return refused(verdict) }
             let (type, fields) = try HLSigner.userAction(action)
-            try approve(recipients)
-            var r = SignerReply(ok: true)
             let what = type != "ApproveBuilderFee" ? "sign a Hyperliquid transfer"
                 : HLAction.text(action, "maxFeeRate") == HLBuilder.revoke ? "take back ihatecrypto's fee approval" : "approve ihatecrypto's fee on your Hyperliquid trades"
+            try approve(recipients, doing: prompt(what, verdict))
+            var r = SignerReply(ok: true)
             r.signature = try withKey("evm", reason: prompt(what, verdict)) {
                 try HLSigner.signUserAction(type, fields: fields, privateKey: $0, mainnet: mainnet)
             }
@@ -743,8 +750,10 @@ enum Signer {
     /// Money to an address outside the wallet: each new address is confirmed in person once, with the address on
     /// the prompt, and remembered in the signer's own Keychain. The app saying «the user approved it» isn't enough.
     /// `calls`: contracts whose calls the signer can't read, allowed in person as calls and kept in their own list, so a
-    /// later payment or approval to one asks again.
-    static func approve(_ recipients: [String], calls: Bool = false) throws {
+    /// later payment or approval to one asks again; an address allowed for money may be called too.
+    /// `doing`: what the signature that follows does, read by the signer itself — the prompt that allows the address opens
+    /// the session that signature then uses, so this prompt is the one place the amount is shown.
+    static func approve(_ recipients: [String], calls: Bool = false, doing: String) throws {
         // The Test wallet signs without Touch ID by design (a few dollars for checks): asking it about a new address
         // only stops the check. Its approvals are its own (RecipientStore is per wallet), so no other wallet skips one.
         if holdsPublicTestWallet { return }
@@ -753,13 +762,13 @@ enum Signer {
         let own = Set([try? address("solana"), (try? address("evm"))?.lowercased()].compactMap { $0 })
         // An address saved in the book was confirmed in person, whole, when it was saved; another wallet of this Mac's
         // is the user's own.
-        let known = calls ? RecipientStore.all(RecipientStore.calls)
-            : RecipientStore.all().union(AddressBookStore.all().map { RecipientStore.key($0.address) }).union(OwnStore.all())
+        let money = RecipientStore.all().union(AddressBookStore.all().map { RecipientStore.key($0.address) }).union(OwnStore.all())
+        let known = calls ? RecipientStore.all(RecipientStore.calls).union(money) : money
         let new = Array(Set(recipients.map(RecipientStore.key).filter { !known.contains($0) && !own.contains($0) })).sorted()
         guard !new.isEmpty else { return }
         // The automation wallet signs with no one at the Mac: its prompt closes by itself after a minute.
         let what = calls ? "allow ihatecrypto to call a contract whose call it can't read:\n" : "allow ihatecrypto to send money to a new address:\n"
-        try SeedStore.confirm(what + new.joined(separator: "\n"), within: Wallets.signing == nil ? nil : 60)
+        try SeedStore.confirm(what + new.joined(separator: "\n") + "\nfor this move: " + doing, within: Wallets.signing == nil ? nil : 60)
         try RecipientStore.add(new, to: calls ? RecipientStore.calls : RecipientStore.money)
     }
 

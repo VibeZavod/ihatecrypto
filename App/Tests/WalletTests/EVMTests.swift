@@ -551,3 +551,21 @@ import WalletCore
                                   ABI.uint(UInt64(path.count)), path + Data(count: 32 - path.count % 32)])
     #expect(EVMCall.decode(lying) == .contract(selector: "0xb858183f"))
 }
+
+/// A call the decoder can't read is asked about in person once, whoever sends it — except to the contracts ihatecrypto's own
+/// moves call that way (Relay, Tempo, Safe's factory). Uniswap's routers and Permit2 hold approvals: an unread call there asks.
+@Test func unreadContractCallsAreAskedAboutOnce() throws {
+    let unread = EVMCall.decode(Data([0xde, 0xad, 0xbe, 0xef]) + Data(count: 32))
+    let site = "0x1111111111111111111111111111111111111111"
+    #expect(unread.unreadTarget(to: site, value: 0, chainId: 8453) == site)
+    // Coins sent with it make the contract a recipient instead: asked about as one, not as a call.
+    #expect(unread.unreadTarget(to: site, value: 1, chainId: 8453) == nil)
+    #expect(unread.unreadTarget(to: "0xccc88a9d1b4ed6b0eaba998850414b24f1c315be", value: 0, chainId: 8453) == nil)   // Relay's approval proxy
+    #expect(unread.unreadTarget(to: Safe.factory, value: 0, chainId: 8453) == nil)
+    let router = try #require(UniswapV4.on(8453)).router
+    #expect(unread.unreadTarget(to: router, value: 0, chainId: 8453) == router.lowercased())
+    #expect(unread.unreadTarget(to: UniswapV4.permit2, value: 0, chainId: 8453) == UniswapV4.permit2.lowercased())
+    // A call it reads is held to its own rules instead.
+    let transfer = try ERC20.transfer(to: site, units: 1)
+    #expect(EVMCall.decode(transfer).unreadTarget(to: site, value: 0, chainId: 8453) == nil)
+}

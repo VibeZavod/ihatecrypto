@@ -305,7 +305,7 @@ final class Browser {
         // The same payees the signer checks: each foreign one needs the tick here and Touch ID there. A contract whose call
         // ihatecrypto can't read is allowed the same way, once: the signer asks with its address on the prompt.
         var payees = call.payees(to: to, value: value, chainId: rpc.chainId)
-        if case .contract = call, !EVMCall.knownSpenders(chainId: rpc.chainId).contains(to.lowercased()) { payees.append(to) }
+        if let target = call.unreadTarget(to: to, value: value, chainId: rpc.chainId) { payees.append(target) }
         let recipients = Array(Set(payees.map { $0.lowercased() }.filter { $0 != from.lowercased() })).sorted()
         let native = rpc.chainId == 42161 || rpc.chainId == 1 || rpc.chainId == 8453 ? "ETH" : "coins"
         func token(_ to: String) async -> (symbol: String, decimals: Int) {
