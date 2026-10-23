@@ -145,7 +145,7 @@ enum Signer {
             }
             switch inner {
             case .signSolana, .signEVMTransaction, .signEVMBatch, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
-                 .signReceiveAuthorization, .signRelayMulticallPermit, .signNearIntentDeposit, .signNearTransfer: break
+                 .signReceiveAuthorization, .signRelayMulticallPermit, .signSponsoredTransfer, .signNearIntentDeposit, .signNearTransfer: break
             default: throw WalletError("The automation wallet signs only a task's moves.")
             }
             return try Wallets.$signing.withValue(wallet) { try handle(inner) }
@@ -539,6 +539,21 @@ enum Signer {
             var r = SignerReply(ok: true)
             r.signature = try withKey("evm", reason: permit.summary) { try EVMSigner.sign(digest: digest, privateKey: $0) }
             r.checks = ["The signer built the payment by signature itself: a dollar it knows, from this wallet, to Relay's approval proxy, valid under an hour."]
+            return r
+
+        case .signSponsoredTransfer(let chainId, let nonce, let gasLimit, let token, let to, let amount, let recipients):
+            let owner = try address("evm")
+            let t = SponsoredTransfer(chainId: chainId, nonce: nonce, gasLimit: gasLimit, token: token, to: to, amount: amount)
+            var v = Verdict()
+            if let refusal = t.refusal { v.problems.append(refusal) }
+            let approved = Set(recipients.map(RecipientStore.key) + [RecipientStore.key(owner)])
+            if !approved.contains(RecipientStore.key(to)) { v.problems.append("Money goes to an unapproved address \(to).") }
+            guard v.ok else { return refused(v) }
+            try approve(recipients.filter { RecipientStore.key($0) == RecipientStore.key(to) && RecipientStore.key($0) != RecipientStore.key(owner) },
+                        doing: t.summary)
+            var r = SignerReply(ok: true)
+            r.signedRaw = try withKey("evm", reason: t.summary) { try t.signed(privateKey: $0).raw }
+            r.checks = ["The signer built the transfer itself: a dollar it knows, to an approved address, gas price zero."]
             return r
 
         case .signRelayMulticallPermit(let chainId, let token, let value, let validBefore, let relayer, let refundTo, let nftRecipient, let metadata, let calls):

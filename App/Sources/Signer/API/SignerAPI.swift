@@ -79,6 +79,10 @@ public enum SignerRequest: Codable, Sendable {
     /// Reply: signatures, the MulticallAuthorization's first.
     case signRelayMulticallPermit(chainId: UInt64, token: String, value: UInt64, validBefore: UInt64, relayer: String, refundTo: String,
                                   nftRecipient: String, metadata: Data, calls: [SignerCall3])
+    /// A dollar transfer on BNB Chain at gas price 0, which BNB Chain's paymaster (MegaFuel) pays the gas for. The signer
+    /// builds the legacy transaction itself (EVMChain's SponsoredTransfer): only a dollar it knows, only `transfer`, no
+    /// fee; `to` must be among `recipients` and passes the new-recipient rule. Reply: signedRaw.
+    case signSponsoredTransfer(chainId: UInt64, nonce: UInt64, gasLimit: UInt64, token: String, to: String, amount: String, recipients: [String])
     /// Creates (once) a Hyperliquid agent key inside the signer and returns the approveAgent action signed by
     /// the main key. The agent can trade but not withdraw, so it needs no Touch ID afterwards.
     case enableAgent
@@ -330,7 +334,8 @@ public final class SignerClient: @unchecked Sendable {
             switch request {
             case .status, .nearAddress, .endSession, .ledgerAgent(_, false), .addressBook: break
             case .signSolana, .signEVMTransaction, .signEVMBatch, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
-                 .signReceiveAuthorization, .signRelayMulticallPermit, .signNearIntentDeposit, .signNearTransfer, .signNearDeleteAccount:
+                 .signReceiveAuthorization, .signRelayMulticallPermit, .signSponsoredTransfer, .signNearIntentDeposit, .signNearTransfer,
+                 .signNearDeleteAccount:
                 let status = try await Self.$untrusted.withValue(false) { try await send(.status) }
                 guard status.wallets?.first(where: { $0.id == status.activeWallet })?.isTest == true else {
                     throw WalletError("Nothing is signed from the debug API while a wallet that asks for \(Presence.name) signs: confirm money moves in ihatecrypto’s window, or switch to a test wallet.")

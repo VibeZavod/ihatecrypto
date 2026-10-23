@@ -24,9 +24,11 @@ private func stuck(solana: Decimal = 0, sol: Decimal = 0, hyperliquid: Decimal =
     let base = stuck(on: ["base": (5, 0)])
     #expect(base.map(\.key) == ["base"])
     #expect(base[0].ways.map(\.command) == ["move 5 USDC from base to Solana", "add $1.00 of gas on base"])
-    // BNB Chain's dollar can't pay by signature: the chat asks for BNB.
+    // BNB Chain's dollar can't pay by signature, but BNB Chain pays the gas for its transfer (MegaFuel): the same two ways.
     let bnb = stuck(on: ["bnb": (5, 0)])
-    #expect(bnb.map(\.key) == ["bnb"] && bnb[0].ways.isEmpty && bnb[0].coin == "BNB")
+    #expect(bnb.map(\.key) == ["bnb"] && bnb[0].coin == "BNB")
+    #expect(bnb[0].ways.map(\.command) == ["move 5 USDC from bnb to Solana", "add $1.00 of gas on bnb"])
+    // HyperEVM has neither: the chat asks for HYPE.
     let hyperevm = stuck(on: ["hyperevm": (5, 0)])
     #expect(hyperevm.map(\.key) == ["hyperevm"] && hyperevm[0].ways.isEmpty)
     // Hyperliquid's balance or Solana's USDC and SOL bring the gas by themselves: nothing to offer.

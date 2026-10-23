@@ -52,6 +52,8 @@ public protocol TradeSigner: Sendable {
     func signReceiveAuthorization(_ permit: Permit3009) async throws -> EVMSignature
     /// The same on Relay's v3.2 proxy: the MulticallAuthorization's signature, then the EIP-3009 one.
     func signRelayMulticallPermit(_ m: RelayMulticallPermit) async throws -> [EVMSignature]
+    /// A zero-fee dollar transfer BNB Chain's paymaster pays the gas for; `to` among `recipients`. The raw transaction.
+    func signSponsoredTransfer(_ t: SponsoredTransfer, recipients: [String]) async throws -> Data
 }
 
 extension TradeSigner {
@@ -64,6 +66,9 @@ extension TradeSigner {
     }
     public func signRelayMulticallPermit(_ m: RelayMulticallPermit) async throws -> [EVMSignature] {
         throw ExecutionError("This signer doesn't pay by signature: add a little of the network's coin for gas instead.")
+    }
+    public func signSponsoredTransfer(_ t: SponsoredTransfer, recipients: [String]) async throws -> Data {
+        throw ExecutionError("This signer doesn't send a zero-fee transfer: add a little BNB for gas instead.")
     }
     public func signSafeMove(_ move: Safe.Move, recipients: [String]) async throws -> EVMSignature {
         throw ExecutionError("This signer doesn't sign multisig moves.")

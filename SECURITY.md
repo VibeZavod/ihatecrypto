@@ -86,7 +86,9 @@ Hyperliquid what you trade with. Turning each one on asks in person.
   proxy only, valid an hour at most. Relay's solver pays the gas, so dollars on a network with no gas coin can still
   move out. On Relay's v3.2 proxy the payment comes with a second signature over the calls the proxy runs with the
   money: the signer reads them itself (one deposit through Relay's router into its depository, for the user's wallet),
-  computes the nonce that binds them and signs both; a changed call breaks the pair on-chain.
+  computes the nonce that binds them and signs both; a changed call breaks the pair on-chain. On BNB Chain, whose dollar
+  has no payment by signature, it signs one more zero-fee transaction it builds itself: a plain transfer of that dollar
+  (to Relay's deposit address, approved like any new address) that BNB Chain's paymaster, MegaFuel, pays the gas for.
 
 **Untrusted text.** Pasted messages and what the model's lookups bring back (token listings, pages, API replies) pass
 local rules before any model reads them. A second check (Settings › Second check) has the chat's model read each

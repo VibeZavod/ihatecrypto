@@ -621,9 +621,11 @@ extension Workspace {
             let (there, gas) = held(n)
             guard there >= 1, gas < Decimal(n.gasFloor) / 1_000_000_000_000_000_000 else { continue }
             let stable = EVMRPC.dollars[n.usdc] ?? "USDC", all = Fmt.num(there.rounded(2, .down))
-            let bySignature = Permit3009.supports(chainId: n.rpc.chainId, token: n.usdc) ? [
+            let signs = Permit3009.supports(chainId: n.rpc.chainId, token: n.usdc), sponsored = SponsoredTransfer.supports(chainId: n.rpc.chainId, token: n.usdc)
+            let bySignature = signs || sponsored ? [
                 ChatRouter.Option(title: say("Move \(all) \(stable) to Solana", "Перевести \(all) \(stable) на Solana"),
-                                  comment: say("By signature: Relay pays the gas on \(n.name)", "По подписи: газ на \(n.name) платит Relay"),
+                                  comment: signs ? say("By signature: Relay pays the gas on \(n.name)", "По подписи: газ на \(n.name) платит Relay")
+                                                 : say("BNB Chain pays the gas for this transfer", "Газ за этот перевод платит BNB Chain"),
                                   command: "move \(all) USDC from \(n.key) to Solana", recommended: true),
                 ChatRouter.Option(title: say("Get \(n.gasCoin) for gas on \(n.name)", "Взять \(n.gasCoin) на газ в \(n.name)"),
                                   comment: say("Out of these \(stable), over Solana", "Из этих \(stable), через Solana"),
@@ -649,6 +651,9 @@ extension Workspace {
               : stuck.key == "solana"
               ? say("\(dollars) USDC on Solana, and no SOL for network fees. Swap a part for SOL: Jupiter pays that one swap's fee, and the SOL pays every move after it.",
                     "\(dollars) USDC на Solana, а SOL на комиссии нет. Обменяйте часть на SOL: комиссию этого обмена платит Jupiter, а дальше все действия оплачивает SOL.")
+              : stuck.key == "bnb"
+              ? say("\(dollars) USDC on BNB Chain, and no BNB for gas. It can still move: BNB Chain pays the gas for a dollar transfer, so it goes to Solana that way, or brings BNB for gas back from there.",
+                    "\(dollars) USDC на BNB Chain, а BNB на газ нет. Сдвинуть их всё равно можно: газ за перевод долларов платит сама BNB Chain. Так они уйдут на Solana или вернут оттуда BNB на газ.")
               : say("\(dollars) USDC on \(stuck.network), and no \(stuck.coin) for gas. It can still move by signature, with Relay paying the gas: bring it to Solana, or take \(stuck.coin) for \(stuck.network) out of it.",
                     "\(dollars) USDC на \(stuck.network), а \(stuck.coin) на газ нет. Сдвинуть их можно и так, по подписи, газ заплатит Relay: перевести на Solana или взять из них \(stuck.coin) для \(stuck.network)."))
         offerCards(stuck.ways + [ChatRouter.Option(title: say("Top up \(stuck.coin)", "Пополнить \(stuck.coin)"),

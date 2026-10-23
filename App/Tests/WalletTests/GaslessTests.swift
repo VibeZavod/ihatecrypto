@@ -234,3 +234,26 @@ private func sponsored(signers: [String], others: [String] = [], _ transfers: [(
                                    sponsor: sponsorKey.publicKey.rawRepresentation)
     }
 }
+
+// MARK: - BNB Chain paying the gas (MegaFuel)
+
+@Test func sponsoredTransferMatchesFoundry() throws {
+    // `cast mktx --legacy --gas-price 0 --gas-limit 60000 --nonce 5 --chain 56` of the same transfer with Hardhat's key.
+    let t = SponsoredTransfer(chainId: 56, nonce: 5, gasLimit: 60_000, token: EVMRPC.bnbUSDC, to: "0xd2eb0c130cd38ee0da3132d33145a10875879acb",
+                              amount: "3000000000000000000")
+    #expect(t.refusal == nil)
+    #expect(try t.signed(privateKey: hardhatKey).raw.hex == "f8a5058082ea60948ac76a51cc950d9822d68b83fe1ad97b32cd580d80b844a9059cbb000000000000000000000000d2eb0c130cd38ee0da3132d33145a10875879acb00000000000000000000000000000000000000000000000029a2241af62c00008193a0545a46241bc7e15daf771c2757bcbc18b7df4087132a189326ab878cc697ef5ea019d448fa2fe2c096adb2bbca17ff91fbef98d80f84ad79ffefc850d8eac6aa56")
+}
+
+@Test func sponsoredTransferIsOnlyAKnownDollar() {
+    func t(chain: UInt64 = 56, token: String = EVMRPC.bnbUSDC, to: String = "0xd2eb0c130cd38ee0da3132d33145a10875879acb", amount: String = "1",
+           gas: UInt64 = 80_000) -> SponsoredTransfer {
+        SponsoredTransfer(chainId: chain, nonce: 0, gasLimit: gas, token: token, to: to, amount: amount)
+    }
+    #expect(t().refusal == nil)
+    #expect(t(token: "0x55d398326f99059ff775485246999027b3197955").refusal != nil)   // not a dollar on the list
+    #expect(t(chain: 1).refusal != nil)
+    #expect(t(amount: "0").refusal != nil && t(amount: "1.5").refusal != nil)
+    #expect(t(to: "0x0000000000000000000000000000000000000000").refusal != nil && t(to: "nobody").refusal != nil)
+    #expect(t(gas: 200_000).refusal != nil)
+}

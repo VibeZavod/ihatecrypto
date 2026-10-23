@@ -62,6 +62,8 @@ public enum Relay {
         public var permit: Permit?
         /// On Relay's v3.2 proxy: the MulticallAuthorization to sign first, with the EIP-3009 item it binds.
         public var multicall: MulticallPermit?
+        /// With `useDepositAddress`: where a plain transfer of the origin token starts the order.
+        public var depositAddress: String?
     }
 
     /// Relay's v3.2 MulticallAuthorization item as its quote gives it, and the EIP-3009 item after it.
@@ -177,7 +179,8 @@ public enum Relay {
     /// `usePermit`: an origin USDC goes by a signature (`Quote.permit`) instead of an approve and a deposit.
     public static func quote(user: String, recipient: String, originChain: UInt64, destinationChain: UInt64,
                              originCurrency: String, destinationCurrency: String, amount: UInt64, exactOutput: Bool = false,
-                             topupGasUSD: Decimal? = nil, units: String? = nil, usePermit: Bool = false) async throws -> Quote {
+                             topupGasUSD: Decimal? = nil, units: String? = nil, usePermit: Bool = false, useDepositAddress: Bool = false,
+                             refundTo: String? = nil) async throws -> Quote {
         var request = URLRequest(url: URL(string: base + "/quote/v2")!, timeoutInterval: 30)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
@@ -188,6 +191,8 @@ public enum Relay {
         // useMulticallAuthorization: Relay's v3.2 proxy (from 2026-10-26) binds the dollar to its calls with a second signature;
         // until the switch the step holds the single ERC-3009 item, as before.
         if usePermit { body["usePermit"] = true; body["useMulticallAuthorization"] = true }
+        if useDepositAddress { body["useDepositAddress"] = true }
+        if let refundTo { body["refundTo"] = refundTo }
         if let usd = topupGasUSD {
             body["topupGas"] = true
             body["topupGasAmount"] = "\(Int((NSDecimalNumber(decimal: usd).doubleValue * 1_000_000).rounded(.up)))"
@@ -260,6 +265,7 @@ public enum Relay {
         quote.amountInUSD = amounts("currencyIn")["amountUsd"] as? String ?? ""
         quote.amountOutUSD = amounts("currencyOut")["amountUsd"] as? String ?? ""
         if usePermit { quote.permit = Self.permit(in: steps); quote.multicall = Self.multicall(in: steps) }
+        if useDepositAddress { quote.depositAddress = steps.compactMap { $0["depositAddress"] as? String }.first }
         return quote
     }
 

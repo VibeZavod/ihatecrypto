@@ -71,6 +71,15 @@ nonisolated struct XPCTradeSigner: TradeSigner {
         return signed
     }
 
+    func signSponsoredTransfer(_ t: SponsoredTransfer, recipients: [String]) async throws -> Data {
+        let reply = try await Self.signing {
+            try await send(.signSponsoredTransfer(chainId: t.chainId, nonce: t.nonce, gasLimit: t.gasLimit, token: t.token, to: t.to, amount: t.amount,
+                                                  recipients: recipients))
+        }
+        guard reply.ok, let raw = reply.signedRaw else { throw GuardStop(Self.reason(reply)) }
+        return raw
+    }
+
     func signRelayMulticallPermit(_ m: RelayMulticallPermit) async throws -> [EVMSignature] {
         let reply = try await Self.signing {
             try await send(.signRelayMulticallPermit(chainId: m.chainId, token: m.token, value: m.value, validBefore: m.validBefore, relayer: m.relayer,
