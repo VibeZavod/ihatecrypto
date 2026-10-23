@@ -69,10 +69,14 @@ Hyperliquid what you trade with. Turning each one on asks in person.
   changes and other fee payers are refused, and the priority fee has a cap. The one other fee payer is Jupiter's wallet
   on its gasless swap, for a wallet with no SOL: it signs first, the user's wallet is the only other signer, and every
   instruction is checked the same; SOL may go elsewhere only out of the fee payer's own account.
+- Solana protocols, read by the signer itself: Kamino runs only the instructions ihatecrypto's deposits and withdrawals
+  use, each one its program pays out only to the signer (read in Kamino's verified source), and only on the user's own
+  position on Kamino's main market; anything else (a deposit minting to another account, repaying someone else's
+  debt, a flash loan, handing a stake over) is refused. Jupiter Lend's deposits and withdrawals and Jupiter DCA's
+  orders must pay the signer's own token accounts.
 - Simulation: the app runs the transaction on the network first, and the balances after must match what the user
-  approved. The signer has no network, so this check is the app's alone: for Solana programs whose instructions the
-  signer only finds on its list (Kamino, Jupiter Lend and DCA, Jupiter's other swap forms, a program allowed for one
-  site), for what a swap pays out and for whether a Relay quote pays the user back.
+  approved. The signer has no network, so this check is the app's alone: for how much a swap or a protocol pays out,
+  for Jupiter's other swap forms and a program allowed for one site, and for whether a Relay quote pays the user back.
 - Bridges: a 1Click deposit address must be bound by 1Click to the user's recipient, refund address, assets and
   amount. A Relay deposit must come from the user's wallet and name them as sender and recipient.
 - Hyperliquid: orders stay inside the account; transfers out go only to an approved address. An order may pay

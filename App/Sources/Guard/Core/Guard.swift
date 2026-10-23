@@ -1,6 +1,7 @@
 import Foundation
 import HyperliquidSigning
 import SolanaChain
+import WalletCore
 
 /// The last check before signing. Plain code, not a model: whatever a web page, token metadata or a
 /// prompt injection made the planner or an API return, only programs on the list run, and money goes only
@@ -63,6 +64,58 @@ public enum SolanaGuard {
     /// Kamino's vaults (Earn) and the farm their shares are staked in: a vault withdrawal unstakes, then redeems.
     public static let kaminoVault = "KvauGMspG5k6rtzrqqn7WNn3oZdyKqLKwK2XWQ8FLjd"
     public static let kaminoFarms = "FarmsPZpWu9i7Kky8tPN37rs2TpmMrAZrC7S7vJa91Hr"
+    /// Kamino's main lending market, the only one ihatecrypto lends on (Kamino.mainMarket).
+    public static let kaminoMainMarket = "7u3HeHxYDLhnCoErrtycNokbQYbWGzLs6JSDqGAv5PfF"
+
+    /// The Kamino instructions ihatecrypto's deposits and withdrawals use whose programs pay out only to the signer
+    /// (token::authority = owner, has_one = owner; read in the verified source, klend e921c64, kvault 2dadf94, kfarms
+    /// bfa1860, 2026-10-23), by 8-byte discriminator. Any other — a deposit minting to someone else's account, repaying
+    /// someone else's debt, a flash loan, handing a farm stake over (transfer_ownership), topping up a vault's rewards —
+    /// is refused, whatever the app says. KLend's value is the index of the obligation the instruction acts on (nil: none).
+    static let kaminoLendAllowed: [String: Int?] = [
+        "75a9b045c5170fa2": nil,                                                  // init_user_metadata (no referrer, below)
+        "fb0ae74c1b0b9f60": 2, "883f0fbad398a8a4": 2,                             // init_obligation, init_obligation_farms_for_reserve
+        "02da8aeb4fc91966": nil, "218493e497c04859": 1, "8c90fd150a4af803": 1,    // refresh_reserve, refresh_obligation, refresh_obligation_farms_for_reserve
+        "2477fb8122f00793": 1,                                                    // request_elevation_group
+        "81c70402de271a2e": 1, "d8e0bf1bcc9766af": 1,                             // deposit_reserve_liquidity_and_obligation_collateral(_v2)
+        "4b5d5ddc2296dac4": 1, "eb34779895c51407": 1,                             // withdraw_obligation_collateral_and_redeem_reserve_collateral(_v2)
+        "2574cd67f3c05cc6": 1, "caf97572e7c02f8a": 1,                             // withdraw_obligation_collateral(_v2)
+        "6cd1044815167685": 1, "8991975ea7710491": 1,                             // deposit_obligation_collateral(_v2)
+        "797f12cc49f5e141": 1, "a1808ff5abc7c206": 1,                             // borrow_obligation_liquidity(_v2)
+        "ea75b57db98edc1d": nil,                                                  // redeem_reserve_collateral
+    ]
+    /// Vault withdrawals (withdraw, sell, withdraw_from_available, redeem_in_kind): to the signer's own accounts. No deposits.
+    static let kaminoVaultAllowed: Set<String> = ["b712469c946da122", "33e685a4017f83ad", "1383709baadc2239", "663abdfcc0db8c59"]
+    /// Farms: unstake, withdraw_unstaked_deposits, harvest_reward (to the owner), refresh_farm, refresh_user_state, initialize_user.
+    static let kaminoFarmsAllowed: Set<String> = ["5a5f6b2acd7c32e1", "2466bb31dc248443", "44c8e4e9b820e2bc", "d6838ab790c2ac2a", "01870c3ef38c4d6c",
+                                                  "6f11b9fa3c7a26fe"]
+
+    /// Jupiter Lend Earn (Fluid's lending program): its deposits mint fTokens to account 2, the signer's own account for
+    /// the fToken mint (account 6); its withdrawals and redemptions pay account 2, the signer's own account for the token
+    /// (account 5). The program requires both today (token::authority = signer, Instadapp/fluid-solana-programs
+    /// context.rs); the signer checks them itself, since Jupiter can upgrade it. By discriminator: deposit,
+    /// deposit_with_min_amount_out, mint, mint_with_max_assets / withdraw, redeem, withdraw_with_max_shares_burn,
+    /// redeem_with_min_amount_out.
+    static let jupiterLendDeposits: Set<String> = ["f223c68952e1f2b6", "74901061766d2877", "3339e12fb69289a6", "065e457a1eb392ab"]
+    static let jupiterLendWithdrawals: Set<String> = ["b712469c946da122", "b80c569546c461e1", "2fc5b7abef12f5ab", "ebbded38a6b4b895"]
+    /// Jupiter's recurring orders (DCA): open_dca_v2 and close_dca only, read by their accounts (its IDL; no source is
+    /// public). Measured on mainnet 2026-10-23: the program refuses another payee, and the signer checks it as well.
+    static let jupiterDCAOpen = "8e772b6da2340bb1", jupiterDCAClose = "16072162a8b722f3"
+
+    /// The owner's plain obligation on Kamino's main market: seeds [tag 0, id 0, owner, market, default, default] (klend
+    /// handler_init_obligation.rs). An instruction on it acts on that market (has_one = lending_market), whatever market
+    /// a lookup table names: the signer can't read those, so this pins the market from a static account instead.
+    /// `account` is `owner`'s associated token account for `mint`, under SPL Token or Token-2022.
+    static func ownTokenAccount(_ account: String?, owner: String, mint: String?) -> Bool {
+        guard let account, let mint else { return false }
+        return [SPL.tokenProgram, SPL.token2022Program].contains { (try? SPL.associatedAccount(owner: owner, mint: mint, program: $0)) == account }
+    }
+
+    public static func kaminoObligation(owner: String) -> String? {
+        guard let o = try? Base58.decode(owner), let m = try? Base58.decode(kaminoMainMarket), let p = try? Base58.decode(kaminoLend),
+              let pda = try? SPL.programAddress(seeds: [Data([0]), Data([0]), o, m, Data(count: 32), Data(count: 32)], program: p) else { return nil }
+        return Base58.encode(pda)
+    }
     /// Kamino's first deposit creates the user's own lookup table; only create and extend with the owner as authority pass.
     public static let lookupTableProgram = "AddressLookupTab1e1111111111111111111111111"
     public static let knownPrograms: [String: String] = [
@@ -198,6 +251,52 @@ public enum SolanaGuard {
                 } else {
                     v.problems.append("Relay deposit is not from your wallet.")
                 }
+            case jupiterLend:
+                let kind = ix.data.prefix(8).hex, deposit = jupiterLendDeposits.contains(kind)
+                guard deposit || jupiterLendWithdrawals.contains(kind) else {
+                    v.problems.append("Instruction \(n + 1): a Jupiter Lend instruction ihatecrypto doesn't use (\(kind)).")
+                    continue
+                }
+                guard account(0) == policy.owner, let to = account(2), policy.trustLookupTables || staticKeys.contains(to),
+                      ownTokenAccount(to, owner: policy.owner, mint: account(deposit ? 6 : 5)) else {
+                    v.problems.append("Instruction \(n + 1): Jupiter Lend would \(deposit ? "credit the deposit to" : "pay") someone else's account.")
+                    continue
+                }
+                v.checks.append("Jupiter Lend \(deposit ? "deposit: the shares" : "withdrawal: the money") → your account. The balance simulation checks the amount.")
+            case jupiterDCA:
+                let kind = ix.data.prefix(8).hex
+                let mine = kind == jupiterDCAOpen
+                    // dca 0, user 1, payer 2, inputMint 3, outputMint 4, userAta 5, inAta 6, outAta 7: the order's own ATAs.
+                    ? account(1) == policy.owner && account(2) == policy.owner && ownTokenAccount(account(5), owner: policy.owner, mint: account(3))
+                        && account(0).map { ownTokenAccount(account(6), owner: $0, mint: account(3)) && ownTokenAccount(account(7), owner: $0, mint: account(4)) } == true
+                    // user 0, dca 1, inputMint 2, outputMint 3, …, userInAta 6, userOutAta 7: what's left comes back here.
+                    : kind == jupiterDCAClose && account(0) == policy.owner && ownTokenAccount(account(6), owner: policy.owner, mint: account(2))
+                        && ownTokenAccount(account(7), owner: policy.owner, mint: account(3))
+                        && [6, 7].allSatisfy { i in policy.trustLookupTables || account(i).map(staticKeys.contains) == true }
+                guard mine else {
+                    v.problems.append("Instruction \(n + 1): a Jupiter DCA instruction that isn't your own order's opening or closing (\(kind)).")
+                    continue
+                }
+                v.checks.append(kind == jupiterDCAOpen ? "Jupiter DCA order of yours: what it buys is yours." : "Closes your Jupiter DCA order: what's left comes back to you.")
+            case kaminoLend, kaminoVault, kaminoFarms:
+                let kind = ix.data.prefix(8).hex
+                if program == kaminoVault ? !kaminoVaultAllowed.contains(kind) : program == kaminoFarms ? !kaminoFarmsAllowed.contains(kind)
+                    : kaminoLendAllowed[kind] == nil {
+                    v.problems.append("Instruction \(n + 1): a \(programName) instruction ihatecrypto doesn't use (\(kind)); it could pay someone else.")
+                    continue
+                }
+                if program == kaminoLend, case .some(.some(let at)) = kaminoLendAllowed[kind] {
+                    guard let obligation = account(at), staticKeys.contains(obligation), obligation == kaminoObligation(owner: policy.owner) else {
+                        v.problems.append("Instruction \(n + 1): the Kamino position isn't your own on Kamino's main market.")
+                        continue
+                    }
+                }
+                // init_user_metadata's referrer (account 3) would take a share of the fees: none, which Anchor writes as the program.
+                if kind == "75a9b045c5170fa2", account(3) != kaminoLend {
+                    v.problems.append("Instruction \(n + 1): Kamino's account setup names a referrer.")
+                    continue
+                }
+                v.checks.append("Calls \(programName): an instruction that pays only you. The balance simulation checks the amount.")
             case jupiterSwap:
                 // route: the output to account 3, or to account 4 when it's set (the program's own id when not), mint 5;
                 // shared_accounts_route: to account 6, mint 8. Its other forms are left to the simulation, as before.
