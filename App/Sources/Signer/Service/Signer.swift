@@ -408,7 +408,7 @@ enum Signer {
 
         case .signTypedData(let json):
             let typed = try TypedData.parse(json)
-            if let refusal = typed.refusal {
+            if let refusal = typed.refusal(owner: try? address("evm")) {
                 var v = Verdict()
                 v.problems.append(refusal)
                 return refused(v)

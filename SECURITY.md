@@ -129,8 +129,9 @@ unpaid, as the protocol has it). Address book icons come from each entry's own s
 - A Solana or EVM key is in the signer's memory while it signs. Copies inside the derivation and secp256k1 code can't
   be wiped from Swift.
 - Chats, canvases and settings are owner-only files in `~/Library/Application Support`, not encrypted.
-- A site's typed data is refused by kind (permits, payments, Safe and user-operation messages, a payee with an amount,
-  nested types); a new kind of off-chain order could pass, and its prompt then says ihatecrypto can't tell what it allows.
+- A site's typed data is refused by kind (permits, payments, Safe and user-operation messages, nested types) and by its
+  values: a struct that names any address but this wallet's beside an amount, whatever its fields are called. What
+  passes (a login, a vote) is shown field by field, and the prompt says ihatecrypto can't tell what it allows.
 - On a Mac without Touch ID the passcode is typed into ihatecrypto's own window, not a macOS dialog; it signs moves to
   addresses already approved, and a new address still asks for the Mac's password.
 - Nobody outside the project has audited this code.

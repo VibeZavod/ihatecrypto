@@ -569,3 +569,23 @@ import WalletCore
     let transfer = try ERC20.transfer(to: site, units: 1)
     #expect(EVMCall.decode(transfer).unreadTarget(to: site, value: 0, chainId: 8453) == nil)
 }
+
+/// A flat order that calls its payee something else («taker») still names someone else's address beside an amount:
+/// refused for a site by its values. A login that names only this wallet, and a vote with no amount, still sign.
+@Test func typedDataNamingAnotherAddressBesideAnAmountIsRefused() throws {
+    func typed(_ primary: String, _ fields: [(String, String, String)]) throws -> TypedData {
+        let types = fields.map { #"{"name":"\#($0.0)","type":"\#($0.1)"}"# }.joined(separator: ",")
+        let message = fields.map { #""\#($0.0)":\#($0.2)"# }.joined(separator: ",")
+        return try TypedData.parse(Data(#"{"types":{"EIP712Domain":[{"name":"name","type":"string"},{"name":"chainId","type":"uint256"}],"\#(primary)":[\#(types)]},"primaryType":"\#(primary)","domain":{"name":"Some DEX","chainId":42161},"message":{\#(message)}}"#.utf8))
+    }
+    let me = "0x1111111111111111111111111111111111111111", thief = #""0x000000000000000000000000000000000000dead""#
+    let order = try typed("Order", [("maker", "address", #""\#(me)""#), ("taker", "address", thief), ("makerAmount", "uint256", "1000000"), ("nonce", "uint256", "1")])
+    #expect(order.refusal == nil)                      // its names alone pass
+    #expect(order.refusal(owner: me) != nil)           // its values don't
+    let open = try typed("Order", [("maker", "address", #""\#(me)""#), ("taker", "address", #""0x0000000000000000000000000000000000000000""#), ("makerAmount", "uint256", "1")])
+    #expect(open.refusal(owner: me) == nil)            // the zero address is nobody
+    let login = try typed("Login", [("wallet", "address", #""\#(me)""#), ("nonce", "uint256", "7")])
+    #expect(login.refusal(owner: me) == nil)
+    let vote = try typed("Vote", [("from", "address", #""\#(me)""#), ("delegate", "address", thief), ("choice", "uint32", "1")])
+    #expect(vote.refusal(owner: me) == nil)
+}

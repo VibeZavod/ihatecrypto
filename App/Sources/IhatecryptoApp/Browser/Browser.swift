@@ -233,7 +233,7 @@ final class Browser {
             let body: Data = if let s = args[1] as? String { Data(s.utf8) } else { try JSONSerialization.data(withJSONObject: args[1]) }
             let typed: TypedData
             do { typed = try TypedData.parse(body) } catch { throw SiteError("4200|\(error.localizedDescription)") }
-            if let refusal = typed.refusal {
+            if let refusal = typed.refusal(owner: address) {
                 workspace?.reply("Site \(origin) asked for a “\(typed.primaryType)” signature. Declined — \(refusal)", note: "browser")
                 throw SiteError("4001|" + refusal)
             }
