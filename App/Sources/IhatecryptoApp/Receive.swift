@@ -588,7 +588,8 @@ extension Workspace {
 
     /// Where the wallet holds dollars but not the coin fees are paid in, so a first move there would stop: Solana without
     /// SOL; an EVM network without its gas coin when Solana can't bring it either (topUpGas buys it with Solana's USDC,
-    /// which takes SOL there). The owner (2026-10-23): the first move must work, not «надо было ещё и газ». The ways out:
+    /// which takes SOL there; Hyperliquid's balance brings it too). The owner (2026-10-23): the first move must work, not «надо
+    /// было ещё и газ». The ways out:
     /// on Solana Jupiter's gasless swap for SOL; where the dollar pays by signature (Permit3009), the USDC goes to Solana or
     /// brings its own gas with Relay paying (Executor.bridgeByPermit, topUpGas).
     var stuckDollars: [StuckDollars] {
@@ -602,7 +603,8 @@ extension Workspace {
                                   command: "buy SOL for \(Fmt.num(swap)) USDC", recommended: true),
             ] : []))
         }
-        guard !(solanaPays && usd >= 2) else { return out }
+        // Gas comes over by itself where Solana (USDC and SOL) or Hyperliquid can bring it (Executor.topUpGas): not stuck.
+        guard !(solanaPays && usd >= 2), (hl?.withdrawable ?? 0) < 2 else { return out }
         for n in EVMNetwork.searched where n.feeToken == nil {
             let there = usdc(on: n.key) ?? 0
             guard there >= 1 else { continue }

@@ -34,36 +34,12 @@ extension Executor {
         let quote = try await Relay.quote(user: wallet.evm, recipient: wallet.solana, originChain: Relay.Chain.hyperliquid,
                                           destinationChain: Relay.Chain.solana, originCurrency: Relay.Currency.hyperliquidUSDC,
                                           destinationCurrency: Relay.Currency.solanaUSDC, amount: units)
-        guard let hl = quote.hyperliquid else { throw ExecutionError("The Relay quote has no Hyperliquid steps.") }
-        let published = try await Relay.depository(chainId: Relay.Chain.hyperliquid)?.lowercased()
-        var verdict = BindingGuard.check(
-            ["sender": quote.sender, "recipient": quote.recipient, "amountIn": quote.amountIn, "wallet": hl.wallet, "depositor": hl.depositor,
-             "destination": hl.destination, "published depository": published ?? "none", "token": hl.token],
-            expected: ["sender": wallet.evm, "recipient": wallet.solana, "amountIn": "\(units)", "wallet": wallet.evm, "depositor": wallet.evm,
-                       "destination": Relay.hyperliquidDepository, "published depository": Relay.hyperliquidDepository,
-                       "token": "USDC:0x6d1e7cde53ba9467b783cb7c530ce054"],
-            subject: "Relay quote")
-        if Decimal(string: hl.amount) != usdc { verdict.problems.append("sendAsset amount \(hl.amount) instead of \(usdc).") }
         let arriving = Decimal(string: quote.amountOutFormatted) ?? 0
-        if usdc - arriving > min(usdc * Decimal(string: "0.03")!, 1) { verdict.problems.append("Relay charges \(Fmt.num(usdc - arriving)) USDC: more than allowed.") }
-        guard verdict.ok else { throw GuardStop("The guard stopped the withdrawal: " + verdict.problems.joined(separator: " ")) }
-        report("Relay withdrawal: \(Fmt.num(usdc)) USDC from Hyperliquid → \(Fmt.num(arriving)) USDC on Solana, fee \(Decimal(string: quote.feesUSD).map { Fmt.usd($0) } ?? quote.feesUSD).")
-
-        guard let id = Data(hex: hl.mappingId) else { throw ExecutionError("Invalid Relay mapping id.") }
-        let mapping = try await signer.signRelayMapping(wallet: hl.wallet, depositor: hl.depositor, id: id, nonce: hl.mappingNonce)
-        try await Relay.authorize(body: hl.authorizeBody, signature: "0x" + mapping.r.hex + mapping.s.hex + String(format: "%02x", mapping.v))
-
-        let action = HLSigner.sendAssetAction(destination: hl.destination, sourceDex: hl.sourceDex, destinationDex: hl.destinationDex,
-                                              token: hl.token, amount: hl.amount, nonce: hl.nonce, mainnet: true)
-        let signature = try await signer.signHyperliquidUser(action, recipients: [Relay.hyperliquidDepository])
         let before = try await rpc.tokenBalance(owner: wallet.solana, mint: Relay.Currency.solanaUSDC)
-        try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "Hyperliquid→Solana USDC \(usdc)"))
         let started = Date()
-        let reply = HLReply.parse(try await HLExchange.send(action: action, nonce: hl.nonce, signature: signature, mainnet: true))
-        if case .error(let e) = reply {
-            try journal.append(.init(chain: "relay", id: quote.requestId, kind: .failed, note: e))
-            throw ExecutionError("Hyperliquid rejected the transfer: \(e).")
-        }
+        try await sendFromHyperliquid(quote, usdc: usdc, units: units, recipient: wallet.solana, lost: usdc - arriving,
+                                      note: "Hyperliquid→Solana USDC \(usdc)",
+                                      line: "Relay withdrawal: \(Fmt.num(usdc)) USDC from Hyperliquid → \(Fmt.num(arriving)) USDC on Solana, fee \(Decimal(string: quote.feesUSD).map { Fmt.usd($0) } ?? quote.feesUSD).")
         let requestId = quote.requestId
         let landing: @Sendable () async throws -> String = { [self] in try await withdrawalLanding(requestId, before: before, started: started) }
         // Inside a chain the next step is signed while this lands on Solana (Landings).
@@ -72,6 +48,71 @@ extension Executor {
             return "Sent \(Fmt.num(usdc)) USDC from Hyperliquid: ≈ \(Fmt.num(arriving)) lands on Solana in seconds, and what needs it waits for it."
         }
         return try await landing()
+    }
+
+    /// Relay's Hyperliquid steps for `quote`, checked and sent: the depository binding signed and posted, then the sendAsset
+    /// of exactly `usdc` to Relay's depository. The quote must be from this wallet to `recipient`, losing at most 3% (≤ $1).
+    private func sendFromHyperliquid(_ quote: Relay.Quote, usdc: Decimal, units: UInt64, recipient: String, lost: Decimal, note: String,
+                                     line: String) async throws {
+        guard let hl = quote.hyperliquid else { throw ExecutionError("The Relay quote has no Hyperliquid steps.") }
+        let published = try await Relay.depository(chainId: Relay.Chain.hyperliquid)?.lowercased()
+        // An EVM address in any case; a Solana one exactly (base58 letters differ by case).
+        let evm = recipient.hasPrefix("0x"), to = evm ? quote.recipient.lowercased() : quote.recipient
+        var verdict = BindingGuard.check(
+            ["sender": quote.sender, "recipient": to, "amountIn": quote.amountIn, "wallet": hl.wallet, "depositor": hl.depositor,
+             "destination": hl.destination, "published depository": published ?? "none", "token": hl.token],
+            expected: ["sender": wallet.evm, "recipient": evm ? recipient.lowercased() : recipient, "amountIn": "\(units)", "wallet": wallet.evm, "depositor": wallet.evm,
+                       "destination": Relay.hyperliquidDepository, "published depository": Relay.hyperliquidDepository,
+                       "token": "USDC:0x6d1e7cde53ba9467b783cb7c530ce054"],
+            subject: "Relay quote")
+        if Decimal(string: hl.amount) != usdc { verdict.problems.append("sendAsset amount \(hl.amount) instead of \(usdc).") }
+        if lost > min(usdc * Decimal(string: "0.03")!, 1) { verdict.problems.append("Relay charges \(Fmt.num(lost)) USDC: more than allowed.") }
+        guard verdict.ok else { throw GuardStop("The guard stopped the withdrawal: " + verdict.problems.joined(separator: " ")) }
+        report(line)
+
+        guard let id = Data(hex: hl.mappingId) else { throw ExecutionError("Invalid Relay mapping id.") }
+        let mapping = try await signer.signRelayMapping(wallet: hl.wallet, depositor: hl.depositor, id: id, nonce: hl.mappingNonce)
+        try await Relay.authorize(body: hl.authorizeBody, signature: "0x" + mapping.r.hex + mapping.s.hex + String(format: "%02x", mapping.v))
+
+        let action = HLSigner.sendAssetAction(destination: hl.destination, sourceDex: hl.sourceDex, destinationDex: hl.destinationDex,
+                                              token: hl.token, amount: hl.amount, nonce: hl.nonce, mainnet: true)
+        let signature = try await signer.signHyperliquidUser(action, recipients: [Relay.hyperliquidDepository])
+        try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: note))
+        let reply = HLReply.parse(try await HLExchange.send(action: action, nonce: hl.nonce, signature: signature, mainnet: true))
+        if case .error(let e) = reply {
+            try journal.append(.init(chain: "relay", id: quote.requestId, kind: .failed, note: e))
+            throw ExecutionError("Hyperliquid rejected the transfer: \(e).")
+        }
+    }
+
+    /// `usd` of `net`'s own coin for gas, out of the Hyperliquid balance over Relay: no gas anywhere is needed, so it brings
+    /// gas where the dollars can't move by signature (BNB Chain, HyperEVM). Waits until the coin is there.
+    func hyperliquidGas(_ net: EVMNetwork, usd: Decimal) async throws -> String {
+        let usdc = usd.rounded(2, .up), units = NSDecimalNumber(decimal: usdc * 100_000_000).uint64Value
+        let free = try await Hyperliquid.balance(user: wallet.evm).withdrawable
+        guard usdc <= free else { throw ExecutionError("\(Fmt.usd(free)) free on Hyperliquid; gas for \(net.name) needs \(Fmt.usd(usdc)).") }
+        let quote = try await Relay.quote(user: wallet.evm, recipient: wallet.evm, originChain: Relay.Chain.hyperliquid, destinationChain: net.relayChain,
+                                          originCurrency: Relay.Currency.hyperliquidUSDC, destinationCurrency: "0x0000000000000000000000000000000000000000",
+                                          amount: units)
+        let worth = Decimal(string: quote.amountOutUSD) ?? 0
+        guard worth > 0 else { throw ExecutionError("Relay doesn't quote \(net.gasCoin) on \(net.name) from Hyperliquid now. Nothing was signed.") }
+        let before = try await net.rpc.balance(wallet.evm)
+        try await sendFromHyperliquid(quote, usdc: usdc, units: units, recipient: wallet.evm, lost: usdc - worth, note: "Hyperliquid→\(net.name) \(net.gasCoin) \(usdc)",
+                                      line: "Gas for \(net.name) from Hyperliquid: \(Fmt.num(usdc)) USDC → ≈ \(quote.amountOutFormatted) \(net.gasCoin) over Relay.")
+        let started = Date()
+        while Date().timeIntervalSince(started) < 180 {
+            let status = try await Relay.status(requestId: quote.requestId).status
+            if ["refund", "failure"].contains(status) {
+                try journal.append(.init(chain: "relay", id: quote.requestId, kind: .failed, note: status))
+                throw ExecutionError("Relay returned \(status): the USDC should come back to Hyperliquid.")
+            }
+            if status == "success", try await net.rpc.balance(wallet.evm) > before {
+                try journal.append(.init(chain: "relay", id: quote.requestId, kind: .settled, note: status))
+                return "Gas from Hyperliquid on \(net.name) in \(Int(Date().timeIntervalSince(started))) s."
+            }
+            try await Task.sleep(for: .seconds(2))
+        }
+        throw ExecutionError("Relay didn't bring the gas within 3 minutes. Order \(quote.requestId) is in the journal.")
     }
 
     /// A Relay withdrawal from Hyperliquid, sent: Relay's word until it lands on Solana.

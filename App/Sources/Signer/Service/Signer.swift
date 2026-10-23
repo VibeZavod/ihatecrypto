@@ -142,7 +142,7 @@ enum Signer {
             }
             switch inner {
             case .signSolana, .signEVMTransaction, .signEVMBatch, .signHyperliquidL1, .signHyperliquidUser, .signRelayNonceMapping,
-                 .signReceiveAuthorization, .signNearIntentDeposit, .signNearTransfer: break
+                 .signReceiveAuthorization, .signRelayMulticallPermit, .signNearIntentDeposit, .signNearTransfer: break
             default: throw WalletError("The automation wallet signs only a task's moves.")
             }
             return try Wallets.$signing.withValue(wallet) { try handle(inner) }
@@ -521,6 +521,25 @@ enum Signer {
             var r = SignerReply(ok: true)
             r.signature = try withKey("evm", reason: permit.summary) { try EVMSigner.sign(digest: digest, privateKey: $0) }
             r.checks = ["The signer built the payment by signature itself: a dollar it knows, from this wallet, to Relay's approval proxy, valid under an hour."]
+            return r
+
+        case .signRelayMulticallPermit(let chainId, let token, let value, let validBefore, let relayer, let refundTo, let nftRecipient, let metadata, let calls):
+            let owner = try address("evm")
+            let m = RelayMulticallPermit(chainId: chainId, token: token, from: owner, value: value, validBefore: validBefore, relayer: relayer,
+                                         refundTo: refundTo, nftRecipient: nftRecipient, metadata: metadata,
+                                         calls: calls.map { .init(target: $0.target, allowFailure: $0.allowFailure, value: $0.value, callData: $0.data) })
+            if let refusal = m.refusal(owner: owner, now: UInt64(Date().timeIntervalSince1970)) {
+                var v = Verdict()
+                v.problems.append(refusal)
+                return refused(v)
+            }
+            let permit = try m.permit()
+            let digests = [try m.digest(), try permit.typed().parts().digest]
+            var r = SignerReply(ok: true)
+            r.signatures = try withKey("evm", reason: permit.summary + "\ninto Relay's depository for this wallet") { key in
+                try digests.map { try EVMSigner.sign(digest: $0, privateKey: key) }
+            }
+            r.checks = ["The signer read Relay's calls itself (one deposit into its depository for this wallet) and computed the nonce they bind."]
             return r
 
         case .signHyperliquidL1(let action, let nonce, let mainnet):

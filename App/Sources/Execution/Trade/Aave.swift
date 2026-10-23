@@ -387,11 +387,33 @@ extension Executor {
         let binding = BindingGuard.check(["sender": quote.sender.lowercased(), "recipient": toSolana ? quote.recipient : quote.recipient.lowercased()],
                                          expected: ["sender": me.lowercased(), "recipient": toSolana ? recipient : recipient.lowercased()], subject: "Relay quote")
         guard binding.ok else { throw GuardStop(binding.problems.joined(separator: " ")) }
-        let permit = quote.permit.map { Permit3009(chainId: $0.chainId, token: $0.token.lowercased(), from: $0.from, to: $0.to, value: amount,
-                                                   validBefore: $0.validBefore, nonce: $0.nonce) }
-        guard let p = quote.permit, let permit, p.chainId == net.rpc.chainId, permit.token == net.usdc, p.value == "\(net.raw(amount))", p.validAfter == 0,
-              permit.refusal(owner: me, now: UInt64(Date().timeIntervalSince1970)) == nil,
-              p.domainName == Permit3009.tokens["\(p.chainId):\(permit.token)"]?.name, p.domainVersion == Permit3009.tokens["\(p.chainId):\(permit.token)"]?.version else {
+        let now = UInt64(Date().timeIntervalSince1970), units = "\(net.raw(amount))"
+        func hex(_ s: EVMSignature) -> String { "0x" + s.r.hex + s.s.hex + String(format: "%02x", s.v) }
+        let known = Permit3009.tokens["\(net.rpc.chainId):\(net.usdc)"]
+        // Relay's v3.2 proxy: the MulticallAuthorization the signer checks and signs with the EIP-3009 item it binds; else v3's
+        // single EIP-3009 item. Each is held to what this wallet asked for before anything is signed.
+        let v32: RelayMulticallPermit? = quote.multicall.flatMap { m in
+            let f = m.funding.first, calls = m.calls.compactMap { c in UInt64(c.value).map {
+                RelayMulticallPermit.Call(target: c.target, allowFailure: c.allowFailure, value: $0, callData: c.callData) } }
+            guard m.chainId == net.rpc.chainId, m.domainName == "RelayApprovalProxy", m.domainVersion == "3.1",
+                  m.verifyingContract.lowercased() == RelayMulticallPermit.proxy, m.from.lowercased() == me.lowercased(), m.msgValue == "0",
+                  m.fundingIndex == 0, m.funding.count == 1, let f, f.token.lowercased() == net.usdc, f.from.lowercased() == me.lowercased(),
+                  f.value == units, f.validAfter == 0, calls.count == m.calls.count,
+                  m.permit.to.lowercased() == RelayMulticallPermit.proxy, m.permit.value == units, m.permit.validBefore == f.validBefore,
+                  m.permit.domainName == known?.name, m.permit.domainVersion == known?.version else { return nil }
+            let mine = RelayMulticallPermit(chainId: m.chainId, token: net.usdc, from: me, value: amount, validBefore: f.validBefore, relayer: m.relayer,
+                                            refundTo: m.refundTo, nftRecipient: m.nftRecipient, metadata: m.metadata, calls: calls)
+            // Relay's nonce must be the digest computed here: else the two signatures wouldn't pair.
+            guard mine.refusal(owner: me, now: now) == nil, (try? mine.digest()) == m.permit.nonce else { return nil }
+            return mine
+        }
+        let single = v32 != nil ? nil : quote.permit.flatMap { p -> (Relay.Permit, Permit3009)? in
+            let permit = Permit3009(chainId: p.chainId, token: p.token.lowercased(), from: p.from, to: p.to, value: amount, validBefore: p.validBefore, nonce: p.nonce)
+            guard p.chainId == net.rpc.chainId, permit.token == net.usdc, p.value == units, p.validAfter == 0, permit.refusal(owner: me, now: now) == nil,
+                  p.domainName == known?.name, p.domainVersion == known?.version else { return nil }
+            return (p, permit)
+        }
+        guard v32 != nil || single != nil else {
             throw ExecutionError("There's no \(net.gasCoin) on \(net.name) for gas, and Relay won't take its USDC by signature right now (it asks for a transaction). "
                                  + "Add a little \(net.gasCoin) to \(net.name); nothing was signed.")
         }
@@ -399,9 +421,17 @@ extension Executor {
         let worth = sol ? Decimal(string: quote.amountOutUSD) ?? 0 : arriving
         try Self.checkLoss(spend - worth - (topup ?? 0), paid: spend, cap: min(max(worth * Decimal(string: "0.03")!, Decimal(string: "0.15")!), 1), what: "Relay")
         let before = sol ? try await rpc.balance(wallet.solana) : try await relayLanded(dest, hyperliquid: hyperliquid)
-        let signature = try await signer.signReceiveAuthorization(permit)
-        try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "\(net.name) USDC→\(there) \(show(amount)) by signature"))
-        try await Relay.postPermit(p, signature: "0x" + signature.r.hex + signature.s.hex + String(format: "%02x", signature.v))
+        if let v32, let m = quote.multicall {
+            let signatures = try await signer.signRelayMulticallPermit(v32)
+            try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "\(net.name) USDC→\(there) \(show(amount)) by signature (v3.2)"))
+            // Relay takes the MulticallAuthorization first; the EIP-3009 one before it is refused.
+            try await Relay.postSignature(endpoint: m.endpoint, body: m.body, signature: hex(signatures[0]))
+            try await Relay.postPermit(m.permit, signature: hex(signatures[1]))
+        } else if let (p, permit) = single {
+            let signature = try await signer.signReceiveAuthorization(permit)
+            try journal.append(.init(chain: "relay", id: quote.requestId, kind: .signed, note: "\(net.name) USDC→\(there) \(show(amount)) by signature"))
+            try await Relay.postPermit(p, signature: hex(signature))
+        }
         report("Signed: Relay takes \(show(amount)) USDC on \(net.name) by signature and pays the gas there; ≈ \(Fmt.num(arriving, maxFraction: 6)) \(stable) to \(there).")
         let requestId = quote.requestId, sent = show(amount), link = "https://relay.link/transaction/\(requestId)"
         let landing: @Sendable () async throws -> String = { [self] in
@@ -580,6 +610,10 @@ extension Executor {
         let dollars = NSDecimalNumber(decimal: ((usd + 1) * 1_000_000).rounded(0, .up)).uint64Value
         if solanaUSDC >= usd + 1 {
             try await ensureEVM(net, usdc: 0, gas: (floor: before + expected, topupUSD: usd))
+        } else if try await Hyperliquid.balance(user: me).withdrawable >= usd.rounded(2, .up) + 1 {
+            // Hyperliquid's balance brings it with no gas anywhere: the way for BNB Chain and HyperEVM, whose dollars can't pay
+            // by signature.
+            report(try await hyperliquidGas(net, usd: usd))
         } else if before < net.gasFloor, Permit3009.supports(chainId: rpc.chainId, token: net.usdc), try await net.usdcBalance(me) >= dollars + 1_000_000 {
             // No gas anywhere: this network's USDC goes to Solana by signature (Relay pays the gas here) — a dollar of it as SOL
             // when Solana has none for its own fee — and the gas comes back from there.

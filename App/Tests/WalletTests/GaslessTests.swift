@@ -80,6 +80,89 @@ private func relayStep(items: Int = 1) -> [[String: Any]] {
     #expect(Relay.permit(in: [["id": "approve", "kind": "transaction", "items": [[String: Any]]()]] + relayStep()) == nil)
 }
 
+// MARK: - Relay's v3.2 proxy: MulticallAuthorization + EIP-3009
+
+private let relayRouter32 = "0x0729e2a4716d9f7dd17858d5d504426d228697f7"
+private let relayRelayer = "0xf70da97812cb96acdf810712aa562db8dfa3dbef"
+
+/// Relay's deposit to another network as its quotes build it: cleanupErc20sViaCall([token], [depository], [depositErc20(
+/// depositor, token, id)], [0]) on the router.
+private func depositCall(depositor: String = hardhat, token: String = EVMRPC.baseUSDC, to: String = RelayMulticallPermit.depository,
+                         amount: UInt64 = 0, selector: String = "5a1ee3ac") throws -> Data {
+    let id = Data(hex: "db8cadf99c6d377809bd725c1a3ac01543447e320535f0d773fa8408e063a00a")!
+    let deposit = Data(hex: selector)! + (try ABI.address(depositor)) + (try ABI.address(token)) + id
+    var args = ABI.uint(128) + ABI.uint(192) + ABI.uint(256) + ABI.uint(480)
+    args += ABI.uint(1) + (try ABI.address(token)) + ABI.uint(1) + (try ABI.address(to))
+    args += ABI.uint(1) + ABI.uint(32) + ABI.uint(UInt64(deposit.count)) + deposit + Data(count: (32 - deposit.count % 32) % 32)
+    args += ABI.uint(1) + ABI.uint(amount)
+    return Data(hex: "73b7bb2f")! + args
+}
+
+private func multicall(calls: [RelayMulticallPermit.Call]? = nil, from: String = hardhat) throws -> RelayMulticallPermit {
+    RelayMulticallPermit(chainId: 8453, token: EVMRPC.baseUSDC, from: from, value: 1_000_000, validBefore: 1_792_716_428,
+                         relayer: relayRelayer, refundTo: relayRelayer, nftRecipient: relayRelayer,
+                         metadata: Data(hex: "9a7b1e444964cb59dd53c1e4674c9b30248af8fb8a6462445df6f0484517297100")!,
+                         calls: try calls ?? [.init(target: relayRouter32, allowFailure: false, value: 0, callData: depositCall())])
+}
+
+@Test func relaysV32SignaturesPassItsDeployedProxy() throws {
+    // eth_call of permit3009TransferAndMulticall on Base's v3.2 proxy (2026-10-23) with these two signatures, from Relay's
+    // relayer: the proxy took both and the router deposited the dollar (Hardhat's address given no code and 1 USDC for the
+    // call); with the depositor changed it reverted InvalidMulticallSignature.
+    let m = try multicall()
+    #expect(try m.digest().hex == "8b3dd635048db8d0d23d504ee3dc793c97f2d616837e7839e83a26c4343dc3c3")
+    let first = try EVMSigner.sign(digest: try m.digest(), privateKey: hardhatKey)
+    #expect(first.r.hex + first.s.hex + String(format: "%02x", first.v) == "d840fdeea2a59e34993fe910060d9c58b9ced6f5d752d3321eb538be0d27c1343b567d328ec87edc05f654cb32efb36e12e872ba00d9df270cc5930e7687fd861b")
+    let second = try EVMSigner.sign(digest: try m.permit().typed().parts().digest, privateKey: hardhatKey)
+    #expect(second.r.hex == "594f03a82e680819b75c4598edf59a8a1d17f5683e7e71ef99a9063e7adf132a" && second.v == 28)
+    #expect(try m.permit().to == RelayMulticallPermit.proxy && m.permit().nonce == m.digest())
+}
+
+@Test func relaysV32CallsMustBeOneDepositForThisWallet() throws {
+    let now: UInt64 = 1_792_716_000
+    #expect(try multicall().refusal(owner: hardhat, now: now) == nil)
+    let stranger = "0x9858EfFD232B4033E47d90003D41EC34EcaEda94"
+    let bad: [[RelayMulticallPermit.Call]] = [
+        [.init(target: relayRouter32, allowFailure: false, value: 0, callData: try depositCall(depositor: stranger))],   // someone else's deposit
+        [.init(target: relayRouter32, allowFailure: false, value: 0, callData: try depositCall(to: stranger))],          // not the depository
+        [.init(target: relayRouter32, allowFailure: false, value: 0, callData: try depositCall(token: EVMRPC.arbitrumUSDC))],
+        [.init(target: relayRouter32, allowFailure: false, value: 0, callData: try depositCall(amount: 5))],             // a part, not this dollar
+        [.init(target: relayRouter32, allowFailure: false, value: 0, callData: try depositCall(selector: "a9059cbb"))],  // a transfer
+        [.init(target: stranger, allowFailure: false, value: 0, callData: try depositCall())],                          // not Relay's router
+        [.init(target: relayRouter32, allowFailure: true, value: 0, callData: try depositCall())],
+        [.init(target: relayRouter32, allowFailure: false, value: 1, callData: try depositCall())],
+        [.init(target: relayRouter32, allowFailure: false, value: 0, callData: try depositCall()),
+         .init(target: relayRouter32, allowFailure: false, value: 0, callData: try depositCall())],
+    ]
+    for calls in bad { #expect(try multicall(calls: calls).refusal(owner: hardhat, now: now) != nil) }
+    #expect(try multicall(calls: [.init(target: relayRouter32, allowFailure: false, value: 0, callData: try depositCall(amount: 1_000_000))])
+        .refusal(owner: hardhat, now: now) == nil)
+    #expect(try multicall(from: stranger).refusal(owner: hardhat, now: now) != nil)
+}
+
+@Test func relaysV32StepIsReadInOrder() throws {
+    let m = try multicall()
+    let call: [String: Any] = ["target": relayRouter32, "allowFailure": false, "value": "0", "callData": "0x" + (try depositCall()).hex]
+    let first: [String: Any] = ["status": "incomplete", "data": [
+        "sign": ["signatureKind": "eip712", "primaryType": "MulticallAuthorization",
+                 "domain": ["name": "RelayApprovalProxy", "version": "3.1", "chainId": 8453, "verifyingContract": RelayMulticallPermit.proxy],
+                 "value": ["from": hardhat, "relayer": relayRelayer, "msgValue": "0", "refundTo": relayRelayer, "nftRecipient": relayRelayer,
+                           "metadata": "0x" + m.metadata.hex, "fundingIndex": 0, "calls": [call],
+                           "funding": [["token": EVMRPC.baseUSDC, "from": hardhat, "value": "1000000", "validAfter": 0, "validBefore": 1_792_716_428]]]],
+        "post": ["endpoint": "/execute/permits", "method": "POST", "body": ["kind": "multicall-authorization", "requestId": "0x01", "api": "swap"]],
+    ]]
+    var second = relayStep()[0]["items"] as! [[String: Any]]
+    var data = second[0]["data"] as! [String: Any], sign = data["sign"] as! [String: Any], value = sign["value"] as! [String: Any]
+    (value["to"], value["value"], value["nonce"]) = (RelayMulticallPermit.proxy, "1000000", "0x" + (try m.digest()).hex)
+    sign["value"] = value; data["sign"] = sign; second[0]["data"] = data
+    let step = try #require(Relay.multicall(in: [["id": "authorize1", "kind": "signature", "items": [first, second[0]]]]))
+    #expect(step.domainName == "RelayApprovalProxy" && step.domainVersion == "3.1" && step.fundingIndex == 0 && step.calls.count == 1)
+    #expect(step.permit.nonce == (try m.digest()) && step.permit.to == RelayMulticallPermit.proxy)
+    #expect((try JSONSerialization.jsonObject(with: step.body) as? [String: Any])?["kind"] as? String == "multicall-authorization")
+    // The EIP-3009 item alone is the v3 form, not this one; and the v3 parser won't take two items.
+    #expect(Relay.multicall(in: relayStep()) == nil && Relay.permit(in: [["id": "authorize1", "kind": "signature", "items": [first, second[0]]]]) == nil)
+}
+
 // MARK: - Jupiter paying a Solana fee
 
 private let ownerKey = try! Curve25519.Signing.PrivateKey(rawRepresentation: Data(repeating: 7, count: 32))

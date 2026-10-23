@@ -50,6 +50,8 @@ public protocol TradeSigner: Sendable {
     func signSolanaSponsored(_ wire: Data, accounts: [String], tokenOwners: [String: String], sponsor: String) async throws -> Data
     /// Dollars Relay takes by signature (Permit3009): its solver pays the network fee.
     func signReceiveAuthorization(_ permit: Permit3009) async throws -> EVMSignature
+    /// The same on Relay's v3.2 proxy: the MulticallAuthorization's signature, then the EIP-3009 one.
+    func signRelayMulticallPermit(_ m: RelayMulticallPermit) async throws -> [EVMSignature]
 }
 
 extension TradeSigner {
@@ -58,6 +60,9 @@ extension TradeSigner {
         throw ExecutionError("This signer doesn't sign a transaction someone else pays for: add a little SOL instead.")
     }
     public func signReceiveAuthorization(_ permit: Permit3009) async throws -> EVMSignature {
+        throw ExecutionError("This signer doesn't pay by signature: add a little of the network's coin for gas instead.")
+    }
+    public func signRelayMulticallPermit(_ m: RelayMulticallPermit) async throws -> [EVMSignature] {
         throw ExecutionError("This signer doesn't pay by signature: add a little of the network's coin for gas instead.")
     }
     public func signSafeMove(_ move: Safe.Move, recipients: [String]) async throws -> EVMSignature {

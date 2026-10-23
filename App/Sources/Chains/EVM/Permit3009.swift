@@ -65,3 +65,108 @@ public struct Permit3009: Codable, Sendable, Equatable {
         return "pay \(amount) \(known?.symbol ?? "tokens") on \(EVMRPC.names[chainId] ?? "network \(chainId)") to Relay by signature (Relay pays the network fee)"
     }
 }
+
+/// Relay's ERC-3009 payment on its v3.2 approval proxy (from 2026-10-26): a second signature, MulticallAuthorization,
+/// ties the dollar to the exact calls the proxy then runs with it, and its EIP-712 digest is the ERC-3009 nonce. The
+/// signer checks those calls itself — one call into Relay's router that deposits this dollar into Relay's depository with
+/// this wallet as the depositor (`cleanupErc20sViaCall`, as Relay's quotes build a deposit to another network) — computes
+/// the digest, and only then signs both: the app never hands it the nonce. Hashing follows RelayApprovalProxy.sol
+/// (relay-periphery): domain «RelayApprovalProxy» «3.1», read from the proxy's eip712Domain() on 2026-10-23.
+public struct RelayMulticallPermit: Codable, Sendable, Equatable {
+    public struct Call: Codable, Sendable, Equatable {
+        public let target: String
+        public let allowFailure: Bool
+        public let value: UInt64
+        public let callData: Data
+        public init(target: String, allowFailure: Bool, value: UInt64, callData: Data) {
+            (self.target, self.allowFailure, self.value, self.callData) = (target, allowFailure, value, callData)
+        }
+    }
+
+    public let chainId: UInt64
+    public let token: String
+    public let from: String
+    public let value: UInt64
+    public let validBefore: UInt64
+    /// Who sends the transaction (msg.sender, Relay's relayer) and gets what's left over.
+    public let relayer: String
+    public let refundTo: String
+    public let nftRecipient: String
+    public let metadata: Data
+    public let calls: [Call]
+
+    public init(chainId: UInt64, token: String, from: String, value: UInt64, validBefore: UInt64, relayer: String, refundTo: String,
+                nftRecipient: String, metadata: Data, calls: [Call]) {
+        (self.chainId, self.token, self.from, self.value, self.validBefore) = (chainId, token, from, value, validBefore)
+        (self.relayer, self.refundTo, self.nftRecipient, self.metadata, self.calls) = (relayer, refundTo, nftRecipient, metadata, calls)
+    }
+
+    public static let proxy = "0x5567954cd026cebfe486062cb75848e0f1c12e58"
+    /// Relay's ERC-20 routers (v3, v3.2) and its depository, at one address on every network.
+    public static let routers: Set<String> = ["0xb92fe925dc43a0ecde6c8b1a2709c170ec4fff4f", "0x0729e2a4716d9f7dd17858d5d504426d228697f7"]
+    public static let depository = "0x4cd00e387622c35bddb9b4c962c136462338bc31"
+    /// cleanupErc20sViaCall(address[],address[],bytes[],uint256[]) on the router; depositErc20(address,address,bytes32) on
+    /// the depository (the router's whole balance of the token, for `depositor`).
+    static let cleanupViaCall = "73b7bb2f", depositAll = "5a1ee3ac"
+
+    /// The ERC-3009 half, whose nonce is this authorization's digest.
+    public func permit() throws -> Permit3009 {
+        Permit3009(chainId: chainId, token: token, from: from, to: Self.proxy, value: value, validBefore: validBefore, nonce: try digest())
+    }
+
+    /// Why the signer won't sign it, or nil.
+    public func refusal(owner: String, now: UInt64) -> String? {
+        if let refusal = (try? permit())?.refusal(owner: owner, now: now) { return refusal }
+        guard calls.count == 1, let call = calls.first, Self.routers.contains(call.target.lowercased()), !call.allowFailure, call.value == 0,
+              call.callData.prefix(4).hex == Self.cleanupViaCall else {
+            return "Relay's calls with this dollar aren't one deposit through its router."
+        }
+        let args = Data(call.callData.dropFirst(4))
+        guard let tokens = Self.addresses(args, at: 0), let tos = Self.addresses(args, at: 32), let datas = ABI.bytesArray(args, at: 64),
+              let amounts = Self.numbers(args, at: 96), tokens.count == 1, tos.count == 1, datas.count == 1, amounts.count == 1,
+              tokens[0] == token.lowercased(), tos[0] == Self.depository, amounts[0] == 0 || amounts[0] == value else {
+            return "Relay's router call doesn't deposit this dollar into Relay's depository."
+        }
+        let deposit = Data(datas[0].dropFirst(4))
+        guard datas[0].prefix(4).hex == Self.depositAll, deposit.count == 96, ABI.address(in: deposit, word: 0)?.lowercased() == owner.lowercased(),
+              ABI.address(in: deposit, word: 1)?.lowercased() == token.lowercased() else {
+            return "Relay's deposit isn't for this wallet."
+        }
+        return nil
+    }
+
+    /// EIP-712 digest of MulticallAuthorization(from, relayer, msgValue 0, refundTo, nftRecipient, metadata, fundingIndex 0,
+    /// calls, funding [this dollar]) under the v3.2 proxy's domain.
+    public func digest() throws -> Data {
+        let k = { (s: String) in Keccak.hash256(Data(s.utf8)) }
+        let call3 = "Call3Value(address target,bool allowFailure,uint256 value,bytes callData)"
+        let funding = "FundingAuthorization(address token,address from,uint256 value,uint256 validAfter,uint256 validBefore)"
+        let callsHash = Keccak.hash256(try calls.reduce(Data()) {
+            $0 + Keccak.hash256(k(call3) + (try ABI.address($1.target)) + ABI.uint($1.allowFailure ? 1 : 0) + ABI.uint($1.value) + Keccak.hash256($1.callData))
+        })
+        let fundingHash = Keccak.hash256(Keccak.hash256(k(funding) + (try ABI.address(token)) + (try ABI.address(from)) + ABI.uint(value) + ABI.uint(0) + ABI.uint(validBefore)))
+        let type = "MulticallAuthorization(address from,address relayer,uint256 msgValue,address refundTo,address nftRecipient,bytes metadata,uint256 fundingIndex,Call3Value[] calls,FundingAuthorization[] funding)" + call3 + funding
+        let message = Keccak.hash256(k(type) + (try ABI.address(from)) + (try ABI.address(relayer)) + ABI.uint(0) + (try ABI.address(refundTo))
+                                     + (try ABI.address(nftRecipient)) + Keccak.hash256(metadata) + ABI.uint(0) + callsHash + fundingHash)
+        let domain = try EIP712.hashStruct("EIP712Domain", [.init("name", "string", .string("RelayApprovalProxy")), .init("version", "string", .string("3.1")),
+                                                            .init("chainId", "uint256", .uint(chainId)), .init("verifyingContract", "address", .address(Self.proxy))])
+        return Keccak.hash256(Data([0x19, 0x01]) + domain + message)
+    }
+
+    /// An `address[]` / `uint256[]` argument whose offset sits at byte `at`; nil when it runs out of the data or a word
+    /// doesn't fit.
+    static func addresses(_ args: Data, at: Int) -> [String]? {
+        words(args, at: at)?.map { "0x" + $0.suffix(20).hex }
+    }
+    static func numbers(_ args: Data, at: Int) -> [UInt64]? {
+        guard let w = words(args, at: at) else { return nil }
+        let n = w.compactMap { $0.prefix(24).allSatisfy { $0 == 0 } ? $0.suffix(8).reduce(UInt64(0)) { $0 << 8 | UInt64($1) } : nil }
+        return n.count == w.count ? n : nil
+    }
+    static func words(_ args: Data, at: Int) -> [Data]? {
+        let data = Data(args)
+        guard let offset = ABI.uint(in: data, word: at / 32), offset % 32 == 0, offset < UInt64(data.count),
+              let count = ABI.uint(in: data, word: Int(offset) / 32), count <= 64, Int(offset) + 32 + Int(count) * 32 <= data.count else { return nil }
+        return (0..<Int(count)).map { data.subdata(in: (Int(offset) + 32 + $0 * 32)..<(Int(offset) + 64 + $0 * 32)) }
+    }
+}

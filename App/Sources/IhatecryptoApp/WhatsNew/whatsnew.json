@@ -5,7 +5,7 @@
     "stories": [
       {
         "title": "Dollars move without gas",
-        "text": "USDC with no SOL beside it still swaps for SOL: Jupiter pays that one swap's fee, from $5. USDC on Base, Arbitrum, Optimism, Polygon, Ethereum or Robinhood Chain with none of the network's coin goes to Solana or Hyperliquid by a signature, Relay paying the gas, and gas for that network comes back over Solana. When dollars land where they can't move, the chat says so once and offers the way out.",
+        "text": "USDC with no SOL beside it still swaps for SOL: Jupiter pays that one swap's fee, from $5. USDC on Base, Arbitrum, Optimism, Polygon, Ethereum or Robinhood Chain with none of the network's coin goes to Solana or Hyperliquid by a signature, Relay paying the gas, and gas for that network comes back over Solana. Gas for BNB Chain and HyperEVM can come from your Hyperliquid balance. When dollars land where they can't move, the chat says so once and offers the way out.",
         "symbol": "fuelpump.fill",
         "color": "30D158",
         "try": "show where to top up"
