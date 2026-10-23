@@ -998,8 +998,8 @@ extension Workspace {
         let key = "tradingKeyOffered-" + evm.lowercased()
         guard !UserDefaults.standard.bool(forKey: key) else { return }
         UserDefaults.standard.set(true, forKey: key)
-        reply(say("Hyperliquid is open on this wallet. Turn on its trading key? Orders, stops and closes then go without \(ledgerActive ? "the Ledger's buttons" : Presence.name); the key can't withdraw.",
-                  "Hyperliquid на этом кошельке открыт. Включить торговый ключ? Тогда ордера, стопы и закрытия идут без \(ledgerActive ? "кнопок Ledger" : Presence.ruGen); вывести деньги ключ не может."))
+        reply(say("Hyperliquid is open on this wallet. Turn on its trading key? Orders, stops and closes then go without \(ledgerActive ? "the Ledger's buttons" : Presence.name) — new positions for 7 days, then one \(Presence.short) renews them; the key can't withdraw.",
+                  "Hyperliquid на этом кошельке открыт. Включить торговый ключ? Тогда ордера, стопы и закрытия идут без \(ledgerActive ? "кнопок Ledger" : Presence.ruGen) — новые позиции 7 дней, потом одно подтверждение продлевает; вывести деньги ключ не может."))
         offerCards([
             ChatRouter.Option(title: say("Turn on the trading key", "Включить торговый ключ"),
                               comment: say("One \(ledgerActive ? "approval on the Ledger" : Presence.name); it can't withdraw", "Одно подтверждение \(ledgerActive ? "на Ledger" : Presence.ruIns); вывести не может"),
@@ -1013,7 +1013,7 @@ extension Workspace {
         do {
             let r = try await SignerClient().send(ledgerActive ? .setLedgerAgentActive(owner: hlAddress, active: true) : .setAgentActive(true))
             await loadSigner()
-            reply(r.ok && r.agentActive == true ? "Trading key on again: orders skip \(Presence.name), withdrawals still need it." : "The trading key stayed off.")
+            reply(r.ok && r.agentActive == true ? "Trading key on again for 7 days: orders skip \(Presence.name), withdrawals still need it." : "The trading key stayed off.")
         } catch {
             reply("The trading key stayed off: \(error.localizedDescription)")
         }

@@ -258,3 +258,16 @@ private let policy = SolanaPolicy(owner: me, recipients: [deposit])
     let (exactOut, exactOutAccounts) = try message(keys, [(4, [1, 0, 2, 3, 4, 5, 4, 6, 4], [0xd0, 0x33, 0xef, 0x97, 0x7b, 0x2b, 0xed, 0x5c] + tail(quoted: 1))])
     #expect(SolanaGuard.check(exactOut, accounts: exactOutAccounts, policy: policy, tokenOwners: [:]).checks.contains("Calls Jupiter Swap. The balance simulation checks the result."))
 }
+
+/// Past its 7 days the trading key still signs what can't open or add to a position: cancels and reduce-only orders.
+@Test func onlyCancelsAndReduceOnlyOrdersCountAsReducing() throws {
+    let stop = HLOrder(asset: 0, isBuy: false, price: 90, size: 1, reduceOnly: true, kind: .trigger(price: 90, isMarket: true, tpsl: "sl"))
+    let take = HLOrder(asset: 0, isBuy: false, price: 120, size: 1, reduceOnly: true, kind: .trigger(price: 120, isMarket: true, tpsl: "tp"))
+    let entry = HLOrder(asset: 0, isBuy: true, price: 100, size: 1, reduceOnly: false, kind: .limit(tif: "Ioc"))
+    #expect(HLAction.onlyReduces(try HLAction.order([stop, take], grouping: "positionTpsl")))
+    #expect(HLAction.onlyReduces(HLAction.cancel([(asset: 0, oid: 7)])))
+    #expect(!HLAction.onlyReduces(try HLAction.order([entry, stop, take], grouping: "normalTpsl")))
+    #expect(!HLAction.onlyReduces(try HLAction.order([entry])))
+    #expect(!HLAction.onlyReduces(.map([("type", .string("updateLeverage")), ("asset", .uint(0)), ("isCross", .bool(true)), ("leverage", .uint(20))])))
+    #expect(!HLAction.onlyReduces(.map([("type", .string("order")), ("orders", .array([]))])))
+}

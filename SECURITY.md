@@ -56,8 +56,11 @@ and the Hyperliquid trading key. The automation wallet can spend what is on it a
 it, one made before the wallet included, waits until the user switches it on in the Schedule, and a new recipient still
 asks in person. The trading key can place and cancel orders, set leverage up to 20× and bind ihatecrypto's referral
 code; it can't withdraw or transfer. The signer has no network, so it can't see market prices and doesn't limit an
-order's market, price or size: a program that took over the app could trade the account down. Keep on Hyperliquid what
-you trade with. Turning each one on asks in person.
+order's market, price or size: a program that took over the app could trade the account down. So the key opens or adds
+to positions only for 7 days after the user's last Touch ID for it (turning it on, or an order the main key signed in
+person); after that it still cancels and places reduce-only orders, so stops and closes keep working, and anything
+that opens a position asks in person again and renews the 7 days. A Ledger's trading key works the same way. Keep on
+Hyperliquid what you trade with. Turning each one on asks in person.
 
 **The Guard.** Plain code checks every transaction before it is signed, and the signer runs the checks again itself:
 
@@ -113,8 +116,9 @@ them nowhere.
 **What leaves the Mac.** The model provider the user picks (local models keep it on the Mac) gets the recent chat, saved
 notes, the trade plan, open positions with P/L, the balances on every network, favorite tokens and the address book's
 names and networks, with every message. Blockchain nodes and price, portfolio, swap and bridge services get the
-wallet's addresses, and the services a move goes through get its amounts and recipients. A paid web service (MPP) gets
-the request once unpaid, to name its price. Address book icons come from each entry's own site.
+wallet's addresses, and the services a move goes through get its amounts and recipients. A paid web service (MPP) is asked
+its price without the request's content, which goes only after Confirm (a service that can't quote without it gets it
+unpaid, as the protocol has it). Address book icons come from each entry's own site.
 
 ## Known limits
 

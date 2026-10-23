@@ -345,7 +345,7 @@ private struct ModelStep: View {
     // A model is required: without one the chat could only guess at words, and people took that for the product.
     var body: some View {
         OnboardingCard(mood: .tuning, title: "What does the chat think with?",
-                       subtitle: "The chat needs a model to understand you: one you already pay for, an API key, or a free one on this Mac. It reads your words and the plan, never your keys.",
+                       subtitle: "The chat needs a model to understand you: one you already pay for, an API key, or a free one on this Mac. It reads your words, the plan and your balances, never your keys; a model on this Mac keeps them all here.",
                        primary: "Continue", busy: ws.llmBusy, enabled: ws.hasModel, action: next) {
             VStack(spacing: 10) {
                 way("chatgpt", "ChatGPT subscription", "Plus or Pro: sign in once in the browser", logo: "llm-openai")

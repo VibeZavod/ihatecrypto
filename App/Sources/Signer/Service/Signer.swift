@@ -100,6 +100,7 @@ enum Signer {
             }
             // Kept only once its approval is signed: a Touch ID turned down leaves no key that Settings would call paused.
             if made { try AgentStore.save(agentKey!) }
+            renewAgent(agentRenewedKey)
             var r = SignerReply(ok: true)
             r.agentAddress = agent
             r.action = action
@@ -110,9 +111,11 @@ enum Signer {
 
         case .setAgentActive(let on):
             // Resuming a paused trading key is the user's decision: it asks for Touch ID like a signature.
-            if on, !defaults.bool(forKey: agentActiveKey), AgentStore.load() != nil {
-                try withKey("evm", reason: "turn the Hyperliquid trading key back on") { _ in }
+            // So does one whose week is over (agentWeek): the app can't keep it going by turning it on again.
+            if on, !defaults.bool(forKey: agentActiveKey) || !agentFresh(agentRenewedKey), AgentStore.load() != nil {
+                try withKey("evm", reason: "turn the Hyperliquid trading key on for 7 days: orders without \(Presence.name); it can't withdraw money") { _ in }
                 SeedStore.endSession() // a confirmation, not a move: it leaves no session for an unrelated signature
+                renewAgent(agentRenewedKey)
             }
             defaults.set(on && AgentStore.load() != nil, forKey: agentActiveKey)
             var r = SignerReply(ok: true)
@@ -264,8 +267,11 @@ enum Signer {
             let id = try ledgerAgentID(owner)
             guard AgentStore.load(id: id) != nil else { throw WalletError("This Ledger has no trading key yet: approve one on the Ledger first.") }
             // Back on after a lock is the user's decision, as for a wallet's own key.
-            if on, defaults.string(forKey: "agentActive-" + id) == "paused" {
-                try SeedStore.confirm("turn the Hyperliquid trading key of your Ledger \(owner) back on")
+            let state = defaults.string(forKey: "agentActive-" + id)
+            if on, state == nil { renewAgent("agentRenewed-" + id) }   // just approved on the Ledger itself, in person
+            if on, state == "paused" || state == "on" && !agentFresh("agentRenewed-" + id) {
+                try SeedStore.confirm("turn the Hyperliquid trading key of your Ledger \(owner) on for 7 days")
+                renewAgent("agentRenewed-" + id)
                 SeedStore.endSession() // a confirmation, not a move: it leaves no session for an unrelated signature
             }
             defaults.set(on ? "on" : "paused", forKey: "agentActive-" + id)
@@ -282,6 +288,11 @@ enum Signer {
             }
             guard defaults.string(forKey: "agentActive-" + id) == "on", var agent = AgentStore.load(id: id) else {
                 throw WalletError("The Ledger's trading key is off: approve it on the Ledger, or turn it back on.")
+            }
+            guard agentFresh("agentRenewed-" + id) || HLAction.onlyReduces(action) else {
+                SeedStore.wipe(&agent)
+                throw WalletError("The Ledger's trading key opens positions for 7 days after \(Presence.name) and those are over; stops and closes still go. "
+                                  + "Turn it off and on in Settings › Wallet › Hyperliquid to go on.")
             }
             defer { SeedStore.wipe(&agent) }
             let verdict = HLGuard.check(action, owner: owner, recipients: [])
@@ -555,15 +566,21 @@ enum Signer {
             // Orders, cancels and leverage go through the agent when it is active: it cannot move money out,
             // so no Touch ID. Otherwise the main key signs.
             // The agent signs trading only; anything that moves money (a vault transfer) takes the main key.
+            // Past its week the agent still cancels and places reduce-only orders (stops, takes, closes), so a position
+            // stays protected; what opens or adds to one takes the main key in person, and that renews the week.
             var r = SignerReply(ok: true)
-            if HLSigner.isTrading(action), defaults.bool(forKey: agentActiveKey), var agent = AgentStore.load() {
+            let agentOn = HLSigner.isTrading(action) && defaults.bool(forKey: agentActiveKey)
+            if agentOn, agentFresh(agentRenewedKey) || HLAction.onlyReduces(action), var agent = AgentStore.load() {
                 defer { SeedStore.wipe(&agent) }
                 r.signature = try HLSigner.signL1(action, privateKey: agent, nonce: nonce, mainnet: mainnet)
             } else {
-                let what = HLAction.type(action) == "setReferrer" ? "use ihatecrypto's referral code on Hyperliquid: 4% off its fees" : "sign a Hyperliquid order"
+                let stale = agentOn && AgentStore.load() != nil
+                let what = HLAction.type(action) == "setReferrer" ? "use ihatecrypto's referral code on Hyperliquid: 4% off its fees"
+                    : stale ? "sign a Hyperliquid order: the trading key's 7 days are over, and this renews them" : "sign a Hyperliquid order"
                 r.signature = try withKey("evm", reason: prompt(what, verdict)) {
                     try HLSigner.signL1(action, privateKey: $0, nonce: nonce, mainnet: mainnet)
                 }
+                if stale { renewAgent(agentRenewedKey) }
             }
             r.checks = verdict.checks
             return r
@@ -655,6 +672,15 @@ enum Signer {
     }
 
     static var agentActiveKey: String { Wallets.scoped("agentActive") }
+    static var agentRenewedKey: String { Wallets.scoped("agentRenewed") }
+
+    /// The Hyperliquid trading key opens or adds to positions for 7 days after the user's last Touch ID for it (turning it
+    /// on, an order the main key signed in person); then cancels and reduce-only orders still go without one. The signer
+    /// sees no prices, so it can't cap what an order risks: this caps how long a program that took over the app could
+    /// trade the account down unseen. Only an in-person act renews it, never the app's word.
+    static let agentWeek: TimeInterval = 7 * 86_400
+    static func agentFresh(_ key: String) -> Bool { Date().timeIntervalSince1970 - ((defaults.object(forKey: key) as? Double) ?? 0) < agentWeek }
+    static func renewAgent(_ key: String) { defaults.set(Date().timeIntervalSince1970, forKey: key) }
 
     /// Where a Ledger's trading key is kept: by its account, which must be an EVM address.
     static func ledgerAgentID(_ owner: String) throws -> String {
