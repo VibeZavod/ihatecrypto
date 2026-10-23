@@ -38,6 +38,11 @@ extension Workspace {
             reply(say("That isn't a web address ihatecrypto can call.", "Это не веб-адрес, который ihatecrypto может вызвать."), note: note)
             return
         }
+        if MPP.refusesProof.contains(host.lowercased()) {
+            reply(say("\(host) takes the payment and then refuses its proof (checked 2026-10-23), so ihatecrypto doesn't pay it. Ask for another service.",
+                      "\(host) берёт оплату, а потом не принимает её подтверждение (проверено 2026-10-23), поэтому ihatecrypto его не оплачивает. Попроси другой сервис."), note: note)
+            return
+        }
         agentStep = say("Asking \(host) for its price", "Спрашиваю цену у \(host)")
         let ask = messages.last(where: \.fromUser)?.text ?? ""
         do {
