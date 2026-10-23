@@ -315,8 +315,8 @@ extension Executor {
     /// Spot on Solana through Jupiter: `buy` spends USDC on the coin, otherwise the coin is sold for USDC.
     /// The simulated balances must show at least Jupiter's minimum output arriving in our own account.
     /// Buy (from USDC) or sell (for USDC); kept for the chat commands.
-    public func swap(_ asset: SpotAsset, buy: Bool, amount requested: Decimal?, equity: Decimal? = nil) async throws -> String {
-        try await convert(from: buy ? .usdc : asset, to: buy ? asset : .usdc, amount: requested, equity: equity)
+    public func swap(_ asset: SpotAsset, buy: Bool, amount requested: Decimal?, equity: Decimal? = nil, shown: UInt64? = nil) async throws -> String {
+        try await convert(from: buy ? .usdc : asset, to: buy ? asset : .usdc, amount: requested, equity: equity, shown: shown)
     }
 
     /// Any verified token into any other through Jupiter: buying and selling, and staking SOL into JitoSOL and back.

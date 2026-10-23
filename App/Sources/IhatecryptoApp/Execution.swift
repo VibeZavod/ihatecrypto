@@ -693,7 +693,7 @@ extension Workspace {
                 schedules = []
                 reply(n == 0 ? "There were no scheduled purchases." : "Scheduled purchases stopped (\(n)).")
                 return
-            case .buy(let asset, let usdc): _ = try await e.swap(asset, buy: true, amount: usdc, equity: equity)
+            case .buy(let asset, let usdc): _ = try await e.swap(asset, buy: true, amount: usdc, equity: equity, shown: jupiterShown.flatMap { $0.command == command ? $0.out : nil })
             case .jupiterDCA(let asset, let usdc, let orders, let every):
                 _ = try await e.jupiterDCA(asset, usdc: usdc ?? 0, orders: orders ?? WalletCommand.jupiterDCAOrders(for: usdc ?? 0), every: every)
                 jupiterDCAs = try? await e.jupiterDCAOrders()
@@ -706,7 +706,7 @@ extension Workspace {
                 reply(orders.isEmpty ? say("No Jupiter DCA is running.", "Jupiter DCA сейчас не запущен.")
                       : say("Running Jupiter DCA: \(orders.count). They're on the canvas.", "Запущено Jupiter DCA: \(orders.count). Они на холсте."))
                 return
-            case .sell(let asset, let amount): _ = try await e.swap(asset, buy: false, amount: amount)
+            case .sell(let asset, let amount): _ = try await e.swap(asset, buy: false, amount: amount, shown: jupiterShown.flatMap { $0.command == command ? $0.out : nil })
             }
             finish(true)
         } catch {
