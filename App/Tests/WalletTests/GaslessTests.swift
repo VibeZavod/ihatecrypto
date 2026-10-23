@@ -138,6 +138,10 @@ private func multicall(calls: [RelayMulticallPermit.Call]? = nil, from: String =
     #expect(try multicall(calls: [.init(target: relayRouter32, allowFailure: false, value: 0, callData: try depositCall(amount: 1_000_000))])
         .refusal(owner: hardhat, now: now) == nil)
     #expect(try multicall(from: stranger).refusal(owner: hardhat, now: now) != nil)
+    let elsewhere = RelayMulticallPermit(chainId: 8453, token: EVMRPC.baseUSDC, from: hardhat, value: 1_000_000, validBefore: 1_792_716_428,
+                                         relayer: relayRelayer, refundTo: stranger, nftRecipient: relayRelayer, metadata: Data(),
+                                         calls: [.init(target: relayRouter32, allowFailure: false, value: 0, callData: try depositCall())])
+    #expect(elsewhere.refusal(owner: hardhat, now: now)?.contains("leftovers") == true)
 }
 
 @Test func relaysV32StepIsReadInOrder() throws {

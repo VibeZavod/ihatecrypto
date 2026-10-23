@@ -117,6 +117,11 @@ public struct RelayMulticallPermit: Codable, Sendable, Equatable {
     /// Why the signer won't sign it, or nil.
     public func refusal(owner: String, now: UInt64) -> String? {
         if let refusal = (try? permit())?.refusal(owner: owner, now: now) { return refusal }
+        // What the proxy has left after the calls goes to refundTo: this wallet, or the relayer that sends it (bound by the
+        // digest, as msg.sender) — Relay's quotes name the relayer. The whole dollar is deposited, so none of it is left.
+        guard [owner.lowercased(), relayer.lowercased()].contains(refundTo.lowercased()) else {
+            return "Relay's leftovers would go to \(refundTo), neither this wallet nor its relayer."
+        }
         guard calls.count == 1, let call = calls.first, Self.routers.contains(call.target.lowercased()), !call.allowFailure, call.value == 0,
               call.callData.prefix(4).hex == Self.cleanupViaCall else {
             return "Relay's calls with this dollar aren't one deposit through its router."
